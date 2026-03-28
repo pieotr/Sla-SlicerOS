@@ -154,18 +154,18 @@ DynamicConfig parse_custom_parameters_to_dynamic_config(
         for (const auto& [key, v] : map) {
             std::string full_key = std::string("custom_parameter_filament_") + key;
             if (! config.has(full_key)) {
-                if (const int* val = std::get_if<int>(&v))
+                if (std::holds_alternative<int>(v))
                     config.set_key_value(full_key, new ConfigOptionIntsNullable(parsed_filaments.size(), ConfigOptionIntsNullable::nil_value()));
-                else if (const double* val = std::get_if<double>(&v))
+                else if (std::holds_alternative<double>(v))
                     config.set_key_value(full_key, new ConfigOptionFloatsNullable(parsed_filaments.size(), ConfigOptionFloatsNullable::nil_value()));
-                else if (const bool* val = std::get_if<bool>(&v)) {
+                else if (std::holds_alternative<bool>(v)) {
                     config.set_key_value(full_key, new ConfigOptionBoolsNullable(parsed_filaments.size(), false));
                     // The existing constructor casts the argument to bool, do not touch it and instead set it element-wise:
                     auto* o = config.opt<ConfigOptionBoolsNullable>(full_key);
                     for (auto& val : o->values)
                         val = ConfigOptionBoolsNullable::nil_value();
                 }
-                else if (const std::string* val = std::get_if<std::string>(&v)) {
+                else if (std::holds_alternative<std::string>(v)) {
                     // Strings default to empty string instead of being rejected as nil. Slicer 2.9.2 cannot reasonably
                     // serialize nil strings, which is why they are not supported at all.
                     config.set_key_value(full_key, new ConfigOptionStrings(parsed_filaments.size(), ""));

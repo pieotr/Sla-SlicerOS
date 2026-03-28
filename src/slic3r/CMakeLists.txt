@@ -413,18 +413,35 @@ if (APPLE)
             GUI/Mouse3DHandlerMac.mm
             GUI/InstanceCheckMac.mm
             GUI/InstanceCheckMac.h
-            GUI/WebViewPlatformUtilsMac.mm
+                GUI/WebViewPlatformUtilsMac.mm
 
     )
     FIND_LIBRARY(DISKARBITRATION_LIBRARY DiskArbitration)
     FIND_LIBRARY(COREWLAN_LIBRARY CoreWLAN)
 elseif (WIN32)
-    list(APPEND SLIC3R_GUI_SOURCES
-            GUI/WebViewPlatformUtilsWin32.cpp
-    )
+            list(APPEND SLIC3R_GUI_SOURCES
+                GUI/WebViewPlatformUtilsWin32.cpp
+            )
 else() # Linux
-    list(APPEND SLIC3R_GUI_SOURCES
-            GUI/WebViewPlatformUtilsLinux.cpp
+            list(APPEND SLIC3R_GUI_SOURCES
+                GUI/WebViewPlatformUtilsLinux.cpp
+            )
+endif ()
+
+if (SLIC3R_SLA_ONLY)
+    list(REMOVE_ITEM SLIC3R_GUI_SOURCES
+        GUI/Gizmos/GLGizmoFdmSupports.cpp
+        GUI/Gizmos/GLGizmoFdmSupports.hpp
+        GUI/Gizmos/GLGizmoFuzzySkin.cpp
+        GUI/Gizmos/GLGizmoFuzzySkin.hpp
+        GUI/Gizmos/GLGizmoSeam.cpp
+        GUI/Gizmos/GLGizmoSeam.hpp
+        GUI/ExtruderSequenceDialog.cpp
+        GUI/ExtruderSequenceDialog.hpp
+        GUI/WipeTowerDialog.cpp
+        GUI/WipeTowerDialog.hpp
+        GUI/RammingChart.cpp
+        GUI/RammingChart.hpp
     )
 endif ()
 
@@ -488,8 +505,10 @@ if (UNIX AND NOT APPLE)
     find_package(GTK${SLIC3R_GTK} REQUIRED)
     find_package(PkgConfig REQUIRED)
 
-    pkg_search_module(WEBKIT2GTK REQUIRED IMPORTED_TARGET webkit2gtk-4.0 webkit2gtk-4.1)
-    target_link_libraries(libslic3r_gui PUBLIC ${GTK${SLIC3R_GTK}_LIBRARIES} fontconfig PkgConfig::WEBKIT2GTK)
+    # Use a dedicated pkg-config module name to avoid stale cache entries from
+    # previous configure runs that could pin WEBKIT2GTK to 4.0.
+    pkg_search_module(WEBKIT2GTK_LINUX REQUIRED IMPORTED_TARGET webkit2gtk-4.1 webkit2gtk-4.0)
+    target_link_libraries(libslic3r_gui PUBLIC ${GTK${SLIC3R_GTK}_LIBRARIES} fontconfig PkgConfig::WEBKIT2GTK_LINUX)
 endif ()
 
 # Add a definition so that we can tell we are compiling slic3r.

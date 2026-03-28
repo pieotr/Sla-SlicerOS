@@ -391,6 +391,8 @@ template<class T> static constexpr NilType<T> NilValue() noexcept { return NilVa
 template <class T, bool NULLABLE = false>
 class ConfigOptionSingle : public ConfigOption {
 public:
+    using ConfigOption::serialize;
+
     T value;
     explicit ConfigOptionSingle(T value) : value(std::move(value)) {}
     operator T() const { return this->value; }
@@ -521,6 +523,8 @@ template <class T>
 class ConfigOptionVector : public ConfigOptionVectorBase
 {
 public:
+    using ConfigOption::serialize;
+
     ConfigOptionVector() {}
     explicit ConfigOptionVector(size_t n, const T &value) : values(n, value) {}
     explicit ConfigOptionVector(std::initializer_list<T> il) : values(std::move(il)) {}
@@ -702,6 +706,8 @@ template<bool NULLABLE = false>
 class ConfigOptionFloatTempl : public ConfigOptionSingle<double, NULLABLE>
 {
 public:
+    using ConfigOptionSingle<double, NULLABLE>::operator==;
+
     ConfigOptionFloatTempl() : ConfigOptionSingle<double, NULLABLE>(0) {}
     explicit ConfigOptionFloatTempl(double _value) : ConfigOptionSingle<double, NULLABLE>(_value) {}
 
@@ -767,6 +773,8 @@ template<bool NULLABLE>
 class ConfigOptionFloatsTempl : public ConfigOptionVector<double>
 {
 public:
+    using ConfigOptionVector<double>::operator==;
+
     ConfigOptionFloatsTempl() : ConfigOptionVector<double>() {}
     explicit ConfigOptionFloatsTempl(size_t n, double value) : ConfigOptionVector<double>(n, value) {}
     explicit ConfigOptionFloatsTempl(std::initializer_list<double> il) : ConfigOptionVector<double>(std::move(il)) {}
@@ -895,6 +903,8 @@ template<bool NULLABLE = false>
 class ConfigOptionIntTempl : public ConfigOptionSingle<int, NULLABLE>
 {
 public:
+    using ConfigOptionSingle<int, NULLABLE>::operator==;
+
     ConfigOptionIntTempl() : ConfigOptionSingle<int, NULLABLE>(0) {}
     explicit ConfigOptionIntTempl(int value) : ConfigOptionSingle<int, NULLABLE>(value) {}
     explicit ConfigOptionIntTempl(double _value) : ConfigOptionSingle<int, NULLABLE>(int(floor(_value + 0.5))) {}
@@ -955,6 +965,8 @@ template<bool NULLABLE>
 class ConfigOptionIntsTempl : public ConfigOptionVector<int>
 {
 public:
+    using ConfigOptionVector<int>::operator==;
+
     ConfigOptionIntsTempl() : ConfigOptionVector<int>() {}
     explicit ConfigOptionIntsTempl(size_t n, int value) : ConfigOptionVector<int>(n, value) {}
     explicit ConfigOptionIntsTempl(std::initializer_list<int> il) : ConfigOptionVector<int>(std::move(il)) {}
@@ -1043,6 +1055,8 @@ using ConfigOptionIntsNullable = ConfigOptionIntsTempl<true>;
 class ConfigOptionString : public ConfigOptionSingle<std::string>
 {
 public:
+    using ConfigOptionSingle<std::string>::operator==;
+
     ConfigOptionString() : ConfigOptionSingle<std::string>(std::string{}) {}
     explicit ConfigOptionString(std::string value) : ConfigOptionSingle<std::string>(std::move(value)) {}
 
@@ -1074,6 +1088,8 @@ private:
 class ConfigOptionStrings : public ConfigOptionVector<std::string>
 {
 public:
+    using ConfigOptionVector<std::string>::operator==;
+
     ConfigOptionStrings() : ConfigOptionVector<std::string>() {}
     explicit ConfigOptionStrings(size_t n, const std::string &value) : ConfigOptionVector<std::string>(n, value) {}
     explicit ConfigOptionStrings(const std::vector<std::string> &values) : ConfigOptionVector<std::string>(values) {}
@@ -1113,6 +1129,8 @@ private:
 class ConfigOptionPercent : public ConfigOptionFloat
 {
 public:
+    using ConfigOptionFloat::operator==;
+
     ConfigOptionPercent() : ConfigOptionFloat(0) {}
     explicit ConfigOptionPercent(double _value) : ConfigOptionFloat(_value) {}
     
@@ -1152,6 +1170,8 @@ template<bool NULLABLE>
 class ConfigOptionPercentsTempl : public ConfigOptionFloatsTempl<NULLABLE>
 {
 public:
+    using ConfigOptionFloatsTempl<NULLABLE>::operator==;
+
     ConfigOptionPercentsTempl() : ConfigOptionFloatsTempl<NULLABLE>() {}
     explicit ConfigOptionPercentsTempl(size_t n, double value) : ConfigOptionFloatsTempl<NULLABLE>(n, value) {}
     explicit ConfigOptionPercentsTempl(std::initializer_list<double> il) : ConfigOptionFloatsTempl<NULLABLE>(std::move(il)) {}
@@ -1207,6 +1227,8 @@ using ConfigOptionPercentsNullable 	= ConfigOptionPercentsTempl<true>;
 class ConfigOptionFloatOrPercent : public ConfigOptionPercent
 {
 public:
+    using ConfigOptionPercent::operator==;
+
     bool percent;
     ConfigOptionFloatOrPercent() : ConfigOptionPercent(0), percent(false) {}
     explicit ConfigOptionFloatOrPercent(double _value, bool _percent) : ConfigOptionPercent(_value), percent(_percent) {}
@@ -1266,6 +1288,8 @@ template<bool NULLABLE>
 class ConfigOptionFloatsOrPercentsTempl : public ConfigOptionVector<FloatOrPercent>
 {
 public:
+    using ConfigOptionVector<FloatOrPercent>::operator==;
+
     ConfigOptionFloatsOrPercentsTempl() : ConfigOptionVector<FloatOrPercent>() {}
     explicit ConfigOptionFloatsOrPercentsTempl(size_t n, FloatOrPercent value) : ConfigOptionVector<FloatOrPercent>(n, value) {}
     explicit ConfigOptionFloatsOrPercentsTempl(std::initializer_list<FloatOrPercent> il) : ConfigOptionVector<FloatOrPercent>(std::move(il)) {}
@@ -1395,6 +1419,8 @@ using ConfigOptionFloatsOrPercentsNullable  = ConfigOptionFloatsOrPercentsTempl<
 class ConfigOptionPoint : public ConfigOptionSingle<Vec2d>
 {
 public:
+    using ConfigOptionSingle<Vec2d>::operator==;
+
     ConfigOptionPoint() : ConfigOptionSingle<Vec2d>(Vec2d(0,0)) {}
     explicit ConfigOptionPoint(const Vec2d &value) : ConfigOptionSingle<Vec2d>(value) {}
     
@@ -1430,6 +1456,8 @@ private:
 class ConfigOptionPoints : public ConfigOptionVector<Vec2d>
 {
 public:
+    using ConfigOptionVector<Vec2d>::operator==;
+
     ConfigOptionPoints() : ConfigOptionVector<Vec2d>() {}
     explicit ConfigOptionPoints(size_t n, const Vec2d &value) : ConfigOptionVector<Vec2d>(n, value) {}
     explicit ConfigOptionPoints(std::initializer_list<Vec2d> il) : ConfigOptionVector<Vec2d>(std::move(il)) {}
@@ -1506,6 +1534,8 @@ private:
 class ConfigOptionPoint3 : public ConfigOptionSingle<Vec3d>
 {
 public:
+    using ConfigOptionSingle<Vec3d>::operator==;
+
     ConfigOptionPoint3() : ConfigOptionSingle<Vec3d>(Vec3d(0,0,0)) {}
     explicit ConfigOptionPoint3(const Vec3d &value) : ConfigOptionSingle<Vec3d>(value) {}
     
@@ -1544,6 +1574,8 @@ private:
 class ConfigOptionBool : public ConfigOptionSingle<bool>
 {
 public:
+    using ConfigOptionSingle<bool>::operator==;
+
     ConfigOptionBool() : ConfigOptionSingle<bool>(false) {}
     explicit ConfigOptionBool(bool _value) : ConfigOptionSingle<bool>(_value) {}
     
@@ -1583,6 +1615,8 @@ template<bool NULLABLE>
 class ConfigOptionBoolsTempl : public ConfigOptionVector<unsigned char>
 {
 public:
+    using ConfigOptionVector<unsigned char>::operator==;
+
     ConfigOptionBoolsTempl() : ConfigOptionVector<unsigned char>() {}
     explicit ConfigOptionBoolsTempl(size_t n, bool value) : ConfigOptionVector<unsigned char>(n, (unsigned char)value) {}
     explicit ConfigOptionBoolsTempl(std::initializer_list<bool> il) { values.reserve(il.size()); for (bool b : il) values.emplace_back((unsigned char)b); }
@@ -1696,6 +1730,8 @@ template <class T>
 class ConfigOptionEnum : public ConfigOptionSingle<T>
 {
 public:
+    using ConfigOptionSingle<T>::operator==;
+
     // by default, use the first value (0) of the T enum type
     ConfigOptionEnum() : ConfigOptionSingle<T>(static_cast<T>(0)) {}
     explicit ConfigOptionEnum(T _value) : ConfigOptionSingle<T>(_value) {}
@@ -1765,6 +1801,8 @@ template <class T>
 class ConfigOptionEnums : public ConfigOptionVector<T>
 {
 public:
+    using ConfigOptionVector<T>::operator==;
+
     // by default, use the first value (0) of the T enum type
     ConfigOptionEnums() : ConfigOptionVector<T>() {}
     explicit ConfigOptionEnums(size_t n, const T& value) : ConfigOptionVector<T>(n, value) {}
@@ -1874,6 +1912,8 @@ private:
 class ConfigOptionEnumGeneric : public ConfigOptionInt
 {
 public:
+    using ConfigOptionInt::operator==;
+
     ConfigOptionEnumGeneric(const t_config_enum_values* keys_map = nullptr) : keys_map(keys_map) {}
     explicit ConfigOptionEnumGeneric(const t_config_enum_values* keys_map, int value) : ConfigOptionInt(value), keys_map(keys_map) {}
 
@@ -1928,6 +1968,8 @@ template<bool NULLABLE>
 class ConfigOptionEnumsGenericTempl : public ConfigOptionIntsTempl<NULLABLE>
 {
 public:
+    using ConfigOptionIntsTempl<NULLABLE>::operator==;
+
     ConfigOptionEnumsGenericTempl(const t_config_enum_values* keys_map = nullptr) : keys_map(keys_map) {}
     explicit ConfigOptionEnumsGenericTempl(const t_config_enum_values* keys_map, std::vector<int> values) : keys_map(keys_map) { this->values = values; }
 

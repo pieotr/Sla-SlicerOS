@@ -57,7 +57,9 @@
 
 #include <wx/dialog.h>
 #include <wx/textctrl.h>
+#ifndef SLIC3R_OFFLINE_ONLY
 #include <wx/splash.h>
+#endif
 #include <wx/fontutil.h>
 
 #include "libslic3r/Utils.hpp"
@@ -126,8 +128,9 @@
 #include <boost/nowide/fstream.hpp>
 #endif // ENABLE_THUMBNAIL_GENERATOR_DEBUG
 
-// Needed for forcing menu icons back under gtk2 and gtk3
-#if defined(__WXGTK20__) || defined(__WXGTK3__)
+// Needed for forcing menu icons back under gtk2 and gtk3.
+// In offline-only builds this path is disabled together with webview integration.
+#if (defined(__WXGTK20__) || defined(__WXGTK3__)) && !defined(SLIC3R_OFFLINE_ONLY)
     #include <gtk/gtk.h>
 #endif
 
@@ -138,6 +141,7 @@ namespace GUI {
 
 class MainFrame;
 
+#ifndef SLIC3R_OFFLINE_ONLY
 class SplashScreen : public wxSplashScreen
 {
 public:
@@ -410,6 +414,7 @@ private:
         return GetTextExtent(longest_sub_string).GetX();
     }
 };
+#endif
 
 
 #ifdef __linux__
@@ -849,16 +854,22 @@ void GUI_App::post_init()
         CallAfter([this] {
             // preset_updater->sync downloads profile updates and than via event checks updates and incompatible presets. We need to run it on startup.
             // start before cw so it is canceled by cw if needed?
+#ifndef SLIC3R_OFFLINE_ONLY
             this->get_preset_updater_wrapper()->sync_preset_updater(this, preset_bundle);
+#endif
             bool cw_showed = this->config_wizard_startup();
             if (! cw_showed) {
                 // The CallAfter is needed as well, without it, GL extensions did not show.
                 // Also, we only want to show this when the wizard does not, so the new user
                 // sees something else than "we want something" on the first start.
-                show_send_system_info_dialog_if_needed();   
+ #ifndef SLIC3R_OFFLINE_ONLY
+                show_send_system_info_dialog_if_needed();
+ #endif
             }  
             // app version check is asynchronous and triggers blocking dialog window, better call it last
+#ifndef SLIC3R_OFFLINE_ONLY
             this->app_version_check(false);
+#endif
         });
     }
 
@@ -1364,7 +1375,7 @@ bool GUI_App::on_init_inner()
     // https://docs.gtk.org/gtk3/class.Settings.html
     // see also https://docs.wxwidgets.org/3.0/classwx_menu_item.html#a2b5d6bcb820b992b1e4709facbf6d4fb
     // TODO: Find workaround for GTK4
-#if defined(__WXGTK20__) || defined(__WXGTK3__)
+#if (defined(__WXGTK20__) || defined(__WXGTK3__)) && !defined(SLIC3R_OFFLINE_ONLY)
     g_object_set (gtk_settings_get_default (), "gtk-menu-images", TRUE, NULL);
 #endif
 
@@ -1391,7 +1402,11 @@ bool GUI_App::on_init_inner()
     // Like here, before the show InfoDialog in check_older_app_config()
 
     // If load_language() fails, the application closes.
+#ifdef SLIC3R_OFFLINE_ONLY
+    load_language(wxString("en_US"), true);
+#else
     load_language(wxString(), true);
+#endif
 #ifdef _MSW_DARK_MODE
     bool init_dark_color_mode = app_config->get_bool("dark_color_mode");
     bool init_sys_menu_enabled = app_config->get_bool("sys_menu_enabled");
@@ -1429,6 +1444,7 @@ bool GUI_App::on_init_inner()
 #endif
 
     if (is_editor()) {
+#ifndef SLIC3R_OFFLINE_ONLY
         std::string msg = Http::tls_global_init();
         std::string ssl_cert_store = app_config->get("tls_accepted_cert_store_location");
         bool ssl_accept = app_config->get("tls_cert_store_accepted") == "yes" && ssl_cert_store == Http::tls_system_cert_store();
@@ -1446,9 +1462,17 @@ bool GUI_App::on_init_inner()
             app_config->set("tls_accepted_cert_store_location",
                 dlg.IsCheckBoxChecked() ? Http::tls_system_cert_store() : "");
         }
+        #else
+            app_config->set("notify_release", "none");
+            app_config->set("preset_update", "0");
+            app_config->set("downloader_url_registered", "0");
+        #endif
     }
 
+#ifndef SLIC3R_OFFLINE_ONLY
     SplashScreen* scrn = nullptr;
+#endif
+#ifndef SLIC3R_OFFLINE_ONLY
     if (app_config->get_bool("show_splash_screen")) {
         // make a bitmap with dark grey banner on the left side
         wxBitmap bmp = SplashScreen::MakeBitmap(wxBitmap(from_u8(var(is_editor() ? "splashscreen.jpg" : "splashscreen-gcodepreview.jpg")), wxBITMAP_TYPE_JPEG));
@@ -1482,6 +1506,7 @@ bool GUI_App::on_init_inner()
 #endif
         scrn->SetText(_L("Loading configuration")+ dots);
     }
+#endif
 
     preset_bundle = new PresetBundle();
 
@@ -1535,7 +1560,11 @@ bool GUI_App::on_init_inner()
         }); 
 
         Bind(EVT_CONFIG_UPDATER_SYNC_DONE, [this](const wxCommandEvent& evt) {
+    #ifndef SLIC3R_OFFLINE_ONLY
             this->check_updates(false);
+    #else
+            UNUSED(evt);
+    #endif
         });
 
         Bind(EVT_CONFIG_UPDATER_FAILED_ARCHIVE, [this](const wxCommandEvent& evt) {
@@ -1587,8 +1616,10 @@ bool GUI_App::on_init_inner()
     Slic3r::I18N::set_translate_callback(libslic3r_translate_callback);
 
     // application frame
+#ifndef SLIC3R_OFFLINE_ONLY
     if (scrn && is_editor())
         scrn->SetText(_L("Preparing settings tabs") + dots);
+#endif
 
     if (!delayed_error_load_presets.empty())
         show_error(nullptr, delayed_error_load_presets);
@@ -2658,16 +2689,26 @@ Tab* GUI_App::get_tab(Preset::Type type)
 
 ConfigOptionMode GUI_App::get_mode()
 {
+#ifdef SLIC3R_OFFLINE_ONLY
+    return comExpert;
+#else
     if (!app_config->has("view_mode"))
         return comSimple;
 
     const auto mode = app_config->get("view_mode");
     return mode == "expert" ? comExpert : 
            mode == "simple" ? comSimple : comAdvanced;
+#endif
 }
 
 bool GUI_App::save_mode(const /*ConfigOptionMode*/int mode) 
 {
+#ifdef SLIC3R_OFFLINE_ONLY
+    UNUSED(mode);
+    app_config->set("view_mode", "expert");
+    update_mode();
+    return true;
+#else
     const std::string mode_str = mode == comExpert ? "expert" :
                                  mode == comSimple ? "simple" : "advanced";
 
@@ -2692,6 +2733,7 @@ bool GUI_App::save_mode(const /*ConfigOptionMode*/int mode)
     app_config->set("view_mode", mode_str);
     update_mode();
     return true;
+#endif
 }
 
 // Update view mode according to selected menu
@@ -2724,11 +2766,15 @@ wxMenu* GUI_App::get_config_menu(MainFrame* main_frame)
         local_menu->Append(config_id_base + ConfigMenuWizard, config_wizard_name + dots, config_wizard_tooltip);
         local_menu->Append(config_id_base + ConfigMenuSnapshots, _L("&Configuration Snapshots") + dots, _L("Inspect / activate configuration snapshots"));
         local_menu->Append(config_id_base + ConfigMenuTakeSnapshot, _L("Take Configuration &Snapshot"), _L("Capture a configuration snapshot"));
+    #ifndef SLIC3R_OFFLINE_ONLY
         local_menu->Append(config_id_base + ConfigMenuUpdateConf, _L("Check for Configuration Updates"), _L("Check for configuration updates"));
         local_menu->Append(config_id_base + ConfigMenuUpdateApp, _L("Check for Application Updates"), _L("Check for new version of application"));
+    #endif
 #if defined(__linux__) && defined(SLIC3R_DESKTOP_INTEGRATION) 
         //if (DesktopIntegrationDialog::integration_possible())
+    #ifndef SLIC3R_OFFLINE_ONLY
         local_menu->Append(config_id_base + ConfigMenuDesktopIntegration, _L("Desktop Integration"), _L("Desktop Integration"));    
+    #endif
 #endif //(__linux__) && defined(SLIC3R_DESKTOP_INTEGRATION)        
         local_menu->AppendSeparator();
     }
@@ -2739,15 +2785,21 @@ wxMenu* GUI_App::get_config_menu(MainFrame* main_frame)
                     [](wxCommandEvent&) { wxGetApp().open_preferences(); }, "", nullptr, []() {return true; }, main_frame);
 #endif
 
+#ifndef SLIC3R_OFFLINE_ONLY
     local_menu->AppendSeparator();
     local_menu->Append(config_id_base + ConfigMenuLanguage, _L("&Language"));
+#endif
     if (is_editor()) {
+#ifndef SLIC3R_OFFLINE_ONLY
         local_menu->AppendSeparator();
         local_menu->Append(config_id_base + ConfigMenuFlashFirmware, _L("Flash Printer &Firmware"), _L("Upload a firmware image into an Arduino based printer"));
         // TODO: for when we're able to flash dictionaries
         // local_menu->Append(config_id_base + FirmwareMenuDict,  _L("Flash Language File"),    _L("Upload a language dictionary file into a Prusa printer"));
+#endif
     }
+#ifndef SLIC3R_OFFLINE_ONLY
     local_menu->Append(config_id_base + ConfigMenuWifiConfigFile, _L("Wi-Fi Configuration File"), _L("Generate a file to be loaded by a Prusa printer to configure its Wi-Fi connection."));
+#endif
 
     local_menu->Bind(wxEVT_MENU, [this, config_id_base](wxEvent &event) {
         switch (event.GetId() - config_id_base) {
@@ -2755,15 +2807,27 @@ wxMenu* GUI_App::get_config_menu(MainFrame* main_frame)
             run_wizard(ConfigWizard::RR_USER);
             break;
         case ConfigMenuUpdateConf: 
+#ifdef SLIC3R_OFFLINE_ONLY
+            break;
+#else
             check_updates(true); 
             break;
+#endif
         case ConfigMenuUpdateApp:
+#ifdef SLIC3R_OFFLINE_ONLY
+            break;
+#else
             app_version_check(true);
             break;
+#endif
 #ifdef __linux__
         case ConfigMenuDesktopIntegration:
+#ifdef SLIC3R_OFFLINE_ONLY
+            break;
+#else
             show_desktop_integration_dialog();
             break;   
+#endif
 #endif
         case ConfigMenuTakeSnapshot:
             // Take a configuration snapshot.
@@ -2820,6 +2884,7 @@ wxMenu* GUI_App::get_config_menu(MainFrame* main_frame)
         }
         case ConfigMenuLanguage:
         {
+    #ifndef SLIC3R_OFFLINE_ONLY
             /* Before change application language, let's check unsaved changes on 3D-Scene
              * and draw user's attention to the application restarting after a language change
              */
@@ -2841,13 +2906,19 @@ wxMenu* GUI_App::get_config_menu(MainFrame* main_frame)
             }
 
             switch_language();
-            break;
+#endif
+                break;
         }
         case ConfigMenuFlashFirmware:
-            FirmwareDialog::run(mainframe);
+            {
+        #ifndef SLIC3R_OFFLINE_ONLY
+                FirmwareDialog::run(main_frame);
+        #endif
             break;
+            }
         case ConfigMenuWifiConfigFile:
         {
+        #ifndef SLIC3R_OFFLINE_ONLY
             open_wifi_config_dialog(true);
             /*
             std::string file_path;
@@ -2857,8 +2928,9 @@ wxMenu* GUI_App::get_config_menu(MainFrame* main_frame)
                 plater_->get_notification_manager()->push_exporting_finished_notification(file_path, boost::filesystem::path(file_path).parent_path().string(), true);
             }
             */
+#endif
+            break;
         }
-        break;
         default:
             break;
         }
@@ -3215,6 +3287,10 @@ void GUI_App::MacOpenFiles(const wxArrayString &fileNames)
 
 void GUI_App::MacOpenURL(const wxString& url)
 {
+#ifdef SLIC3R_OFFLINE_ONLY
+    BOOST_LOG_TRIVIAL(error) << "MacOpenURL ignored in offline-only mode. URL: " << url;
+    return;
+#else
     std::string narrow_url = into_u8(url);
     if (boost::starts_with(narrow_url, "prusaslicer://open?file=")) {
         // This app config field applies only to downloading file
@@ -3232,6 +3308,7 @@ void GUI_App::MacOpenURL(const wxString& url)
     } else {
         BOOST_LOG_TRIVIAL(error) << "MacOpenURL recieved improper URL: " << url;
     }
+#endif
 }
 
 #endif /* __APPLE */
@@ -3362,11 +3439,13 @@ bool GUI_App::run_wizard(ConfigWizard::RunReason reason, ConfigWizard::StartPage
 {
     wxCHECK_MSG(mainframe != nullptr, false, "Internal error: Main frame not created / null");
 
+#ifndef SLIC3R_OFFLINE_ONLY
     // Loading of Config Wizard takes some time. 
     // First part is to download neccessary data.
     // That is done on worker thread while nice modal progress is shown.
     // TRN: Progress dialog title
     get_preset_updater_wrapper()->wizard_sync(preset_bundle, app_config->orig_version(), mainframe, reason == ConfigWizard::RunReason::RR_USER, _L("Opening Configuration Wizard"));
+#endif
     // Then the wizard itself will start and that also takes time.
     // But for now no ui is shown until then. (Showing modal progress dialog while showing another would be a headacke)
     m_config_wizard = new ConfigWizard(mainframe);
@@ -3396,10 +3475,14 @@ bool GUI_App::run_wizard(ConfigWizard::RunReason reason, ConfigWizard::StartPage
 
 void GUI_App::update_wizard_login_page()
 {
+#ifdef SLIC3R_OFFLINE_ONLY
+    return;
+#else
     if (!m_config_wizard) {
         return;
     }
     m_config_wizard->update_login();
+#endif
 }
 
 void GUI_App::show_desktop_integration_dialog()
@@ -3413,6 +3496,9 @@ void GUI_App::show_desktop_integration_dialog()
 
 void GUI_App::show_downloader_registration_dialog()
 {
+#ifdef SLIC3R_OFFLINE_ONLY
+    return;
+#else
     InfoDialog msg(nullptr
         , format_wxstr(_L("Welcome to %1% version %2%."), SLIC3R_APP_NAME, SLIC3R_VERSION)
         , format_wxstr(_L(
@@ -3431,6 +3517,7 @@ void GUI_App::show_downloader_registration_dialog()
     } else {
         app_config->set("downloader_url_registered", "0");
     }
+#endif
 }
 
 
@@ -3565,6 +3652,9 @@ void GUI_App::window_pos_sanitize(wxTopLevelWindow* window)
 
 bool GUI_App::config_wizard_startup()
 {
+#ifdef SLIC3R_OFFLINE_ONLY
+    return false;
+#else
     if (!m_app_conf_exists || preset_bundle->printers.only_default_printers()) {
         run_wizard(ConfigWizard::RR_DATA_EMPTY);
         return true;
@@ -3585,10 +3675,15 @@ bool GUI_App::config_wizard_startup()
     }
 #endif
     return false;
+#endif
 }
 
 bool GUI_App::check_updates(const bool invoked_by_user)
 {	
+#ifdef SLIC3R_OFFLINE_ONLY
+    UNUSED(invoked_by_user);
+    return true;
+#else
     PresetUpdater::UpdateResult updater_result;
     if (invoked_by_user)
     {
@@ -3610,8 +3705,10 @@ bool GUI_App::check_updates(const bool invoked_by_user)
 	}
     // Applicaiton will continue.
     return true;
+#endif
 }
 namespace {
+#ifndef SLIC3R_OFFLINE_ONLY
 bool open_dialog_hyperlink_checkbox(wxWindow* parent, AppConfig* app_config)
 {
     RichMessageDialog dialog(parent, _L("Open hyperlink in default browser?"), _L("PrusaSlicer: Open hyperlink"), wxICON_QUESTION | wxYES_NO);
@@ -3637,9 +3734,17 @@ bool open_dialog_hyperlink(wxWindow* parent)
     MessageDialog dialog(parent, _L("Open hyperlink in default browser?"), _L("PrusaSlicer: Open hyperlink"), wxICON_QUESTION | wxYES_NO);
     return dialog.ShowModal() == wxID_YES;
 }
+#endif
 }
 bool GUI_App::open_browser_with_warning_dialog(const wxString& url, wxWindow* parent/* = nullptr*/, bool force_remember_choice /*= true*/, int flags/* = 0*/)
 {
+#ifdef SLIC3R_OFFLINE_ONLY
+    (void) url;
+    (void) parent;
+    (void) force_remember_choice;
+    (void) flags;
+    return false;
+#else
     enum class SupressHyperLinksOption{
         SHLO_UNCHECKED,
         SHLO_ALWAYS_SUPRESS,
@@ -3670,10 +3775,17 @@ bool GUI_App::open_browser_with_warning_dialog(const wxString& url, wxWindow* pa
         launch = open_dialog_hyperlink(parent);
     } 
     return  launch && wxLaunchDefaultBrowser(url, flags);
+#endif
 }
 
 bool GUI_App::open_login_browser_with_dialog(const wxString& url, wxWindow* parent/* = nullptr*/, int flags/* = 0*/)
 {
+#ifdef SLIC3R_OFFLINE_ONLY
+    (void) url;
+    (void) parent;
+    (void) flags;
+    return false;
+#else
     bool auth_login_dialog_confirmed = app_config->get_bool("auth_login_dialog_confirmed");
     if (!auth_login_dialog_confirmed) {
         RichMessageDialog dialog(parent, _L("Open default browser with Prusa Account Log in page?\n(If you select 'Yes', you will not be asked again.)"), _L("PrusaSlicer: Open Log in page"), wxICON_QUESTION | wxYES_NO);
@@ -3682,6 +3794,7 @@ bool GUI_App::open_login_browser_with_dialog(const wxString& url, wxWindow* pare
          app_config->set("auth_login_dialog_confirmed", "1");
     }
     return  wxLaunchDefaultBrowser(url, flags);
+#endif
 }
 
 // static method accepting a wxWindow object as first parameter
@@ -3821,6 +3934,10 @@ void GUI_App::app_updater(bool from_user)
 
 void GUI_App::app_version_check(bool from_user)
 {
+#ifdef SLIC3R_OFFLINE_ONLY
+    UNUSED(from_user);
+    return;
+#else
     if (from_user) {
         if (m_app_updater->get_download_ongoing()) {
             MessageDialog msgdlg(nullptr, _L("Downloading of the new version is in progress. Do you want to continue?"), _L("Notice"), wxYES_NO);
@@ -3830,10 +3947,15 @@ void GUI_App::app_version_check(bool from_user)
     }
     std::string version_check_url = app_config->version_check_url();
     m_app_updater->sync_version(version_check_url, from_user);
+#endif
 }
 
 void GUI_App::start_download(std::string url)
 {
+#ifdef SLIC3R_OFFLINE_ONLY
+    BOOST_LOG_TRIVIAL(error) << "Download request ignored in offline-only mode. URL: " << url;
+    return;
+#endif
     if (!plater_) {
         BOOST_LOG_TRIVIAL(error) << "Could not start URL download: plater is nullptr.";
         return; 
@@ -3862,6 +3984,11 @@ void GUI_App::start_download(std::string url)
 
 void GUI_App::open_wifi_config_dialog(bool forced, const wxString& drive_path/* = {}*/)
 {
+#ifdef SLIC3R_OFFLINE_ONLY
+    (void) forced;
+    (void) drive_path;
+    return;
+#else
     if(m_wifi_config_dialog_shown)
         return;
 
@@ -3891,6 +4018,7 @@ void GUI_App::open_wifi_config_dialog(bool forced, const wxString& drive_path/* 
         app_config->set("wifi_config_dialog_declined", "1");
     }
     m_wifi_config_dialog_shown = false;
+#endif
 }
 // Returns true if preset had to be installed.
 bool GUI_App::select_printer_preset(const Preset* preset)
@@ -3994,6 +4122,10 @@ const Preset* find_preset_by_nozzle_and_options(
 
 bool GUI_App::select_printer_from_connect(const std::string& msg)
 {
+#ifdef SLIC3R_OFFLINE_ONLY
+    BOOST_LOG_TRIVIAL(error) << "Connect printer selection ignored in offline-only mode.";
+    return false;
+#else
     // parse message "binary_gcode"
     boost::property_tree::ptree ptree;
     std::string model_name = UserAccountUtils::get_keyword_from_json(ptree, msg, "printer_model");
@@ -4039,6 +4171,7 @@ bool GUI_App::select_printer_from_connect(const std::string& msg)
         , out);
     plater()->get_user_account()->set_current_printer_uuid_from_connect(uuid);
     return printer_preset;
+#endif
 }
 
 bool GUI_App::select_filament_preset(const Preset* preset, size_t extruder_index)
@@ -4122,6 +4255,10 @@ void GUI_App::search_and_select_filaments(const std::string& material, bool avoi
 
 void GUI_App::select_filament_from_connect(const std::string& msg)
 {
+#ifdef SLIC3R_OFFLINE_ONLY
+    BOOST_LOG_TRIVIAL(error) << "Connect filament selection ignored in offline-only mode.";
+    return;
+#else
     // parse message
     std::vector<std::string> materials;
     std::vector<bool> avoid_abrasive;
@@ -4155,19 +4292,29 @@ void GUI_App::select_filament_from_connect(const std::string& msg)
         plater()->get_notification_manager()->close_notification_of_type(NotificationType::SelectFilamentFromConnect);
         plater()->get_notification_manager()->push_notification(NotificationType::SelectFilamentFromConnect, NotificationManager::NotificationLevel::ImportantNotificationLevel, notification_text);
     }
+#endif
 }
 
 void GUI_App::handle_connect_request_printer_select(const std::string& msg) 
 {
+#ifdef SLIC3R_OFFLINE_ONLY
+    BOOST_LOG_TRIVIAL(error) << "Connect request ignored in offline-only mode.";
+    return;
+#else
     // Here comes code from ConnectWebViewPanel
     // It only contains uuid of a printer to be selected
     // Lets queue it and wait on result. The result is send via event to plater, where it is send to handle_connect_request_printer_select_inner
     boost::property_tree::ptree ptree;
     std::string uuid = UserAccountUtils::get_keyword_from_json(ptree, msg, "uuid");
     plater()->get_user_account()->enqueue_printer_data_action(uuid);
+#endif
 }
 void GUI_App::handle_connect_request_printer_select_inner(const std::string & msg)
 {
+#ifdef SLIC3R_OFFLINE_ONLY
+    BOOST_LOG_TRIVIAL(error) << "Connect request ignored in offline-only mode.";
+    return;
+#else
      BOOST_LOG_TRIVIAL(debug) << "Handling web request: " << msg;
     // return to plater
     this->mainframe->select_tab(size_t(0));
@@ -4180,16 +4327,25 @@ void GUI_App::handle_connect_request_printer_select_inner(const std::string & ms
         return;
     }
     select_filament_from_connect(msg);
+#endif
 }
 
 void GUI_App::show_printer_webview_tab()
 {
+#ifdef SLIC3R_OFFLINE_ONLY
+    return;
+#else
     mainframe->show_printer_webview_tab(preset_bundle->physical_printers.get_selected_printer_config());
+#endif
 }
 
 
 void GUI_App::printables_download_request(const std::string& download_url, const std::string& model_url)
 {
+#ifdef SLIC3R_OFFLINE_ONLY
+    BOOST_LOG_TRIVIAL(error) << "Printables download ignored in offline-only mode.";
+    return;
+#else
     //this->mainframe->select_tab(size_t(0));
 
     //lets always init so if the download dest folder was changed, new dest is used 
@@ -4202,9 +4358,14 @@ void GUI_App::printables_download_request(const std::string& download_url, const
     }
     m_downloader->init(dest_folder);
     m_downloader->start_download_printables(download_url, false, model_url, this);
+#endif
 }
 void GUI_App::printables_slice_request(const std::string& download_url, const std::string& model_url)
 {
+#ifdef SLIC3R_OFFLINE_ONLY
+    BOOST_LOG_TRIVIAL(error) << "Printables slice request ignored in offline-only mode.";
+    return;
+#else
     this->mainframe->select_tab(size_t(0));
     
     //lets always init so if the download dest folder was changed, new dest is used 
@@ -4217,16 +4378,26 @@ void GUI_App::printables_slice_request(const std::string& download_url, const st
     }
     m_downloader->init(dest_folder);
     m_downloader->start_download_printables(download_url, true, model_url, this);
+#endif
 }
 
 void GUI_App::printables_login_request()
 {
+#ifdef SLIC3R_OFFLINE_ONLY
+    return;
+#else
     plater_->get_user_account()->do_login();
+#endif
 }
 
 void GUI_App::open_link_in_printables(const std::string& url)
 {
+#ifdef SLIC3R_OFFLINE_ONLY
+    BOOST_LOG_TRIVIAL(error) << "Printables link ignored in offline-only mode. URL: " << url;
+    return;
+#else
     mainframe->show_printables_tab(url);
+#endif
 }
 
  bool GUI_App::is_account_logged_in() const

@@ -148,7 +148,6 @@
 #endif // __APPLE__
 
 #include <wx/glcanvas.h>    // Needs to be last because reasons :-/
-#include "WipeTowerDialog.hpp"
 
 #include "libslic3r/CustomGCode.hpp"
 #include "libslic3r/Platform.hpp"
@@ -642,7 +641,11 @@ Plater::priv::priv(Plater* q, MainFrame* main_frame)
         }))
     , sidebar(new Sidebar(q))
     , notification_manager(std::make_unique<NotificationManager>(q))
+#ifdef SLIC3R_OFFLINE_ONLY
+    , user_account(nullptr)
+#else
     , user_account(std::make_unique<UserAccount>(q, wxGetApp().app_config, wxGetApp().get_instance_hash_string()))
+#endif
     , m_worker{ q, std::make_unique<NotificationProgressIndicator>(notification_manager.get()), "ui_worker" }
     , m_sla_import_dlg{ new SLAImportDialog{q} }
     , delayed_scene_refresh(false)
@@ -842,6 +845,7 @@ void Plater::priv::init()
 		    notification_manager->device_ejected();
 	    });
 
+ #ifndef SLIC3R_OFFLINE_ONLY
         this->q->Bind(EVT_REMOVABLE_DRIVE_ADDED, [this](wxCommandEvent& evt) {
             boost::system::error_code ec;
             if (!fs::exists(fs::path(evt.GetString().utf8_string()) / "prusa_printer_settings.ini", ec) || ec)
@@ -859,6 +863,7 @@ void Plater::priv::init()
                         return true;});
             }
         });
+ #endif
 
         // Start the background thread and register this window as a target for update events.
         wxGetApp().removable_drive_manager()->init(this->q);
@@ -889,7 +894,7 @@ void Plater::priv::init()
     });
     // Downloader and USerAccount Events doesnt need to be binded in viewer.
     // Not binding Account events prevents it from loging in.
-    if (wxGetApp().is_editor()) {
+    if (wxGetApp().is_editor() && user_account) {
         this->q->Bind(EVT_START_DOWNLOAD_OTHER_INSTANCE, [](StartDownloadOtherInstanceEvent& evt) {
             BOOST_LOG_TRIVIAL(trace) << "Received url from other instance event.";
             wxGetApp().mainframe->Raise();
@@ -1973,8 +1978,26 @@ void Plater::priv::object_list_changed()
             }
         }
     } else {
+        const int active_bed = s_multiple_beds.get_active_bed();
         if (model.objects.empty()) {
-            s_print_statuses[s_multiple_beds.get_active_bed()] = PrintStatus::empty;
+            s_print_statuses[active_bed] = PrintStatus::empty;
+        } else {
+            bool outside = false;
+            for (const ModelObject *object : wxGetApp().model().objects) {
+                for (const ModelInstance *instance : object->instances) {
+                    const auto it{s_multiple_beds.get_inst_map().find(instance->id())};
+                    if (it != s_multiple_beds.get_inst_map().end() &&
+                        it->second == active_bed &&
+                        instance->printable &&
+                        instance->print_volume_state == ModelInstancePVS_Partly_Outside) {
+                        outside = true;
+                        break;
+                    }
+                }
+                if (outside)
+                    break;
+            }
+            s_print_statuses[active_bed] = outside ? PrintStatus::outside : PrintStatus::idle;
         }
     }
 
@@ -4036,6 +4059,9 @@ bool Plater::priv::can_layers_editing() const
 
 bool Plater::priv::can_show_upload_to_connect() const
 {
+    if (!user_account) {
+        return false;
+    }
     if (!user_account->is_logged()) {
         return false;
     }

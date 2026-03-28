@@ -188,7 +188,11 @@ VendorProfile VendorProfile::from_ini(const ptree &tree, const boost::filesystem
             auto technology_field = section.second.get<std::string>("technology", technology_fallback);
             if (! ConfigOptionEnum<PrinterTechnology>::from_string(technology_field, model.technology)) {
                 BOOST_LOG_TRIVIAL(error) << boost::format("Vendor bundle: `%1%`: Invalid printer technology field: `%2%`") % id % technology_field;
+#ifdef SLIC3R_SLA_ONLY
+                model.technology = ptSLA;
+#else
                 model.technology = ptFFF;
+#endif
             }
 
             model.family = section.second.get<std::string>("family", std::string());
@@ -313,7 +317,7 @@ void Preset::normalize(DynamicPrintConfig &config)
                 static_cast<ConfigOptionVectorBase*>(opt)->resize(n, defaults.option(key));
         }
         // The following keys are mandatory for the UI, but they are not part of FullPrintConfig, therefore they are handled separately.
-        for (const std::string &key : { "filament_settings_id" }) {
+        for (const char *key : { "filament_settings_id" }) {
             auto *opt = config.option(key, false);
             assert(opt == nullptr || opt->type() == coStrings);
             if (opt != nullptr && opt->type() == coStrings)

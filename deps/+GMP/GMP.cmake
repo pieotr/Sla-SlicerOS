@@ -18,14 +18,23 @@ if (MSVC)
 
 else ()
     string(TOUPPER "${CMAKE_BUILD_TYPE}" _buildtype_upper)
-    set(_gmp_ccflags "${CMAKE_CXX_FLAGS_${_buildtype_upper}} -fPIC -DPIC -Wall -Wmissing-prototypes -Wpointer-arith -pedantic -fomit-frame-pointer -fno-common")
+    set(_gmp_common_flags "-fPIC -DPIC -fomit-frame-pointer -fno-common")
+    set(_gmp_cflags "${CMAKE_C_FLAGS_${_buildtype_upper}} ${_gmp_common_flags} -Wall -Wmissing-prototypes -Wpointer-arith -pedantic")
+    set(_gmp_cxxflags "${CMAKE_CXX_FLAGS_${_buildtype_upper}} ${_gmp_common_flags} -Wall -Wpointer-arith -pedantic")
+
+    # GMP's legacy configure test fails with GCC 15+ unless compiled as modern GNU C.
+    if (CMAKE_C_COMPILER_ID STREQUAL "GNU" AND CMAKE_C_COMPILER_VERSION VERSION_GREATER_EQUAL 15)
+        set(_gmp_cflags "${_gmp_cflags} -std=gnu17")
+    endif ()
+
     set(_gmp_build_tgt "${CMAKE_SYSTEM_PROCESSOR}")
 
     set(_cross_compile_arg "")
     if (APPLE)
         if (CMAKE_OSX_ARCHITECTURES)
             set(_gmp_build_tgt ${CMAKE_OSX_ARCHITECTURES})
-            set(_gmp_ccflags "${_gmp_ccflags} -arch ${CMAKE_OSX_ARCHITECTURES}")
+            set(_gmp_cflags "${_gmp_cflags} -arch ${CMAKE_OSX_ARCHITECTURES}")
+            set(_gmp_cxxflags "${_gmp_cxxflags} -arch ${CMAKE_OSX_ARCHITECTURES}")
         endif ()
         if (${_gmp_build_tgt} MATCHES "arm")
             set(_gmp_build_tgt aarch64)
@@ -35,11 +44,13 @@ else ()
             set(_cross_compile_arg --host=${_gmp_build_tgt}-apple-darwin21)
         endif ()
 
-        set(_gmp_ccflags "${_gmp_ccflags} -mmacosx-version-min=${DEP_OSX_TARGET}")
+        set(_gmp_cflags "${_gmp_cflags} -mmacosx-version-min=${DEP_OSX_TARGET}")
+        set(_gmp_cxxflags "${_gmp_cxxflags} -mmacosx-version-min=${DEP_OSX_TARGET}")
         set(_gmp_build_tgt "--build=${_gmp_build_tgt}-apple-darwin")
     elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
         if (${CMAKE_SYSTEM_PROCESSOR} MATCHES "arm")
-            set(_gmp_ccflags "${_gmp_ccflags} -march=armv7-a") # Works on RPi-4
+            set(_gmp_cflags "${_gmp_cflags} -march=armv7-a") # Works on RPi-4
+            set(_gmp_cxxflags "${_gmp_cxxflags} -march=armv7-a")
             set(_gmp_build_tgt armv7)
         endif()
         set(_gmp_build_tgt "--build=${_gmp_build_tgt}-pc-linux-gnu")
@@ -58,7 +69,7 @@ else ()
         URL_HASH SHA256=eae9326beb4158c386e39a356818031bd28f3124cf915f8c5b1dc4c7a36b4d7c
         DOWNLOAD_DIR ${${PROJECT_NAME}_DEP_DOWNLOAD_DIR}/GMP
         BUILD_IN_SOURCE ON 
-        CONFIGURE_COMMAND  env "CFLAGS=${_gmp_ccflags}" "CXXFLAGS=${_gmp_ccflags}" ./configure ${_cross_compile_arg} --enable-shared=no --enable-cxx=yes --enable-static=yes "--prefix=${${PROJECT_NAME}_DEP_INSTALL_PREFIX}" ${_gmp_build_tgt}
+        CONFIGURE_COMMAND  env "CC=${CMAKE_C_COMPILER}" "CXX=${CMAKE_CXX_COMPILER}" "CFLAGS=${_gmp_cflags}" "CXXFLAGS=${_gmp_cxxflags}" ./configure ${_cross_compile_arg} --enable-shared=no --enable-cxx=yes --enable-static=yes "--prefix=${${PROJECT_NAME}_DEP_INSTALL_PREFIX}" ${_gmp_build_tgt}
         BUILD_COMMAND     make -j
         INSTALL_COMMAND   make install
     )

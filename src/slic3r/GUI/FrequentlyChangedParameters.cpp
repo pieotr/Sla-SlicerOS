@@ -34,7 +34,9 @@
 #include "Tab.hpp"
 #include "I18N.hpp"
 
+#ifndef SLIC3R_SLA_ONLY
 #include "WipeTowerDialog.hpp"
+#endif
 
 using Slic3r::Preset;
 using Slic3r::GUI::format_wxstr;
@@ -47,6 +49,7 @@ wxDEFINE_EVENT(EVT_SCHEDULE_BACKGROUND_PROCESS,     SimpleEvent);
 
 FreqChangedParams::FreqChangedParams(wxWindow* parent)
 {
+#ifndef SLIC3R_SLA_ONLY
     DynamicPrintConfig*	config = &wxGetApp().preset_bundle->prints.get_edited_preset().config;
 
     // Frequently changed parameters for FFF_technology
@@ -162,6 +165,7 @@ FreqChangedParams::FreqChangedParams(wxWindow* parent)
     line.append_option(option);
 
     auto wiping_dialog_btn = [this](wxWindow* parent) {
+#ifndef SLIC3R_SLA_ONLY
         m_wiping_dialog_button = new wxButton(parent, wxID_ANY, _L("Purging volumes") + dots, wxDefaultPosition, wxDefaultSize, wxBU_EXACTFIT);
         wxGetApp().SetWindowVariantForButton(m_wiping_dialog_button);
         wxGetApp().UpdateDarkUI(m_wiping_dialog_button, true);
@@ -201,6 +205,10 @@ FreqChangedParams::FreqChangedParams(wxWindow* parent)
         m_empty_buttons.push_back(btn);
 
         return sizer;
+    #else
+        UNUSED(parent);
+        return new wxBoxSizer(wxHORIZONTAL);
+    #endif
     };
     line.append_widget(wiping_dialog_btn);
     m_og_fff->append_line(line);
@@ -209,6 +217,7 @@ FreqChangedParams::FreqChangedParams(wxWindow* parent)
 
     Choice* choice = dynamic_cast<Choice*>(m_og_fff->get_field("support"));
     choice->suppress_scroll();
+#endif
 
     // Frequently changed parameters for SLA_technology
 
@@ -260,14 +269,31 @@ FreqChangedParams::FreqChangedParams(wxWindow* parent)
         tab->update_dirty();
     };
 
-    line = Line{ "", "" };
+    Line line = Line{ "", "" };
+    auto empty_widget_sla = [this](wxWindow* parent) {
+        auto sizer = new wxBoxSizer(wxHORIZONTAL);
+        auto btn = new ScalableButton(parent, wxID_ANY, "mirroring_transparent", wxEmptyString,
+            wxDefaultSize, wxDefaultPosition, wxBU_EXACTFIT | wxNO_BORDER | wxTRANSPARENT_WINDOW);
+        sizer->Add(btn, 0, wxALIGN_CENTER_VERTICAL | wxLEFT | wxRIGHT, int(0.3 * wxGetApp().em_unit()));
+        m_empty_buttons.push_back(btn);
+        return sizer;
+    };
 
-    ConfigOptionDef support_def_sla = support_def;
+    ConfigOptionDef support_def_sla;
+    support_def_sla.label = L("Supports");
+    support_def_sla.type = coStrings;
+    support_def_sla.tooltip = L("Select what kind of support do you need");
+    support_def_sla.set_enum_labels(ConfigOptionDef::GUIType::select_close, {
+        L("None"),
+        L("Support on build plate only"),
+        L("For support enforcers only"),
+        L("Everywhere")
+    });
     support_def_sla.set_default_value(new ConfigOptionStrings{ "None" });
-    option = Option(support_def_sla, "support");
-    option.opt.full_width = true;
-    line.append_option(option);
-    line.append_widget(empty_widget);
+    Option option_support(support_def_sla, "support");
+    option_support.opt.full_width = true;
+    line.append_option(option_support);
+    line.append_widget(empty_widget_sla);
     m_og_sla->append_line(line);
 
     line = Line{ "", "" };
@@ -282,49 +308,55 @@ FreqChangedParams::FreqChangedParams(wxWindow* parent)
         L("Around object")
     });
     pad_def.set_default_value(new ConfigOptionStrings{ "Below object" });
-    option = Option(pad_def, "pad");
-    option.opt.full_width = true;
-    line.append_option(option);
-    line.append_widget(empty_widget);
+    Option option_pad(pad_def, "pad");
+    option_pad.opt.full_width = true;
+    line.append_option(option_pad);
+    line.append_widget(empty_widget_sla);
 
     m_og_sla->append_line(line);
 
     m_og_sla->activate();
-    choice = dynamic_cast<Choice*>(m_og_sla->get_field("support"));
+    Choice* choice = dynamic_cast<Choice*>(m_og_sla->get_field("support"));
     choice->suppress_scroll();
     choice = dynamic_cast<Choice*>(m_og_sla->get_field("pad"));
     choice->suppress_scroll();
 
     m_sizer = new wxBoxSizer(wxVERTICAL);
+#ifndef SLIC3R_SLA_ONLY
     m_sizer->Add(m_og_fff->sizer, 0, wxEXPAND);
+#endif
     m_sizer->Add(m_og_sla->sizer, 0, wxEXPAND);
 }
 
 void FreqChangedParams::msw_rescale()
 {
-    m_og_fff->msw_rescale();
+    if (m_og_fff)
+        m_og_fff->msw_rescale();
     m_og_sla->msw_rescale();
 }
 
 void FreqChangedParams::sys_color_changed()
 {
-    m_og_fff->sys_color_changed();
+    if (m_og_fff)
+        m_og_fff->sys_color_changed();
     m_og_sla->sys_color_changed();
 
     for (auto btn: m_empty_buttons)
         btn->sys_color_changed();
 
-    wxGetApp().UpdateDarkUI(m_wiping_dialog_button, true);
+    if (m_wiping_dialog_button)
+        wxGetApp().UpdateDarkUI(m_wiping_dialog_button, true);
 }
 
 void FreqChangedParams::Show(bool is_fff) const
 {
-    const bool is_wdb_shown = m_wiping_dialog_button->IsShown();
-    m_og_fff->Show(is_fff);
+    const bool is_wdb_shown = m_wiping_dialog_button && m_wiping_dialog_button->IsShown();
+    if (m_og_fff)
+        m_og_fff->Show(is_fff);
     m_og_sla->Show(!is_fff);
 
     // correct showing of the FreqChangedParams sizer when m_wiping_dialog_button is hidden
-    if (is_fff && !is_wdb_shown)
+    if (m_wiping_dialog_button && is_fff && !is_wdb_shown)
         m_wiping_dialog_button->Hide();
 }
 

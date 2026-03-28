@@ -52,10 +52,10 @@ static bool has_profile_sharing_action(const Data& cli)
 bool has_full_config_from_profiles(const Data& cli)
 {
     const DynamicPrintConfig& input = cli.input_config;
-    return  !has_profile_sharing_action(cli) &&
-           (input.has("print-profile") && !input.opt_string("print-profile").empty() ||
-            input.has("material-profile") && !input.option<ConfigOptionStrings>("material-profile")->values.empty() ||
-            input.has("printer-profile") && !input.opt_string("printer-profile").empty());
+    return !has_profile_sharing_action(cli) &&
+           ((input.has("print-profile") && !input.opt_string("print-profile").empty()) ||
+            (input.has("material-profile") && !input.option<ConfigOptionStrings>("material-profile")->values.empty()) ||
+            (input.has("printer-profile") && !input.opt_string("printer-profile").empty()));
 }
 
 bool process_profiles_sharing(const Data& cli)
@@ -210,7 +210,6 @@ static std::function<ThumbnailsList(const ThumbnailsParams&)> get_thumbnail_gene
 
             if (!open_zip_reader(&archive, filename))
                 return list_out;
-            mz_uint num_entries = mz_zip_reader_get_num_files(&archive);
             mz_zip_archive_file_stat stat;
 
             int index = mz_zip_reader_locate_file(&archive, "Metadata/thumbnail.png", nullptr, 0);
@@ -232,9 +231,9 @@ static std::function<ThumbnailsList(const ThumbnailsParams&)> get_thumbnail_gene
                 // Flip the image vertically so it matches the convention in Thumbnails generator.
                 const int row_size = width * 4; // Each pixel is 4 bytes (RGBA)
                 std::vector<unsigned char> temp_row(row_size);
-                for (int i = 0; i < height / 2; ++i) {
-                    unsigned char* top_row = &data[i * row_size];
-                    unsigned char* bottom_row = &data[(height - i - 1) * row_size];
+                for (unsigned i = 0; i < height / 2; ++i) {
+                    unsigned char* top_row = &data[static_cast<size_t>(i) * static_cast<size_t>(row_size)];
+                    unsigned char* bottom_row = &data[(static_cast<size_t>(height - i - 1) * static_cast<size_t>(row_size))];
                     std::copy(bottom_row, bottom_row + row_size, temp_row.begin());
                     std::copy(top_row, top_row + row_size, bottom_row);
                     std::copy(temp_row.begin(), temp_row.end(), top_row);
@@ -270,9 +269,11 @@ bool process_actions(Data& cli, const DynamicPrintConfig& print_config, std::vec
     if (actions.has("help")) {
         print_help();
     }
+#ifndef SLIC3R_SLA_ONLY
     if (actions.has("help_fff")) {
         print_help(true, ptFFF);
     }
+#endif
     if (actions.has("help_sla")) {
         print_help(true, ptSLA);
     }
@@ -320,6 +321,17 @@ bool process_actions(Data& cli, const DynamicPrintConfig& print_config, std::vec
     }
 
     if (actions.has("slice") || actions.has("export_gcode") || actions.has("export_sla")) {
+#ifdef SLIC3R_SLA_ONLY
+        if (actions.has("export_gcode")) {
+            boost::nowide::cerr << "error: G-code export is disabled in SLA-only builds" << std::endl;
+            return 1;
+        }
+        if (actions.has("export_sla") == false && actions.has("slice") == false) {
+            boost::nowide::cerr << "error: only SLA slicing is available in SLA-only builds" << std::endl;
+            return 1;
+        }
+        PrinterTechnology printer_technology = ptSLA;
+#else
         PrinterTechnology       printer_technology = Preset::printer_technology(print_config);
         if (actions.has("export_gcode") && printer_technology == ptSLA) {
             boost::nowide::cerr << "error: cannot export G-code for an FFF configuration" << std::endl;
@@ -329,6 +341,7 @@ bool process_actions(Data& cli, const DynamicPrintConfig& print_config, std::vec
             boost::nowide::cerr << "error: cannot export SLA slices for a SLA configuration" << std::endl;
             return 1;
         }
+#endif
 
         const Vec2crd           gap{ s_multiple_beds.get_bed_gap() };
         arr2::ArrangeBed        bed = arr2::to_arrange_bed(get_bed_shape(print_config), gap);
@@ -349,7 +362,6 @@ bool process_actions(Data& cli, const DynamicPrintConfig& print_config, std::vec
                     arrange_objects(model, bed, arrange_cfg);
             }
 
-            Print       fff_print;
             SLAPrint    sla_print;
             sla_print.set_status_callback( [](const PrintBase::SlicingStatus& s) {
                 if (s.percent >= 0) { // FIXME: is this sufficient?
@@ -358,11 +370,16 @@ bool process_actions(Data& cli, const DynamicPrintConfig& print_config, std::vec
                 }
             });
 
+            Print       fff_print;
+#ifdef SLIC3R_SLA_ONLY
+            PrintBase* print = static_cast<PrintBase*>(&sla_print);
+#else
             PrintBase* print = (printer_technology == ptFFF) ? static_cast<PrintBase*>(&fff_print) : static_cast<PrintBase*>(&sla_print);
             if (printer_technology == ptFFF) {
                 for (auto* mo : model.objects)
                     fff_print.auto_assign_extruders(mo);
             }
+#endif
 
             update_instances_outside_state(model, print_config);
             MultipleBedsUtils::with_single_bed_model_fff(model, 0, [&print, &model, &print_config]()
@@ -403,8 +420,10 @@ bool process_actions(Data& cli, const DynamicPrintConfig& print_config, std::vec
                     }
                     outfile = outfile_final;
                 }
-                // Run the post-processing scripts if defined.
+                // Run post-processing scripts for FFF output only.
+#ifndef SLIC3R_SLA_ONLY
                 run_post_process_scripts(outfile, fff_print.full_print_config());
+#endif
                 boost::nowide::cout << "Slicing result exported to " << outfile << std::endl;
             }
             catch (const std::exception& ex) {

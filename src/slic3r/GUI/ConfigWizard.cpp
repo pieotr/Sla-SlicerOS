@@ -1838,7 +1838,7 @@ PageMode::PageMode(ConfigWizard *parent)
     radio_advanced = new wxRadioButton(this, wxID_ANY, _L("Advanced mode"));
     radio_expert = new wxRadioButton(this, wxID_ANY, _L("Expert mode"));
 
-    std::string mode { "simple" };
+    std::string mode { "expert" };
     wxGetApp().app_config->get("", "view_mode", mode);
 
     if (mode == "advanced") { radio_advanced->SetValue(true); }
@@ -2566,20 +2566,26 @@ void ConfigWizard::priv::load_pages()
     wxWindowUpdateLocker freeze_guard(q);
     (void)freeze_guard;
 
+#ifndef SLIC3R_OFFLINE_ONLY
     const ConfigWizardPage* former_active = index->active_page();
+#endif
 
     index->clear();
 
+#ifndef SLIC3R_OFFLINE_ONLY
     index->add_page(page_welcome);
     index->add_page(page_login);
     index->add_page(page_update_manager);
+#endif
 
     if (is_config_from_archive) {
 
         // Printers
+#ifndef SLIC3R_OFFLINE_ONLY
         if (!only_sla_mode)
             for (const auto page : pages_fff)
                 index->add_page(page);
+#endif
 
         for (const auto page : pages_msla)
             index->add_page(page);
@@ -2619,35 +2625,55 @@ void ConfigWizard::priv::load_pages()
                 index->add_page(page_temps);
             }
 
+#ifndef SLIC3R_OFFLINE_ONLY
             // Filaments & Materials
             if (any_fff_selected) { index->add_page(page_filaments); }
-            // Filaments page if only custom printer is selected 
+            // Filaments page if only custom printer is selected
             const AppConfig* app_config = wxGetApp().app_config;
             if (!any_fff_selected && (custom_printer_selected || custom_printer_in_bundle) && (app_config->get("no_templates") == "0")) {
                 update_materials(T_ANY);
                 index->add_page(page_filaments);
             }
+#endif
         }
 
         if (any_sla_selected) 
             index->add_page(page_sla_materials);
 
+    #ifdef SLIC3R_OFFLINE_ONLY
+        if (!any_sla_selected && page_sla_materials)
+            index->add_page(page_sla_materials);
+    #endif
+
+    #ifndef SLIC3R_OFFLINE_ONLY
         index->add_page(page_update);
         index->add_page(page_downloader);
         index->add_page(page_reload_from_disk);
+    #endif
     #ifdef _WIN32
         index->add_page(page_files_association);
     #endif // _WIN32
+    #ifndef SLIC3R_OFFLINE_ONLY
         index->add_page(page_mode);
+    #endif
 
     }
 
+#ifndef SLIC3R_OFFLINE_ONLY
     if (former_active != page_update_manager) {
         if (pages_fff.empty() && pages_msla.empty() && installed_multivendors_repos())
             index->go_to(repositories[0].vendors_page); // Activate Vendor page, if no one printer is selected
         else
             index->go_to(former_active);   // Will restore the active item/page if possible
     }
+#else
+    if (pages_msla.empty()) {
+        if (page_sla_materials)
+            index->go_to(page_sla_materials);
+    } else {
+        index->go_to(pages_msla.front());
+    }
+#endif
 
     q->Layout();
 // This Refresh() is needed to avoid ugly artifacts after printer selection, when no one vendor was selected from the very beginnig
@@ -2804,7 +2830,14 @@ void ConfigWizard::priv::set_start_page(ConfigWizard::StartPage start_page)
             btn_finish->SetFocus();
             break;
         default:
+#ifdef SLIC3R_OFFLINE_ONLY
+            if (!pages_msla.empty())
+                index->go_to(pages_msla[0]);
+            else
+                index->go_to(page_sla_materials);
+#else
             index->go_to(page_welcome);
+#endif
             btn_next->SetFocus();
             break;
     }
@@ -2840,13 +2873,14 @@ void ConfigWizard::priv::create_vendor_printers_page(const std::string& repo_id,
     const bool is_prusa_vendor = vendor->name.find("Prusa") != std::string::npos;
     const unsigned indent = from_single_vendor_repo ? 0 : 1;
 
-    if (is_fff_technology) 
-    {
+    if (is_fff_technology) {
+#ifndef SLIC3R_OFFLINE_ONLY
         pageFFF = new PagePrinters(q, vendor->name + " " +_L("FFF Technology Printers"), vendor->name + (is_prusa_vendor ? "" : " FFF"), *vendor, indent, T_FFF);
         pageFFF->install = install;
         if (only_sla_mode)
             only_sla_mode = false;
         add_page(pageFFF);
+#endif
     }
 
     if (is_sla_technology) 
@@ -3115,7 +3149,7 @@ bool ConfigWizard::priv::on_bnt_finish()
 {
     wxBusyCursor wait;
 
-    if (!page_downloader->on_finish_downloader()) {
+    if (page_downloader && !page_downloader->on_finish_downloader()) {
         index->go_to(page_downloader);
         return false;
     }
@@ -3407,14 +3441,14 @@ bool ConfigWizard::priv::apply_config(AppConfig *app_config, PresetBundle *prese
         if ((check_unsaved_preset_changes = install_bundles.size() > 0))
             header = _L_PLURAL("A new vendor was installed and one of its printers will be activated", "New vendors were installed and one of theirs printers will be activated", install_bundles.size());
 
-#if defined(__linux__) && defined(SLIC3R_DESKTOP_INTEGRATION)
+#if defined(__linux__) && defined(SLIC3R_DESKTOP_INTEGRATION) && !defined(SLIC3R_OFFLINE_ONLY)
     // Desktop integration on Linux
     BOOST_LOG_TRIVIAL(debug) << "ConfigWizard::priv::apply_config integrate_desktop" << page_welcome->integrate_desktop()  << " perform_registration_linux " << DownloaderUtils::Worker::perform_registration_linux;
     if (page_welcome->integrate_desktop())
         DesktopIntegrationDialog::perform_desktop_integration();
     if (DownloaderUtils::Worker::perform_registration_linux)
         DesktopIntegrationDialog::perform_downloader_desktop_integration();
-#endif //(__linux__) && defined(SLIC3R_DESKTOP_INTEGRATION)
+#endif //(__linux__) && defined(SLIC3R_DESKTOP_INTEGRATION) && !defined(SLIC3R_OFFLINE_ONLY)
 
     // Decide whether to create snapshot based on run_reason and the reset profile checkbox
     bool snapshot = true;
@@ -3587,9 +3621,16 @@ bool ConfigWizard::priv::apply_config(AppConfig *app_config, PresetBundle *prese
 
     app_config->set_vendors(appconfig_new);
 
+#ifdef SLIC3R_OFFLINE_ONLY
+    app_config->set("notify_release", "none");
+    app_config->set("preset_update", "0");
+    app_config->set("downloader_url_registered", "0");
+    app_config->set("view_mode", "expert");
+#else
     app_config->set("notify_release", page_update->version_check ? "all" : "none");
     app_config->set("preset_update", page_update->preset_update ? "1" : "0");
     app_config->set("export_sources_full_pathnames", page_reload_from_disk->full_pathnames ? "1" : "0");
+#endif
 
 #ifdef _WIN32
     app_config->set("associate_3mf", page_files_association->associate_3mf() ? "1" : "0");
@@ -3608,7 +3649,9 @@ bool ConfigWizard::priv::apply_config(AppConfig *app_config, PresetBundle *prese
 //    }
 #endif // _WIN32
 
+#ifndef SLIC3R_OFFLINE_ONLY
     page_mode->serialize_mode(app_config);
+#endif
 
     if (check_unsaved_preset_changes)
         preset_bundle->load_presets(*app_config, ForwardCompatibilitySubstitutionRule::EnableSilentDisableSystem, 
@@ -3894,9 +3937,11 @@ void ConfigWizard::priv::load_pages_from_archive()
 
     }
 
+#ifndef SLIC3R_OFFLINE_ONLY
     if (only_sla_mode && installed_multivendors_repos()) {
         only_sla_mode = false;
     }
+#endif
 
     if (!only_sla_mode) {
         add_page(page_custom = new PageCustom(q));
@@ -3905,6 +3950,9 @@ void ConfigWizard::priv::load_pages_from_archive()
 
     any_sla_selected = check_sla_selected();
     any_fff_selected = !only_sla_mode && check_fff_selected();
+#ifdef SLIC3R_OFFLINE_ONLY
+    any_fff_selected = false;
+#endif
 
     if(!only_sla_mode && !page_filaments)
         add_page(page_filaments = new PageMaterials(q, &filaments,
@@ -3986,7 +4034,9 @@ ConfigWizard::ConfigWizard(wxWindow *parent)
     wxGetApp().SetWindowVariantForButton(p->btn_cancel);
 
     p->add_page(p->page_welcome = new PageWelcome(this));
+#ifndef SLIC3R_OFFLINE_ONLY
     p->add_page(p->page_login = new ConfigWizardWebViewPage(this));
+#endif
     p->add_page(p->page_update_manager = new PageUpdateManager(this));
 
     // other pages will be loaded later after confirm repositories selection
@@ -3994,13 +4044,17 @@ ConfigWizard::ConfigWizard(wxWindow *parent)
     p->load_pages();
     p->index->go_to(size_t{ 0 });
     
-    p->add_page(p->page_update   = new PageUpdate(this));
+    p->add_page(p->page_update = new PageUpdate(this));
+#ifndef SLIC3R_OFFLINE_ONLY
     p->add_page(p->page_downloader = new PageDownloader(this));
     p->add_page(p->page_reload_from_disk = new PageReloadFromDisk(this));
+#endif
 #ifdef _WIN32
     p->add_page(p->page_files_association = new PageFilesAssociation(this));
 #endif // _WIN32
+#ifndef SLIC3R_OFFLINE_ONLY
     p->add_page(p->page_mode     = new PageMode(this));
+#endif
     p->add_page(p->page_firmware = new PageFirmware(this));
     p->add_page(p->page_bed      = new PageBedShape(this));
     p->add_page(p->page_bvolume  = new PageBuildVolume(this));
@@ -4072,7 +4126,9 @@ ConfigWizard::ConfigWizard(wxWindow *parent)
         for (auto page : p->pages_fff)
             page->select_all(true, false);
 
+    #ifndef SLIC3R_OFFLINE_ONLY
         p->index->go_to(p->page_mode);
+    #endif
     });
 
     p->btn_sel_all->Bind(wxEVT_UPDATE_UI, [this](wxUpdateUIEvent& evt)
@@ -4117,7 +4173,11 @@ bool ConfigWizard::run(RunReason reason, StartPage start_page)
 
     p->set_run_reason(reason);
     p->set_start_page(start_page);
+#ifdef SLIC3R_OFFLINE_ONLY
     p->is_config_from_archive = reason == RR_USER;
+#else
+    p->is_config_from_archive = reason == RR_USER;
+#endif
     p->set_config_updated_from_archive(p->is_config_from_archive, false);
 
     if (ShowModal() == wxID_OK) {
@@ -4141,6 +4201,9 @@ bool ConfigWizard::run(RunReason reason, StartPage start_page)
 
 void ConfigWizard::update_login()
 {
+#ifdef SLIC3R_OFFLINE_ONLY
+    return;
+#else
     if (p->page_login && p->page_login->login_changed()) {
         // repos changed - we need rebuild
         // TRN: Progress dialog title
@@ -4148,6 +4211,7 @@ void ConfigWizard::update_login()
         // now change PageUpdateManager
         p->page_update_manager->manager->update();
     }
+#endif
 }
 
 const wxString& ConfigWizard::name(const bool from_menu/* = false*/)

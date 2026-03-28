@@ -34,7 +34,6 @@
 #include "slic3r/Utils/Http.hpp"
 #include "slic3r/Utils/PrintHost.hpp"
 #include "BonjourDialog.hpp"
-#include "WipeTowerDialog.hpp"
 #include "ButtonsDescription.hpp"
 #include "Search.hpp"
 #include "OG_CustomCtrl.hpp"
@@ -2327,6 +2326,7 @@ void TabFilament::build()
         optgroup->append_single_option_line("filament_stamping_distance");
         optgroup->append_single_option_line("filament_purge_multiplier");
 
+#ifndef SLIC3R_SLA_ONLY
         create_line_with_widget(optgroup.get(), "filament_ramming_parameters", "", [this](wxWindow* parent) {
             auto ramming_dialog_btn = new wxButton(parent, wxID_ANY, _(L("Ramming settings"))+dots, wxDefaultPosition, wxDefaultSize, wxBU_EXACTFIT);
             wxGetApp().SetWindowVariantForButton(ramming_dialog_btn);
@@ -2345,6 +2345,7 @@ void TabFilament::build()
             });
             return sizer;
         });
+#endif
 
 
         optgroup = page->new_optgroup(L("Toolchange parameters with multi extruder MM printers"));

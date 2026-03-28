@@ -116,7 +116,6 @@ static Sequential::PrinterGeometry get_printer_geometry(const ConfigBase& config
 			coord_t r = scaled(std::max(0.1, config.opt_float("extruder_clearance_radius")));
 			coord_t h = scaled(std::max(0.1, config.opt_float("extruder_clearance_height")));
 			double bed_x = bv.bounding_volume2d().size().x();
-			double bed_y = bv.bounding_volume2d().size().y();
 			slices.push_back(ExtruderSlice{ 0, CONVEX, { { {  -5000000,   -5000000 }, {   5000000,   -5000000 }, {   5000000,   5000000 }, {  -5000000,   5000000 } } } });
 			slices.push_back(ExtruderSlice{ 1000000, BOX, { { {  -r, -r }, { r, -r }, {   r,   r }, {  -r,  r } } } });
 			slices.push_back(ExtruderSlice{ h, BOX, { { { -scaled(bed_x),  -r }, { scaled(bed_x),  -r }, { scaled(bed_x), r }, { -scaled(bed_x), r}}} });
@@ -241,9 +240,9 @@ void SeqArrange::process_seq_arrange(std::function<void(int)> progress_fn)
 			});
 			assert(it != m_plates.end());
 			size_t plate_id = it - m_plates.begin();
-			if (expected_plate != -1 && expected_plate != plate_id)
+			if (expected_plate != -1 && expected_plate != static_cast<int>(plate_id))
 				throw ExceptionCannotApplySeqArrange();
-			expected_plate = otp.glued_to_next ? plate_id : -1;
+			expected_plate = otp.glued_to_next ? static_cast<int>(plate_id) : -1;
 		}
 	}
 }
@@ -264,7 +263,7 @@ void SeqArrange::apply_seq_arrange(Model& model) const
 	size_t new_number_of_beds = s_multiple_beds.get_number_of_beds();
 	std::vector<int> touched_beds;
 	for (const Sequential::ScheduledPlate& plate : m_plates) {
-		int real_bed = plate_idx;
+		int real_bed = static_cast<int>(plate_idx);
 		if (m_selected_bed != -1) {
 			// Only a single bed was arranged. Move "first" bed to its position
 			// and everything else to newly created beds.

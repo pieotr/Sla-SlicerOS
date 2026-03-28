@@ -51,7 +51,7 @@
 
 // A workaround for a set of issues related to text fitting into gtk widgets:
 // See e.g.: https://github.com/prusa3d/PrusaSlicer/issues/4584
-#if defined(__WXGTK20__) || defined(__WXGTK3__)
+#if (defined(__WXGTK20__) || defined(__WXGTK3__)) && !defined(SLIC3R_OFFLINE_ONLY)
     #include <glib-2.0/glib-object.h>
     #include <pango-1.0/pango/pango-layout.h>
     #include <gtk/gtk.h>
@@ -215,7 +215,7 @@ void PresetComboBox::update_selection()
 
 // A workaround for a set of issues related to text fitting into gtk widgets:
 // See e.g.: https://github.com/prusa3d/PrusaSlicer/issues/4584
-#if defined(__WXGTK20__) || defined(__WXGTK3__)
+#if (defined(__WXGTK20__) || defined(__WXGTK3__)) && !defined(SLIC3R_OFFLINE_ONLY)
     GtkWidget* widget = m_widget;
     if (GTK_IS_CONTAINER(widget)) {
         GList* children = gtk_container_get_children(GTK_CONTAINER(widget));
@@ -973,8 +973,12 @@ static PrinterStatesCount get_printe_states_count(const std::vector<size_t>& sta
 
 static std::string get_connect_state_suffix_for_printer(const Preset& printer_preset)
 {
+    auto *plater = wxGetApp().plater();
+    if (plater == nullptr || plater->get_user_account() == nullptr)
+        return "";
+
     // process real data from Connect
-    if (auto printer_state_map = wxGetApp().plater()->get_user_account()->get_printer_state_map();
+    if (auto printer_state_map = plater->get_user_account()->get_printer_state_map();
         !printer_state_map.empty()) {
         
         const PresetWithVendorProfile& printer_with_vendor = wxGetApp().preset_bundle->printers.get_preset_with_vendor_profile(printer_preset);
@@ -1006,7 +1010,11 @@ static bool fill_data_to_connect_info_line(  const Preset& printer_preset,
                                             wxStaticText* connect_printing_info)
 #endif
 {
-    if (auto printer_state_map = wxGetApp().plater()->get_user_account()->get_printer_state_map();
+    auto *plater = wxGetApp().plater();
+    if (plater == nullptr || plater->get_user_account() == nullptr)
+        return false;
+
+    if (auto printer_state_map = plater->get_user_account()->get_printer_state_map();
         !printer_state_map.empty()) {
 
         const PresetWithVendorProfile& printer_with_vendor = wxGetApp().preset_bundle->printers.get_preset_with_vendor_profile(printer_preset);

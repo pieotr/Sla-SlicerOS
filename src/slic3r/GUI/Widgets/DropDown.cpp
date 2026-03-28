@@ -12,7 +12,7 @@
 
 #include <wx/display.h>
 
-#ifdef __WXGTK__
+#if defined(__WXGTK__) && !defined(SLIC3R_OFFLINE_ONLY)
 #include <gtk/gtk.h>
 #endif
 
@@ -61,7 +61,7 @@ DropDown::DropDown(wxWindow *             parent,
     Create(parent, style);
 }
 
-#ifdef __WXGTK__
+#if defined(__WXGTK__) && !defined(SLIC3R_OFFLINE_ONLY)
 static gint gtk_popup_key_press (GtkWidget *widget, GdkEvent *gdk_event, wxPopupWindow* win )
 {
     // Ignore events sent out before we connected to the signal
@@ -106,7 +106,7 @@ void DropDown::Create(wxWindow *     parent,
          long           style)
 {
     wxPopupTransientWindow::Create(parent);
-#ifdef __WXGTK__
+#if defined(__WXGTK__) && !defined(SLIC3R_OFFLINE_ONLY)
     g_signal_connect (m_widget, "key_press_event", G_CALLBACK (gtk_popup_key_press), this);
 
     Bind(wxEVT_KEY_DOWN, [parent](wxKeyEvent &e) {
@@ -455,7 +455,7 @@ void DropDown::messureSize()
     szContent.y *= std::min((size_t)15, texts.size());
     szContent.y += texts.size() > 15 ? rowSize.y / 2 : 0;
     wxWindow::SetSize(szContent);
-#ifdef __WXGTK__
+#if defined(__WXGTK__) && !defined(SLIC3R_OFFLINE_ONLY)
     // Gtk has a wrapper window for popup widget
     gtk_window_resize(GTK_WINDOW(m_widget), szContent.x, szContent.y);
 #endif

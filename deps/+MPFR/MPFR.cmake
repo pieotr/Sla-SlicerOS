@@ -18,6 +18,47 @@ if (MSVC)
     add_custom_target(dep_MPFR SOURCES ${_output})
 
 else ()
+    string(TOUPPER "${CMAKE_BUILD_TYPE}" _buildtype_upper)
+    set(_mpfr_common_flags "-fPIC -DPIC -fomit-frame-pointer -fno-common")
+    set(_mpfr_cflags "${CMAKE_C_FLAGS_${_buildtype_upper}} ${_mpfr_common_flags} -Wall -Wmissing-prototypes -Wpointer-arith -pedantic")
+    set(_mpfr_cxxflags "${CMAKE_CXX_FLAGS_${_buildtype_upper}} ${_mpfr_common_flags} -Wall -Wpointer-arith -pedantic")
+
+    if (CMAKE_C_COMPILER_ID STREQUAL "GNU" AND CMAKE_C_COMPILER_VERSION VERSION_GREATER_EQUAL 15)
+        set(_mpfr_cflags "${_mpfr_cflags} -std=gnu17")
+    endif ()
+
+    set(_mpfr_build_tgt "${CMAKE_SYSTEM_PROCESSOR}")
+    set(_cross_compile_arg "")
+
+    if (APPLE)
+        if (CMAKE_OSX_ARCHITECTURES)
+            set(_mpfr_build_tgt ${CMAKE_OSX_ARCHITECTURES})
+            set(_mpfr_cflags "${_mpfr_cflags} -arch ${CMAKE_OSX_ARCHITECTURES}")
+            set(_mpfr_cxxflags "${_mpfr_cxxflags} -arch ${CMAKE_OSX_ARCHITECTURES}")
+        endif ()
+        if (${_mpfr_build_tgt} MATCHES "arm")
+            set(_mpfr_build_tgt aarch64)
+        endif()
+        if (CMAKE_OSX_ARCHITECTURES)
+            set(_cross_compile_arg --host=${_mpfr_build_tgt}-apple-darwin21)
+        endif ()
+        set(_mpfr_cflags "${_mpfr_cflags} -mmacosx-version-min=${DEP_OSX_TARGET}")
+        set(_mpfr_cxxflags "${_mpfr_cxxflags} -mmacosx-version-min=${DEP_OSX_TARGET}")
+        set(_mpfr_build_tgt "--build=${_mpfr_build_tgt}-apple-darwin")
+    elseif (CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        if (${CMAKE_SYSTEM_PROCESSOR} MATCHES "arm")
+            set(_mpfr_cflags "${_mpfr_cflags} -march=armv7-a")
+            set(_mpfr_cxxflags "${_mpfr_cxxflags} -march=armv7-a")
+            set(_mpfr_build_tgt armv7)
+        endif()
+        set(_mpfr_build_tgt "--build=${_mpfr_build_tgt}-pc-linux-gnu")
+    else ()
+        set(_mpfr_build_tgt "")
+    endif ()
+
+    if (CMAKE_CROSSCOMPILING)
+        set(_cross_compile_arg --host=${TOOLCHAIN_PREFIX})
+    endif ()
 
     message(STATUS "${PROJECT_NAME}_DEP_INSTALL_PREFIX=${${PROJECT_NAME}_DEP_INSTALL_PREFIX}")
 
@@ -31,16 +72,18 @@ else ()
         BUILD_IN_SOURCE ON
         CONFIGURE_COMMAND
             ${CMAKE_COMMAND} -E env
+                "CC=${CMAKE_C_COMPILER}"
+                "CXX=${CMAKE_CXX_COMPILER}"
                 sh -c
                 "autoreconf -f -i && \
-                 CFLAGS='${_gmp_ccflags}' \
-                 CXXFLAGS='${_gmp_ccflags}' \
+                 CFLAGS='${_mpfr_cflags}' \
+                 CXXFLAGS='${_mpfr_cxxflags}' \
                  ./configure ${_cross_compile_arg} \
                              --prefix='${${PROJECT_NAME}_DEP_INSTALL_PREFIX}' \
                              --enable-shared=no \
                              --enable-static=yes \
                              --with-gmp='${${PROJECT_NAME}_DEP_INSTALL_PREFIX}' \
-                             ${_gmp_build_tgt}"
+                             ${_mpfr_build_tgt}"
         BUILD_COMMAND make -j
         INSTALL_COMMAND make install
     )

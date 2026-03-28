@@ -87,7 +87,11 @@ if (MSVC)
     dep_message(FATAL_ERROR "Unable to detect architecture!")
   endif ()
 else ()
-    set(DEP_CMAKE_OPTS "-DCMAKE_POSITION_INDEPENDENT_CODE=ON")
+  set(DEP_CMAKE_OPTS
+    "-DCMAKE_POSITION_INDEPENDENT_CODE=ON"
+    "-DCMAKE_POLICY_VERSION_MINIMUM=3.5"
+    CACHE STRING "Additional CMake configure options forwarded to dependencies"
+  )
 endif ()
 
 if (APPLE)

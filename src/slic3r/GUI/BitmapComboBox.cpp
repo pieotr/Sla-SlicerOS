@@ -41,7 +41,7 @@
 
 // A workaround for a set of issues related to text fitting into gtk widgets:
 // See e.g.: https://github.com/prusa3d/PrusaSlicer/issues/4584
-#if defined(__WXGTK20__) || defined(__WXGTK3__)
+#if (defined(__WXGTK20__) || defined(__WXGTK3__)) && !defined(SLIC3R_OFFLINE_ONLY)
     #include <glib-2.0/glib-object.h>
     #include <pango-1.0/pango/pango-layout.h>
     #include <gtk/gtk.h>

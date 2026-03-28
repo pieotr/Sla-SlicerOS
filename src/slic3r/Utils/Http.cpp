@@ -52,9 +52,13 @@ struct CurlGlobalInit
         // order: https://bugzilla.redhat.com/show_bug.cgi?id=1053882
         static const char * CA_BUNDLES[] = {
             "/etc/pki/tls/certs/ca-bundle.crt",   // Fedora/RHEL 6
+			"/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem", // Fedora/RHEL 7+
             "/etc/ssl/certs/ca-certificates.crt", // Debian/Ubuntu/Gentoo etc.
+			"/etc/ssl/certs/ca-bundle.crt",       // Arch Linux
+			"/etc/ca-certificates/extracted/tls-ca-bundle.pem", // Arch Linux (ca-certificates-utils)
             "/usr/share/ssl/certs/ca-bundle.crt",
             "/usr/local/share/certs/ca-root-nss.crt", // FreeBSD
+			"/etc/ssl/certs/ca-root-nss.crt", // Alpine Linux
             "/etc/ssl/cert.pem",
             "/etc/ssl/ca-bundle.pem"              // OpenSUSE Tumbleweed
         };
@@ -363,6 +367,13 @@ bool is_transient_error(CURLcode res, long http_status)
 
 void Http::priv::http_perform(const HttpRetryOpt& retry_opts)
 {
+#ifdef SLIC3R_OFFLINE_ONLY
+	(void) retry_opts;
+	if (errorfn) {
+		errorfn(std::move(buffer), "Offline mode is enabled. Network access is disabled.", 0);
+	}
+	return;
+#else
 	using namespace std::chrono_literals;
     static thread_local std::mt19937 generator;
     std::uniform_int_distribution<std::chrono::milliseconds::rep> randomized_delay(retry_opts.initial_delay.count(), (retry_opts.initial_delay.count() * 3) / 2);
@@ -471,6 +482,7 @@ void Http::priv::http_perform(const HttpRetryOpt& retry_opts)
 			}
 		}
 	}
+#endif
 }
 
 Http::Http(const std::string &url) : p(new priv(url)) {}

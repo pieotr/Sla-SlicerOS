@@ -361,7 +361,11 @@ void PrintConfigDef::init_common_params()
     def->label = L("Printer technology");
     def->tooltip = L("Printer technology");
     def->set_enum<PrinterTechnology>({ "FFF", "SLA" });
+#ifdef SLIC3R_SLA_ONLY
+    def->set_default_value(new ConfigOptionEnum<PrinterTechnology>(ptSLA));
+#else
     def->set_default_value(new ConfigOptionEnum<PrinterTechnology>(ptFFF));
+#endif
 
     def = this->add("bed_shape", coPoints);
     def->label = L("Bed shape");

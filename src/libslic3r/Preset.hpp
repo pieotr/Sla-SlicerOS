@@ -203,13 +203,17 @@ public:
     }
     const std::string&  compatible_printers_condition() const { return const_cast<Preset*>(this)->compatible_printers_condition(); }
 
-    // Return a printer technology, return ptFFF if the printer technology is not set.
+        // Return a printer technology, return ptFFF if the printer technology is not set.
     static PrinterTechnology printer_technology(const DynamicPrintConfig &cfg) {
         auto *opt = cfg.option<ConfigOptionEnum<PrinterTechnology>>("printer_technology");
         // The following assert may trigger when importing some legacy profile, 
         // but it is safer to keep it here to capture the cases where the "printer_technology" key is queried, where it should not.
 //        assert(opt != nullptr);
+    #ifdef SLIC3R_SLA_ONLY
+        return (opt == nullptr) ? ptSLA : opt->value;
+    #else
         return (opt == nullptr) ? ptFFF : opt->value;
+    #endif
     }
     PrinterTechnology   printer_technology() const { return Preset::printer_technology(this->config); }
     // This call returns a reference, it may add a new entry into the DynamicPrintConfig.
@@ -710,7 +714,11 @@ public:
         auto* opt = cfg.option<ConfigOptionEnum<PrinterTechnology>>("printer_technology");
         // The following assert may trigger when importing some legacy profile, 
         // but it is safer to keep it here to capture the cases where the "printer_technology" key is queried, where it should not.
+#ifdef SLIC3R_SLA_ONLY
+        return (opt == nullptr) ? ptSLA : opt->value;
+#else
         return (opt == nullptr) ? ptFFF : opt->value;
+#endif
     }
     PrinterTechnology   printer_technology() const { return printer_technology(this->config); }
 

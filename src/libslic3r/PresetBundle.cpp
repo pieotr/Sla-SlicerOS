@@ -455,8 +455,13 @@ static inline std::string remove_ini_suffix(const std::string &name)
 void PresetBundle::load_installed_printers(const AppConfig &config)
 {
 	this->update_system_maps();
-    for (auto &preset : printers)
+    for (auto &preset : printers) {
         preset.set_visible_from_appconfig(config);
+#ifdef SLIC3R_SLA_ONLY
+        if (preset.printer_technology() != ptSLA)
+            preset.is_visible = false;
+#endif
+    }
 }
 
 void PresetBundle::cache_extruder_filaments_names()
@@ -599,6 +604,12 @@ bool PresetBundle::transfer_and_save(Preset::Type type, const std::string& prese
 
 void PresetBundle::load_installed_filaments(AppConfig &config)
 {
+#ifdef SLIC3R_SLA_ONLY
+    (void) config;
+    for (auto &preset : filaments)
+        preset.is_visible = false;
+    return;
+#else
     if (! config.has_section(AppConfig::SECTION_FILAMENTS)) {
 		// Compatibility with the PrusaSlicer 2.1.1 and older, where the filament profiles were not installable yet.
 		// Find all filament profiles, which are compatible with installed printers, and act as if these filament profiles
@@ -618,6 +629,7 @@ void PresetBundle::load_installed_filaments(AppConfig &config)
 
     for (auto &preset : filaments)
         preset.set_visible_from_appconfig(config);
+#endif
 }
 
 void PresetBundle::load_installed_sla_materials(AppConfig &config)
@@ -873,7 +885,11 @@ DynamicPrintConfig PresetBundle::full_fff_config() const
     add_if_some_non_empty(std::move(compatible_prints_condition),   "compatible_prints_condition_cummulative");
     add_if_some_non_empty(std::move(inherits),                      "inherits_cummulative");
 
-	out.option<ConfigOptionEnumGeneric>("printer_technology", true)->value = ptFFF;
+#ifdef SLIC3R_SLA_ONLY
+    out.option<ConfigOptionEnumGeneric>("printer_technology", true)->value = ptSLA;
+#else
+    out.option<ConfigOptionEnumGeneric>("printer_technology", true)->value = ptFFF;
+#endif
     return out;
 }
 

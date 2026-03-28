@@ -613,8 +613,14 @@ void MainFrame::update_topbars()
 {
     if (wxGetApp().is_gcode_viewer())
         return;
+    if (!m_tmp_top_bar || !m_tabpanel)
+        return;
 
+#ifdef SLIC3R_OFFLINE_ONLY
+    const bool show_login = false;
+#else
     const bool show_login = !wxGetApp().app_config->has("show_login_button") || wxGetApp().app_config->get_bool("show_login_button");
+#endif
     m_tmp_top_bar->ShowUserAccount(show_login);
     m_tabpanel->ShowUserAccount(show_login);
 
@@ -633,6 +639,13 @@ void MainFrame::set_callbacks_for_topbar_menus()
         [](/*ConfigOptionMode*/int mode) -> std::string { return wxGetApp().get_mode_btn_color(mode); }
     );
 
+#ifdef SLIC3R_OFFLINE_ONLY
+    m_bar_menus.set_account_menu_callbacks(
+        []() -> void {},
+        []() -> void {},
+        []() -> TopBarMenus::UserAccountInfo { return TopBarMenus::UserAccountInfo(); }
+    );
+#else
     m_bar_menus.set_account_menu_callbacks(
         []() -> void { wxGetApp().plater()->act_with_user_account(); },
         [this]() -> void {
@@ -657,9 +670,14 @@ void MainFrame::set_callbacks_for_topbar_menus()
             return TopBarMenus::UserAccountInfo();
         }
     );
+#endif
 
     // we need "Hide Log in button" menu item only till "show_login_button" wasn't changed
-    if (wxGetApp().app_config->has("show_login_button"))
+    if (wxGetApp().app_config->has("show_login_button")
+#ifdef SLIC3R_OFFLINE_ONLY
+        || true
+#endif
+    )
         m_bar_menus.RemoveHideLoginItem();
 }
 
@@ -799,47 +817,72 @@ void MainFrame::register_win32_callbacks()
 
 void MainFrame::create_preset_tabs()
 {
+#ifndef SLIC3R_SLA_ONLY
     add_created_tab(new TabPrint(m_tabpanel), "cog");
     add_created_tab(new TabFilament(m_tabpanel), "spool");
+#endif
     add_created_tab(new TabSLAPrint(m_tabpanel), "cog");
     add_created_tab(new TabSLAMaterial(m_tabpanel), "resin");
     add_created_tab(new TabPrinter(m_tabpanel), wxGetApp().preset_bundle->printers.get_edited_preset().printer_technology() == ptFFF ? "printer" : "sla_printer");
     
+#ifndef SLIC3R_OFFLINE_ONLY
     m_printables_webview = new PrintablesWebViewPanel(m_tabpanel);
     add_printables_webview_tab();
-   
+
     m_connect_webview = new ConnectWebViewPanel(m_tabpanel);
     m_printer_webview = new PrinterWebViewPanel(m_tabpanel, L"");
-   
+
     // new created tabs have to be hidden by default
     m_connect_webview->Hide();
     m_printer_webview->Hide();
+#endif
 
 }
 
 void MainFrame::on_account_login(const std::string& token)
 {
+#ifdef SLIC3R_OFFLINE_ONLY
+    (void)token;
+    return;
+#else
     add_connect_webview_tab();
     assert (m_printables_webview);
     m_printables_webview->login(token);
+#endif
 }
 void MainFrame::on_account_will_refresh()
 {
+#ifdef SLIC3R_OFFLINE_ONLY
+    return;
+#else
     m_printables_webview->send_will_refresh();
+#endif
 }
 void MainFrame::on_account_did_refresh(const std::string& token)
 {
+#ifdef SLIC3R_OFFLINE_ONLY
+    (void)token;
+    return;
+#else
     m_printables_webview->send_refreshed_token(token);
+#endif
 }
 void MainFrame::on_account_logout()
 {
+#ifdef SLIC3R_OFFLINE_ONLY
+    return;
+#else
     remove_connect_webview_tab();
     assert (m_printables_webview);
     m_printables_webview->logout();
+#endif
 }
 
 void MainFrame::add_connect_webview_tab()
 {
+#ifdef SLIC3R_OFFLINE_ONLY
+    return;
+#else
     if (m_connect_webview_added) {
         m_connect_webview->resend_config();
         return;
@@ -856,9 +899,13 @@ void MainFrame::add_connect_webview_tab()
     m_tabpanel->InsertNewPage(n, page, text, bmp_name, bSelect);
     m_connect_webview->set_create_browser();
     m_connect_webview_added = true;
+#endif
 }
 void MainFrame::remove_connect_webview_tab()
 {
+#ifdef SLIC3R_OFFLINE_ONLY
+    return;
+#else
     if (!m_connect_webview_added) {
         return;
     }
@@ -869,10 +916,15 @@ void MainFrame::remove_connect_webview_tab()
     m_connect_webview_added = false;
     m_connect_webview->logout();
     m_connect_webview->destroy_browser();
+#endif
 }
 
 void MainFrame::show_connect_tab(const wxString& url)
 {
+#ifdef SLIC3R_OFFLINE_ONLY
+    (void)url;
+    return;
+#else
     if (!m_connect_webview_added) {
         return;
     }
@@ -880,9 +932,14 @@ void MainFrame::show_connect_tab(const wxString& url)
     m_tabpanel->SetSelection(m_tabpanel->FindPage(m_connect_webview));
     m_connect_webview->set_load_default_url_on_next_error(true);
     m_connect_webview->load_url(url);
+#endif
 }
 void MainFrame::show_printables_tab(const std::string& url)
 {
+#ifdef SLIC3R_OFFLINE_ONLY
+    (void)url;
+    return;
+#else
      if (!m_printables_webview_added) {
         return;
     }
@@ -892,9 +949,13 @@ void MainFrame::show_printables_tab(const std::string& url)
     m_printables_webview->set_load_default_url_on_next_error(true);
     m_printables_webview->set_next_show_url(url);
     m_tabpanel->SetSelection(m_tabpanel->FindPage(m_printables_webview));
+#endif
 }
 void MainFrame::add_printables_webview_tab()
 {
+#ifdef SLIC3R_OFFLINE_ONLY
+    return;
+#else
     if (m_printables_webview_added) {
         return;
     }
@@ -906,11 +967,15 @@ void MainFrame::add_printables_webview_tab()
     m_tabpanel->InsertNewPage(n, page, text, bmp_name, false);
     m_printables_webview->set_create_browser();
     m_printables_webview_added = true;
+#endif
 }
 
 // no longer needed?
 void MainFrame::remove_printables_webview_tab()
 {
+#ifdef SLIC3R_OFFLINE_ONLY
+    return;
+#else
     if (!m_printables_webview_added) {
         return;
     }
@@ -920,11 +985,15 @@ void MainFrame::remove_printables_webview_tab()
     m_tabpanel->RemovePage(size_t(n));
     m_printables_webview_added = false;
     m_printables_webview->destroy_browser();
+#endif
 }
 
 void MainFrame::show_printer_webview_tab(DynamicPrintConfig* dpc)
 {
-    
+#ifdef SLIC3R_OFFLINE_ONLY
+    (void)dpc;
+    return;
+#else
     remove_printer_webview_tab();
     // if physical printer is selected
     if (dpc && dpc->option<ConfigOptionEnum<PrintHostType>>("host_type")->value != htPrusaConnect) {
@@ -941,10 +1010,15 @@ void MainFrame::show_printer_webview_tab(DynamicPrintConfig* dpc)
         }
         add_printer_webview_tab(from_u8(url));
     }
+#endif
 }
 
 void MainFrame::add_printer_webview_tab(const wxString& url)
 {
+#ifdef SLIC3R_OFFLINE_ONLY
+    (void)url;
+    return;
+#else
     if (m_printer_webview_added) {
         //set_printer_webview_tab_url(url);
         return;
@@ -954,9 +1028,13 @@ void MainFrame::add_printer_webview_tab(const wxString& url)
     m_tabpanel->AddNewPage(m_printer_webview, _L("Physical Printer"), "");
     m_printer_webview->set_default_url(url);
     m_printer_webview->set_create_browser();
+#endif
 }
 void MainFrame::remove_printer_webview_tab()
 {
+#ifdef SLIC3R_OFFLINE_ONLY
+    return;
+#else
     if (!m_printer_webview_added) {
         return;
     }
@@ -966,25 +1044,37 @@ void MainFrame::remove_printer_webview_tab()
     m_printer_webview->Hide();
     m_tabpanel->RemovePage(m_tabpanel->FindPage(m_printer_webview));
     m_printer_webview->destroy_browser();
+#endif
 }
 
 void MainFrame::set_printer_webview_api_key(const std::string& key)
 {
+#ifdef SLIC3R_OFFLINE_ONLY
+    (void)key;
+    return;
+#else
     m_printer_webview->set_api_key(key);
+#endif
 }
 void MainFrame::set_printer_webview_credentials(const std::string& usr, const std::string& psk)
 {
+#ifdef SLIC3R_OFFLINE_ONLY
+    (void)usr;
+    (void)psk;
+    return;
+#else
     m_printer_webview->set_credentials(usr, psk);
+#endif
 }
 
 bool MainFrame::is_any_webview_selected()
 {
     int selection = m_tabpanel->GetSelection();
-    if ( selection == m_tabpanel->FindPage(m_printables_webview)) 
+    if (m_printables_webview && selection == m_tabpanel->FindPage(m_printables_webview)) 
         return true;
-    if (m_connect_webview_added && selection == m_tabpanel->FindPage(m_connect_webview)) 
+    if (m_connect_webview && m_connect_webview_added && selection == m_tabpanel->FindPage(m_connect_webview)) 
         return true;
-    if (m_printer_webview_added && selection == m_tabpanel->FindPage(m_printer_webview)) 
+    if (m_printer_webview && m_printer_webview_added && selection == m_tabpanel->FindPage(m_printer_webview)) 
         return true;
     return false;
 }
@@ -992,11 +1082,11 @@ bool MainFrame::is_any_webview_selected()
 void MainFrame::reload_selected_webview()
 {
     int selection = m_tabpanel->GetSelection();
-    if ( selection == m_tabpanel->FindPage(m_printables_webview)) 
+    if (m_printables_webview && selection == m_tabpanel->FindPage(m_printables_webview)) 
        m_printables_webview->do_reload();
-    if (m_connect_webview_added && selection == m_tabpanel->FindPage(m_connect_webview)) 
+    if (m_connect_webview && m_connect_webview_added && selection == m_tabpanel->FindPage(m_connect_webview)) 
         m_connect_webview->do_reload();
-    if (m_printer_webview_added && selection == m_tabpanel->FindPage(m_printer_webview)) 
+    if (m_printer_webview && m_printer_webview_added && selection == m_tabpanel->FindPage(m_printer_webview)) 
         m_printer_webview->do_reload();
 }
 
@@ -1005,9 +1095,12 @@ void MainFrame::on_tab_change_rename_reload_item(int new_tab)
     if (!m_tabpanel) {
         return;
     }
-    if ( new_tab == m_tabpanel->FindPage(m_printables_webview) 
-        || (m_connect_webview_added && new_tab == m_tabpanel->FindPage(m_connect_webview)) 
-        || (m_printer_webview_added && new_tab == m_tabpanel->FindPage(m_printer_webview))) 
+    if (!m_menu_item_reload) {
+        return;
+    }
+    if ( (m_printables_webview && new_tab == m_tabpanel->FindPage(m_printables_webview)) 
+        || (m_connect_webview && m_connect_webview_added && new_tab == m_tabpanel->FindPage(m_connect_webview)) 
+        || (m_printer_webview && m_printer_webview_added && new_tab == m_tabpanel->FindPage(m_printer_webview))) 
     {
         m_menu_item_reload->SetItemLabel(_L("Re&load Web Content") + "\tF5");
         m_menu_item_reload->SetHelp(_L("Reload Web Content"));
@@ -1031,6 +1124,9 @@ void MainFrame::reload_item_function_cb()
 
 void Slic3r::GUI::MainFrame::refresh_account_menu(bool avatar/* = false */)
 {
+    if (!m_tabpanel || !m_tmp_top_bar)
+        return;
+
     // Update User name in TopBar
     m_bar_menus.UpdateAccountMenu();
 
@@ -1355,6 +1451,7 @@ static wxMenu* generate_help_menu()
 {
     wxMenu* helpMenu = new wxMenu();
 
+#ifndef SLIC3R_OFFLINE_ONLY
     append_menu_item(helpMenu, wxID_ANY, wxString::Format(_L("%s &Website"), SLIC3R_APP_NAME),
         wxString::Format(_L("Open the %s website in your browser"), SLIC3R_APP_NAME),
         [](wxCommandEvent&) { wxGetApp().open_web_page_localized("https://www.prusa3d.com/slicerweb"); });
@@ -1379,12 +1476,13 @@ static wxMenu* generate_help_menu()
 //                                             wxString::Format(_L("Open the %s manual in your browser"), SLIC3R_APP_NAME),
 //            [this](wxCommandEvent&) { wxGetApp().open_browser_with_warning_dialog("http://manual.slic3r.org/"); });
     helpMenu->AppendSeparator();
-    append_menu_item(helpMenu, wxID_ANY, _L("System &Info"), _L("Show system information"),
-        [](wxCommandEvent&) { wxGetApp().system_info(); });
+#endif
     append_menu_item(helpMenu, wxID_ANY, _L("Show &Configuration Folder"), _L("Show user configuration folder (datadir)"),
         [](wxCommandEvent&) { Slic3r::GUI::desktop_open_datadir_folder(); });
+#ifndef SLIC3R_OFFLINE_ONLY
     append_menu_item(helpMenu, wxID_ANY, _L("Report an I&ssue"), wxString::Format(_L("Report an issue on %s"), SLIC3R_APP_NAME),
         [](wxCommandEvent&) { wxGetApp().open_browser_with_warning_dialog("https://github.com/prusa3d/slic3r/issues/new", nullptr, false); });
+#endif
 #ifndef __APPLE__
     append_about_menu_item(helpMenu);
 #endif // __APPLE__
@@ -1529,10 +1627,12 @@ void MainFrame::init_menubar_as_editor()
             [this](wxCommandEvent&) { if (m_plater) m_plater->export_gcode(false); }, "export_gcode", nullptr,
             [this](){return can_export_gcode(); }, this);
         m_changeable_menu_items.push_back(item_export_gcode);
+#ifndef SLIC3R_OFFLINE_ONLY
         wxMenuItem* item_send_gcode = append_menu_item(export_menu, wxID_ANY, _L("S&end G-code") + dots + "\tCtrl+Shift+G", _L("Send to print current plate as G-code"),
             [this](wxCommandEvent&) { if (m_plater) m_plater->send_gcode(); }, "export_gcode", nullptr,
             [this](){return can_send_gcode(); }, this);
         m_changeable_menu_items.push_back(item_send_gcode);
+#endif
 		append_menu_item(export_menu, wxID_ANY, _L("Export G-code to SD Card / Flash Drive") + dots + "\tCtrl+U", _L("Export current plate as G-code to SD card / Flash drive"),
 			[this](wxCommandEvent&) { if (m_plater) m_plater->export_gcode(true); }, "export_to_sd", nullptr,
 			[this]() {return can_export_gcode_sd(); }, this);
@@ -1636,16 +1736,20 @@ void MainFrame::init_menubar_as_editor()
         
         editMenu->AppendSeparator();
 #ifdef __APPLE__
+#ifndef SLIC3R_OFFLINE_ONLY
         append_menu_item(editMenu, wxID_ANY, _L("Re&load from Disk") + dots + "\tCtrl+Shift+R",
             _L("Reload the plater from disk"), [this](wxCommandEvent&) { m_plater->reload_all_from_disk(); },
             "", nullptr, [this]() {return !m_plater->model().objects.empty(); }, this);
         m_menu_item_reload = append_menu_item(editMenu, wxID_ANY, _L("Re&load Web Content") + "\tF5",
             _L("Reload Web Content"), [this](wxCommandEvent&) {  reload_selected_webview(); },
             "", nullptr, [this]() {return is_any_webview_selected(); }, this);
+#endif
 #else
+#ifndef SLIC3R_OFFLINE_ONLY
         m_menu_item_reload = append_menu_item(editMenu, wxID_ANY, _L("Re&load from Disk") + "\tF5",
             _L("Reload the plater from disk"), [this](wxCommandEvent&) {  reload_item_function_cb(); },
             "", nullptr, [this]() {return reload_item_condition_cb(); }, this);
+#endif
 #endif // __APPLE__
 
         editMenu->AppendSeparator();
@@ -1819,13 +1923,17 @@ void MainFrame::init_menubar_as_gcodeviewer()
             [this](wxCommandEvent&) { if (m_plater != nullptr) m_plater->load_gcode(); }, "open", nullptr,
             [this]() {return m_plater != nullptr; }, this);
 #ifdef __APPLE__
+#ifndef SLIC3R_OFFLINE_ONLY
         append_menu_item(fileMenu, wxID_ANY, _L("Re&load from Disk") + dots + "\tCtrl+Shift+R",
             _L("Reload the plater from disk"), [this](wxCommandEvent&) { m_plater->reload_gcode_from_disk(); },
             "", nullptr, [this]() { return !m_plater->get_last_loaded_gcode().empty(); }, this);
+#endif
 #else
+#ifndef SLIC3R_OFFLINE_ONLY
         append_menu_item(fileMenu, wxID_ANY, _L("Re&load from Disk") + sep + "F5",
             _L("Reload the plater from disk"), [this](wxCommandEvent&) { m_plater->reload_gcode_from_disk(); },
             "", nullptr, [this]() { return !m_plater->get_last_loaded_gcode().empty(); }, this);
+#endif
 #endif // __APPLE__
         fileMenu->AppendSeparator();
         append_menu_item(fileMenu, wxID_ANY, _L("Convert ASCII G-code to &binary") + dots, _L("Convert a G-code file from ASCII to binary format"),
@@ -1878,15 +1986,29 @@ void MainFrame::update_menubar()
     if (wxGetApp().is_gcode_viewer())
         return;
 
+#ifdef SLIC3R_OFFLINE_ONLY
+    return;
+#endif
+
+    if (plater() == nullptr)
+        return;
+
     const bool is_fff = plater()->printer_technology() == ptFFF;
 
-    m_changeable_menu_items[miExport]       ->SetItemLabel((is_fff ? _L("Export &G-code")         : _L("E&xport"))        + dots    + "\tCtrl+G");
-    m_changeable_menu_items[miSend]         ->SetItemLabel((is_fff ? _L("S&end G-code")           : _L("S&end to print")) + dots    + "\tCtrl+Shift+G");
+    if (m_changeable_menu_items[miExport] != nullptr)
+        m_changeable_menu_items[miExport]->SetItemLabel((is_fff ? _L("Export &G-code") : _L("E&xport")) + dots + "\tCtrl+G");
+    if (m_changeable_menu_items[miSend] != nullptr)
+        m_changeable_menu_items[miSend]->SetItemLabel((is_fff ? _L("S&end G-code") : _L("S&end to print")) + dots + "\tCtrl+Shift+G");
 
-    m_changeable_menu_items[miMaterialTab]  ->SetItemLabel((is_fff ? _L("&Filament Settings Tab") : _L("Mate&rial Settings Tab"))   + "\tCtrl+3");
-    m_changeable_menu_items[miMaterialTab]  ->SetBitmap(*get_bmp_bundle(is_fff ? "spool"   : "resin"));
+    if (m_changeable_menu_items[miMaterialTab] != nullptr) {
+        m_changeable_menu_items[miMaterialTab]->SetItemLabel((is_fff ? _L("&Filament Settings Tab") : _L("Mate&rial Settings Tab")) + "\tCtrl+3");
+        if (auto *material_bmp = get_bmp_bundle(is_fff ? "spool" : "resin"); material_bmp != nullptr)
+            m_changeable_menu_items[miMaterialTab]->SetBitmap(*material_bmp);
+    }
 
-    m_changeable_menu_items[miPrinterTab]   ->SetBitmap(*get_bmp_bundle(is_fff ? "printer" : "sla_printer"));
+    if (m_changeable_menu_items[miPrinterTab] != nullptr)
+        if (auto *printer_bmp = get_bmp_bundle(is_fff ? "printer" : "sla_printer"); printer_bmp != nullptr)
+            m_changeable_menu_items[miPrinterTab]->SetBitmap(*printer_bmp);
 }
 
 

@@ -167,6 +167,7 @@ static bool check_internet_connection_win()
 // Last version where the info was sent / dialog dismissed is saved in appconfig.
 // Only show the dialog when this info is not found (e.g. fresh install) or when
 // current version is newer. Only major and minor versions are compared.
+#ifndef SLIC3R_OFFLINE_ONLY
 static bool should_dialog_be_shown()
 {
     std::string last_sent_version = wxGetApp().app_config->get("version_system_info_sent");
@@ -203,6 +204,7 @@ static bool should_dialog_be_shown()
     return true;
 #endif
 }
+#endif
 
 
 
@@ -745,11 +747,15 @@ bool SendSystemInfoDialog::send_info(wxString& message)
 // The only function callable from outside this unit.
 void show_send_system_info_dialog_if_needed()
 {
+#ifdef SLIC3R_OFFLINE_ONLY
+    return;
+#else
     if (wxGetApp().is_gcode_viewer() || ! should_dialog_be_shown())
         return;
 
     SendSystemInfoDialog dlg(wxGetApp().mainframe);
     dlg.ShowModal();
+#endif
 }
 
 

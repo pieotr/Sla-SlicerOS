@@ -19,7 +19,9 @@
 #include "libslic3r/PresetBundle.hpp"
 #include "DoubleSliderForGcode.hpp"
 #include "DoubleSliderForLayers.hpp"
+#ifndef SLIC3R_SLA_ONLY
 #include "ExtruderSequenceDialog.hpp"
+#endif
 #include "Plater.hpp"
 #include "Tab.hpp"
 #include "MainFrame.hpp"
@@ -525,11 +527,16 @@ void Preview::create_sliders()
 
         m_layers_slider->set_callback_on_get_extruders_sequence([](DoubleSlider::ExtrudersSequence& extruders_sequence) -> bool
         {
+#ifdef SLIC3R_SLA_ONLY
+            UNUSED(extruders_sequence);
+            return false;
+#else
             GUI::ExtruderSequenceDialog dlg(extruders_sequence);
             if (dlg.ShowModal() != wxID_OK)
                 return false;
             extruders_sequence = dlg.GetValue();
             return true;
+#endif
         });
     }
 

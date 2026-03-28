@@ -26,7 +26,9 @@ set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 add_subdirectory(arrange)
 add_subdirectory(thumbnails)
 add_subdirectory(libslic3r)
-add_subdirectory(fff_print)
+if (NOT SLIC3R_SLA_ONLY)
+    add_subdirectory(fff_print)
+endif()
 add_subdirectory(sla_print)
 add_subdirectory(cpp17 EXCLUDE_FROM_ALL)    # does not have to be built all the time
 

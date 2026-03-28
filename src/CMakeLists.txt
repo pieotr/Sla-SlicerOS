@@ -154,6 +154,10 @@ elseif (MSVC)
 else ()
     # Boost on Raspberry-Pi does not link to pthreads explicitely.
     target_link_libraries(PrusaSlicer PRIVATE ${CMAKE_DL_LIBS} -lstdc++ Threads::Threads)
+
+    if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+        target_link_options(PrusaSlicer PRIVATE "$<$<NOT:$<CONFIG:Debug>>:-flto=auto>" "$<$<NOT:$<CONFIG:Debug>>:-Wno-odr>")
+    endif ()
 endif ()
 
 # Add the Slic3r GUI library, libcurl, OpenGL and GLU libraries.
