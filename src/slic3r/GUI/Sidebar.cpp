@@ -228,6 +228,9 @@ void SlicedInfo::SetTextAndShow(SlicedInfoIdx idx, const wxString& text, const w
 
 void Sidebar::show_preset_comboboxes()
 {
+#ifdef SLIC3R_SLA_ONLY
+    m_frequently_changed_parameters->Show(false);
+#else
     const bool showSLA = wxGetApp().preset_bundle->printers.get_edited_preset().printer_technology() == ptSLA;
 
     for (size_t i = 0; i < 4; ++i)
@@ -237,6 +240,7 @@ void Sidebar::show_preset_comboboxes()
         m_presets_sizer->Show(i, showSLA);
 
     m_frequently_changed_parameters->Show(!showSLA);
+#endif
 
     m_scrolled_panel->GetParent()->Layout();
     m_scrolled_panel->Refresh();
@@ -352,7 +356,9 @@ Sidebar::Sidebar(Plater *parent)
     m_presets_panel = m_scrolled_panel;
 #endif //__WINDOWS__
 
+#ifndef SLIC3R_SLA_ONLY
     m_filaments_sizer = new wxBoxSizer(wxVERTICAL);
+#endif
 
     const int margin_5 = int(0.5 * wxGetApp().em_unit());// 5;
 
@@ -368,7 +374,9 @@ Sidebar::Sidebar(Plater *parent)
                                     int(0.3*wxGetApp().em_unit()));
 
         auto *sizer_presets = this->m_presets_sizer;
+    #ifndef SLIC3R_SLA_ONLY
         auto *sizer_filaments = this->m_filaments_sizer;
+    #endif
         // Hide controls, which will be shown/hidden in respect to the printer technology
         text->Show(preset_type == Preset::TYPE_PRINTER);
         sizer_presets->Add(text, 0, wxALIGN_LEFT | wxEXPAND | wxRIGHT, 4);
@@ -386,7 +394,9 @@ Sidebar::Sidebar(Plater *parent)
                 tmp_h_sizer->Add((*combo)->connect_info_sizer, 1, wxEXPAND);
                 sizer_presets->Add(tmp_h_sizer, 0, wxBOTTOM, int(0.3 * wxGetApp().em_unit()));
             }
-        } else {
+        }
+    #ifndef SLIC3R_SLA_ONLY
+        else {
             sizer_filaments->Add(combo_and_btn_sizer, 0, wxEXPAND |
 #ifdef __WXGTK3__
                 wxRIGHT, margin_5);
@@ -396,12 +406,17 @@ Sidebar::Sidebar(Plater *parent)
             (*combo)->set_extruder_idx(0);
             sizer_filaments->ShowItems(false);
             sizer_presets->Add(sizer_filaments, 1, wxEXPAND);
-        }
+            }
+        #else
+            (void)filament;
+        #endif
     };
 
+        #ifndef SLIC3R_SLA_ONLY
     m_combos_filament.push_back(nullptr);
     init_combo(&m_combo_print,         _L("Print settings"),     Preset::TYPE_PRINT,         false);
     init_combo(&m_combos_filament[0],  _L("Filament"),           Preset::TYPE_FILAMENT,      true);
+        #endif
     init_combo(&m_combo_sla_print,     _L("SLA print settings"), Preset::TYPE_SLA_PRINT,     false);
     init_combo(&m_combo_sla_material,  _L("SLA material"),       Preset::TYPE_SLA_MATERIAL,  false);
     init_combo(&m_combo_printer,       _L("Printer"),            Preset::TYPE_PRINTER,       false);
@@ -588,6 +603,7 @@ Sidebar::Sidebar(Plater *parent)
 
 Sidebar::~Sidebar() {}
 
+#ifndef SLIC3R_SLA_ONLY
 void Sidebar::init_filament_combo(PlaterPresetComboBox** combo, int extr_idx)
 {
     *combo = new PlaterPresetComboBox(m_presets_panel, Slic3r::Preset::TYPE_FILAMENT);
@@ -618,15 +634,19 @@ void Sidebar::remove_unused_filament_combos(const size_t current_extruder_count)
         m_combos_filament.pop_back();
     }
 }
+#endif
 
 void Sidebar::update_all_filament_comboboxes()
 {
+#ifndef SLIC3R_SLA_ONLY
     for (PlaterPresetComboBox* cb : m_combos_filament)
         cb->update();
+#endif
 }
 
 void Sidebar::update_all_preset_comboboxes()
 {
+#ifndef SLIC3R_SLA_ONLY
     PresetBundle &preset_bundle = *wxGetApp().preset_bundle;
     const auto print_tech = preset_bundle.printers.get_edited_preset().printer_technology();
 
@@ -644,6 +664,11 @@ void Sidebar::update_all_preset_comboboxes()
     if (print_tech == ptFFF) {
         update_all_filament_comboboxes();
     }
+#else
+    m_combo_sla_print->update();
+    m_combo_sla_material->update();
+    m_combo_printer->update();
+#endif
 }
 
 void Sidebar::update_printer_presets_combobox()
@@ -654,24 +679,32 @@ void Sidebar::update_printer_presets_combobox()
 
 void Sidebar::update_presets(Preset::Type preset_type)
 {
+#ifdef SLIC3R_SLA_ONLY
+    (void)wxGetApp().preset_bundle;
+#else
     PresetBundle &preset_bundle = *wxGetApp().preset_bundle;
     const auto print_tech = preset_bundle.printers.get_edited_preset().printer_technology();
+#endif
 
     switch (preset_type) {
     case Preset::TYPE_FILAMENT:
     {
+#ifndef SLIC3R_SLA_ONLY
         const size_t extruder_cnt = print_tech != ptFFF ? 1 :
                                 dynamic_cast<ConfigOptionFloats*>(preset_bundle.printers.get_edited_preset().config.option("nozzle_diameter"))->values.size();
         const size_t filament_cnt = m_combos_filament.size() > extruder_cnt ? extruder_cnt : m_combos_filament.size();
 
         for (size_t i = 0; i < filament_cnt; i++)
             m_combos_filament[i]->update();
+#endif
 
         break;
     }
 
     case Preset::TYPE_PRINT:
+#ifndef SLIC3R_SLA_ONLY
         m_combo_print->update();
+#endif
         break;
 
     case Preset::TYPE_SLA_PRINT:
@@ -730,6 +763,7 @@ void Sidebar::on_select_preset(wxCommandEvent& evt)
 
     bool select_preset = !combo->selection_is_changed_according_to_physical_printers();
     // TODO: ?
+#ifndef SLIC3R_SLA_ONLY
     if (preset_type == Preset::TYPE_FILAMENT) {
         wxGetApp().preset_bundle->set_filament_preset(idx, preset_name);
 
@@ -744,7 +778,9 @@ void Sidebar::on_select_preset(wxCommandEvent& evt)
             wxGetApp().preset_bundle->export_selections(*wxGetApp().app_config);
         combo->update();
     }
-    else if (select_preset) {
+    else
+#endif
+    if (select_preset) {
         wxWindowUpdateLocker noUpdates(m_presets_panel);
         wxGetApp().get_tab(preset_type)->select_preset(preset_name, false, last_selected_ph_printer_name);
     }
@@ -792,13 +828,17 @@ void Sidebar::update_reslice_btn_tooltip()
 void Sidebar::msw_rescale()
 {
     SetMinSize(wxSize(42 * wxGetApp().em_unit(), -1));
+#ifndef SLIC3R_SLA_ONLY
     m_combo_print       ->msw_rescale();
+#endif
     m_combo_sla_print   ->msw_rescale();
     m_combo_sla_material->msw_rescale();
     m_combo_printer     ->msw_rescale();
 
+#ifndef SLIC3R_SLA_ONLY
     for (PlaterPresetComboBox* combo : m_combos_filament)
         combo->msw_rescale();
+#endif
 
     m_frequently_changed_parameters->msw_rescale();
     m_object_list                  ->msw_rescale();
@@ -832,13 +872,17 @@ void Sidebar::sys_color_changed()
     m_object_settings              ->sys_color_changed();
 #endif
 
+#ifndef SLIC3R_SLA_ONLY
     m_combo_print       ->sys_color_changed();
+#endif
     m_combo_sla_print   ->sys_color_changed();
     m_combo_sla_material->sys_color_changed();
     m_combo_printer     ->sys_color_changed();
 
+#ifndef SLIC3R_SLA_ONLY
     for (PlaterPresetComboBox* combo : m_combos_filament)
         combo->sys_color_changed();
+#endif
 
     m_object_list        ->sys_color_changed();
     m_object_manipulation->sys_color_changed();
@@ -1270,6 +1314,7 @@ void Sidebar::update_ui_from_settings()
 
 void Sidebar::set_extruders_count(size_t extruders_count)
 {
+#ifndef SLIC3R_SLA_ONLY
     if (extruders_count == m_combos_filament.size())
         return;
 
@@ -1294,6 +1339,9 @@ void Sidebar::set_extruders_count(size_t extruders_count)
     
     Layout();
     m_scrolled_panel->Refresh();
+#else
+    (void)extruders_count;
+#endif
 }
 
 
