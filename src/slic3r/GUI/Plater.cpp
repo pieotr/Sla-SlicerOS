@@ -51,6 +51,7 @@
 #include <wx/statbmp.h>
 #include <wx/filedlg.h>
 #include <wx/filectrl.h>
+#include <wx/timer.h>
 #include <wx/dnd.h>
 #include <wx/progdlg.h>
 #include <wx/wupdlock.h>
@@ -63,6 +64,13 @@
 #endif
 
 #include <LibBGCode/convert/convert.hpp>
+
+#ifndef _L
+#define _L(s) wxString::FromUTF8(s)
+#endif
+#ifndef _u8L
+#define _u8L(s) std::string(s)
+#endif
 
 #include "libslic3r/libslic3r.h"
 #include "libslic3r/Format/STL.hpp"
@@ -5964,6 +5972,8 @@ std::optional<fs::path> Plater::get_output_path(const std::string &start_dir, co
         wxFD_SAVE | wxFD_OVERWRITE_PROMPT
     );
 
+    std::unique_ptr<wxTimer> sla_filter_sync_timer;
+
     if (printer_technology() == ptSLA) {
         dlg.SetFilterIndex(sla_initial_filter_index);
         if (size_t(sla_initial_filter_index) < sla_filter_extensions.size()) {
@@ -5971,23 +5981,70 @@ std::optional<fs::path> Plater::get_output_path(const std::string &start_dir, co
             if (!selected_ext.empty())
                 dlg.SetFilename(from_u8(default_stem + selected_ext));
         }
+
+        auto update_filename_for_filter = [&dlg, &sla_filter_extensions, &detect_sla_suffix, &default_stem](int filter_index) {
+            if (filter_index < 0 || size_t(filter_index) >= sla_filter_extensions.size())
+                return;
+
+            const std::string &selected_ext = sla_filter_extensions[size_t(filter_index)];
+            if (selected_ext.empty())
+                return;
+
+            fs::path filename = into_path(dlg.GetFilename());
+            std::string name = filename.filename().string();
+            if (name.empty())
+                name = default_stem;
+
+            const std::string known_suffix = detect_sla_suffix(filename);
+            if (!known_suffix.empty()) {
+                if (name.size() > known_suffix.size())
+                    name.resize(name.size() - known_suffix.size());
+                dlg.SetFilename(from_u8(name + selected_ext));
+                return;
+            }
+
+            // Keep user-entered custom extensions untouched.
+            if (!filename.extension().empty())
+                return;
+
+            dlg.SetFilename(from_u8(name + selected_ext));
+        };
+
+        dlg.Bind(wxEVT_FILECTRL_FILTERCHANGED, [update_filename_for_filter](wxFileCtrlEvent &evt) {
+            update_filename_for_filter(evt.GetFilterIndex());
+            evt.Skip();
+        });
+
+        int last_filter_index = sla_initial_filter_index;
+        dlg.Bind(wxEVT_TIMER, [&dlg, &last_filter_index, update_filename_for_filter](wxTimerEvent &) {
+            const int current_filter_index = dlg.GetFilterIndex();
+            if (current_filter_index != last_filter_index) {
+                update_filename_for_filter(current_filter_index);
+                last_filter_index = current_filter_index;
+            }
+        });
+        sla_filter_sync_timer = std::make_unique<wxTimer>(&dlg);
+        sla_filter_sync_timer->Start(100);
     }
 
     if (dlg.ShowModal() != wxID_OK) {
+        if (sla_filter_sync_timer)
+            sla_filter_sync_timer->Stop();
         return std::nullopt;
     }
 
+    if (sla_filter_sync_timer)
+        sla_filter_sync_timer->Stop();
+
     fs::path output_path{into_path(dlg.GetPath())};
     if (printer_technology() == ptSLA) {
-        const int filter_index = dlg.GetFilterIndex();
-        if (filter_index >= 0 && size_t(filter_index) < sla_filter_extensions.size()) {
-            const std::string &selected_ext = sla_filter_extensions[size_t(filter_index)];
-            if (!selected_ext.empty()) {
-                std::string stem = output_path.filename().string();
-                const std::string known_suffix = detect_sla_suffix(output_path);
-                if (!known_suffix.empty() && stem.size() > known_suffix.size())
-                    stem.resize(stem.size() - known_suffix.size());
-                output_path = output_path.parent_path() / fs::path(stem + selected_ext);
+        // Top-bar filename has priority. Only append selected extension if user left filename without extension.
+        if (output_path.extension().empty()) {
+            const int filter_index = dlg.GetFilterIndex();
+            if (filter_index >= 0 && size_t(filter_index) < sla_filter_extensions.size()) {
+                const std::string &selected_ext = sla_filter_extensions[size_t(filter_index)];
+                if (!selected_ext.empty())
+                    output_path = output_path.parent_path() / fs::path(output_path.filename().string() + selected_ext);
             }
         }
     }

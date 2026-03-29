@@ -2522,13 +2522,24 @@ void PageBuildVolume::apply_custom_config(DynamicPrintConfig& config)
     display_pixels_x->GetValue().ToLong(&px_x);
     display_pixels_y->GetValue().ToLong(&px_y);
 
-    config.set_key_value("display_width", new ConfigOptionFloat(std::max(1.0, display_w)));
-    config.set_key_value("display_height", new ConfigOptionFloat(std::max(1.0, display_h)));
+    const double display_w_clamped = std::max(1.0, display_w);
+    const double display_h_clamped = std::max(1.0, display_h);
+
+    config.set_key_value("display_width", new ConfigOptionFloat(display_w_clamped));
+    config.set_key_value("display_height", new ConfigOptionFloat(display_h_clamped));
     config.set_key_value("display_pixels_x", new ConfigOptionInt(int(std::max(100L, px_x))));
     config.set_key_value("display_pixels_y", new ConfigOptionInt(int(std::max(100L, px_y))));
     config.set_key_value("display_orientation", new ConfigOptionEnum<SLADisplayOrientation>(display_orientation->GetSelection() == 0 ? sladoLandscape : sladoPortrait));
     config.set_key_value("display_mirror_x", new ConfigOptionBool(display_mirror_x->GetValue()));
     config.set_key_value("display_mirror_y", new ConfigOptionBool(display_mirror_y->GetValue()));
+
+    // Keep SLA bed dimensions in sync with display dimensions.
+    config.set_key_value("bed_shape", new ConfigOptionPoints({
+        Vec2d(0.0, 0.0),
+        Vec2d(display_w_clamped, 0.0),
+        Vec2d(display_w_clamped, display_h_clamped),
+        Vec2d(0.0, display_h_clamped)
+    }));
 
     const bool use_tilt_enabled = use_tilt->GetValue();
     config.set_key_value("use_tilt", new ConfigOptionBools({ use_tilt_enabled, use_tilt_enabled }));
