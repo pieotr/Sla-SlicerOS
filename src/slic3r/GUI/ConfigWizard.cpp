@@ -21,6 +21,7 @@
 #include <boost/log/trivial.hpp>
 #include <boost/algorithm/string/predicate.hpp>
 #include <boost/algorithm/string/case_conv.hpp>
+#include <boost/algorithm/string/trim.hpp>
 #include <boost/nowide/convert.hpp>
 #include <boost/dll/runtime_symbol_info.hpp>
 
@@ -83,6 +84,41 @@
 
 namespace Slic3r {
 namespace GUI {
+
+static DynamicPrintConfig build_custom_sla_template(const PresetBundle &preset_bundle)
+{
+    DynamicPrintConfig cfg;
+    cfg.apply(SLAFullPrintConfig::defaults());
+    cfg.apply(preset_bundle.sla_prints.get_selected_preset().config, true);
+    cfg.apply(preset_bundle.sla_materials.get_selected_preset().config, true);
+    cfg.apply(preset_bundle.printers.get_selected_preset().config, true);
+
+    cfg.option<ConfigOptionString>("sla_print_settings_id", true)->value = preset_bundle.sla_prints.get_selected_preset_name();
+    cfg.option<ConfigOptionString>("sla_material_settings_id", true)->value = preset_bundle.sla_materials.get_selected_preset_name();
+    cfg.option<ConfigOptionString>("printer_settings_id", true)->value = preset_bundle.printers.get_selected_preset_name();
+    cfg.option<ConfigOptionString>("physical_printer_settings_id", true)->value = preset_bundle.physical_printers.get_selected_printer_name();
+    if (auto *pt = cfg.option<ConfigOptionEnum<PrinterTechnology>>("printer_technology", true))
+        pt->value = ptSLA;
+    else
+        cfg.set_key_value("printer_technology", new ConfigOptionEnum<PrinterTechnology>(ptSLA));
+
+    return cfg;
+}
+
+static bool is_prusa_vendor_id(const std::string &vendor_id)
+{
+    return vendor_id == PresetBundle::PRUSA_BUNDLE || vendor_id.find("Prusa") != std::string::npos;
+}
+
+static bool is_prusa_vendor(const VendorProfile *vendor)
+{
+    return vendor != nullptr && (is_prusa_vendor_id(vendor->id) || vendor->name.find("Prusa") != std::string::npos);
+}
+
+static bool is_prusa_printer_page(const PagePrinters *page)
+{
+    return page != nullptr && (is_prusa_vendor_id(page->get_vendor_id()) || page->shortname.Find("Prusa") != wxNOT_FOUND);
+}
 
 using Config::Snapshot;
 using Config::SnapshotDB;
@@ -1479,20 +1515,163 @@ PageCustom::PageCustom(ConfigWizard *parent)
 {
     cb_custom = new wxCheckBox(this, wxID_ANY, _L("Define a custom printer profile"));
     rb_custom_sla = new wxRadioButton(this, wxID_ANY, _L("Custom SLA printer"), wxDefaultPosition, wxDefaultSize, wxRB_GROUP);
+    rb_setup_materials = new wxRadioButton(this, wxID_ANY, _L("Configure material profiles"));
     auto *label = new wxStaticText(this, wxID_ANY, _L("Custom profile name:"));
+    auto *sample_label = new wxStaticText(this, wxID_ANY, _L("Base SLA printer profile:"));
+    auto *base_material_label = new wxStaticText(this, wxID_ANY, _L("Base SLA material profile for custom materials:"));
+    auto *additional_materials_label = new wxStaticText(this, wxID_ANY, _L("Additional custom material names (comma or new line separated):"));
+    auto *custom_material_section_label = new wxStaticText(this, wxID_ANY, _L("Custom material profile details:"));
+    sample_sla_choice = new wxChoice(this, wxID_ANY);
+    base_sla_material_choice = new wxChoice(this, wxID_ANY);
+    additional_material_names = new wxTextCtrl(this, wxID_ANY, wxString(), wxDefaultPosition, wxSize(-1, 4 * em_unit(this)), wxTE_MULTILINE);
+    go_to_materials_btn = new wxButton(this, wxID_ANY, _L("Open material selection section"));
+    cb_create_custom_material = new wxCheckBox(this, wxID_ANY, _L("Create custom material profile from the fields below"));
+    custom_material_name_input = new wxTextCtrl(this, wxID_ANY);
+    custom_material_vendor_input = new wxTextCtrl(this, wxID_ANY);
+    custom_material_type_input = new wxTextCtrl(this, wxID_ANY);
+    custom_material_cost_input = new wxTextCtrl(this, wxID_ANY);
+    custom_material_hop_below_input = new wxTextCtrl(this, wxID_ANY);
+    custom_material_hop_above_input = new wxTextCtrl(this, wxID_ANY);
+    custom_material_exposure_input = new wxTextCtrl(this, wxID_ANY);
+    custom_material_initial_exposure_input = new wxTextCtrl(this, wxID_ANY);
+    custom_material_notes_input = new wxTextCtrl(this, wxID_ANY, wxString(), wxDefaultPosition, wxSize(-1, 3 * em_unit(this)), wxTE_MULTILINE);
 
     rb_custom_sla->SetValue(true);
     rb_custom_sla->Enable(false);
+    rb_setup_materials->SetValue(false);
+
+    for (const Preset& preset : wxGetApp().preset_bundle->printers) {
+        if (preset.printer_technology() != ptSLA)
+            continue;
+        if (preset.vendor && preset.vendor->id == PresetBundle::PRUSA_BUNDLE)
+            continue;
+        sample_sla_profile_names.emplace_back(preset.name);
+        sample_sla_choice->Append(from_u8(preset.name));
+    }
+    if (sample_sla_profile_names.empty()) {
+        for (const Preset& preset : wxGetApp().preset_bundle->printers) {
+            if (preset.printer_technology() != ptSLA)
+                continue;
+            sample_sla_profile_names.emplace_back(preset.name);
+            sample_sla_choice->Append(from_u8(preset.name));
+        }
+    }
+    if (!sample_sla_profile_names.empty())
+        sample_sla_choice->SetSelection(0);
+    sample_sla_choice->Enable(false);
+
+    for (const Preset& preset : wxGetApp().preset_bundle->sla_materials) {
+        if (preset.vendor && preset.vendor->id == PresetBundle::PRUSA_BUNDLE)
+            continue;
+        base_sla_material_profile_names.emplace_back(preset.name);
+        base_sla_material_choice->Append(from_u8(preset.name));
+    }
+    if (base_sla_material_profile_names.empty()) {
+        for (const Preset& preset : wxGetApp().preset_bundle->sla_materials) {
+            base_sla_material_profile_names.emplace_back(preset.name);
+            base_sla_material_choice->Append(from_u8(preset.name));
+        }
+    }
+    if (!base_sla_material_profile_names.empty())
+        base_sla_material_choice->SetSelection(0);
+    base_sla_material_choice->Enable(false);
+    additional_material_names->Enable(false);
+
+    cb_create_custom_material->SetValue(true);
+    cb_create_custom_material->Enable(false);
+
+    auto set_custom_material_controls_enabled = [this](bool enabled) {
+        cb_create_custom_material->Enable(enabled);
+        const bool fields_enabled = enabled && cb_create_custom_material->GetValue();
+        for (wxTextCtrl *ctrl : { custom_material_name_input, custom_material_vendor_input, custom_material_type_input,
+                                  custom_material_cost_input, custom_material_hop_below_input, custom_material_hop_above_input,
+                                  custom_material_exposure_input, custom_material_initial_exposure_input, custom_material_notes_input })
+            if (ctrl)
+                ctrl->Enable(fields_enabled);
+    };
+
+    auto load_material_defaults = [this](const Preset *preset) {
+        if (preset == nullptr)
+            return;
+
+        if (auto *opt = preset->config.option<ConfigOptionString>("material_vendor"); opt != nullptr)
+            custom_material_vendor_input->SetValue(from_u8(opt->value));
+        if (auto *opt = preset->config.option<ConfigOptionString>("material_type"); opt != nullptr)
+            custom_material_type_input->SetValue(from_u8(opt->value));
+        if (auto *opt = preset->config.option<ConfigOptionFloat>("bottle_cost"); opt != nullptr)
+            custom_material_cost_input->SetValue(double_to_string(opt->value));
+        if (auto *opt = preset->config.option<ConfigOptionFloat>("exposure_time"); opt != nullptr)
+            custom_material_exposure_input->SetValue(double_to_string(opt->value));
+        if (auto *opt = preset->config.option<ConfigOptionFloat>("initial_exposure_time"); opt != nullptr)
+            custom_material_initial_exposure_input->SetValue(double_to_string(opt->value));
+        if (auto *opt = preset->config.option<ConfigOptionFloats>("tower_hop_height"); opt != nullptr) {
+            if (!opt->values.empty())
+                custom_material_hop_below_input->SetValue(double_to_string(opt->values[0]));
+            if (opt->values.size() > 1)
+                custom_material_hop_above_input->SetValue(double_to_string(opt->values[1]));
+        }
+        if (auto *opt = preset->config.option<ConfigOptionString>("material_notes"); opt != nullptr)
+            custom_material_notes_input->SetValue(from_u8(opt->value));
+    };
+
+    if (!base_sla_material_profile_names.empty()) {
+        if (const Preset *preset = wxGetApp().preset_bundle->sla_materials.find_preset(base_sla_material_profile_names[0], true))
+            load_material_defaults(preset);
+    }
+
+    cb_create_custom_material->Bind(wxEVT_CHECKBOX, [set_custom_material_controls_enabled, this](wxCommandEvent &) {
+        set_custom_material_controls_enabled(custom_wanted());
+    });
 
     wxBoxSizer* profile_name_sizer = new wxBoxSizer(wxVERTICAL);
     profile_name_editor = new SavePresetDialog::Item{ this, profile_name_sizer, default_profile_name, wxGetApp().preset_bundle};
     profile_name_editor->Enable(false);
 
-    cb_custom->Bind(wxEVT_CHECKBOX, [this](wxCommandEvent &) {
+    cb_custom->Bind(wxEVT_CHECKBOX, [this, set_custom_material_controls_enabled](wxCommandEvent &) {
         rb_custom_sla->Enable(custom_wanted());
+        sample_sla_choice->Enable(custom_wanted());
+        base_sla_material_choice->Enable(custom_wanted());
+        additional_material_names->Enable(custom_wanted());
+        set_custom_material_controls_enabled(custom_wanted());
         profile_name_editor->Enable(custom_wanted());
         wizard_p()->on_custom_setup(custom_wanted());
+
+        if (custom_wanted()) {
+            rb_setup_materials->SetValue(false);
+            wizard_p()->index->go_to(wizard_p()->page_bed);
+        }
     });
+
+    auto go_to_material_setup = [this]() {
+        rb_setup_materials->SetValue(true);
+
+        const bool was_custom = cb_custom->GetValue();
+        cb_custom->SetValue(false);
+        rb_custom_sla->Enable(false);
+        sample_sla_choice->Enable(false);
+        base_sla_material_choice->Enable(false);
+        additional_material_names->Enable(false);
+        cb_create_custom_material->Enable(false);
+        for (wxTextCtrl *ctrl : { custom_material_name_input, custom_material_vendor_input, custom_material_type_input,
+                                  custom_material_cost_input, custom_material_hop_below_input, custom_material_hop_above_input,
+                                  custom_material_exposure_input, custom_material_initial_exposure_input, custom_material_notes_input })
+            if (ctrl)
+                ctrl->Enable(false);
+        profile_name_editor->Enable(false);
+
+        // If checkbox state did not change, its handler is not triggered and we must reload pages.
+        if (!was_custom)
+            wizard_p()->on_custom_setup(false);
+
+        wizard_p()->index->go_to(wizard_p()->page_sla_materials);
+    };
+
+    rb_setup_materials->Bind(wxEVT_RADIOBUTTON, [this, go_to_material_setup](wxCommandEvent &) {
+        if (rb_setup_materials->GetValue())
+            go_to_material_setup();
+    });
+
+    go_to_materials_btn->Bind(wxEVT_BUTTON, [go_to_material_setup](wxCommandEvent &) { go_to_material_setup(); });
 
     auto on_custom_tech_changed = [this](wxCommandEvent &) {
         if (custom_wanted())
@@ -1500,10 +1679,181 @@ PageCustom::PageCustom(ConfigWizard *parent)
     };
     rb_custom_sla->Bind(wxEVT_RADIOBUTTON, on_custom_tech_changed);
 
+    sample_sla_choice->Bind(wxEVT_CHOICE, [this](wxCommandEvent &) {
+        if (!custom_wanted())
+            return;
+
+        const std::string sample_name = sample_sla_profile_name();
+        if (sample_name.empty())
+            return;
+
+        if (const Preset *preset = wxGetApp().preset_bundle->printers.find_preset(sample_name, true))
+            wizard_p()->custom_config->apply(preset->config, true);
+    });
+
+    base_sla_material_choice->Bind(wxEVT_CHOICE, [this, load_material_defaults](wxCommandEvent &) {
+        const std::string base_name = base_sla_material_profile_name();
+        if (base_name.empty())
+            return;
+        if (const Preset *preset = wxGetApp().preset_bundle->sla_materials.find_preset(base_name, true))
+            load_material_defaults(preset);
+    });
+
     append(cb_custom);
+    append(rb_setup_materials);
     append(rb_custom_sla);
+    append(sample_label);
+    append(sample_sla_choice);
+    append(go_to_materials_btn);
+    append(base_material_label);
+    append(base_sla_material_choice);
+    append(additional_materials_label);
+    append(additional_material_names);
+    append_spacer(VERTICAL_SPACING);
+    append(custom_material_section_label);
+    append(cb_create_custom_material);
+
+    auto *material_grid = new wxFlexGridSizer(3, 5, 5);
+    material_grid->AddGrowableCol(1, 1);
+    auto append_material_row = [this, material_grid](const wxString &label_text, wxTextCtrl *ctrl, const wxString &unit = wxString()) {
+        material_grid->Add(new wxStaticText(this, wxID_ANY, label_text + ":"), 0, wxALIGN_CENTRE_VERTICAL);
+        material_grid->Add(ctrl, 1, wxEXPAND);
+        material_grid->Add(new wxStaticText(this, wxID_ANY, unit), 0, wxALIGN_CENTRE_VERTICAL);
+    };
+
+    append_material_row(_L("Material name"), custom_material_name_input);
+    append_material_row(_L("Material brand"), custom_material_vendor_input);
+    append_material_row(_L("Material type"), custom_material_type_input);
+    append_material_row(_L("Bottle cost"), custom_material_cost_input, _L("currency"));
+    append_material_row(_L("Required hop height (below)"), custom_material_hop_below_input, _L("mm"));
+    append_material_row(_L("Required hop height (above)"), custom_material_hop_above_input, _L("mm"));
+    append_material_row(_L("Required exposure"), custom_material_exposure_input, _L("s"));
+    append_material_row(_L("Required initial exposure"), custom_material_initial_exposure_input, _L("s"));
+    append_material_row(_L("Notes"), custom_material_notes_input);
+    append(material_grid);
+
     append(label);
     append(profile_name_sizer);
+}
+
+std::string PageCustom::sample_sla_profile_name() const
+{
+    if (sample_sla_choice == nullptr)
+        return {};
+
+    const int selection = sample_sla_choice->GetSelection();
+    if (selection < 0 || size_t(selection) >= sample_sla_profile_names.size())
+        return {};
+
+    return sample_sla_profile_names[size_t(selection)];
+}
+
+std::string PageCustom::base_sla_material_profile_name() const
+{
+    if (base_sla_material_choice == nullptr)
+        return {};
+
+    const int selection = base_sla_material_choice->GetSelection();
+    if (selection < 0 || size_t(selection) >= base_sla_material_profile_names.size())
+        return {};
+
+    return base_sla_material_profile_names[size_t(selection)];
+}
+
+std::vector<std::string> PageCustom::additional_material_profile_names() const
+{
+    std::vector<std::string> names;
+    if (additional_material_names == nullptr)
+        return names;
+
+    auto trim = [](std::string value) {
+        const size_t first = value.find_first_not_of(" \t\n\r");
+        if (first == std::string::npos)
+            return std::string();
+        const size_t last = value.find_last_not_of(" \t\n\r");
+        return value.substr(first, last - first + 1);
+    };
+
+    std::set<std::string> unique_names;
+    std::string token;
+    const std::string raw = into_u8(additional_material_names->GetValue());
+
+    for (char c : raw) {
+        if (c == ',' || c == ';' || c == '\n' || c == '\r') {
+            const std::string cleaned = trim(token);
+            if (!cleaned.empty() && unique_names.insert(cleaned).second)
+                names.emplace_back(cleaned);
+            token.clear();
+            continue;
+        }
+        token.push_back(c);
+    }
+
+    const std::string cleaned = trim(token);
+    if (!cleaned.empty() && unique_names.insert(cleaned).second)
+        names.emplace_back(cleaned);
+
+    return names;
+}
+
+bool PageCustom::custom_material_profile_enabled() const
+{
+    return cb_create_custom_material != nullptr && cb_create_custom_material->GetValue();
+}
+
+std::string PageCustom::custom_material_profile_name() const
+{
+    return custom_material_name_input ? into_u8(custom_material_name_input->GetValue()) : std::string();
+}
+
+std::string PageCustom::custom_material_vendor() const
+{
+    return custom_material_vendor_input ? into_u8(custom_material_vendor_input->GetValue()) : std::string();
+}
+
+std::string PageCustom::custom_material_type() const
+{
+    return custom_material_type_input ? into_u8(custom_material_type_input->GetValue()) : std::string();
+}
+
+std::string PageCustom::custom_material_notes() const
+{
+    return custom_material_notes_input ? into_u8(custom_material_notes_input->GetValue()) : std::string();
+}
+
+static double parse_text_double(wxTextCtrl *ctrl, double fallback)
+{
+    if (ctrl == nullptr)
+        return fallback;
+    double value = fallback;
+    if (!ctrl->GetValue().ToDouble(&value))
+        return fallback;
+    return value;
+}
+
+double PageCustom::custom_material_cost() const
+{
+    return parse_text_double(custom_material_cost_input, 0.0);
+}
+
+double PageCustom::custom_material_hop_below() const
+{
+    return parse_text_double(custom_material_hop_below_input, 5.0);
+}
+
+double PageCustom::custom_material_hop_above() const
+{
+    return parse_text_double(custom_material_hop_above_input, 5.0);
+}
+
+double PageCustom::custom_material_exposure_time() const
+{
+    return parse_text_double(custom_material_exposure_input, 2.0);
+}
+
+double PageCustom::custom_material_initial_exposure_time() const
+{
+    return parse_text_double(custom_material_initial_exposure_input, 20.0);
 }
 
 PrinterTechnology PageCustom::custom_technology() const
@@ -1926,7 +2276,7 @@ PageVendors::PageVendors(ConfigWizard* parent, std::string repo_id /*= wxEmptySt
 
     for (const std::pair<std::wstring, const VendorProfile*>& v : vendors) {
         const VendorProfile* vendor = v.second;
-//!        if (vendor->id == PresetBundle::PRUSA_BUNDLE) { continue; }
+        if (is_prusa_vendor(vendor)) { continue; }
         if (vendor && vendor->templates_profile)
             continue;
 
@@ -2030,11 +2380,57 @@ PageBuildVolume::PageBuildVolume(ConfigWizard* parent)
     // TRN ConfigWizard : Size of possible print, related on printer size
     : ConfigWizardPage(parent, _L("Build Volume"), _L("Build Volume"), 1)
     , build_volume(new DiamTextCtrl(this))
+    , display_width(new DiamTextCtrl(this))
+    , display_height(new DiamTextCtrl(this))
+    , display_pixels_x(new DiamTextCtrl(this))
+    , display_pixels_y(new DiamTextCtrl(this))
+    , display_orientation(new wxChoice(this, wxID_ANY))
+    , display_mirror_x(new wxCheckBox(this, wxID_ANY, _L("Mirror horizontally")))
+    , display_mirror_y(new wxCheckBox(this, wxID_ANY, _L("Mirror vertically")))
+    , use_tilt(new wxCheckBox(this, wxID_ANY, _L("Enable tilt function")))
 {
     append_text(_L("Set the printer height."));
 
     wxString value = "200";
     build_volume->SetValue(value);
+
+    double display_w = 120.0;
+    double display_h = 68.0;
+    int display_px_x = 2560;
+    int display_px_y = 1440;
+    int orientation = int(sladoLandscape);
+    bool mirror_x = false;
+    bool mirror_y = false;
+
+    if (const auto *opt = wizard_p()->custom_config->option<ConfigOptionFloat>("display_width"))
+        display_w = opt->value;
+    if (const auto *opt = wizard_p()->custom_config->option<ConfigOptionFloat>("display_height"))
+        display_h = opt->value;
+    if (const auto *opt = wizard_p()->custom_config->option<ConfigOptionInt>("display_pixels_x"))
+        display_px_x = opt->value;
+    if (const auto *opt = wizard_p()->custom_config->option<ConfigOptionInt>("display_pixels_y"))
+        display_px_y = opt->value;
+    if (const auto *opt = wizard_p()->custom_config->option<ConfigOptionEnum<SLADisplayOrientation>>("display_orientation"))
+        orientation = int(opt->value);
+    if (const auto *opt = wizard_p()->custom_config->option<ConfigOptionBool>("display_mirror_x"))
+        mirror_x = opt->value;
+    if (const auto *opt = wizard_p()->custom_config->option<ConfigOptionBool>("display_mirror_y"))
+        mirror_y = opt->value;
+
+    display_width->SetValue(double_to_string(display_w));
+    display_height->SetValue(double_to_string(display_h));
+    display_pixels_x->SetValue(std::to_string(display_px_x));
+    display_pixels_y->SetValue(std::to_string(display_px_y));
+    display_orientation->Append(_L("Landscape"));
+    display_orientation->Append(_L("Portrait"));
+    display_orientation->SetSelection(orientation == int(sladoLandscape) ? 0 : 1);
+    display_mirror_x->SetValue(mirror_x);
+    display_mirror_y->SetValue(mirror_y);
+    if (const auto *use_tilt_opt = wizard_p()->custom_config->option<ConfigOptionBools>("use_tilt");
+        use_tilt_opt != nullptr && !use_tilt_opt->values.empty())
+        use_tilt->SetValue(use_tilt_opt->values.front());
+    else
+        use_tilt->SetValue(false);
 
     build_volume->Bind(wxEVT_KILL_FOCUS, [this](wxFocusEvent& e) { 
         double def_value = 200.0;
@@ -2075,6 +2471,32 @@ PageBuildVolume::PageBuildVolume(ConfigWizard* parent)
     sizer_volume->Add(build_volume);
     sizer_volume->Add(unit_volume, 0, wxALIGN_CENTRE_VERTICAL);
     append(sizer_volume); 
+
+    append_spacer(VERTICAL_SPACING);
+    append_text(_L("Set screen size, resolution, and mechanical capabilities for your SLA printer."));
+
+    auto *sizer_display = new wxFlexGridSizer(3, 5, 5);
+    sizer_display->AddGrowableCol(0, 1);
+    sizer_display->Add(new wxStaticText(this, wxID_ANY, _L("Display width") + ":"), 0, wxALIGN_CENTRE_VERTICAL);
+    sizer_display->Add(display_width);
+    sizer_display->Add(new wxStaticText(this, wxID_ANY, _L("mm")), 0, wxALIGN_CENTRE_VERTICAL);
+    sizer_display->Add(new wxStaticText(this, wxID_ANY, _L("Display height") + ":"), 0, wxALIGN_CENTRE_VERTICAL);
+    sizer_display->Add(display_height);
+    sizer_display->Add(new wxStaticText(this, wxID_ANY, _L("mm")), 0, wxALIGN_CENTRE_VERTICAL);
+    sizer_display->Add(new wxStaticText(this, wxID_ANY, _L("Display pixels X") + ":"), 0, wxALIGN_CENTRE_VERTICAL);
+    sizer_display->Add(display_pixels_x);
+    sizer_display->Add(new wxStaticText(this, wxID_ANY, ""), 0, wxALIGN_CENTRE_VERTICAL);
+    sizer_display->Add(new wxStaticText(this, wxID_ANY, _L("Display pixels Y") + ":"), 0, wxALIGN_CENTRE_VERTICAL);
+    sizer_display->Add(display_pixels_y);
+    sizer_display->Add(new wxStaticText(this, wxID_ANY, ""), 0, wxALIGN_CENTRE_VERTICAL);
+    sizer_display->Add(new wxStaticText(this, wxID_ANY, _L("Display orientation") + ":"), 0, wxALIGN_CENTRE_VERTICAL);
+    sizer_display->Add(display_orientation);
+    sizer_display->Add(new wxStaticText(this, wxID_ANY, ""), 0, wxALIGN_CENTRE_VERTICAL);
+    append(sizer_display);
+
+    append(display_mirror_x);
+    append(display_mirror_y);
+    append(use_tilt);
 }
 
 void PageBuildVolume::apply_custom_config(DynamicPrintConfig& config)
@@ -2083,6 +2505,28 @@ void PageBuildVolume::apply_custom_config(DynamicPrintConfig& config)
     build_volume->GetValue().ToDouble(&val);
     auto* opt_volume = new ConfigOptionFloat(val);
     config.set_key_value("max_print_height", opt_volume);
+
+    double display_w = 120.0;
+    double display_h = 68.0;
+    long px_x = 2560;
+    long px_y = 1440;
+    display_width->GetValue().ToDouble(&display_w);
+    display_height->GetValue().ToDouble(&display_h);
+    display_pixels_x->GetValue().ToLong(&px_x);
+    display_pixels_y->GetValue().ToLong(&px_y);
+
+    config.set_key_value("display_width", new ConfigOptionFloat(std::max(1.0, display_w)));
+    config.set_key_value("display_height", new ConfigOptionFloat(std::max(1.0, display_h)));
+    config.set_key_value("display_pixels_x", new ConfigOptionInt(int(std::max(100L, px_x))));
+    config.set_key_value("display_pixels_y", new ConfigOptionInt(int(std::max(100L, px_y))));
+    config.set_key_value("display_orientation", new ConfigOptionEnum<SLADisplayOrientation>(display_orientation->GetSelection() == 0 ? sladoLandscape : sladoPortrait));
+    config.set_key_value("display_mirror_x", new ConfigOptionBool(display_mirror_x->GetValue()));
+    config.set_key_value("display_mirror_y", new ConfigOptionBool(display_mirror_y->GetValue()));
+
+    const bool use_tilt_enabled = use_tilt->GetValue();
+    config.set_key_value("use_tilt", new ConfigOptionBools({ use_tilt_enabled, use_tilt_enabled }));
+    if (!use_tilt_enabled)
+        config.set_key_value("tower_hop_height", new ConfigOptionFloats({ 5.0, 5.0 }));
 }
 
 wxDECLARE_EVENT(EVT_INDEX_PAGE, wxCommandEvent);
@@ -2102,6 +2546,7 @@ ConfigWizardIndex::ConfigWizardIndex(wxWindow *parent)
 
     Bind(wxEVT_PAINT, &ConfigWizardIndex::on_paint, this);
     Bind(wxEVT_MOTION, &ConfigWizardIndex::on_mouse_move, this);
+    Bind(wxEVT_LEFT_UP, &ConfigWizardIndex::on_mouse_left_up, this);
 }
 
 void ConfigWizardIndex::add_page(ConfigWizardPage *page)
@@ -2261,6 +2706,16 @@ void ConfigWizardIndex::on_mouse_move(wxMouseEvent &evt)
     evt.Skip();
 }
 
+void ConfigWizardIndex::on_mouse_left_up(wxMouseEvent &evt)
+{
+    const wxClientDC dc(this);
+    const wxPoint pos = evt.GetLogicalPosition(dc);
+    const ssize_t clicked = pos.y / item_height();
+    if (clicked >= 0 && clicked < (ssize_t)items.size() && items[clicked].page != nullptr)
+        go_to((size_t)clicked);
+    evt.Skip();
+}
+
 void ConfigWizardIndex::msw_rescale()
 {
     const wxSize size = GetTextExtent("m");
@@ -2379,11 +2834,24 @@ void ConfigWizard::priv::load_pages()
 
         // Printers
         for (const auto page : pages_msla)
-            index->add_page(page);
+            if (page != nullptr && !is_prusa_printer_page(page))
+                index->add_page(page);
 
         if (!only_sla_mode) {
             for (const auto& repos : repositories) {
-                if (!repos.vendors_page)
+                bool has_non_prusa_pages = false;
+                for (const auto& pages : repos.printers_pages) {
+                    for (PagePrinters* page : { pages.second.first, pages.second.second }) {
+                        if (page && !is_prusa_printer_page(page)) {
+                            has_non_prusa_pages = true;
+                            break;
+                        }
+                    }
+                    if (has_non_prusa_pages)
+                        break;
+                }
+
+                if (!repos.vendors_page || !has_non_prusa_pages)
                     continue;
                 index->add_page(repos.vendors_page);
 
@@ -2401,7 +2869,7 @@ void ConfigWizard::priv::load_pages()
                     if (pages == repos.printers_pages.end())
                         continue; // Should not happen
                     for (PagePrinters* page : { pages->second.first, pages->second.second })
-                        if (page && page->install)
+                        if (page && page->install && !is_prusa_printer_page(page))
                             index->add_page(page);
                 }
             }
@@ -2447,12 +2915,10 @@ void ConfigWizard::priv::load_pages()
             index->go_to(former_active);   // Will restore the active item/page if possible
     }
 #else
-    if (pages_msla.empty()) {
-        if (page_sla_materials)
-            index->go_to(page_sla_materials);
-    } else {
-        index->go_to(pages_msla.front());
-    }
+    if (page_custom)
+        index->go_to(page_custom);
+    else if (page_sla_materials)
+        index->go_to(page_sla_materials);
 #endif
 
     q->Layout();
@@ -2580,17 +3046,24 @@ void ConfigWizard::priv::set_start_page(ConfigWizard::StartPage start_page)
     switch (start_page) {
         case ConfigWizard::SP_PRINTERS: {
                 // find start 
-                PagePrinters* page = !pages_fff.empty()  ? pages_fff[0]  : 
-                                     !pages_msla.empty() ? pages_msla[0] : nullptr;
+                PagePrinters* page = nullptr;
+                if (!pages_fff.empty())
+                    page = pages_fff[0];
+                if (!page)
+                    for (auto *candidate : pages_msla)
+                        if (candidate && !is_prusa_printer_page(candidate)) {
+                            page = candidate;
+                            break;
+                        }
                 for (const auto& repo : repositories) {
                     if (page)
                         break;
                     for (const auto& [name, pages] : repo.printers_pages) {
-                        if (pages.first && pages.first->install) {
+                        if (pages.first && pages.first->install && !is_prusa_printer_page(pages.first)) {
                             page = pages.first;
                             break;
                         }
-                        if (pages.second && pages.second->install) {
+                        if (pages.second && pages.second->install && !is_prusa_printer_page(pages.second)) {
                             page = pages.second;
                             break;
                         }
@@ -2611,8 +3084,8 @@ void ConfigWizard::priv::set_start_page(ConfigWizard::StartPage start_page)
             break;
         default:
 #ifdef SLIC3R_OFFLINE_ONLY
-            if (!pages_msla.empty())
-                index->go_to(pages_msla[0]);
+            if (page_custom)
+                index->go_to(page_custom);
             else
                 index->go_to(page_sla_materials);
 #else
@@ -2633,6 +3106,9 @@ ConfigWizard::priv::Repository* ConfigWizard::priv::get_repo(const std::string& 
 
 void ConfigWizard::priv::create_vendor_printers_page(const std::string& repo_id, const VendorProfile* vendor, bool install/* = false*/, bool from_single_vendor_repo /*= false*/)
 {
+    if (is_prusa_vendor(vendor))
+        return;
+
     bool is_fff_technology = false;
     bool is_sla_technology = false;
 
@@ -3450,14 +3926,97 @@ bool ConfigWizard::priv::apply_config(AppConfig *app_config, PresetBundle *prese
             !wxGetApp().check_and_keep_current_preset_changes(caption, _L("Custom printer was installed and it will be activated."), act_btns, &apply_keeped_changes))
             return false;
 
-        custom_config->set_key_value("printer_technology", new ConfigOptionEnum<PrinterTechnology>(page_custom->custom_technology()));
-        page_bed->apply_custom_config(*custom_config);
-        page_bvolume->apply_custom_config(*custom_config);
+        DynamicPrintConfig custom_cfg = build_custom_sla_template(*preset_bundle);
+        if (const std::string sample_name = page_custom->sample_sla_profile_name(); !sample_name.empty()) {
+            if (const Preset *preset = preset_bundle->printers.find_preset(sample_name, true))
+                custom_cfg.apply(preset->config, true);
+        }
 
-        copy_bed_model_and_texture_if_needed(*custom_config);
+        custom_cfg.set_key_value("printer_technology", new ConfigOptionEnum<PrinterTechnology>(page_custom->custom_technology()));
+        page_bed->apply_custom_config(custom_cfg);
+        page_bvolume->apply_custom_config(custom_cfg);
+
+        copy_bed_model_and_texture_if_needed(custom_cfg);
 
         const std::string profile_name = page_custom->profile_name();
-        preset_bundle->load_config_from_wizard(profile_name, *custom_config);
+        preset_bundle->load_config_from_wizard(profile_name, std::move(custom_cfg));
+
+        const auto apply_hop_and_tilt_safety = [](Preset &material, double hop_below_fallback, double hop_above_fallback) {
+            auto *use_tilt_opt = material.config.option<ConfigOptionBools>("use_tilt");
+            auto *hop_opt = material.config.option<ConfigOptionFloats>("tower_hop_height", true);
+            if (use_tilt_opt == nullptr || hop_opt == nullptr)
+                return;
+
+            if (hop_opt->values.size() < 2)
+                hop_opt->values.resize(2, 0.0);
+
+            if (std::abs(hop_opt->get_at(0)) < EPSILON)
+                hop_opt->values[0] = hop_below_fallback;
+            if (std::abs(hop_opt->get_at(1)) < EPSILON)
+                hop_opt->values[1] = hop_above_fallback;
+
+            for (size_t i = 0; i < 2 && i < use_tilt_opt->values.size(); ++i)
+                if (!use_tilt_opt->get_at(i) && std::abs(hop_opt->get_at(i)) < EPSILON)
+                    hop_opt->values[i] = (i == 0) ? hop_below_fallback : hop_above_fallback;
+        };
+
+        const std::string base_material_name = page_custom->base_sla_material_profile_name();
+        const Preset *base_material = nullptr;
+        if (!base_material_name.empty())
+            base_material = preset_bundle->sla_materials.find_preset(base_material_name, true);
+        if (base_material == nullptr)
+            base_material = preset_bundle->sla_materials.find_preset(profile_name, true);
+
+        const bool custom_material_enabled = page_custom->custom_material_profile_enabled();
+        const double hop_below = std::max(0.0, page_custom->custom_material_hop_below());
+        const double hop_above = std::max(0.0, page_custom->custom_material_hop_above());
+
+        std::vector<std::string> material_names = page_custom->additional_material_profile_names();
+        if (custom_material_enabled) {
+            std::string primary_name = page_custom->custom_material_profile_name();
+            boost::trim(primary_name);
+            if (primary_name.empty())
+                primary_name = profile_name;
+            material_names.insert(material_names.begin(), primary_name);
+        }
+        if (material_names.empty())
+            material_names.emplace_back(profile_name);
+
+        std::set<std::string> unique_material_names;
+        for (const std::string &material_name_raw : material_names) {
+            std::string material_name = material_name_raw;
+            boost::trim(material_name);
+            if (material_name.empty() || !unique_material_names.insert(material_name).second)
+                continue;
+
+            Preset *material_ptr = preset_bundle->sla_materials.find_preset(material_name, true);
+            if (material_ptr == nullptr && base_material != nullptr) {
+                DynamicPrintConfig material_cfg(base_material->config);
+                if (auto *id_opt = material_cfg.option<ConfigOptionString>("sla_material_settings_id", true))
+                    id_opt->value = material_name;
+                material_ptr = &preset_bundle->sla_materials.load_preset(
+                    preset_bundle->sla_materials.path_from_name(material_name), material_name, material_cfg, false);
+            }
+
+            if (material_ptr == nullptr)
+                continue;
+
+            if (auto *id_opt = material_ptr->config.option<ConfigOptionString>("sla_material_settings_id", true))
+                id_opt->value = material_name;
+
+            if (custom_material_enabled) {
+                material_ptr->config.set_key_value("material_vendor", new ConfigOptionString(page_custom->custom_material_vendor()));
+                material_ptr->config.set_key_value("material_type", new ConfigOptionString(page_custom->custom_material_type()));
+                material_ptr->config.set_key_value("material_notes", new ConfigOptionString(page_custom->custom_material_notes()));
+                material_ptr->config.set_key_value("bottle_cost", new ConfigOptionFloat(std::max(0.0, page_custom->custom_material_cost())));
+                material_ptr->config.set_key_value("exposure_time", new ConfigOptionFloat(std::max(0.1, page_custom->custom_material_exposure_time())));
+                material_ptr->config.set_key_value("initial_exposure_time", new ConfigOptionFloat(std::max(0.1, page_custom->custom_material_initial_exposure_time())));
+                material_ptr->config.set_key_value("tower_hop_height", new ConfigOptionFloats({ hop_below, hop_above }));
+            }
+
+            apply_hop_and_tilt_safety(*material_ptr, hop_below, hop_above);
+            material_ptr->save();
+        }
     }
 
     // Update the selections from the compatibilty.
@@ -3758,9 +4317,40 @@ ConfigWizard::ConfigWizard(wxWindow *parent)
     this->SetFont(wxGetApp().normal_font());
 
     p->load_vendors();
-    p->custom_config.reset(DynamicPrintConfig::new_from_defaults_keys({
-        "gcode_flavor", "bed_shape", "bed_custom_texture", "bed_custom_model", "nozzle_diameter", "filament_diameter", "temperature", "bed_temperature",
-    }));
+
+    // Build custom-printer config from a complete SLA-capable config so all option groups have required keys.
+    DynamicPrintConfig custom_template = build_custom_sla_template(*wxGetApp().preset_bundle);
+    const Preset* sample_sla_printer = nullptr;
+
+    const Preset& selected_printer = wxGetApp().preset_bundle->printers.get_selected_preset();
+    if (selected_printer.printer_technology() == ptSLA)
+        sample_sla_printer = &selected_printer;
+
+    if (!sample_sla_printer) {
+        for (const Preset& preset : wxGetApp().preset_bundle->printers)
+            if (preset.printer_technology() == ptSLA && preset.is_system) {
+                sample_sla_printer = &preset;
+                break;
+            }
+    }
+
+    if (!sample_sla_printer) {
+        for (const auto& bundle : p->bundles) {
+            for (const Preset& preset : bundle.second.preset_bundle->printers)
+                if (preset.printer_technology() == ptSLA) {
+                    sample_sla_printer = &preset;
+                    break;
+                }
+            if (sample_sla_printer)
+                break;
+        }
+    }
+
+    if (sample_sla_printer)
+        custom_template.apply(sample_sla_printer->config, true);
+
+    custom_template.set_key_value("printer_technology", new ConfigOptionEnum<PrinterTechnology>(ptSLA));
+    p->custom_config = std::make_unique<DynamicPrintConfig>(std::move(custom_template));
 
     p->index = new ConfigWizardIndex(this);
 

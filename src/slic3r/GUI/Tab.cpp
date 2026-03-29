@@ -3031,14 +3031,6 @@ void TabPrinter::build_sla()
     optgroup->append_single_option_line("display_mirror_x");
     optgroup->append_single_option_line("display_mirror_y");
 
-    optgroup = page->new_optgroup(L("Tilt"));
-    line = { L("Tilt time"), "" };
-    line.append_option(optgroup->get_option("fast_tilt_time"));
-    line.append_option(optgroup->get_option("slow_tilt_time"));
-    line.append_option(optgroup->get_option("high_viscosity_tilt_time"));
-    optgroup->append_line(line);
-//    optgroup->append_single_option_line("area_fill");
-
     optgroup = page->new_optgroup(L("Corrections"));
     line = Line{ m_config->def()->get("relative_correction")->full_label, "" };
     for (auto& axis : { "X", "Y", "Z" }) {
@@ -3948,8 +3940,13 @@ bool Tab::select_preset(std::string preset_name, bool delete_current /*=false*/,
         PrinterTechnology  printer_technology = printer_profile.preset.printer_technology();
         PresetCollection  &dependent = (printer_technology == ptFFF) ? m_preset_bundle->filaments : m_preset_bundle->sla_materials;
         bool 			   old_preset_dirty = dependent.current_is_dirty();
-        bool 			   new_preset_compatible = is_compatible_with_print(dependent.get_edited_preset_with_vendor_profile(), 
-        	m_presets->get_preset_with_vendor_profile(*m_presets->find_preset(preset_name, true)), printer_profile);
+        const Preset *new_print_preset = m_presets->find_preset(preset_name, true);
+        if (new_print_preset == nullptr) {
+            canceled = true;
+        }
+        bool 			   new_preset_compatible = !canceled && is_compatible_with_print(
+            dependent.get_edited_preset_with_vendor_profile(),
+	        m_presets->get_preset_with_vendor_profile(*new_print_preset), printer_profile);
         if (! canceled)
             canceled = old_preset_dirty && ! new_preset_compatible && ! may_discard_current_dirty_preset(&dependent, preset_name);
         if (! canceled) {
@@ -3966,7 +3963,11 @@ bool Tab::select_preset(std::string preset_name, bool delete_current /*=false*/,
         //
         // With the introduction of the SLA printer types, we need to support switching between
         // the FFF and SLA printers.
-        const Preset 		&new_printer_preset     = *m_presets->find_preset(preset_name, true);
+        const Preset *new_printer_preset_ptr = m_presets->find_preset(preset_name, true);
+        if (new_printer_preset_ptr == nullptr)
+            canceled = true;
+
+        const Preset &new_printer_preset = canceled ? m_presets->get_edited_preset() : *new_printer_preset_ptr;
 		const PresetWithVendorProfile new_printer_preset_with_vendor_profile = m_presets->get_preset_with_vendor_profile(new_printer_preset);
         PrinterTechnology    old_printer_technology = m_presets->get_edited_preset().printer_technology();
         PrinterTechnology    new_printer_technology = new_printer_preset.printer_technology();
@@ -3992,11 +3993,15 @@ bool Tab::select_preset(std::string preset_name, bool delete_current /*=false*/,
                 bool force_update_edited_preset = false;
                 if (pu.tab_type == Preset::TYPE_FILAMENT && pu.new_preset_compatible) {
                     // check if edited preset will be still correct after selection new printer 
-                    const int active_extruder    = dynamic_cast<const TabFilament*>(wxGetApp().get_tab(Preset::TYPE_FILAMENT))->get_active_extruder();
-                    const int extruder_count_new = int(dynamic_cast<const ConfigOptionFloats*>(new_printer_preset.config.option("nozzle_diameter"))->size());
-                    // if active_extruder is bigger than extruders_count,
-                    // then it means that edited filament preset will be changed and we have to check this changes
-                    force_update_edited_preset = active_extruder >= extruder_count_new;
+                    const auto *filament_tab = dynamic_cast<const TabFilament*>(wxGetApp().get_tab(Preset::TYPE_FILAMENT));
+                    const auto *nozzle_opt = dynamic_cast<const ConfigOptionFloats*>(new_printer_preset.config.option("nozzle_diameter"));
+                    if (filament_tab != nullptr && nozzle_opt != nullptr) {
+                        const int active_extruder    = filament_tab->get_active_extruder();
+                        const int extruder_count_new = int(nozzle_opt->size());
+                        // if active_extruder is bigger than extruders_count,
+                        // then it means that edited filament preset will be changed and we have to check this changes
+                        force_update_edited_preset = active_extruder >= extruder_count_new;
+                    }
                 }
                 if (!canceled)
                     canceled = pu.old_preset_dirty && (!pu.new_preset_compatible || force_update_edited_preset) && !may_discard_current_dirty_preset(pu.presets, preset_name);
@@ -4062,10 +4067,16 @@ bool Tab::select_preset(std::string preset_name, bool delete_current /*=false*/,
         	       on_page                                ? PresetSelectCompatibleType::Never  :
         	       show_incompatible_presets              ? PresetSelectCompatibleType::OnlyIfWasCompatible : PresetSelectCompatibleType::Always;
         };
-        if (current_dirty || delete_current || print_tab || printer_tab)
+        if (current_dirty || delete_current || print_tab || printer_tab) {
+            const Tab *print_tab_ref = print_tab ? this : wxGetApp().get_tab(Preset::TYPE_PRINT);
+            const Tab *filament_tab_ref = wxGetApp().get_tab(Preset::TYPE_FILAMENT);
+            const bool show_incompat_print = print_tab_ref ? print_tab_ref->m_show_incompatible_presets : false;
+            const bool show_incompat_filament = filament_tab_ref ? filament_tab_ref->m_show_incompatible_presets : false;
+
             m_preset_bundle->update_compatible(
-            	update_compatible_type(technology_changed, print_tab,   (print_tab ? this : wxGetApp().get_tab(Preset::TYPE_PRINT))->m_show_incompatible_presets),
-            	update_compatible_type(technology_changed, false, 		wxGetApp().get_tab(Preset::TYPE_FILAMENT)->m_show_incompatible_presets));
+	            update_compatible_type(technology_changed, print_tab, show_incompat_print),
+	            update_compatible_type(technology_changed, false, show_incompat_filament));
+        }
         // Initialize the UI from the current preset.
         if (printer_tab)
             static_cast<TabPrinter*>(this)->update_pages();
@@ -4081,7 +4092,11 @@ bool Tab::select_preset(std::string preset_name, bool delete_current /*=false*/,
              * to the corresponding printer_technology
              */
             const PrinterTechnology printer_technology = m_presets->get_edited_preset().printer_technology();
-            if (printer_technology == ptFFF && m_dependent_tabs.front() != Preset::Type::TYPE_PRINT)
+            if (m_dependent_tabs.empty()) {
+                m_dependent_tabs = (printer_technology == ptSLA)
+                    ? std::vector<Preset::Type>{ Preset::Type::TYPE_SLA_PRINT, Preset::Type::TYPE_SLA_MATERIAL }
+                    : std::vector<Preset::Type>{ Preset::Type::TYPE_PRINT, Preset::Type::TYPE_FILAMENT };
+            } else if (printer_technology == ptFFF && m_dependent_tabs.front() != Preset::Type::TYPE_PRINT)
                 m_dependent_tabs = { Preset::Type::TYPE_PRINT, Preset::Type::TYPE_FILAMENT };
             else if (printer_technology == ptSLA && m_dependent_tabs.front() != Preset::Type::TYPE_SLA_PRINT)
                 m_dependent_tabs = { Preset::Type::TYPE_SLA_PRINT, Preset::Type::TYPE_SLA_MATERIAL };
@@ -5533,6 +5548,11 @@ void TabSLAMaterial::build()
 #if 1
     optgroup = page->new_optgroup(L("Material printing profile"));
     optgroup->append_single_option_line("material_print_speed");
+
+    line = { optgroup->get_option("tower_hop_height", 0).opt.full_label, "" };
+    line.append_option(optgroup->get_option("tower_hop_height", 0));
+    line.append_option(optgroup->get_option("tower_hop_height", 1));
+    optgroup->append_line(line);
 
     optgroup = page->new_optgroup(L("Tilt"));
     optgroup->append_single_option_line("area_fill");

@@ -4901,7 +4901,7 @@ void PrintConfigDef::init_sla_tilt_params()
     def->sidetext = L("mm");
     def->min = 0;
     def->max = 100;
-    def->mode = comExpert;
+    def->mode = comSimple;
     def->set_default_value(new ConfigOptionFloats({ 0., 0.}));
 
     def = this->add("tower_speed", coEnums); 

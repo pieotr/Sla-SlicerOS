@@ -100,6 +100,9 @@ PreferencesDialog::PreferencesDialog(wxWindow* parent) :
 
 static void update_color(wxColourPickerCtrl* color_pckr, const wxColour& color) 
 {
+	if (color_pckr == nullptr)
+		return;
+
 	if (color_pckr->GetColour() != color) {
 		color_pckr->SetColour(color);
 		wxPostEvent(color_pckr, wxCommandEvent(wxEVT_COLOURPICKER_CHANGED));

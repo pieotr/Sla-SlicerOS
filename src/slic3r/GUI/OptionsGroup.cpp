@@ -998,9 +998,43 @@ boost::any ConfigOptionsGroup::get_config_value(const DynamicPrintConfig& config
 {
 	size_t idx = opt_index == -1 ? 0 : opt_index;
 
+    auto fallback_value = [](ConfigOptionType type) -> boost::any {
+        switch (type) {
+        case coBool:
+        case coBools:
+            return false;
+        case coInt:
+        case coInts:
+        case coEnum:
+        case coEnums:
+            return 0;
+        default:
+            return wxString("");
+        }
+    };
+
 	boost::any ret;
 	wxString text_value = wxString("");
 	const ConfigOptionDef* opt = config.def()->get(opt_key);
+    if (opt == nullptr) {
+        std::cerr << "No option definition for " << opt_key << " in ConfigOptionsGroup config.\n";
+        return wxString("");
+    }
+
+    const ConfigOption *cfg_opt = config.option(opt_key);
+    if (cfg_opt == nullptr) {
+        std::cerr << "No option value for " << opt_key << " in ConfigOptionsGroup config.\n";
+        return fallback_value(opt->type);
+    }
+
+    if (cfg_opt->is_vector()) {
+        if (const auto *vec = dynamic_cast<const ConfigOptionVectorBase*>(cfg_opt); vec != nullptr) {
+            if (vec->empty())
+                return fallback_value(opt->type);
+            if (idx >= vec->size())
+                idx = vec->size() - 1;
+        }
+    }
 
     if (opt->nullable)
     {

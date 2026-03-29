@@ -418,6 +418,20 @@ struct PageCustom: ConfigWizardPage
     }
 
     bool        custom_wanted()         const { return cb_custom->GetValue(); }
+    bool        material_setup_wanted() const { return rb_setup_materials->GetValue(); }
+    std::string sample_sla_profile_name() const;
+    std::string base_sla_material_profile_name() const;
+    std::vector<std::string> additional_material_profile_names() const;
+    bool        custom_material_profile_enabled() const;
+    std::string custom_material_profile_name() const;
+    std::string custom_material_vendor() const;
+    std::string custom_material_type() const;
+    std::string custom_material_notes() const;
+    double      custom_material_cost() const;
+    double      custom_material_hop_below() const;
+    double      custom_material_hop_above() const;
+    double      custom_material_exposure_time() const;
+    double      custom_material_initial_exposure_time() const;
     bool        is_valid_profile_name() const { return profile_name_editor->is_valid();}
     std::string profile_name()          const { return profile_name_editor->preset_name(); }
     PrinterTechnology custom_technology() const;
@@ -427,7 +441,24 @@ private:
     static const char* default_profile_name;
 
     wxCheckBox              *cb_custom {nullptr};
+    wxRadioButton           *rb_setup_materials {nullptr};
     wxRadioButton           *rb_custom_sla {nullptr};
+    wxChoice                *sample_sla_choice {nullptr};
+    std::vector<std::string> sample_sla_profile_names;
+    wxChoice                *base_sla_material_choice {nullptr};
+    std::vector<std::string> base_sla_material_profile_names;
+    wxTextCtrl              *additional_material_names {nullptr};
+    wxButton                *go_to_materials_btn {nullptr};
+    wxCheckBox              *cb_create_custom_material {nullptr};
+    wxTextCtrl              *custom_material_name_input {nullptr};
+    wxTextCtrl              *custom_material_vendor_input {nullptr};
+    wxTextCtrl              *custom_material_type_input {nullptr};
+    wxTextCtrl              *custom_material_cost_input {nullptr};
+    wxTextCtrl              *custom_material_hop_below_input {nullptr};
+    wxTextCtrl              *custom_material_hop_above_input {nullptr};
+    wxTextCtrl              *custom_material_exposure_input {nullptr};
+    wxTextCtrl              *custom_material_initial_exposure_input {nullptr};
+    wxTextCtrl              *custom_material_notes_input {nullptr};
     SavePresetDialog::Item  *profile_name_editor {nullptr};
 
 };
@@ -504,6 +535,14 @@ struct PageBedShape: ConfigWizardPage
 struct PageBuildVolume : ConfigWizardPage
 {
     wxTextCtrl* build_volume;
+    wxTextCtrl* display_width;
+    wxTextCtrl* display_height;
+    wxTextCtrl* display_pixels_x;
+    wxTextCtrl* display_pixels_y;
+    wxChoice*   display_orientation;
+    wxCheckBox* display_mirror_x;
+    wxCheckBox* display_mirror_y;
+    wxCheckBox* use_tilt;
 
     PageBuildVolume(ConfigWizard* parent);
     virtual void apply_custom_config(DynamicPrintConfig& config);
@@ -565,6 +604,7 @@ private:
 
     void on_paint(wxPaintEvent &evt);
     void on_mouse_move(wxMouseEvent &evt);
+    void on_mouse_left_up(wxMouseEvent &evt);
 };
 
 wxDEFINE_EVENT(EVT_INDEX_PAGE, wxCommandEvent);

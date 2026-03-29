@@ -209,7 +209,10 @@ bool OptionsSearcher::search(const std::string& search, bool force/* = false*/)
 
     found.clear();
 
-    bool full_list = search.empty();
+    std::wstring wsearch = boost::nowide::widen(search);
+    boost::trim(wsearch);
+    bool full_list = wsearch.empty();
+    const std::string search_u8 = boost::nowide::narrow(wsearch);
     std::wstring sep = L" : ";
 
     auto get_label = [this, &sep](const Option& opt, bool marked = true)
@@ -265,14 +268,22 @@ bool OptionsSearcher::search(const std::string& search, bool force/* = false*/)
             continue;
         }
 
-        std::wstring wsearch       = boost::nowide::widen(search);
-        boost::trim_left(wsearch);
         std::wstring label         = get_label(opt, false);
         std::wstring label_english = get_label_english(opt, false);
         int score = std::numeric_limits<int>::min();
         int score2;
         matches.clear();
-        fuzzy_match(wsearch, label, score, matches);
+        const std::string label_u8 = boost::nowide::narrow(label);
+        const std::string label_english_u8 = boost::nowide::narrow(label_english);
+        const std::string key_u8 = boost::nowide::narrow(opt.key);
+
+        if (!search_u8.empty() &&
+            (boost::icontains(label_u8, search_u8) || boost::icontains(label_english_u8, search_u8) || boost::icontains(key_u8, search_u8))) {
+            score = 1000;
+        } else {
+            fuzzy_match(wsearch, label, score, matches);
+        }
+
         if (fuzzy_match(wsearch, opt.key, score2, matches2) && score2 > score) {
         	for (fts::pos_type &pos : matches2)
         		pos += label.size() + 1;
@@ -285,9 +296,8 @@ bool OptionsSearcher::search(const std::string& search, bool force/* = false*/)
         	matches = std::move(matches2);
         	score   = score2;
         }
-        if (score > 90/*std::numeric_limits<int>::min()*/) {
+        if (score > std::numeric_limits<int>::min()) {
 		    label = mark_string(label, matches, opt.type, printer_technology);
-            label += L"  [" + std::to_wstring(score) + L"]";// add score value
 	        std::string label_u8 = into_u8(label);
 	        std::string label_plain = label_u8;
 
@@ -322,9 +332,6 @@ OptionsSearcher::~OptionsSearcher()
 
 void OptionsSearcher::check_and_update(PrinterTechnology pt_in, ConfigOptionMode mode_in, std::vector<InputInfo> input_values)
 {
-    if (printer_technology == pt_in && mode == mode_in)
-        return;
-
     options.clear();
 
     printer_technology = pt_in;
