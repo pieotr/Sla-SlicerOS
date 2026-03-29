@@ -32,7 +32,7 @@ endif()
 add_subdirectory(sla_print)
 add_subdirectory(cpp17 EXCLUDE_FROM_ALL)    # does not have to be built all the time
 
-if (SLIC3R_GUI)
+if (SLIC3R_GUI AND NOT SLIC3R_SLA_ONLY)
     add_subdirectory(slic3rutils)
 endif()
 

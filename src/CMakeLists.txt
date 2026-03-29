@@ -141,7 +141,7 @@ if (NOT WIN32 AND NOT APPLE)
 endif ()
 
 
-target_link_libraries(PrusaSlicer PRIVATE libslic3r libcereal slic3r-arrange-wrapper libseqarrange stb_image)
+target_link_libraries(PrusaSlicer PRIVATE libslic3r stb_image)
 
 if (APPLE)
 #    add_compile_options(-stdlib=libc++)

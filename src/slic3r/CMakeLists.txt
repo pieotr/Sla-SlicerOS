@@ -408,8 +408,6 @@ target_link_libraries(
     PUBLIC
     libslic3r
     slic3r-arrange-wrapper
-    avrdude
-    libcereal
     imgui
     libvgcode
     GLEW::GLEW
@@ -421,7 +419,6 @@ target_link_libraries(
     NanoSVG::nanosvgrast
     stb_dxt
     fastfloat
-    boost_headeronly
 )
 
 if (MSVC)

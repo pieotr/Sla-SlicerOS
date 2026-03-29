@@ -87,6 +87,12 @@ endif ()
 option(SLIC3R_BUILD_SANDBOXES   "Build development sandboxes" OFF)
 option(SLIC3R_BUILD_TESTS       "Build unit tests" ON)
 
+if (SLIC3R_SLA_ONLY)
+    # SLA-only branch: keep auxiliary build trees disabled.
+    set(SLIC3R_BUILD_SANDBOXES OFF CACHE BOOL "" FORCE)
+    set(SLIC3R_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+endif ()
+
 if (IS_CROSS_COMPILE)
     message("Detected cross compilation setup. Tests and encoding checks will be forcedly disabled!")
     set(SLIC3R_BUILD_TESTS OFF CACHE BOOL "" FORCE)
@@ -626,10 +632,6 @@ add_subdirectory(src)
 set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT PrusaSlicer_app_console)
 
 add_dependencies(gettext_make_pot hintsToPot)
-
-if(SLIC3R_BUILD_SANDBOXES)
-    add_subdirectory(sandboxes)
-endif()
 
 if(SLIC3R_BUILD_TESTS)
     add_subdirectory(tests)

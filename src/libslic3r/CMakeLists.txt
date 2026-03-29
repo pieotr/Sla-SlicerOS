@@ -615,7 +615,6 @@ find_package(nlohmann_json REQUIRED)
 
 target_link_libraries(libslic3r PRIVATE
     libnest2d
-    libcereal
     boost_libs
     clipper
     libexpat
@@ -624,14 +623,12 @@ target_link_libraries(libslic3r PRIVATE
     TBB::tbb
     TBB::tbbmalloc
     libslic3r_cgal
-    ${CMAKE_DL_LIBS}
     PNG::PNG
     ZLIB::ZLIB
 	JPEG::JPEG
     qoi
     fastfloat
     int128
-    nlohmann_json::nlohmann_json
 )
 target_link_libraries(libslic3r PUBLIC
     Eigen3::Eigen
@@ -644,7 +641,6 @@ target_link_libraries(libslic3r PUBLIC
     libigl
     agg
     ankerl
-    boost_headeronly
     libseqarrange
 )
 
