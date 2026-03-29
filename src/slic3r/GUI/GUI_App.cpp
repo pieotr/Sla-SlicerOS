@@ -576,10 +576,43 @@ wxString file_wildcards(FileType file_type, const std::string &custom_extension)
 
 wxString sla_wildcards(const char *formatid, const std::string& custom_extension)
 {
-    const ArchiveEntry *entry = get_archive_entry(formatid);
+    const bool all_formats = (formatid == nullptr || *formatid == '\0');
+    const ArchiveEntry *entry = all_formats ? nullptr : get_archive_entry(formatid);
     wxString ret;
 
-    if (entry) {
+    if (all_formats) {
+        FileWildcards all_wc;
+        all_wc.title = _u8L("Masked SLA files");
+
+        for (const ArchiveEntry &arch_entry : registered_sla_archives()) {
+            std::vector<std::string> exts = get_extensions(arch_entry);
+            for (std::string &ext : exts) {
+                ext.insert(ext.begin(), '.');
+                if (std::find(all_wc.file_extensions.begin(), all_wc.file_extensions.end(), ext) == all_wc.file_extensions.end())
+                    all_wc.file_extensions.emplace_back(std::move(ext));
+            }
+        }
+
+        if (!all_wc.file_extensions.empty())
+            ret = file_wildcards(all_wc, custom_extension);
+
+        for (const ArchiveEntry &arch_entry : registered_sla_archives()) {
+            FileWildcards wc;
+            std::string tr_title = I18N::translate_utf8(arch_entry.desc);
+            tr_title = GUI::format(_u8L("%s files"), tr_title);
+            wc.title = tr_title;
+
+            std::vector<std::string> exts = get_extensions(arch_entry);
+            wc.file_extensions.reserve(exts.size());
+            for (std::string &ext : exts) {
+                ext.insert(ext.begin(), '.');
+                wc.file_extensions.emplace_back(std::move(ext));
+            }
+
+            if (!wc.file_extensions.empty())
+                ret += "|" + file_wildcards(wc, "");
+        }
+    } else if (entry) {
         FileWildcards wc;
         std::string tr_title = I18N::translate_utf8(entry->desc);
         // TRN %s = type of file

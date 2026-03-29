@@ -153,6 +153,10 @@ set(SLIC3R_SOURCES
     Format/SL1_SVG.cpp
     Format/AnycubicSLA.hpp
     Format/AnycubicSLA.cpp
+    Format/CrealityCXDLPv4.hpp
+    Format/CrealityCXDLPv4.cpp
+    Format/SLAArchiveWriterFactory.hpp
+    Format/SLAArchiveWriterFactory.cpp
     Format/STEP.hpp
     Format/STEP.cpp
     Format/SVG.hpp

@@ -238,6 +238,22 @@ void fill_slicerconf(ConfMap &m, const SLAPrint &print)
     for (const std::string &key : cfg.keys())
         if (! is_banned(key) && !is_tilt_param(key) && ! cfg.option(key)->is_nil())
             m[key] = cfg.opt_serialize(key);
+
+    // Keep printer geometry in metadata consistent with oriented raster output.
+    double w  = cfg.opt_float("display_width");
+    double h  = cfg.opt_float("display_height");
+    int    pw = cfg.opt_int("display_pixels_x");
+    int    ph = cfg.opt_int("display_pixels_y");
+    const int ro = cfg.opt_int("display_orientation");
+    if (ro == sla::RasterBase::roPortrait) {
+        std::swap(w, h);
+        std::swap(pw, ph);
+    }
+
+    m["display_width"] = std::to_string(w);
+    m["display_height"] = std::to_string(h);
+    m["display_pixels_x"] = std::to_string(pw);
+    m["display_pixels_y"] = std::to_string(ph);
     
 }
 

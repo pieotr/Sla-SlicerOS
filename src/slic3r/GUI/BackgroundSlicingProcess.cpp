@@ -46,6 +46,10 @@
 
 namespace Slic3r {
 
+namespace {
+
+} // namespace
+
 bool SlicingProcessCompletedEvent::critical_error() const
 {
 	try {
@@ -778,7 +782,7 @@ void BackgroundSlicingProcess::prepare_upload(PrintHostJob &upload_job)
 				sizes.emplace_back(size);
 		}
 		ThumbnailsList thumbnails = this->render_thumbnails(ThumbnailsParams{ sizes, true, true, true, true });
-        m_sla_print->export_print(source_path.string(),thumbnails, upload_job.upload_data.upload_path.filename().string());
+		m_sla_print->export_print(source_path.string(), thumbnails, upload_job.upload_data.upload_path.filename().string());
     }
 
     m_print->set_status(100, GUI::format(_L("Scheduling upload to `%1%`. See Window -> Print Host Upload Queue"), upload_job.printhost->get_host()));

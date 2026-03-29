@@ -76,6 +76,7 @@ std::vector<std::string> get_extensions(const ArchiveEntry &entry);
 const std::set<ArchiveEntry>& registered_sla_archives();
 
 const ArchiveEntry * get_archive_entry(const char *formatid);
+const ArchiveEntry * get_archive_entry_by_extension(const char *extension);
 const char * get_default_extension(const char *formatid);
 ArchiveWriterFactory get_writer_factory(const char *formatid);
 ArchiveReaderFactory get_reader_factory(const char *formatid);

@@ -13,6 +13,7 @@
 #include <cinttypes>
 
 #include "SLAArchiveWriter.hpp"
+#include "SLAArchiveWriterFactory.hpp"
 #include "SLAArchiveFormatRegistry.hpp"
 #include "libslic3r/PrintConfig.hpp"
 #include "libslic3r/GCode/ThumbnailData.hpp"

@@ -318,8 +318,19 @@ void fill_header(anycubicsla_format_header &h,
     if (layer_count < h.bottom_layer_count) {
         h.bottom_layer_count = layer_count;
     }
-    h.res_x     = get_cfg_value_i(cfg, "display_pixels_x");
-    h.res_y     = get_cfg_value_i(cfg, "display_pixels_y");
+    double display_w_mm = get_cfg_value_f(cfg, "display_width");
+    double display_h_mm = get_cfg_value_f(cfg, "display_height");
+    std::uint32_t res_x = static_cast<std::uint32_t>(get_cfg_value_i(cfg, "display_pixels_x"));
+    std::uint32_t res_y = static_cast<std::uint32_t>(get_cfg_value_i(cfg, "display_pixels_y"));
+
+    const auto ro = get_cfg_value_i(cfg, "display_orientation");
+    if (ro == sla::RasterBase::roPortrait) {
+        std::swap(display_w_mm, display_h_mm);
+        std::swap(res_x, res_y);
+    }
+
+    h.res_x = res_x;
+    h.res_y = res_y;
     bottle_weight_g = get_cfg_value_f(cfg, "bottle_weight") * 1000.0f;
     bottle_volume_ml = get_cfg_value_f(cfg, "bottle_volume");
     bottle_cost = get_cfg_value_f(cfg, "bottle_cost");
@@ -377,7 +388,12 @@ void fill_header(anycubicsla_format_header &h,
 
 
     h.payload_size  = sizeof(h) - sizeof(h.tag) - sizeof(h.payload_size);
-    h.pixel_size_um = 50;
+
+    // Keep header geometry consistent with oriented raster dimensions.
+    // UVtools validates this ratio and warns / stretches when it diverges.
+    const double pixel_size_x_um = (h.res_x > 0) ? (display_w_mm / double(h.res_x) * 1000.0) : 50.0;
+    const double pixel_size_y_um = (h.res_y > 0) ? (display_h_mm / double(h.res_y) * 1000.0) : 50.0;
+    h.pixel_size_um = static_cast<float>((pixel_size_x_um + pixel_size_y_um) * 0.5);
 }
 
 } // namespace
@@ -523,7 +539,10 @@ void AnycubicSLAArchive::export_print(const std::string     fname,
     std::vector<uint8_t>      layer_images;
     std::uint32_t             image_offset;
 
-    assert(m_version == ANYCUBIC_SLA_FORMAT_VERSION_1);
+        assert(m_version == ANYCUBIC_SLA_FORMAT_VERSION_1 ||
+            m_version == ANYCUBIC_SLA_FORMAT_VERSION_515 ||
+            m_version == ANYCUBIC_SLA_FORMAT_VERSION_516 ||
+            m_version == ANYCUBIC_SLA_FORMAT_VERSION_517);
 
     intro.version             = m_version;
     intro.area_num            = 4;

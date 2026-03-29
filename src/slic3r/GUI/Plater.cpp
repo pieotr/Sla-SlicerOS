@@ -29,6 +29,7 @@
 #include <vector>
 #include <string>
 #include <regex>
+#include <set>
 #include <future>
 #include <utility>
 #include <boost/algorithm/string.hpp>
@@ -49,6 +50,7 @@
 #include <wx/statbox.h>
 #include <wx/statbmp.h>
 #include <wx/filedlg.h>
+#include <wx/filectrl.h>
 #include <wx/dnd.h>
 #include <wx/progdlg.h>
 #include <wx/wupdlock.h>
@@ -74,6 +76,7 @@
 #include "libslic3r/Print.hpp"
 #include "libslic3r/PrintConfig.hpp"
 #include "libslic3r/SLAPrint.hpp"
+#include "libslic3r/Format/SLAArchiveFormatRegistry.hpp"
 #include "libslic3r/Utils.hpp"
 #include "libslic3r/PresetBundle.hpp"
 #include "libslic3r/miniz_extension.hpp"
@@ -5860,24 +5863,145 @@ std::optional<wxString> Plater::check_output_path_has_error(const boost::filesys
 
 std::optional<fs::path> Plater::get_output_path(const std::string &start_dir, const fs::path &default_output_file) {
     const std::string ext = default_output_file.extension().string();
-    wxFileDialog dlg(this, (printer_technology() == ptFFF) ? _L("Save G-code file as:") : _L("Save SL1 / SL1S file as:"),
+    const std::string default_stem = default_output_file.stem().string();
+
+    wxString wildcard = printer_technology() == ptFFF ? GUI::file_wildcards(FT_GCODE, ext) : GUI::sla_wildcards(nullptr, ext);
+
+    std::vector<std::string> sla_filter_extensions;
+    int sla_initial_filter_index = 0;
+
+    auto extract_ext_from_filter_mask = [](const std::string &mask) {
+        const size_t pos = mask.find("*.");
+        if (pos == std::string::npos)
+            return std::string();
+
+        std::string out;
+        out.reserve(16);
+        out.push_back('.');
+        for (size_t i = pos + 2; i < mask.size(); ++i) {
+            const unsigned char c = static_cast<unsigned char>(mask[i]);
+            if (!std::isalnum(c))
+                break;
+            out.push_back(static_cast<char>(std::tolower(c)));
+        }
+
+        return out.size() > 1 ? out : std::string();
+    };
+
+    if (printer_technology() == ptSLA) {
+        std::vector<std::string> parts;
+        boost::split(parts, into_u8(wildcard), boost::is_any_of("|"));
+
+        if (parts.size() >= 2) {
+            const int filter_count = int(parts.size() / 2);
+            sla_filter_extensions.reserve(size_t(filter_count));
+            for (int i = 0; i < filter_count; ++i)
+                sla_filter_extensions.emplace_back(extract_ext_from_filter_mask(parts[size_t(2 * i + 1)]));
+
+            std::string preferred_ext = boost::algorithm::to_lower_copy(ext);
+            if (preferred_ext.empty()) {
+                const Preset &edited_printer = wxGetApp().preset_bundle->printers.get_edited_preset();
+                const std::string current_format = edited_printer.config.opt_string("sla_archive_format");
+                const std::string fallback_ext = boost::algorithm::to_lower_copy(std::string(get_default_extension(current_format.c_str())));
+                if (!fallback_ext.empty())
+                    preferred_ext = "." + fallback_ext;
+            }
+
+            if (!preferred_ext.empty()) {
+                for (int i = 0; i < filter_count; ++i) {
+                    if (boost::iequals(sla_filter_extensions[size_t(i)], preferred_ext)) {
+                        sla_initial_filter_index = i;
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    wxFileDialog dlg(this, (printer_technology() == ptFFF) ? _L("Save G-code file as:") : _L("Save SLA file as:"),
         start_dir,
-        from_path(default_output_file.filename()),
-        printer_technology() == ptFFF ? GUI::file_wildcards(FT_GCODE, ext) :
-                                        GUI::sla_wildcards(active_sla_print().printer_config().sla_archive_format.value.c_str(), ext),
+        printer_technology() == ptSLA ? from_u8(default_stem) : from_path(default_output_file.filename()),
+        wildcard,
         wxFD_SAVE | wxFD_OVERWRITE_PROMPT
     );
+
+    if (printer_technology() == ptSLA) {
+        dlg.SetFilterIndex(sla_initial_filter_index);
+
+        auto apply_filter_to_filename = [&dlg, &sla_filter_extensions, &default_stem](int filter_index) {
+            if (filter_index < 0 || size_t(filter_index) >= sla_filter_extensions.size())
+                return;
+
+            fs::path filename = into_path(dlg.GetFilename());
+            std::string stem = filename.stem().string();
+            if (stem.empty() || stem.find_first_of("|*()") != std::string::npos)
+                stem = default_stem;
+
+            const std::string &new_ext = sla_filter_extensions[size_t(filter_index)];
+            if (!new_ext.empty())
+                filename = fs::path(stem + new_ext);
+            dlg.SetFilename(from_path(filename));
+        };
+
+        dlg.Bind(wxEVT_FILECTRL_FILTERCHANGED, [apply_filter_to_filename](wxFileCtrlEvent &evt) {
+            apply_filter_to_filename(evt.GetFilterIndex());
+            evt.Skip();
+        });
+
+        // Ensure visible default filename extension matches initially selected filter.
+        apply_filter_to_filename(sla_initial_filter_index);
+    }
 
     if (dlg.ShowModal() != wxID_OK) {
         return std::nullopt;
     }
 
-    const fs::path output_path{into_path(dlg.GetPath())};
+    fs::path output_path{into_path(dlg.GetPath())};
+    if (printer_technology() == ptSLA) {
+        const std::string typed_ext = boost::algorithm::to_lower_copy(output_path.extension().string());
+        const bool typed_ext_is_known = !typed_ext.empty() && (get_archive_entry_by_extension(typed_ext.c_str()) != nullptr);
+
+        const int filter_index = dlg.GetFilterIndex();
+        if (!typed_ext_is_known && filter_index >= 0 && size_t(filter_index) < sla_filter_extensions.size()) {
+            const std::string &selected_ext = sla_filter_extensions[size_t(filter_index)];
+            if (!selected_ext.empty())
+                output_path.replace_extension(selected_ext);
+        }
+    }
+
     if (auto error{check_output_path_has_error(output_path)}) {
         const t_link_clicked on_link_clicked = [](const std::string& key) -> void { wxGetApp().jump_to_option(key); };
         ErrorDialog(this, *error, on_link_clicked).ShowModal();
         return std::nullopt;
     }
+
+    if (printer_technology() == ptSLA) {
+        const std::string extension = boost::algorithm::to_lower_copy(output_path.extension().string());
+        if (!extension.empty()) {
+            if (const ArchiveEntry *entry = get_archive_entry_by_extension(extension.c_str())) {
+                static const std::set<std::string> unsupported_export_formats = {
+                    "cbddlp", "cbt", "photon", "photons", "ctb", "phz",
+                    "cxdlp",
+                    "nanodlp", "lgs", "lgs30", "lgs120", "lgs4k",
+                    "vdt", "cws", "n4", "n7", "fdg", "goo", "prz", "zcode", "jxs", "zcodex", "mdlp", "gr1", "svgx", "qdt", "osla", "osf", "uvj"
+                };
+
+                if (unsupported_export_formats.count(entry->id) > 0) {
+                    ErrorDialog(this,
+                                _L("This format is recognized but not yet implemented natively in this app. Direct in-app export currently supports Anycubic (*.pwmo/*.pws/etc.) and SL1 (*.sl1/*.sl1s)."),
+                                false)
+                        .ShowModal();
+                    return std::nullopt;
+                }
+
+                Preset &edited_printer = wxGetApp().preset_bundle->printers.get_edited_preset();
+                const std::string current = edited_printer.config.opt_string("sla_archive_format");
+                if (!boost::iequals(current, entry->id))
+                    edited_printer.config.set("sla_archive_format", std::string(entry->id));
+            }
+        }
+    }
+
     return output_path;
 }
 
