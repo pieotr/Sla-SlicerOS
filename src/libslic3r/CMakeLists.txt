@@ -155,8 +155,14 @@ set(SLIC3R_SOURCES
     Format/AnycubicSLA.cpp
     Format/CrealityCXDLPv4.hpp
     Format/CrealityCXDLPv4.cpp
+    Format/UVToolsCompatArchive.hpp
+    Format/UVToolsCompatArchive.cpp
     Format/SLAArchiveWriterFactory.hpp
     Format/SLAArchiveWriterFactory.cpp
+    Format/ZipArchiveBase.hpp
+    Format/ZipArchiveBase.cpp
+    Format/BinaryRLEEncoderBase.hpp
+    Format/BinaryRLEEncoderBase.cpp
     Format/STEP.hpp
     Format/STEP.cpp
     Format/SVG.hpp

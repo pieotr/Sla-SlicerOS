@@ -11,6 +11,7 @@
 #include "SL1_SVG.hpp"
 #include "AnycubicSLA.hpp"
 #include "CrealityCXDLPv4.hpp"
+#include "UVToolsCompatArchive.hpp"
 #include "SLAArchiveWriterFactory.hpp"
 #include "libslic3r/I18N.hpp"
 #include "SLAArchiveFormatRegistry.hpp"
@@ -147,7 +148,7 @@ class Registry {
                 L("Creality CXDLP"),
                 "cxdlp",
                 {"v1.cxdlp"},
-                [] (const auto &cfg) { return std::make_unique<AnycubicSLAArchive>(cfg, ANYCUBIC_SLA_FORMAT_VERSION_1); },
+                [] (const auto &cfg) { return std::make_unique<UVToolsCXDLPArchive>(cfg); },
                 [] (const std::string &fname, SLAImportQuality quality, const ProgrFn &progr) {
                     return std::make_unique<SL1Reader>(fname, quality, progr);
                 }
@@ -233,7 +234,7 @@ class Registry {
                 L("NovaMaker CWS"),
                 "cws",
                 {},
-                [] (const auto &cfg) { return std::make_unique<AnycubicSLAArchive>(cfg, ANYCUBIC_SLA_FORMAT_VERSION_1); },
+                [] (const auto &cfg) { return std::make_unique<UVToolsCWSArchive>(cfg); },
                 [] (const std::string &fname, SLAImportQuality quality, const ProgrFn &progr) {
                     return std::make_unique<SL1Reader>(fname, quality, progr);
                 }
@@ -263,7 +264,7 @@ class Registry {
                 L("Voxelab FDG"),
                 "fdg",
                 {},
-                [] (const auto &cfg) { return std::make_unique<AnycubicSLAArchive>(cfg, ANYCUBIC_SLA_FORMAT_VERSION_1); },
+                [] (const auto &cfg) { return std::make_unique<UVToolsFDGArchive>(cfg); },
                 [] (const std::string &fname, SLAImportQuality quality, const ProgrFn &progr) {
                     return std::make_unique<SL1Reader>(fname, quality, progr);
                 }
