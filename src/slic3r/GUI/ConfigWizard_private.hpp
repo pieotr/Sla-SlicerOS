@@ -420,11 +420,15 @@ struct PageCustom: ConfigWizardPage
     bool        custom_wanted()         const { return cb_custom->GetValue(); }
     bool        is_valid_profile_name() const { return profile_name_editor->is_valid();}
     std::string profile_name()          const { return profile_name_editor->preset_name(); }
+    PrinterTechnology custom_technology() const;
+    void set_only_sla_mode(bool only_sla_mode);
 
 private:
     static const char* default_profile_name;
 
     wxCheckBox              *cb_custom {nullptr};
+    wxRadioButton           *rb_custom_fff {nullptr};
+    wxRadioButton           *rb_custom_sla {nullptr};
     SavePresetDialog::Item  *profile_name_editor {nullptr};
 
 };
@@ -691,6 +695,7 @@ struct ConfigWizard::priv
     void update_materials(Technology technology);
 
     void on_custom_setup(const bool custom_wanted);
+    PrinterTechnology custom_setup_technology() const;
     void on_printer_pick(PagePrinters *page, const PrinterPickerEvent &evt);
     void select_default_materials_for_printer_model(const VendorProfile::PrinterModel &printer_model, Technology technology);
     void select_default_materials_for_printer_models(Technology technology, const std::set<const VendorProfile::PrinterModel*> &printer_models);

@@ -1478,20 +1478,78 @@ PageCustom::PageCustom(ConfigWizard *parent)
     : ConfigWizardPage(parent, _L("Custom Printer Setup"), _L("Custom Printer"))
 {
     cb_custom = new wxCheckBox(this, wxID_ANY, _L("Define a custom printer profile"));
+#ifndef SLIC3R_SLA_ONLY
+    rb_custom_fff = new wxRadioButton(this, wxID_ANY, _L("Custom FFF printer"), wxDefaultPosition, wxDefaultSize, wxRB_GROUP);
+    rb_custom_sla = new wxRadioButton(this, wxID_ANY, _L("Custom SLA printer"));
+#else
+    rb_custom_sla = new wxRadioButton(this, wxID_ANY, _L("Custom SLA printer"), wxDefaultPosition, wxDefaultSize, wxRB_GROUP);
+#endif
     auto *label = new wxStaticText(this, wxID_ANY, _L("Custom profile name:"));
+
+#ifndef SLIC3R_SLA_ONLY
+    rb_custom_fff->SetValue(true);
+    rb_custom_fff->Enable(false);
+#endif
+    rb_custom_sla->SetValue(true);
+    rb_custom_sla->Enable(false);
 
     wxBoxSizer* profile_name_sizer = new wxBoxSizer(wxVERTICAL);
     profile_name_editor = new SavePresetDialog::Item{ this, profile_name_sizer, default_profile_name, wxGetApp().preset_bundle};
     profile_name_editor->Enable(false);
 
     cb_custom->Bind(wxEVT_CHECKBOX, [this](wxCommandEvent &) {
+#ifndef SLIC3R_SLA_ONLY
+        rb_custom_fff->Enable(custom_wanted());
+#endif
+        rb_custom_sla->Enable(custom_wanted());
         profile_name_editor->Enable(custom_wanted());
         wizard_p()->on_custom_setup(custom_wanted());
     });
 
+    auto on_custom_tech_changed = [this](wxCommandEvent &) {
+        if (custom_wanted())
+            wizard_p()->on_custom_setup(true);
+    };
+#ifndef SLIC3R_SLA_ONLY
+    rb_custom_fff->Bind(wxEVT_RADIOBUTTON, on_custom_tech_changed);
+#endif
+    rb_custom_sla->Bind(wxEVT_RADIOBUTTON, on_custom_tech_changed);
+
     append(cb_custom);
+#ifndef SLIC3R_SLA_ONLY
+    append(rb_custom_fff);
+#endif
+    append(rb_custom_sla);
     append(label);
     append(profile_name_sizer);
+}
+
+PrinterTechnology PageCustom::custom_technology() const
+{
+#ifdef SLIC3R_SLA_ONLY
+    return ptSLA;
+#else
+    return rb_custom_sla->GetValue() ? ptSLA : ptFFF;
+#endif
+}
+
+void PageCustom::set_only_sla_mode(bool only_sla_mode)
+{
+#ifndef SLIC3R_SLA_ONLY
+    if (only_sla_mode) {
+        rb_custom_sla->SetValue(true);
+        rb_custom_fff->SetValue(false);
+        rb_custom_fff->Enable(false);
+        rb_custom_sla->Enable(custom_wanted());
+    } else {
+        rb_custom_fff->Enable(custom_wanted());
+        rb_custom_sla->Enable(custom_wanted());
+    }
+#else
+    (void)only_sla_mode;
+    rb_custom_sla->SetValue(true);
+    rb_custom_sla->Enable(custom_wanted());
+#endif
 }
 
 PageUpdate::PageUpdate(ConfigWizard *parent)
@@ -2582,16 +2640,17 @@ void ConfigWizard::priv::load_pages()
 
         // Printers
 #ifndef SLIC3R_OFFLINE_ONLY
+#ifndef SLIC3R_SLA_ONLY
         if (!only_sla_mode)
             for (const auto page : pages_fff)
                 index->add_page(page);
+#endif
 #endif
 
         for (const auto page : pages_msla)
             index->add_page(page);
 
         if (!only_sla_mode) {
-
             for (const auto& repos : repositories) {
                 if (!repos.vendors_page)
                     continue;
@@ -2616,28 +2675,41 @@ void ConfigWizard::priv::load_pages()
                 }
             }
 
-            index->add_page(page_custom);
-            if (page_custom->custom_wanted()) {
-                index->add_page(page_firmware);
-                index->add_page(page_bed);
-                index->add_page(page_bvolume);
-                index->add_page(page_diams);
-                index->add_page(page_temps);
-            }
-
 #ifndef SLIC3R_OFFLINE_ONLY
+#ifndef SLIC3R_SLA_ONLY
             // Filaments & Materials
             if (any_fff_selected) { index->add_page(page_filaments); }
             // Filaments page if only custom printer is selected
             const AppConfig* app_config = wxGetApp().app_config;
-            if (!any_fff_selected && (custom_printer_selected || custom_printer_in_bundle) && (app_config->get("no_templates") == "0")) {
+            if (page_custom != nullptr
+                && !any_fff_selected
+                && custom_printer_selected
+                && page_custom->custom_technology() == ptFFF
+                && (app_config->get("no_templates") == "0")) {
                 update_materials(T_ANY);
                 index->add_page(page_filaments);
             }
 #endif
+#endif
         }
 
-        if (any_sla_selected) 
+        if (page_custom != nullptr) {
+            page_custom->set_only_sla_mode(only_sla_mode);
+            index->add_page(page_custom);
+            if (page_custom->custom_wanted()) {
+                index->add_page(page_bed);
+                index->add_page(page_bvolume);
+                if (page_custom->custom_technology() == ptFFF) {
+#ifndef SLIC3R_SLA_ONLY
+                    index->add_page(page_firmware);
+                    index->add_page(page_diams);
+                    index->add_page(page_temps);
+#endif
+                }
+            }
+        }
+
+        if (any_sla_selected || (custom_printer_selected && custom_setup_technology() == ptSLA))
             index->add_page(page_sla_materials);
 
     #ifdef SLIC3R_OFFLINE_ONLY
@@ -2952,7 +3024,7 @@ void ConfigWizard::priv::update_materials(Technology technology)
         }
     }
 
-    if (any_sla_selected && (technology & T_SLA)) {
+    if ((any_sla_selected || (custom_printer_selected && custom_setup_technology() == ptSLA)) && (technology & T_SLA)) {
         sla_materials.clear();
         aliases_sla.clear();
 
@@ -2978,6 +3050,13 @@ void ConfigWizard::priv::on_custom_setup(const bool custom_wanted)
 {
 	custom_printer_selected = custom_wanted;
     load_pages();
+}
+
+PrinterTechnology ConfigWizard::priv::custom_setup_technology() const
+{
+    if (!page_custom)
+        return ptSLA;
+    return page_custom->custom_technology();
 }
 
 void ConfigWizard::priv::on_printer_pick(PagePrinters *page, const PrinterPickerEvent &evt)
@@ -3165,8 +3244,8 @@ bool ConfigWizard::priv::on_bnt_finish()
     
     // Even if we have only custom printer installed, check filament selection. 
     // Template filaments could be selected in this case. 
-    if (custom_printer_selected && !any_fff_selected && !any_sla_selected) 
-        return check_and_install_missing_materials(T_FFF);
+    if (custom_printer_selected && !any_fff_selected && !any_sla_selected)
+        return check_and_install_missing_materials(custom_setup_technology() == ptSLA ? T_SLA : T_FFF);
 
     // check, that there is selected at least one filament/material
     return check_and_install_missing_materials(T_ANY);
@@ -3657,17 +3736,23 @@ bool ConfigWizard::priv::apply_config(AppConfig *app_config, PresetBundle *prese
         preset_bundle->load_presets(*app_config, ForwardCompatibilitySubstitutionRule::EnableSilentDisableSystem, 
                                     {preferred_model, preferred_variant, first_added_filament, first_added_sla_material});
 
-    if (!only_sla_mode && page_custom->custom_wanted() && page_custom->is_valid_profile_name()) {
+    if (page_custom && page_custom->custom_wanted() && page_custom->is_valid_profile_name()) {
         // if unsaved changes was not cheched till this moment
         if (!check_unsaved_preset_changes && 
             !wxGetApp().check_and_keep_current_preset_changes(caption, _L("Custom printer was installed and it will be activated."), act_btns, &apply_keeped_changes))
             return false;
 
-        page_firmware->apply_custom_config(*custom_config);
+        custom_config->set_key_value("printer_technology", new ConfigOptionEnum<PrinterTechnology>(page_custom->custom_technology()));
+
+        if (page_custom->custom_technology() == ptFFF) {
+    #ifndef SLIC3R_SLA_ONLY
+            page_firmware->apply_custom_config(*custom_config);
+            page_diams->apply_custom_config(*custom_config);
+            page_temps->apply_custom_config(*custom_config);
+    #endif
+        }
         page_bed->apply_custom_config(*custom_config);
         page_bvolume->apply_custom_config(*custom_config);
-        page_diams->apply_custom_config(*custom_config);
-        page_temps->apply_custom_config(*custom_config);
 
         copy_bed_model_and_texture_if_needed(*custom_config);
 
@@ -3922,12 +4007,18 @@ void ConfigWizard::priv::load_pages_from_archive()
                 // it's single prusa vendor repository
                 create_vendor_printers_page(data.id, vendors[0], true, true);
 
-                if (!is_primary_printer_page_set && !pages_fff.empty())
+                if (!is_primary_printer_page_set
+#ifndef SLIC3R_SLA_ONLY
+                    && !pages_fff.empty()
+#endif
+                    )
                 {
+#ifndef SLIC3R_SLA_ONLY
                     pages_fff.back()->is_primary_printer_page = true;
                     is_primary_printer_page_set = true;
+#endif
                 }
-                else if (!is_primary_printer_page_set && !pages_msla.empty())
+                if (!is_primary_printer_page_set && !pages_msla.empty())
                 {
                     pages_msla.back()->is_primary_printer_page = true;
                     is_primary_printer_page_set = true;
@@ -3938,15 +4029,17 @@ void ConfigWizard::priv::load_pages_from_archive()
     }
 
 #ifndef SLIC3R_OFFLINE_ONLY
+#ifndef SLIC3R_SLA_ONLY
     if (only_sla_mode && installed_multivendors_repos()) {
         only_sla_mode = false;
     }
 #endif
+#endif
 
-    if (!only_sla_mode) {
+    if (!page_custom) {
         add_page(page_custom = new PageCustom(q));
-        custom_printer_selected = page_custom->custom_wanted();
     }
+    custom_printer_selected = page_custom->custom_wanted();
 
     any_sla_selected = check_sla_selected();
     any_fff_selected = !only_sla_mode && check_fff_selected();
@@ -4055,11 +4148,15 @@ ConfigWizard::ConfigWizard(wxWindow *parent)
 #ifndef SLIC3R_OFFLINE_ONLY
     p->add_page(p->page_mode     = new PageMode(this));
 #endif
+#ifndef SLIC3R_SLA_ONLY
     p->add_page(p->page_firmware = new PageFirmware(this));
+#endif
     p->add_page(p->page_bed      = new PageBedShape(this));
     p->add_page(p->page_bvolume  = new PageBuildVolume(this));
+#ifndef SLIC3R_SLA_ONLY
     p->add_page(p->page_diams    = new PageDiameters(this));
     p->add_page(p->page_temps    = new PageTemperatures(this));
+#endif
 
     vsizer->Add(topsizer, 1, wxEXPAND | wxALL, DIALOG_MARGIN);
     vsizer->Add(hline, 0, wxEXPAND | wxLEFT | wxRIGHT, VERTICAL_SPACING);
