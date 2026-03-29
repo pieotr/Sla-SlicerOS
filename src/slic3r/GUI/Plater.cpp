@@ -1955,7 +1955,8 @@ void Plater::priv::object_list_changed()
     const bool export_in_progress = this->background_process.is_export_scheduled(); // || ! send_gcode_file.empty());
                                                                                     //
     if (printer_technology == ptFFF) {
-        for (std::size_t bed_index{}; bed_index < s_multiple_beds.get_number_of_beds(); ++bed_index) {
+        const std::size_t bed_count = std::size_t(s_multiple_beds.get_number_of_beds());
+        for (std::size_t bed_index{}; bed_index < bed_count; ++bed_index) {
             if ( wxGetApp().plater()->get_fff_prints()[bed_index]->empty()) {
                 s_print_statuses[bed_index] = PrintStatus::empty;
             } else if (
@@ -1970,7 +1971,7 @@ void Plater::priv::object_list_changed()
                     const auto it{s_multiple_beds.get_inst_map().find(instance->id())};
                     if (
                         it != s_multiple_beds.get_inst_map().end()
-                        && it->second == bed_index
+                        && std::size_t(it->second) == bed_index
                         && instance->printable
                         && instance->print_volume_state == ModelInstancePVS_Partly_Outside
                     ) {
@@ -2297,7 +2298,7 @@ std::vector<Print::ApplyStatus> apply_to_inactive_beds(
     std::vector<Print::ApplyStatus> result(MAX_NUMBER_OF_BEDS);
     for (std::size_t bed_index{0}; bed_index < prints.size(); ++bed_index) {
         const std::unique_ptr<Print> &print{prints[bed_index]};
-        if (!print || bed_index == s_multiple_beds.get_active_bed()) {
+        if (!print || int(bed_index) == s_multiple_beds.get_active_bed()) {
             continue;
         }
         using MultipleBedsUtils::with_single_bed_model_fff;
@@ -2309,7 +2310,7 @@ std::vector<Print::ApplyStatus> apply_to_inactive_beds(
 }
 
 void Plater::priv::regenerate_thumbnails(SimpleEvent&) {
-    const int num{s_multiple_beds.get_number_of_beds()};
+    const std::size_t num = std::size_t(s_multiple_beds.get_number_of_beds());
     if (num <= 1 || num > MAX_NUMBER_OF_BEDS) {
         return;
     }
@@ -2331,9 +2332,9 @@ void Plater::priv::regenerate_thumbnails(SimpleEvent&) {
     s_bed_selector_thumbnail_changed.fill(false);
 
     s_bed_selector_thumbnail_texture_ids.resize(num);
-    glsafe(glGenTextures(num, s_bed_selector_thumbnail_texture_ids.data()));
-    for (int i = 0; i < num; ++i) {
-        s_multiple_beds.set_thumbnail_bed_idx(i);
+    glsafe(glGenTextures(GLsizei(num), s_bed_selector_thumbnail_texture_ids.data()));
+    for (std::size_t i = 0; i < num; ++i) {
+        s_multiple_beds.set_thumbnail_bed_idx(int(i));
         generate_thumbnail(data, w, h, params, GUI::Camera::EType::Ortho);
         s_multiple_beds.set_thumbnail_bed_idx(-1);
         glsafe(glBindTexture(GL_TEXTURE_2D, s_bed_selector_thumbnail_texture_ids[i]));
@@ -2429,7 +2430,8 @@ unsigned int Plater::priv::update_background_process(bool force_validation, bool
         throw std::runtime_error{"Ivalid printer technology!"};
     }
 
-    for (std::size_t bed_index{}; bed_index < s_multiple_beds.get_number_of_beds(); ++bed_index) {
+    const std::size_t bed_count = std::size_t(s_multiple_beds.get_number_of_beds());
+    for (std::size_t bed_index{}; bed_index < bed_count; ++bed_index) {
         if (printer_technology == ptFFF) {
             if (apply_statuses[bed_index] != Print::ApplyStatus::APPLY_STATUS_UNCHANGED) {
                 s_print_statuses[bed_index] = PrintStatus::idle;
@@ -3304,10 +3306,16 @@ void Plater::priv::on_slicing_update(SlicingStatusEvent &evt)
             warning_steps.clear();
             if (flags == PrintBase::SlicingStatus::UPDATE_PRINT_STEP_WARNINGS) {
                 int i = 0;
-                while (i < int(printer_technology == ptFFF ? psCount : slapsCount)) { warning_steps.push_back(i); ++i; }
+                if (printer_technology == ptFFF)
+                    while (i < int(psCount)) { warning_steps.push_back(i); ++i; }
+                else
+                    while (i < int(slapsCount)) { warning_steps.push_back(i); ++i; }
             } else {
                 int i = 0;
-                while (i < int(printer_technology == ptFFF ? posCount : slaposCount)) { warning_steps.push_back(i); ++i; }
+                if (printer_technology == ptFFF)
+                    while (i < int(posCount)) { warning_steps.push_back(i); ++i; }
+                else
+                    while (i < int(slaposCount)) { warning_steps.push_back(i); ++i; }
                 for (const PrintObject* po : wxGetApp().plater()->active_fff_print().objects())
                     object_ids.push_back(po->id());
             }
@@ -4138,7 +4146,8 @@ void Plater::priv::show_autoslicing_action_buttons() const {
     }
 
     bool all_finished{true};
-    for (std::size_t bed_index{}; bed_index < s_multiple_beds.get_number_of_beds(); ++bed_index) {
+    const std::size_t bed_count = std::size_t(s_multiple_beds.get_number_of_beds());
+    for (std::size_t bed_index{}; bed_index < bed_count; ++bed_index) {
         const std::unique_ptr<Print> &print{this->fff_prints[bed_index]};
         if (!print->finished() && is_sliceable(s_print_statuses[bed_index])) {
             all_finished = false;
@@ -5865,7 +5874,7 @@ std::optional<fs::path> Plater::get_output_path(const std::string &start_dir, co
     const std::string ext = default_output_file.extension().string();
     const std::string default_stem = default_output_file.stem().string();
 
-    wxString wildcard = printer_technology() == ptFFF ? GUI::file_wildcards(FT_GCODE, ext) : GUI::sla_wildcards(nullptr, ext);
+    wxString wildcard = printer_technology() == ptFFF ? GUI::file_wildcards(FT_GCODE, ext) : GUI::sla_wildcards(nullptr, "");
 
     std::vector<std::string> sla_filter_extensions;
     int sla_initial_filter_index = 0;
@@ -5876,16 +5885,48 @@ std::optional<fs::path> Plater::get_output_path(const std::string &start_dir, co
             return std::string();
 
         std::string out;
-        out.reserve(16);
-        out.push_back('.');
-        for (size_t i = pos + 2; i < mask.size(); ++i) {
+        out.reserve(24);
+        for (size_t i = pos + 1; i < mask.size(); ++i) {
             const unsigned char c = static_cast<unsigned char>(mask[i]);
-            if (!std::isalnum(c))
+            if (c == ';' || c == '|' || std::isspace(c) || c == ')')
                 break;
             out.push_back(static_cast<char>(std::tolower(c)));
         }
 
-        return out.size() > 1 ? out : std::string();
+        return (!out.empty() && out.front() == '.') ? out : std::string();
+    };
+
+    auto normalized_known_sla_suffixes = []() {
+        std::vector<std::string> out;
+        for (const ArchiveEntry &arch_entry : registered_sla_archives()) {
+            std::vector<std::string> exts = get_extensions(arch_entry);
+            for (std::string ext : exts) {
+                if (ext.empty())
+                    continue;
+                if (ext.front() != '.')
+                    ext.insert(ext.begin(), '.');
+                ext = boost::algorithm::to_lower_copy(ext);
+                if (std::find(out.begin(), out.end(), ext) == out.end())
+                    out.emplace_back(std::move(ext));
+            }
+        }
+
+        // Prefer the longest suffix first (e.g. .encrypted.ctb before .ctb).
+        std::sort(out.begin(), out.end(), [](const std::string &a, const std::string &b) {
+            return a.size() > b.size();
+        });
+
+        return out;
+    };
+
+    auto detect_sla_suffix = [known_suffixes = normalized_known_sla_suffixes()](const fs::path &path) {
+        const std::string filename = boost::algorithm::to_lower_copy(path.filename().string());
+        for (const std::string &suffix : known_suffixes) {
+            if (filename.size() >= suffix.size() &&
+                filename.compare(filename.size() - suffix.size(), suffix.size(), suffix) == 0)
+                return suffix;
+        }
+        return std::string();
     };
 
     if (printer_technology() == ptSLA) {
@@ -5898,14 +5939,12 @@ std::optional<fs::path> Plater::get_output_path(const std::string &start_dir, co
             for (int i = 0; i < filter_count; ++i)
                 sla_filter_extensions.emplace_back(extract_ext_from_filter_mask(parts[size_t(2 * i + 1)]));
 
-            std::string preferred_ext = boost::algorithm::to_lower_copy(ext);
-            if (preferred_ext.empty()) {
-                const Preset &edited_printer = wxGetApp().preset_bundle->printers.get_edited_preset();
-                const std::string current_format = edited_printer.config.opt_string("sla_archive_format");
-                const std::string fallback_ext = boost::algorithm::to_lower_copy(std::string(get_default_extension(current_format.c_str())));
-                if (!fallback_ext.empty())
-                    preferred_ext = "." + fallback_ext;
-            }
+            std::string preferred_ext;
+            const Preset &edited_printer = wxGetApp().preset_bundle->printers.get_edited_preset();
+            const std::string current_format = edited_printer.config.opt_string("sla_archive_format");
+            const std::string fallback_ext = boost::algorithm::to_lower_copy(std::string(get_default_extension(current_format.c_str())));
+            if (!fallback_ext.empty())
+                preferred_ext = "." + fallback_ext;
 
             if (!preferred_ext.empty()) {
                 for (int i = 0; i < filter_count; ++i) {
@@ -5927,29 +5966,11 @@ std::optional<fs::path> Plater::get_output_path(const std::string &start_dir, co
 
     if (printer_technology() == ptSLA) {
         dlg.SetFilterIndex(sla_initial_filter_index);
-
-        auto apply_filter_to_filename = [&dlg, &sla_filter_extensions, &default_stem](int filter_index) {
-            if (filter_index < 0 || size_t(filter_index) >= sla_filter_extensions.size())
-                return;
-
-            fs::path filename = into_path(dlg.GetFilename());
-            std::string stem = filename.stem().string();
-            if (stem.empty() || stem.find_first_of("|*()") != std::string::npos)
-                stem = default_stem;
-
-            const std::string &new_ext = sla_filter_extensions[size_t(filter_index)];
-            if (!new_ext.empty())
-                filename = fs::path(stem + new_ext);
-            dlg.SetFilename(from_path(filename));
-        };
-
-        dlg.Bind(wxEVT_FILECTRL_FILTERCHANGED, [apply_filter_to_filename](wxFileCtrlEvent &evt) {
-            apply_filter_to_filename(evt.GetFilterIndex());
-            evt.Skip();
-        });
-
-        // Ensure visible default filename extension matches initially selected filter.
-        apply_filter_to_filename(sla_initial_filter_index);
+        if (size_t(sla_initial_filter_index) < sla_filter_extensions.size()) {
+            const std::string &selected_ext = sla_filter_extensions[size_t(sla_initial_filter_index)];
+            if (!selected_ext.empty())
+                dlg.SetFilename(from_u8(default_stem + selected_ext));
+        }
     }
 
     if (dlg.ShowModal() != wxID_OK) {
@@ -5958,14 +5979,16 @@ std::optional<fs::path> Plater::get_output_path(const std::string &start_dir, co
 
     fs::path output_path{into_path(dlg.GetPath())};
     if (printer_technology() == ptSLA) {
-        const std::string typed_ext = boost::algorithm::to_lower_copy(output_path.extension().string());
-        const bool typed_ext_is_known = !typed_ext.empty() && (get_archive_entry_by_extension(typed_ext.c_str()) != nullptr);
-
         const int filter_index = dlg.GetFilterIndex();
-        if (!typed_ext_is_known && filter_index >= 0 && size_t(filter_index) < sla_filter_extensions.size()) {
+        if (filter_index >= 0 && size_t(filter_index) < sla_filter_extensions.size()) {
             const std::string &selected_ext = sla_filter_extensions[size_t(filter_index)];
-            if (!selected_ext.empty())
-                output_path.replace_extension(selected_ext);
+            if (!selected_ext.empty()) {
+                std::string stem = output_path.filename().string();
+                const std::string known_suffix = detect_sla_suffix(output_path);
+                if (!known_suffix.empty() && stem.size() > known_suffix.size())
+                    stem.resize(stem.size() - known_suffix.size());
+                output_path = output_path.parent_path() / fs::path(stem + selected_ext);
+            }
         }
     }
 
@@ -5976,24 +5999,9 @@ std::optional<fs::path> Plater::get_output_path(const std::string &start_dir, co
     }
 
     if (printer_technology() == ptSLA) {
-        const std::string extension = boost::algorithm::to_lower_copy(output_path.extension().string());
+        const std::string extension = detect_sla_suffix(output_path);
         if (!extension.empty()) {
             if (const ArchiveEntry *entry = get_archive_entry_by_extension(extension.c_str())) {
-                static const std::set<std::string> unsupported_export_formats = {
-                    "cbddlp", "cbt", "photon", "photons", "ctb", "phz",
-                    "cxdlp",
-                    "nanodlp", "lgs", "lgs30", "lgs120", "lgs4k",
-                    "vdt", "cws", "n4", "n7", "fdg", "goo", "prz", "zcode", "jxs", "zcodex", "mdlp", "gr1", "svgx", "qdt", "osla", "osf", "uvj"
-                };
-
-                if (unsupported_export_formats.count(entry->id) > 0) {
-                    ErrorDialog(this,
-                                _L("This format is recognized but not yet implemented natively in this app. Direct in-app export currently supports Anycubic (*.pwmo/*.pws/etc.) and SL1 (*.sl1/*.sl1s)."),
-                                false)
-                        .ShowModal();
-                    return std::nullopt;
-                }
-
                 Preset &edited_printer = wxGetApp().preset_bundle->printers.get_edited_preset();
                 const std::string current = edited_printer.config.opt_string("sla_archive_format");
                 if (!boost::iequals(current, entry->id))
@@ -6769,7 +6777,8 @@ void Plater::connect_gcode_all() {
 
     std::vector<std::pair< int, std::optional<fs::path> >> paths;
 
-    for (std::size_t print_index{0};  print_index < s_multiple_beds.get_number_of_beds(); ++print_index) {
+    const std::size_t bed_count = std::size_t(s_multiple_beds.get_number_of_beds());
+    for (std::size_t print_index{0};  print_index < bed_count; ++print_index) {
         const std::unique_ptr<Print> &print{this->get_fff_prints()[print_index]};
         if (!print || !is_sliceable(s_print_statuses[print_index])) {
             paths.emplace_back(print_index, std::nullopt);
@@ -6787,7 +6796,7 @@ void Plater::connect_gcode_all() {
                 if (!optional_file) {
                     return;
                 }
-                if (print_index !=  s_multiple_beds.get_number_of_beds() - 1 || default_filename.empty()) {
+                if (print_index + 1 != bed_count || default_filename.empty()) {
                     const fs::path &default_file{*optional_file};
                     default_filename = default_file.filename();
                 }

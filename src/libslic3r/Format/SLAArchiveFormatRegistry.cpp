@@ -31,7 +31,7 @@ class Registry {
                 "SL1",                      // id
                 L("SL1 archive"),    // description
                 "sl1",                      // main extension
-                {"sl1s", "zip"},            // extension aliases
+                {"sl1s", "zip", "rgb.zip"},            // extension aliases
 
                 // Writer factory
                 [] (const auto &cfg) { return std::make_unique<SL1Archive>(cfg); },
@@ -124,7 +124,7 @@ class Registry {
                 "ctb",
                 L("Chitubox CTB v3/v4"),
                 "ctb",
-                {},
+                {"encrypted.ctb"},
                 [] (const auto &cfg) { return std::make_unique<AnycubicSLAArchive>(cfg, ANYCUBIC_SLA_FORMAT_VERSION_1); },
                 [] (const std::string &fname, SLAImportQuality quality, const ProgrFn &progr) {
                     return std::make_unique<SL1Reader>(fname, quality, progr);
@@ -146,7 +146,7 @@ class Registry {
                 "cxdlp",
                 L("Creality CXDLP"),
                 "cxdlp",
-                {},
+                {"v1.cxdlp"},
                 [] (const auto &cfg) { return std::make_unique<AnycubicSLAArchive>(cfg, ANYCUBIC_SLA_FORMAT_VERSION_1); },
                 [] (const std::string &fname, SLAImportQuality quality, const ProgrFn &progr) {
                     return std::make_unique<SL1Reader>(fname, quality, progr);
@@ -523,10 +523,7 @@ bool extension_matches(const std::string &needle, const char *candidate)
     if (candidate == nullptr)
         return false;
 
-    std::string cand(candidate);
-    std::transform(cand.begin(), cand.end(), cand.begin(), [](unsigned char c) {
-        return static_cast<char>(std::tolower(c));
-    });
+    const std::string cand = normalized_extension(candidate);
     return needle == cand;
 }
 

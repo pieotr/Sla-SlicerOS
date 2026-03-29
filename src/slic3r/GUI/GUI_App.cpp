@@ -26,11 +26,13 @@
 #include "slic3r/GUI/I18N.hpp"
 
 #include <algorithm>
+#include <array>
 #include <iterator>
 #include <exception>
 #include <cstdlib>
 #include <regex>
 #include <string_view>
+#include <unordered_set>
 #include <boost/nowide/fstream.hpp>
 #include <boost/algorithm/string/predicate.hpp>
 #include <boost/algorithm/string.hpp>
@@ -580,54 +582,53 @@ wxString sla_wildcards(const char *formatid, const std::string& custom_extension
     const ArchiveEntry *entry = all_formats ? nullptr : get_archive_entry(formatid);
     wxString ret;
 
+    auto normalize_ext = [](std::string ext) {
+        if (ext.empty())
+            return ext;
+        if (ext.front() != '.')
+            ext.insert(ext.begin(), '.');
+        return boost::to_lower_copy(ext);
+    };
+
+    auto append_single_filter = [&ret](const std::string &title, const std::string &ext) {
+        ret += "|" + GUI::format_wxstr("%s (*%s)|*%s", title, ext, ext);
+    };
+
     if (all_formats) {
-        FileWildcards all_wc;
-        all_wc.title = _u8L("Masked SLA files");
-
+        std::unordered_set<std::string> seen_exts;
         for (const ArchiveEntry &arch_entry : registered_sla_archives()) {
-            std::vector<std::string> exts = get_extensions(arch_entry);
-            for (std::string &ext : exts) {
-                ext.insert(ext.begin(), '.');
-                if (std::find(all_wc.file_extensions.begin(), all_wc.file_extensions.end(), ext) == all_wc.file_extensions.end())
-                    all_wc.file_extensions.emplace_back(std::move(ext));
-            }
-        }
-
-        if (!all_wc.file_extensions.empty())
-            ret = file_wildcards(all_wc, custom_extension);
-
-        for (const ArchiveEntry &arch_entry : registered_sla_archives()) {
-            FileWildcards wc;
             std::string tr_title = I18N::translate_utf8(arch_entry.desc);
             tr_title = GUI::format(_u8L("%s files"), tr_title);
-            wc.title = tr_title;
 
             std::vector<std::string> exts = get_extensions(arch_entry);
-            wc.file_extensions.reserve(exts.size());
             for (std::string &ext : exts) {
-                ext.insert(ext.begin(), '.');
-                wc.file_extensions.emplace_back(std::move(ext));
+                const std::string norm = normalize_ext(ext);
+                if (norm.empty())
+                    continue;
+                if (seen_exts.insert(norm).second)
+                    append_single_filter(tr_title, norm);
             }
-
-            if (!wc.file_extensions.empty())
-                ret += "|" + file_wildcards(wc, "");
         }
+
+        if (!ret.empty())
+            ret.Remove(0, 1); // drop leading '|'
     } else if (entry) {
-        FileWildcards wc;
+        std::unordered_set<std::string> seen_exts;
         std::string tr_title = I18N::translate_utf8(entry->desc);
         // TRN %s = type of file
         tr_title = GUI::format(_u8L("%s files"), tr_title);
-        wc.title = tr_title;
 
         std::vector<std::string> exts = get_extensions(*entry);
-
-        wc.file_extensions.reserve(exts.size());
         for (std::string &ext : exts) {
-            ext.insert(ext.begin(), '.');
-            wc.file_extensions.emplace_back(ext);
+            const std::string norm = normalize_ext(ext);
+            if (norm.empty())
+                continue;
+            if (seen_exts.insert(norm).second)
+                append_single_filter(tr_title, norm);
         }
 
-        ret = file_wildcards(wc, custom_extension);
+        if (!ret.empty())
+            ret.Remove(0, 1); // drop leading '|'
     }
 
     if (ret.empty())
@@ -4057,7 +4058,7 @@ bool GUI_App::select_printer_preset(const Preset* preset)
 }
 
 namespace {
-const Preset* find_preset_by_nozzle_and_options(
+[[maybe_unused]] const Preset* find_preset_by_nozzle_and_options(
     const PrinterPresetCollection& collection
     , const std::string& model_id
     , std::map<std::string, std::vector<std::string>>& options) 
@@ -4387,13 +4388,18 @@ void GUI_App::open_link_in_printables(const std::string& url)
  }
 
 bool LogGui::ignorred_message(const wxString& msg)
-{    
-    for(const wxString& err : std::initializer_list<wxString>{ wxString("cHRM chunk does not match sRGB"),
-                                                               wxString("known incorrect sRGB profile"),
-                                                               wxString("Error running JavaScript")}) {
-        if (msg.Contains(err))
+{
+    const std::string text = into_u8(msg);
+    static const std::array<const char *, 3> ignored = {
+        "cHRM chunk does not match sRGB",
+        "known incorrect sRGB profile",
+        "Error running JavaScript"
+    };
+
+    for (const char *needle : ignored)
+        if (text.find(needle) != std::string::npos)
             return true;
-    }
+
     return false;
 }
 

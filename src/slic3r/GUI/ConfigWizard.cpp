@@ -72,6 +72,13 @@
 #include "slic3r/GUI/I18N.hpp"
 #include "slic3r/Config/Version.hpp"
 
+#ifndef _L
+#define _L(s) wxString::FromUTF8(s)
+#endif
+#ifndef _u8L
+#define _u8L(s) std::string(s)
+#endif
+
 
 /* ysFIXME - delete after testing and release
 // it looks like this workaround is no need any more after update of the wxWidgets to 3.2.0
