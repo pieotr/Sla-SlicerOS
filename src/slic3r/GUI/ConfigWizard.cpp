@@ -1478,18 +1478,9 @@ PageCustom::PageCustom(ConfigWizard *parent)
     : ConfigWizardPage(parent, _L("Custom Printer Setup"), _L("Custom Printer"))
 {
     cb_custom = new wxCheckBox(this, wxID_ANY, _L("Define a custom printer profile"));
-#ifndef SLIC3R_SLA_ONLY
-    rb_custom_fff = new wxRadioButton(this, wxID_ANY, _L("Custom FFF printer"), wxDefaultPosition, wxDefaultSize, wxRB_GROUP);
-    rb_custom_sla = new wxRadioButton(this, wxID_ANY, _L("Custom SLA printer"));
-#else
     rb_custom_sla = new wxRadioButton(this, wxID_ANY, _L("Custom SLA printer"), wxDefaultPosition, wxDefaultSize, wxRB_GROUP);
-#endif
     auto *label = new wxStaticText(this, wxID_ANY, _L("Custom profile name:"));
 
-#ifndef SLIC3R_SLA_ONLY
-    rb_custom_fff->SetValue(true);
-    rb_custom_fff->Enable(false);
-#endif
     rb_custom_sla->SetValue(true);
     rb_custom_sla->Enable(false);
 
@@ -1498,9 +1489,6 @@ PageCustom::PageCustom(ConfigWizard *parent)
     profile_name_editor->Enable(false);
 
     cb_custom->Bind(wxEVT_CHECKBOX, [this](wxCommandEvent &) {
-#ifndef SLIC3R_SLA_ONLY
-        rb_custom_fff->Enable(custom_wanted());
-#endif
         rb_custom_sla->Enable(custom_wanted());
         profile_name_editor->Enable(custom_wanted());
         wizard_p()->on_custom_setup(custom_wanted());
@@ -1510,15 +1498,9 @@ PageCustom::PageCustom(ConfigWizard *parent)
         if (custom_wanted())
             wizard_p()->on_custom_setup(true);
     };
-#ifndef SLIC3R_SLA_ONLY
-    rb_custom_fff->Bind(wxEVT_RADIOBUTTON, on_custom_tech_changed);
-#endif
     rb_custom_sla->Bind(wxEVT_RADIOBUTTON, on_custom_tech_changed);
 
     append(cb_custom);
-#ifndef SLIC3R_SLA_ONLY
-    append(rb_custom_fff);
-#endif
     append(rb_custom_sla);
     append(label);
     append(profile_name_sizer);
@@ -1526,30 +1508,14 @@ PageCustom::PageCustom(ConfigWizard *parent)
 
 PrinterTechnology PageCustom::custom_technology() const
 {
-#ifdef SLIC3R_SLA_ONLY
     return ptSLA;
-#else
-    return rb_custom_sla->GetValue() ? ptSLA : ptFFF;
-#endif
 }
 
 void PageCustom::set_only_sla_mode(bool only_sla_mode)
 {
-#ifndef SLIC3R_SLA_ONLY
-    if (only_sla_mode) {
-        rb_custom_sla->SetValue(true);
-        rb_custom_fff->SetValue(false);
-        rb_custom_fff->Enable(false);
-        rb_custom_sla->Enable(custom_wanted());
-    } else {
-        rb_custom_fff->Enable(custom_wanted());
-        rb_custom_sla->Enable(custom_wanted());
-    }
-#else
     (void)only_sla_mode;
     rb_custom_sla->SetValue(true);
     rb_custom_sla->Enable(custom_wanted());
-#endif
 }
 
 PageUpdate::PageUpdate(ConfigWizard *parent)
@@ -2021,68 +1987,6 @@ PageVendors::PageVendors(ConfigWizard* parent, std::string repo_id /*= wxEmptySt
     }
 }
 
-PageFirmware::PageFirmware(ConfigWizard *parent)
-    : ConfigWizardPage(parent, _L("Firmware Type"), _L("Firmware"), 1)
-    , gcode_opt(*print_config_def.get("gcode_flavor"))
-    , gcode_picker(nullptr)
-{
-    append_text(_L("Choose the type of firmware used by your printer."));
-    append_text(_(gcode_opt.tooltip));
-
-    wxArrayString choices;
-    choices.Alloc(gcode_opt.enum_def->labels().size());
-    for (const auto &label : gcode_opt.enum_def->labels()) {
-        choices.Add(label);
-    }
-
-    gcode_picker = new wxChoice(this, wxID_ANY, wxDefaultPosition, wxDefaultSize, choices);
-    wxGetApp().UpdateDarkUI(gcode_picker);
-    const auto &enum_values = gcode_opt.enum_def->values();
-    auto needle = enum_values.cend();
-    if (gcode_opt.default_value) {
-        needle = std::find(enum_values.cbegin(), enum_values.cend(), gcode_opt.default_value->serialize());
-    }
-    if (needle != enum_values.cend()) {
-        gcode_picker->SetSelection(needle - enum_values.cbegin());
-    } else {
-        gcode_picker->SetSelection(0);
-    }
-
-    append(gcode_picker);
-}
-
-void PageFirmware::apply_custom_config(DynamicPrintConfig &config)
-{
-    auto sel = gcode_picker->GetSelection();
-    if (sel >= 0 && (size_t)sel < gcode_opt.enum_def->labels().size()) {
-        auto *opt = new ConfigOptionEnum<GCodeFlavor>(static_cast<GCodeFlavor>(sel));
-        config.set_key_value("gcode_flavor", opt);
-    }
-}
-
-static void focus_event(wxFocusEvent& e, wxTextCtrl* ctrl, double def_value)
-{
-    e.Skip();
-    wxString str = ctrl->GetValue();
-
-    const char dec_sep = is_decimal_separator_point() ? '.' : ',';
-    const char dec_sep_alt = dec_sep == '.' ? ',' : '.';
-    // Replace the first incorrect separator in decimal number.
-    bool was_replaced = str.Replace(dec_sep_alt, dec_sep, false) != 0;
-
-    double val = 0.0;
-    if (!str.ToDouble(&val)) {
-        if (val == 0.0)
-            val = def_value;
-        ctrl->SetValue(double_to_string(val));
-        show_error(nullptr, _L("Invalid numeric input."));
-        // On Windows, this SetFocus creates an invisible marker.
-        //ctrl->SetFocus();
-    }
-    else if (was_replaced)
-        ctrl->SetValue(double_to_string(val));
-}
-
 class DiamTextCtrl : public wxTextCtrl
 {
 public:
@@ -2181,151 +2085,7 @@ void PageBuildVolume::apply_custom_config(DynamicPrintConfig& config)
     config.set_key_value("max_print_height", opt_volume);
 }
 
-PageDiameters::PageDiameters(ConfigWizard *parent)
-    : ConfigWizardPage(parent, _L("Filament and Nozzle Diameters"), _L("Print Diameters"), 1)
-    , diam_nozzle(new DiamTextCtrl(this))
-    , diam_filam (new DiamTextCtrl(this))
-{
-    auto *default_nozzle = print_config_def.get("nozzle_diameter")->get_default_value<ConfigOptionFloats>();
-    wxString value = double_to_string(default_nozzle != nullptr && default_nozzle->size() > 0 ? default_nozzle->get_at(0) : 0.5);
-    diam_nozzle->SetValue(value);
-
-    auto *default_filam = print_config_def.get("filament_diameter")->get_default_value<ConfigOptionFloats>();
-    value = double_to_string(default_filam != nullptr && default_filam->size() > 0 ? default_filam->get_at(0) : 3.0);
-    diam_filam->SetValue(value);
-
-    diam_nozzle->Bind(wxEVT_KILL_FOCUS, [this](wxFocusEvent& e) { focus_event(e, diam_nozzle, 0.5); }, diam_nozzle->GetId());
-    diam_filam ->Bind(wxEVT_KILL_FOCUS, [this](wxFocusEvent& e) { focus_event(e, diam_filam , 3.0); }, diam_filam->GetId());
-
-    append_text(_L("Enter the diameter of your printer's hot end nozzle."));
-
-    auto *sizer_nozzle = new wxFlexGridSizer(3, 5, 5);
-    auto *text_nozzle = new wxStaticText(this, wxID_ANY, _L("Nozzle Diameter") + ":");
-    auto *unit_nozzle = new wxStaticText(this, wxID_ANY, _L("mm"));
-    sizer_nozzle->AddGrowableCol(0, 1);
-    sizer_nozzle->Add(text_nozzle, 0, wxALIGN_CENTRE_VERTICAL);
-    sizer_nozzle->Add(diam_nozzle);
-    sizer_nozzle->Add(unit_nozzle, 0, wxALIGN_CENTRE_VERTICAL);
-    append(sizer_nozzle);
-
-    append_spacer(VERTICAL_SPACING);
-
-    append_text(_L("Enter the diameter of your filament."));
-    append_text(_L("Good precision is required, so use a caliper and do multiple measurements along the filament, then compute the average."));
-
-    auto *sizer_filam = new wxFlexGridSizer(3, 5, 5);
-    auto *text_filam = new wxStaticText(this, wxID_ANY, _L("Filament Diameter") + ":");
-    auto *unit_filam = new wxStaticText(this, wxID_ANY, _L("mm"));
-    sizer_filam->AddGrowableCol(0, 1);
-    sizer_filam->Add(text_filam, 0, wxALIGN_CENTRE_VERTICAL);
-    sizer_filam->Add(diam_filam, 0, wxALIGN_CENTRE_VERTICAL);
-    sizer_filam->Add(unit_filam, 0, wxALIGN_CENTRE_VERTICAL);
-    append(sizer_filam);
-}
-
-void PageDiameters::apply_custom_config(DynamicPrintConfig &config)
-{
-    double val = 0.0;
-    diam_nozzle->GetValue().ToDouble(&val);
-    auto *opt_nozzle = new ConfigOptionFloats(1, val);
-    config.set_key_value("nozzle_diameter", opt_nozzle);
-
-    val = 0.0;
-    diam_filam->GetValue().ToDouble(&val);
-    auto * opt_filam = new ConfigOptionFloats(1, val);
-    config.set_key_value("filament_diameter", opt_filam);
-
-    auto set_extrusion_width = [&config, opt_nozzle](const char *key, double dmr) {
-        char buf[64]; // locales don't matter here (sprintf/atof)
-        sprintf(buf, "%.2lf", dmr * opt_nozzle->values.front() / 0.4);
-        config.set_key_value(key, new ConfigOptionFloatOrPercent(atof(buf), false));
-    };
-
-    set_extrusion_width("support_material_extrusion_width",   0.35);
-    set_extrusion_width("top_infill_extrusion_width",		  0.40);
-    set_extrusion_width("first_layer_extrusion_width",		  0.42);
-
-    set_extrusion_width("extrusion_width",					  0.45);
-    set_extrusion_width("perimeter_extrusion_width",		  0.45);
-    set_extrusion_width("external_perimeter_extrusion_width", 0.45);
-    set_extrusion_width("infill_extrusion_width",			  0.45);
-    set_extrusion_width("solid_infill_extrusion_width",       0.45);
-}
-
-class SpinCtrlDouble: public ::SpinInputDouble
-{
-public:
-    SpinCtrlDouble(wxWindow* parent)
-    {
-#ifdef _WIN32
-        long style = wxSP_ARROW_KEYS | wxBORDER_SIMPLE;
-#else
-        long style = wxSP_ARROW_KEYS;
-#endif
-        Create(parent, "", wxEmptyString, wxDefaultPosition, wxSize(6* wxGetApp().em_unit(), -1), style);
-        this->Refresh();
-    }
-    ~SpinCtrlDouble() {}
-};
-
-PageTemperatures::PageTemperatures(ConfigWizard *parent)
-    : ConfigWizardPage(parent, _L("Nozzle and Bed Temperatures"), _L("Temperatures"), 1)
-    , spin_extr(new SpinCtrlDouble(this))
-    , spin_bed (new SpinCtrlDouble(this))
-{
-    spin_extr->SetIncrement(5.0);
-    const auto &def_extr = *print_config_def.get("temperature");
-    spin_extr->SetRange(def_extr.min, def_extr.max);
-    auto *default_extr = def_extr.get_default_value<ConfigOptionInts>();
-    spin_extr->SetValue(default_extr != nullptr && default_extr->size() > 0 ? default_extr->get_at(0) : 200);
-
-    spin_bed->SetIncrement(5.0);
-    const auto &def_bed = *print_config_def.get("bed_temperature");
-    spin_bed->SetRange(def_bed.min, def_bed.max);
-    auto *default_bed = def_bed.get_default_value<ConfigOptionInts>();
-    spin_bed->SetValue(default_bed != nullptr && default_bed->size() > 0 ? default_bed->get_at(0) : 0);
-
-    append_text(_L("Enter the temperature needed for extruding your filament."));
-    append_text(_L("A rule of thumb is 160 to 230 °C for PLA, and 215 to 250 °C for ABS."));
-
-    auto *sizer_extr = new wxFlexGridSizer(3, 5, 5);
-    auto *text_extr = new wxStaticText(this, wxID_ANY, _L("Extrusion Temperature:"));
-    auto *unit_extr = new wxStaticText(this, wxID_ANY, _L("°C"));
-    sizer_extr->AddGrowableCol(0, 1);
-    sizer_extr->Add(text_extr, 0, wxALIGN_CENTRE_VERTICAL);
-    sizer_extr->Add(spin_extr);
-    sizer_extr->Add(unit_extr, 0, wxALIGN_CENTRE_VERTICAL);
-    append(sizer_extr);
-
-    append_spacer(VERTICAL_SPACING);
-
-    append_text(_L("Enter the bed temperature needed for getting your filament to stick to your heated bed."));
-    append_text(_L("A rule of thumb is 60 °C for PLA and 110 °C for ABS. Leave zero if you have no heated bed."));
-
-    auto *sizer_bed = new wxFlexGridSizer(3, 5, 5);
-    auto *text_bed = new wxStaticText(this, wxID_ANY, _L("Bed Temperature") + ":");
-    auto *unit_bed = new wxStaticText(this, wxID_ANY, _L("°C"));
-    sizer_bed->AddGrowableCol(0, 1);
-    sizer_bed->Add(text_bed, 0, wxALIGN_CENTRE_VERTICAL);
-    sizer_bed->Add(spin_bed);
-    sizer_bed->Add(unit_bed, 0, wxALIGN_CENTRE_VERTICAL);
-    append(sizer_bed);
-}
-
-void PageTemperatures::apply_custom_config(DynamicPrintConfig &config)
-{
-    auto *opt_extr = new ConfigOptionInts(1, spin_extr->GetValue());
-    config.set_key_value("temperature", opt_extr);
-    auto *opt_extr1st = new ConfigOptionInts(1, spin_extr->GetValue());
-    config.set_key_value("first_layer_temperature", opt_extr1st);
-    auto *opt_bed = new ConfigOptionInts(1, spin_bed->GetValue());
-    config.set_key_value("bed_temperature", opt_bed);
-    auto *opt_bed1st = new ConfigOptionInts(1, spin_bed->GetValue());
-    config.set_key_value("first_layer_bed_temperature", opt_bed1st);
-}
-
-
-// Index
+wxDECLARE_EVENT(EVT_INDEX_PAGE, wxCommandEvent);
 
 ConfigWizardIndex::ConfigWizardIndex(wxWindow *parent)
     : wxPanel(parent)
@@ -2334,36 +2094,15 @@ ConfigWizardIndex::ConfigWizardIndex(wxWindow *parent)
     , bullet_blue(ScalableBitmap(parent, "bullet_blue.png"))
     , bullet_white(ScalableBitmap(parent, "bullet_white.png"))
     , item_active(NO_ITEM)
-    , item_hover(NO_ITEM)
-    , last_page((size_t)-1)
+    , item_hover(-1)
+    , last_page(NO_ITEM)
 {
-#ifndef __WXOSX__ 
-    SetDoubleBuffered(true);// SetDoubleBuffered exists on Win and Linux/GTK, but is missing on OSX
-#endif //__WXOSX__
-    SetMinSize(bg.GetSize());
-
-    const wxSize size = GetTextExtent("m");
-    em_w = size.x;
-    em_h = size.y;
+    wxGetApp().UpdateDarkUI(this);
+    msw_rescale();
 
     Bind(wxEVT_PAINT, &ConfigWizardIndex::on_paint, this);
-    Bind(wxEVT_SIZE, [this](wxEvent& e) { e.Skip(); Refresh(); });
     Bind(wxEVT_MOTION, &ConfigWizardIndex::on_mouse_move, this);
-
-    Bind(wxEVT_LEAVE_WINDOW, [this](wxMouseEvent &evt) {
-        if (item_hover != -1) {
-            item_hover = -1;
-            Refresh();
-        }
-        evt.Skip();
-    });
-
-    Bind(wxEVT_LEFT_UP, [this](wxMouseEvent &evt) {
-        if (item_hover >= 0) { go_to(item_hover); }
-    });
 }
-
-wxDECLARE_EVENT(EVT_INDEX_PAGE, wxCommandEvent);
 
 void ConfigWizardIndex::add_page(ConfigWizardPage *page)
 {
@@ -2639,14 +2378,6 @@ void ConfigWizard::priv::load_pages()
     if (is_config_from_archive) {
 
         // Printers
-#ifndef SLIC3R_OFFLINE_ONLY
-#ifndef SLIC3R_SLA_ONLY
-        if (!only_sla_mode)
-            for (const auto page : pages_fff)
-                index->add_page(page);
-#endif
-#endif
-
         for (const auto page : pages_msla)
             index->add_page(page);
 
@@ -2675,22 +2406,6 @@ void ConfigWizard::priv::load_pages()
                 }
             }
 
-#ifndef SLIC3R_OFFLINE_ONLY
-#ifndef SLIC3R_SLA_ONLY
-            // Filaments & Materials
-            if (any_fff_selected) { index->add_page(page_filaments); }
-            // Filaments page if only custom printer is selected
-            const AppConfig* app_config = wxGetApp().app_config;
-            if (page_custom != nullptr
-                && !any_fff_selected
-                && custom_printer_selected
-                && page_custom->custom_technology() == ptFFF
-                && (app_config->get("no_templates") == "0")) {
-                update_materials(T_ANY);
-                index->add_page(page_filaments);
-            }
-#endif
-#endif
         }
 
         if (page_custom != nullptr) {
@@ -2699,13 +2414,6 @@ void ConfigWizard::priv::load_pages()
             if (page_custom->custom_wanted()) {
                 index->add_page(page_bed);
                 index->add_page(page_bvolume);
-                if (page_custom->custom_technology() == ptFFF) {
-#ifndef SLIC3R_SLA_ONLY
-                    index->add_page(page_firmware);
-                    index->add_page(page_diams);
-                    index->add_page(page_temps);
-#endif
-                }
             }
         }
 
@@ -3743,14 +3451,6 @@ bool ConfigWizard::priv::apply_config(AppConfig *app_config, PresetBundle *prese
             return false;
 
         custom_config->set_key_value("printer_technology", new ConfigOptionEnum<PrinterTechnology>(page_custom->custom_technology()));
-
-        if (page_custom->custom_technology() == ptFFF) {
-    #ifndef SLIC3R_SLA_ONLY
-            page_firmware->apply_custom_config(*custom_config);
-            page_diams->apply_custom_config(*custom_config);
-            page_temps->apply_custom_config(*custom_config);
-    #endif
-        }
         page_bed->apply_custom_config(*custom_config);
         page_bvolume->apply_custom_config(*custom_config);
 
@@ -4007,17 +3707,6 @@ void ConfigWizard::priv::load_pages_from_archive()
                 // it's single prusa vendor repository
                 create_vendor_printers_page(data.id, vendors[0], true, true);
 
-                if (!is_primary_printer_page_set
-#ifndef SLIC3R_SLA_ONLY
-                    && !pages_fff.empty()
-#endif
-                    )
-                {
-#ifndef SLIC3R_SLA_ONLY
-                    pages_fff.back()->is_primary_printer_page = true;
-                    is_primary_printer_page_set = true;
-#endif
-                }
                 if (!is_primary_printer_page_set && !pages_msla.empty())
                 {
                     pages_msla.back()->is_primary_printer_page = true;
@@ -4028,24 +3717,13 @@ void ConfigWizard::priv::load_pages_from_archive()
 
     }
 
-#ifndef SLIC3R_OFFLINE_ONLY
-#ifndef SLIC3R_SLA_ONLY
-    if (only_sla_mode && installed_multivendors_repos()) {
-        only_sla_mode = false;
-    }
-#endif
-#endif
-
     if (!page_custom) {
         add_page(page_custom = new PageCustom(q));
     }
     custom_printer_selected = page_custom->custom_wanted();
 
     any_sla_selected = check_sla_selected();
-    any_fff_selected = !only_sla_mode && check_fff_selected();
-#ifdef SLIC3R_OFFLINE_ONLY
     any_fff_selected = false;
-#endif
 
     if(!only_sla_mode && !page_filaments)
         add_page(page_filaments = new PageMaterials(q, &filaments,
@@ -4148,15 +3826,8 @@ ConfigWizard::ConfigWizard(wxWindow *parent)
 #ifndef SLIC3R_OFFLINE_ONLY
     p->add_page(p->page_mode     = new PageMode(this));
 #endif
-#ifndef SLIC3R_SLA_ONLY
-    p->add_page(p->page_firmware = new PageFirmware(this));
-#endif
     p->add_page(p->page_bed      = new PageBedShape(this));
     p->add_page(p->page_bvolume  = new PageBuildVolume(this));
-#ifndef SLIC3R_SLA_ONLY
-    p->add_page(p->page_diams    = new PageDiameters(this));
-    p->add_page(p->page_temps    = new PageTemperatures(this));
-#endif
 
     vsizer->Add(topsizer, 1, wxEXPAND | wxALL, DIALOG_MARGIN);
     vsizer->Add(hline, 0, wxEXPAND | wxLEFT | wxRIGHT, VERTICAL_SPACING);

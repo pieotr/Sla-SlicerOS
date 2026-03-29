@@ -121,7 +121,7 @@ private:
 
     // This configs holds GUI layout size given by translated texts.
     // etc. When language changes, GUI is recreated and this class constructed again,
-    // so the change takes effect. (info by GLGizmoFdmSupports.hpp)
+    // so the change takes effect.
     struct GuiCfg
     {
         int top_left_width    = 100;

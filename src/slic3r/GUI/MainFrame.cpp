@@ -603,8 +603,9 @@ void MainFrame::update_title()
 
 static wxString GetTooltipForSettingsButton(PrinterTechnology pt)
 {
+    (void)pt;
     std::string tooltip = _u8L("Switch to Settings") + "\n" + "[" + shortkey_ctrl_prefix() + "2] - " + _u8L("Print Settings Tab") +
-                                                       "\n" + "[" + shortkey_ctrl_prefix() + "3] - " + (pt == ptFFF ? _u8L("Filament Settings Tab") : _u8L("Material Settings Tab")) +
+                                                       "\n" + "[" + shortkey_ctrl_prefix() + "3] - " + _u8L("Material Settings Tab") +
                                                        "\n" + "[" + shortkey_ctrl_prefix() + "4] - " + _u8L("Printer Settings Tab");
     return from_u8(tooltip);
 }
@@ -817,13 +818,9 @@ void MainFrame::register_win32_callbacks()
 
 void MainFrame::create_preset_tabs()
 {
-#ifndef SLIC3R_SLA_ONLY
-    add_created_tab(new TabPrint(m_tabpanel), "cog");
-    add_created_tab(new TabFilament(m_tabpanel), "spool");
-#endif
     add_created_tab(new TabSLAPrint(m_tabpanel), "cog");
     add_created_tab(new TabSLAMaterial(m_tabpanel), "resin");
-    add_created_tab(new TabPrinter(m_tabpanel), wxGetApp().preset_bundle->printers.get_edited_preset().printer_technology() == ptFFF ? "printer" : "sla_printer");
+    add_created_tab(new TabPrinter(m_tabpanel), "sla_printer");
     
 #ifndef SLIC3R_OFFLINE_ONLY
     m_printables_webview = new PrintablesWebViewPanel(m_tabpanel);
@@ -1203,7 +1200,7 @@ bool MainFrame::can_export_model() const
 
 bool MainFrame::can_export_toolpaths() const
 {
-    return (m_plater != nullptr) && (m_plater->printer_technology() == ptFFF) && m_plater->is_preview_shown() && m_plater->is_preview_loaded() && m_plater->has_toolpaths_to_export();
+    return false;
 }
 
 bool MainFrame::can_export_supports() const
@@ -1772,8 +1769,8 @@ void MainFrame::init_menubar_as_editor()
         append_menu_item(windowMenu, wxID_HIGHEST + 2, _L("P&rint Settings Tab") + "\tCtrl+2", _L("Show the print settings"),
             [this/*, tab_offset*/](wxCommandEvent&) { select_tab(1); }, "cog", nullptr,
             []() {return true; }, this);
-        wxMenuItem* item_material_tab = append_menu_item(windowMenu, wxID_HIGHEST + 3, _L("&Filament Settings Tab") + "\tCtrl+3", _L("Show the filament settings"),
-            [this/*, tab_offset*/](wxCommandEvent&) { select_tab(2); }, "spool", nullptr,
+        wxMenuItem* item_material_tab = append_menu_item(windowMenu, wxID_HIGHEST + 3, _L("Mate&rial Settings Tab") + "\tCtrl+3", _L("Show the material settings"),
+            [this/*, tab_offset*/](wxCommandEvent&) { select_tab(2); }, "resin", nullptr,
             []() {return true; }, this);
         m_changeable_menu_items.push_back(item_material_tab);
         wxMenuItem* item_printer_tab = append_menu_item(windowMenu, wxID_HIGHEST + 4, _L("Print&er Settings Tab") + "\tCtrl+4", _L("Show the printer settings"),
@@ -1993,21 +1990,19 @@ void MainFrame::update_menubar()
     if (plater() == nullptr)
         return;
 
-    const bool is_fff = plater()->printer_technology() == ptFFF;
-
     if (m_changeable_menu_items[miExport] != nullptr)
-        m_changeable_menu_items[miExport]->SetItemLabel((is_fff ? _L("Export &G-code") : _L("E&xport")) + dots + "\tCtrl+G");
+        m_changeable_menu_items[miExport]->SetItemLabel(_L("E&xport") + dots + "\tCtrl+G");
     if (m_changeable_menu_items[miSend] != nullptr)
-        m_changeable_menu_items[miSend]->SetItemLabel((is_fff ? _L("S&end G-code") : _L("S&end to print")) + dots + "\tCtrl+Shift+G");
+        m_changeable_menu_items[miSend]->SetItemLabel(_L("S&end to print") + dots + "\tCtrl+Shift+G");
 
     if (m_changeable_menu_items[miMaterialTab] != nullptr) {
-        m_changeable_menu_items[miMaterialTab]->SetItemLabel((is_fff ? _L("&Filament Settings Tab") : _L("Mate&rial Settings Tab")) + "\tCtrl+3");
-        if (auto *material_bmp = get_bmp_bundle(is_fff ? "spool" : "resin"); material_bmp != nullptr)
+        m_changeable_menu_items[miMaterialTab]->SetItemLabel(_L("Mate&rial Settings Tab") + "\tCtrl+3");
+        if (auto *material_bmp = get_bmp_bundle("resin"); material_bmp != nullptr)
             m_changeable_menu_items[miMaterialTab]->SetBitmap(*material_bmp);
     }
 
     if (m_changeable_menu_items[miPrinterTab] != nullptr)
-        if (auto *printer_bmp = get_bmp_bundle(is_fff ? "printer" : "sla_printer"); printer_bmp != nullptr)
+        if (auto *printer_bmp = get_bmp_bundle("sla_printer"); printer_bmp != nullptr)
             m_changeable_menu_items[miPrinterTab]->SetBitmap(*printer_bmp);
 }
 
@@ -2424,8 +2419,8 @@ void MainFrame::technology_changed()
     if (!m_menubar)
         return;
     // update menu titles
-    if (int id = m_menubar->FindMenu(pt == ptFFF ? _L("Material Settings") : _L("Filament Settings")); id != wxNOT_FOUND)
-        m_menubar->SetMenuLabel(id , pt == ptSLA ? _L("Material Settings") : _L("Filament Settings"));
+    if (int id = m_menubar->FindMenu(_L("Material Settings")); id != wxNOT_FOUND)
+        m_menubar->SetMenuLabel(id, _L("Material Settings"));
 
     //if (wxGetApp().tab_panel()->GetSelection() != wxGetApp().tab_panel()->GetPageCount() - 1)
     //    wxGetApp().tab_panel()->SetSelection(wxGetApp().tab_panel()->GetPageCount() - 1);

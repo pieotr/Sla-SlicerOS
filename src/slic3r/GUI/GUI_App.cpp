@@ -85,7 +85,6 @@
 #include "../Utils/WinRegistry.hpp"
 #include "slic3r/Config/Snapshot.hpp"
 #include "ConfigSnapshotDialog.hpp"
-#include "FirmwareDialog.hpp"
 #include "slic3r/GUI/Preferences.hpp" // IWYU pragma: keep
 #include "Tab.hpp"
 #include "SysInfoDialog.hpp"
@@ -825,19 +824,12 @@ void GUI_App::post_init()
             if (Tab* printer_tab = get_tab(Preset::TYPE_PRINTER))
                 printer_tab->select_preset(this->init_params->selected_presets.printer);
 
-            const bool is_fff = preset_bundle->printers.get_selected_preset().printer_technology() == ptFFF;
-            if (Tab* print_tab = get_tab(is_fff ? Preset::TYPE_PRINT : Preset::TYPE_SLA_PRINT))
+            if (Tab* print_tab = get_tab(Preset::TYPE_SLA_PRINT))
                 print_tab->select_preset(this->init_params->selected_presets.print);
 
-            if (Tab* print_tab = get_tab(is_fff ? Preset::TYPE_FILAMENT : Preset::TYPE_SLA_MATERIAL)) {
+            if (Tab* print_tab = get_tab(Preset::TYPE_SLA_MATERIAL)) {
                 const auto& materials = this->init_params->selected_presets.materials;
                 print_tab->select_preset(materials[0]);
-
-                if (is_fff && materials.size() > 1) {
-                    for (size_t idx = 1; idx < materials.size(); idx++)
-                        preset_bundle->set_filament_preset(idx, materials[idx]);
-                    sidebar().update_all_filament_comboboxes();
-                }
             }
         }
     }
@@ -1647,8 +1639,7 @@ bool GUI_App::on_init_inner()
     if (is_gcode_viewer()) {
         mainframe->update_layout();
         if (plater_ != nullptr)
-            // ensure the selected technology is ptFFF
-            plater_->set_printer_technology(ptFFF);
+            plater_->set_printer_technology(ptSLA);
     }
     else
         load_current_presets();
@@ -2792,9 +2783,6 @@ wxMenu* GUI_App::get_config_menu(MainFrame* main_frame)
     if (is_editor()) {
 #ifndef SLIC3R_OFFLINE_ONLY
         local_menu->AppendSeparator();
-        local_menu->Append(config_id_base + ConfigMenuFlashFirmware, _L("Flash Printer &Firmware"), _L("Upload a firmware image into an Arduino based printer"));
-        // TODO: for when we're able to flash dictionaries
-        // local_menu->Append(config_id_base + FirmwareMenuDict,  _L("Flash Language File"),    _L("Upload a language dictionary file into a Prusa printer"));
 #endif
     }
 #ifndef SLIC3R_OFFLINE_ONLY
@@ -2909,13 +2897,6 @@ wxMenu* GUI_App::get_config_menu(MainFrame* main_frame)
 #endif
                 break;
         }
-        case ConfigMenuFlashFirmware:
-            {
-        #ifndef SLIC3R_OFFLINE_ONLY
-                FirmwareDialog::run(main_frame);
-        #endif
-            break;
-            }
         case ConfigMenuWifiConfigFile:
         {
         #ifndef SLIC3R_OFFLINE_ONLY
@@ -3207,9 +3188,6 @@ void GUI_App::load_current_presets(bool check_printer_presets_ /*= true*/)
 				// Mark the plater to update print bed by tab->load_current_preset() from Plater::on_config_change().
 				this->plater()->force_print_bed_update();
 			}
-            else if (tab->type() == Preset::TYPE_FILAMENT)
-                // active extruder can be changed in a respect to the new loaded configurations, if some filament preset will be modified
-                static_cast<TabFilament*>(tab)->invalidate_active_extruder();
 			tab->load_current_preset();
 		}
 }
@@ -4259,39 +4237,9 @@ void GUI_App::select_filament_from_connect(const std::string& msg)
     BOOST_LOG_TRIVIAL(error) << "Connect filament selection ignored in offline-only mode.";
     return;
 #else
-    // parse message
-    std::vector<std::string> materials;
-    std::vector<bool> avoid_abrasive;
-    UserAccountUtils::fill_material_from_json(msg, materials, avoid_abrasive);
-    if (materials.empty()) {
-        BOOST_LOG_TRIVIAL(error) << "Failed to select filament from Connect. No material data.";
-        return;
-    }
-    // test if currently selected is same type
-    size_t extruder_count = preset_bundle->extruders_filaments.size();
-    if (extruder_count < materials.size()) {
-        BOOST_LOG_TRIVIAL(error) << format("Failed to select filament from Connect. Selected printer has %1% extruders while data from Connect contains %2% materials.", extruder_count, materials.size());
-        plater()->get_notification_manager()->close_notification_of_type(NotificationType::SelectFilamentFromConnect);
-        // TRN: Notification text.
-        plater()->get_notification_manager()->push_notification(NotificationType::SelectFilamentFromConnect, NotificationManager::NotificationLevel::ImportantNotificationLevel, _u8L("Failed to select filament from Connect."));
-        return;
-    }
-    std::string notification_text;
-    for (size_t i = 0; i < materials.size(); i++) {
-        search_and_select_filaments(materials[i], avoid_abrasive.size() > i ? avoid_abrasive[i] : false, i, notification_text);
-    }
-
-    // When all filaments are selected/intalled, 
-    // then update preset comboboxes on sidebar
-    sidebar().update_presets(Preset::TYPE_FILAMENT);
-    // and filaments tab
-    TabFilament* tab = dynamic_cast<TabFilament*>(get_tab(Preset::TYPE_FILAMENT));
-    tab->select_preset(preset_bundle->extruders_filaments[tab->get_active_extruder()].get_selected_preset_name());
-    
-    if (!notification_text.empty()) {
-        plater()->get_notification_manager()->close_notification_of_type(NotificationType::SelectFilamentFromConnect);
-        plater()->get_notification_manager()->push_notification(NotificationType::SelectFilamentFromConnect, NotificationManager::NotificationLevel::ImportantNotificationLevel, notification_text);
-    }
+    (void)msg;
+    // SLA-only build: filament synchronization is not supported.
+    return;
 #endif
 }
 
@@ -4322,11 +4270,8 @@ void GUI_App::handle_connect_request_printer_select_inner(const std::string & ms
         // If printer was not selected, do not select filament.
         return;
     }
-    // TODO: Selecting SLA material
-    if (Preset::printer_technology(preset_bundle->printers.get_selected_preset().config) != ptFFF) {
-        return;
-    }
-    select_filament_from_connect(msg);
+    // SLA-only: keep printer selection only.
+    return;
 #endif
 }
 

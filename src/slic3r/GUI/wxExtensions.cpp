@@ -238,7 +238,7 @@ void msw_buttons_rescale(wxDialog* dlg, const int em_unit, const std::vector<int
     const wxSize& btn_size = wxSize(-1, int(2.5 * em_unit * height_koef + 0.5f));
 
     for (int btn_id : btn_ids) {
-        // There is a case [FirmwareDialog], when we have wxControl instead of wxButton
+        // In some dialogs we may have wxControl instead of wxButton
         // so let casting everything to the wxControl
         wxControl* btn = static_cast<wxControl*>(dlg->FindWindowById(btn_id, dlg));
         if (btn)
@@ -367,7 +367,7 @@ void apply_extruder_selector(Slic3r::GUI::BitmapComboBox** ctrl,
         (*ctrl)->Clear();
     }
     if (first_item.empty())
-        (*ctrl)->Hide();    // to avoid unwanted rendering before layout (ExtruderSequenceDialog)
+        (*ctrl)->Hide();    // to avoid unwanted rendering before layout
 
     if (icons.empty() && !first_item.empty()) {
         (*ctrl)->Append(_(first_item), wxNullBitmap);

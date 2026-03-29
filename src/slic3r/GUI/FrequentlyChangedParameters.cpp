@@ -34,10 +34,6 @@
 #include "Tab.hpp"
 #include "I18N.hpp"
 
-#ifndef SLIC3R_SLA_ONLY
-#include "WipeTowerDialog.hpp"
-#endif
-
 using Slic3r::Preset;
 using Slic3r::GUI::format_wxstr;
 

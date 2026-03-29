@@ -147,7 +147,7 @@ const IconManager::Icon &get_icon(const IconManager::Icons &icons, IconType type
 
 // This configs holds GUI layout size given by translated texts.
 // etc. When language changes, GUI is recreated and this class constructed again,
-// so the change takes effect. (info by GLGizmoFdmSupports.hpp)
+// so the change takes effect.
 struct GuiCfg
 {
     // Detect invalid config values when change monitor DPI

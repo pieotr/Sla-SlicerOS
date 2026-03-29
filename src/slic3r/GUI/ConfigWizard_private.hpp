@@ -427,7 +427,6 @@ private:
     static const char* default_profile_name;
 
     wxCheckBox              *cb_custom {nullptr};
-    wxRadioButton           *rb_custom_fff {nullptr};
     wxRadioButton           *rb_custom_sla {nullptr};
     SavePresetDialog::Item  *profile_name_editor {nullptr};
 
@@ -494,15 +493,6 @@ struct PageVendors: ConfigWizardPage
     PageVendors(ConfigWizard *parent, std::string repos_id = std::string(), std::string name = std::string());
 };
 
-struct PageFirmware: ConfigWizardPage
-{
-    const ConfigOptionDef &gcode_opt;
-    wxChoice *gcode_picker;
-
-    PageFirmware(ConfigWizard *parent);
-    virtual void apply_custom_config(DynamicPrintConfig &config);
-};
-
 struct PageBedShape: ConfigWizardPage
 {
     BedShapePanel *shape_panel;
@@ -517,24 +507,6 @@ struct PageBuildVolume : ConfigWizardPage
 
     PageBuildVolume(ConfigWizard* parent);
     virtual void apply_custom_config(DynamicPrintConfig& config);
-};
-
-struct PageDiameters: ConfigWizardPage
-{
-    wxTextCtrl *diam_nozzle;
-    wxTextCtrl *diam_filam;
-
-    PageDiameters(ConfigWizard *parent);
-    virtual void apply_custom_config(DynamicPrintConfig &config);
-};
-
-struct PageTemperatures: ConfigWizardPage
-{
-    ::SpinInputDouble *spin_extr;
-    ::SpinInputDouble *spin_bed;
-
-    PageTemperatures(ConfigWizard *parent);
-    virtual void apply_custom_config(DynamicPrintConfig &config);
 };
 
 // hypothetically, each vendor can has printers both of technologies (FFF and SLA)
@@ -651,10 +623,7 @@ struct ConfigWizard::priv
     PageMode         *page_mode = nullptr;
 
     // Custom setup pages
-    PageFirmware     *page_firmware = nullptr;
     PageBedShape     *page_bed = nullptr;
-    PageDiameters    *page_diams = nullptr;
-    PageTemperatures *page_temps = nullptr;
     PageBuildVolume* page_bvolume = nullptr;
 
     std::vector<PagePrinters*>  pages_fff;

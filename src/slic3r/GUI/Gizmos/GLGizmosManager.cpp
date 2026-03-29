@@ -20,15 +20,8 @@
 #include "slic3r/GUI/Gizmos/GLGizmoRotate.hpp"
 #include "slic3r/GUI/Gizmos/GLGizmoFlatten.hpp"
 #include "slic3r/GUI/Gizmos/GLGizmoSlaSupports.hpp"
-#ifndef SLIC3R_SLA_ONLY
-#include "slic3r/GUI/Gizmos/GLGizmoFdmSupports.hpp"
-#include "slic3r/GUI/Gizmos/GLGizmoFuzzySkin.hpp"
-#endif
 #include "slic3r/GUI/Gizmos/GLGizmoCut.hpp"
 #include "slic3r/GUI/Gizmos/GLGizmoHollow.hpp"
-#ifndef SLIC3R_SLA_ONLY
-#include "slic3r/GUI/Gizmos/GLGizmoSeam.hpp"
-#endif
 #include "slic3r/GUI/Gizmos/GLGizmoMmuSegmentation.hpp"
 #include "slic3r/GUI/Gizmos/GLGizmoSimplify.hpp"
 #include "slic3r/GUI/Gizmos/GLGizmoEmboss.hpp"
@@ -116,12 +109,7 @@ bool GLGizmosManager::init()
     m_gizmos.emplace_back(new GLGizmoCut3D(m_parent, "cut.svg", 4));
     m_gizmos.emplace_back(new GLGizmoHollow(m_parent, "hollow.svg", 5));
     m_gizmos.emplace_back(new GLGizmoSlaSupports(m_parent, "sla_supports.svg", 6));
-#ifndef SLIC3R_SLA_ONLY
-    m_gizmos.emplace_back(new GLGizmoFdmSupports(m_parent, "fdm_supports.svg", 7));
-    m_gizmos.emplace_back(new GLGizmoSeam(m_parent, "seam.svg", 8));
-    m_gizmos.emplace_back(new GLGizmoFuzzySkin(m_parent, "fuzzy_skin_painting.svg", 9));
     m_gizmos.emplace_back(new GLGizmoMmuSegmentation(m_parent, "mmu_segmentation.svg", 10));
-#endif
     m_gizmos.emplace_back(new GLGizmoMeasure(m_parent, "measure.svg", 11));
     m_gizmos.emplace_back(new GLGizmoEmboss(m_parent));
     m_gizmos.emplace_back(new GLGizmoSVG(m_parent));
@@ -298,22 +286,12 @@ bool GLGizmosManager::gizmo_event(SLAGizmoEventType action, const Vec2d& mouse_p
         return dynamic_cast<GLGizmoSlaSupports*>(m_gizmos[SlaSupports].get())->gizmo_event(action, mouse_position, shift_down, alt_down, control_down);
     else if (m_current == Hollow)
         return dynamic_cast<GLGizmoHollow*>(m_gizmos[Hollow].get())->gizmo_event(action, mouse_position, shift_down, alt_down, control_down);
-#ifndef SLIC3R_SLA_ONLY
-    else if (m_current == FdmSupports)
-        return dynamic_cast<GLGizmoFdmSupports*>(m_gizmos[FdmSupports].get())->gizmo_event(action, mouse_position, shift_down, alt_down, control_down);
-    else if (m_current == Seam)
-        return dynamic_cast<GLGizmoSeam*>(m_gizmos[Seam].get())->gizmo_event(action, mouse_position, shift_down, alt_down, control_down);
-#endif
     else if (m_current == MmSegmentation)
         return dynamic_cast<GLGizmoMmuSegmentation*>(m_gizmos[MmSegmentation].get())->gizmo_event(action, mouse_position, shift_down, alt_down, control_down);
     else if (m_current == Measure)
         return dynamic_cast<GLGizmoMeasure*>(m_gizmos[Measure].get())->gizmo_event(action, mouse_position, shift_down, alt_down, control_down);
     else if (m_current == Cut)
         return dynamic_cast<GLGizmoCut3D*>(m_gizmos[Cut].get())->gizmo_event(action, mouse_position, shift_down, alt_down, control_down);
-#ifndef SLIC3R_SLA_ONLY
-    else if (m_current == FuzzySkin)
-        return dynamic_cast<GLGizmoFuzzySkin*>(m_gizmos[FuzzySkin].get())->gizmo_event(action, mouse_position, shift_down, alt_down, control_down);
-#endif
     else
         return false;
 }

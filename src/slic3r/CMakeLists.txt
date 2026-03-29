@@ -79,10 +79,6 @@ set(SLIC3R_GUI_SOURCES
     GUI/Gizmos/GLGizmoScale.hpp
     GUI/Gizmos/GLGizmoSlaSupports.cpp
     GUI/Gizmos/GLGizmoSlaSupports.hpp
-    GUI/Gizmos/GLGizmoFdmSupports.cpp
-    GUI/Gizmos/GLGizmoFdmSupports.hpp
-    GUI/Gizmos/GLGizmoFuzzySkin.cpp
-    GUI/Gizmos/GLGizmoFuzzySkin.hpp
     GUI/Gizmos/GLGizmoFlatten.cpp
     GUI/Gizmos/GLGizmoFlatten.hpp
     GUI/Gizmos/GLGizmoCut.cpp
@@ -91,8 +87,6 @@ set(SLIC3R_GUI_SOURCES
     GUI/Gizmos/GLGizmoHollow.hpp
     GUI/Gizmos/GLGizmoPainterBase.cpp
     GUI/Gizmos/GLGizmoPainterBase.hpp
-    GUI/Gizmos/GLGizmoSeam.cpp
-    GUI/Gizmos/GLGizmoSeam.hpp
     GUI/Gizmos/GLGizmoSimplify.cpp
     GUI/Gizmos/GLGizmoSimplify.hpp
     GUI/Gizmos/GLGizmoSVG.cpp
@@ -195,12 +189,6 @@ set(SLIC3R_GUI_SOURCES
     GUI/CameraUtils.hpp
     GUI/wxExtensions.cpp
     GUI/wxExtensions.hpp
-    GUI/ExtruderSequenceDialog.cpp
-    GUI/ExtruderSequenceDialog.hpp
-    GUI/WipeTowerDialog.cpp
-    GUI/WipeTowerDialog.hpp
-    GUI/RammingChart.cpp
-    GUI/RammingChart.hpp
     GUI/RemovableDriveManager.cpp
     GUI/RemovableDriveManager.hpp
     GUI/SendSystemInfoDialog.cpp
@@ -223,8 +211,6 @@ set(SLIC3R_GUI_SOURCES
     Config/Version.hpp    
     Utils/ASCIIFolding.cpp
     Utils/ASCIIFolding.hpp
-    Utils/Serial.cpp
-    Utils/Serial.hpp
     GUI/ConfigWizard.cpp
     GUI/ConfigWizard.hpp
     GUI/ConfigWizard_private.hpp
@@ -234,8 +220,6 @@ set(SLIC3R_GUI_SOURCES
     GUI/MsgDialog.hpp
     GUI/UpdateDialogs.cpp
     GUI/UpdateDialogs.hpp
-    GUI/FirmwareDialog.cpp
-    GUI/FirmwareDialog.hpp
     GUI/PrintHostDialogs.cpp
     GUI/PrintHostDialogs.hpp
     GUI/WifiConfigDialog.cpp
@@ -401,48 +385,12 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
     find_package(OpenSSL REQUIRED)
 endif()
 
-if (APPLE)
-    list(APPEND SLIC3R_GUI_SOURCES
-            Utils/RetinaHelperImpl.mm
-            Utils/MacDarkMode.mm
-            Utils/MacUtils.mm
-            Utils/WifiScannerMac.h
-            Utils/WifiScannerMac.mm
-            GUI/RemovableDriveManagerMM.mm
-            GUI/RemovableDriveManagerMM.h
-            GUI/Mouse3DHandlerMac.mm
-            GUI/InstanceCheckMac.mm
-            GUI/InstanceCheckMac.h
-                GUI/WebViewPlatformUtilsMac.mm
+list(APPEND SLIC3R_GUI_SOURCES
+    GUI/WebViewPlatformUtilsLinux.cpp
+)
 
-    )
-    FIND_LIBRARY(DISKARBITRATION_LIBRARY DiskArbitration)
-    FIND_LIBRARY(COREWLAN_LIBRARY CoreWLAN)
-elseif (WIN32)
-            list(APPEND SLIC3R_GUI_SOURCES
-                GUI/WebViewPlatformUtilsWin32.cpp
-            )
-else() # Linux
-            list(APPEND SLIC3R_GUI_SOURCES
-                GUI/WebViewPlatformUtilsLinux.cpp
-            )
-endif ()
-
-if (SLIC3R_SLA_ONLY)
-    list(REMOVE_ITEM SLIC3R_GUI_SOURCES
-        GUI/Gizmos/GLGizmoFdmSupports.cpp
-        GUI/Gizmos/GLGizmoFdmSupports.hpp
-        GUI/Gizmos/GLGizmoFuzzySkin.cpp
-        GUI/Gizmos/GLGizmoFuzzySkin.hpp
-        GUI/Gizmos/GLGizmoSeam.cpp
-        GUI/Gizmos/GLGizmoSeam.hpp
-        GUI/ExtruderSequenceDialog.cpp
-        GUI/ExtruderSequenceDialog.hpp
-        GUI/WipeTowerDialog.cpp
-        GUI/WipeTowerDialog.hpp
-        GUI/RammingChart.cpp
-        GUI/RammingChart.hpp
-    )
+if (NOT SLIC3R_SLA_ONLY)
+    message(FATAL_ERROR "This branch is SLA-only. Build with SLIC3R_SLA_ONLY=ON.")
 endif ()
 
 add_library(libslic3r_gui STATIC ${SLIC3R_GUI_SOURCES})

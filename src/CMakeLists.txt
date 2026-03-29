@@ -118,7 +118,7 @@ if (SLIC3R_GUI)
     )
 endif ()
 
-if (WIN32)
+if (WIN32 AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/PrusaSlicer_app_msvc.cpp")
     add_library(PrusaSlicer SHARED PrusaSlicer.cpp ${SLIC3R_CLI_SOURCES})
 else ()
     add_executable(PrusaSlicer PrusaSlicer.cpp ${SLIC3R_CLI_SOURCES})

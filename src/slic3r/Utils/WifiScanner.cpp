@@ -14,9 +14,7 @@
 
 #include "libslic3r//Utils.hpp"
 
-#elif __APPLE_
-#include "WifiScannerMac.h"
-#endif 
+#endif
 
 #if __linux__
 #include <dbus/dbus.h> /* Pull in all of D-Bus headers. */
