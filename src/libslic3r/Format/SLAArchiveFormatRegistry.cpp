@@ -57,7 +57,7 @@ class Registry {
             anycubic_sla_format_versioned("pw0", "Photon Zero", ANYCUBIC_SLA_FORMAT_VERSION_1),
             anycubic_sla_format_versioned("pwx", "Photon X", ANYCUBIC_SLA_FORMAT_VERSION_1),
             anycubic_sla_format_versioned("dlp", "Photon Ultra", ANYCUBIC_SLA_FORMAT_VERSION_1),
-            anycubic_sla_format_versioned("dl2p", "Photon D2", ANYCUBIC_SLA_FORMAT_VERSION_515),
+            anycubic_sla_format_versioned("dl2p", "Photon D2", ANYCUBIC_SLA_FORMAT_VERSION_517),
             anycubic_sla_format_versioned("pwmx", "Photon Mono X", ANYCUBIC_SLA_FORMAT_VERSION_1),
             anycubic_sla_format_versioned("pmx2", "Photon Mono X2", ANYCUBIC_SLA_FORMAT_VERSION_515),
             anycubic_sla_format_versioned("pwmb", "Photon Mono X 6K / M3 Plus", ANYCUBIC_SLA_FORMAT_VERSION_515),
@@ -126,7 +126,7 @@ class Registry {
                 L("Chitubox CTB v3/v4"),
                 "ctb",
                 {"encrypted.ctb"},
-                [] (const auto &cfg) { return std::make_unique<AnycubicSLAArchive>(cfg, ANYCUBIC_SLA_FORMAT_VERSION_1); },
+                [] (const auto &cfg) { return std::make_unique<UVToolsChituboxArchive>(cfg); },
                 [] (const std::string &fname, SLAImportQuality quality, const ProgrFn &progr) {
                     return std::make_unique<SL1Reader>(fname, quality, progr);
                 }

@@ -70,44 +70,8 @@ DisplayDimensions get_display_dimensions(const SLAPrinterConfig &cfg)
     return dims;
 }
 
-// Helper to read display dimensions from a generic config (DynamicPrintConfig)
-DisplayDimensions get_display_dimensions_from_print_config(const DynamicPrintConfig &cfg)
-{
-    DisplayDimensions dims{};
-    
-    // Try to read from display_width, display_height, display_pixels_x, display_pixels_y
-    double w = 68.0; // Default width in case key doesn't exist
-    double h = 120.0; // Default height
-    uint32_t pw = 1440;  // Default pixels_x
-    uint32_t ph = 2560;  // Default pixels_y
-    
-    // Read from config with safe fallbacks using option<T>() template method
-    if (const auto *opt = cfg.option<ConfigOptionFloat>("display_width"))
-        w = opt->value;
-    if (const auto *opt = cfg.option<ConfigOptionFloat>("display_height"))
-        h = opt->value;
-    if (const auto *opt = cfg.option<ConfigOptionInt>("display_pixels_x"))
-        pw = uint32_t(opt->value);
-    if (const auto *opt = cfg.option<ConfigOptionInt>("display_pixels_y"))
-        ph = uint32_t(opt->value);
-    
-    int ro = 0; // Landscape by default
-    if (const auto *opt = cfg.option<ConfigOptionInt>("display_orientation"))
-        ro = opt->value;
-    
-    bool is_portrait = ro == sla::RasterBase::roPortrait;
+// No need for generic helper - use printer_config() directly
 
-    if (is_portrait) {
-        std::swap(w, h);
-        std::swap(pw, ph);
-    }
-
-    dims.display_width_mm = w;
-    dims.display_height_mm = h;
-    dims.resolution_x = pw;
-    dims.resolution_y = ph;
-    return dims;
-}
 
 std::unique_ptr<sla::RasterBase> make_common_raster(const SLAPrinterConfig &cfg)
 {
@@ -173,6 +137,13 @@ void write_f32_le(std::ofstream &out, float v)
     uint32_t bits = 0;
     std::memcpy(&bits, &v, sizeof(bits));
     write_u32_le(out, bits);
+}
+
+void write_f32_be(std::ofstream &out, float v)
+{
+    uint32_t bits = 0;
+    std::memcpy(&bits, &v, sizeof(bits));
+    write_u32_be(out, bits);
 }
 
 void write_be_len_nt_string(std::ofstream &out, const std::string &s)
@@ -557,27 +528,31 @@ void UVToolsCWSArchive::export_print(const std::string     fname,
     const std::string project =
         projectname.empty() ? std::filesystem::path(fname).stem().string() : projectname;
 
-    // Get print config for parameters
+    // Get printer-specific config and generic config for parameters
     const auto &cfg = print.full_print_config();
     const float layer_h = cfg_float_or(cfg, "layer_height", 0.05f);
     const float exp_time = cfg_float_or(cfg, "exposure_time", 2.5f);
     const float lift_h = cfg_float_or(cfg, "lift_distance", 5.0f);
     const float lift_spd = cfg_float_or(cfg, "lift_speed", 60.0f);
 
-    // Get orientation-aware display dimensions from current print config (not stale m_cfg)
-    const auto dims = get_display_dimensions_from_print_config(cfg);
+    // Get orientation-aware display dimensions from m_cfg (set at archive creation)
+    const auto dims = get_display_dimensions(m_cfg);
 
     // CWS requires XResolution x YResolution to match actual raster dimensions
     // The raster is already created with correct orientation, so use actual layer dimensions
     // If no layers yet, use dims; otherwise validate against first layer
     uint32_t res_x = dims.resolution_x;
     uint32_t res_y = dims.resolution_y;
+    
+    // Get display dimensions from printer profile (actual bed size)
+    double display_width_mm = m_cfg.display_width.getFloat();
+    double display_height_mm = m_cfg.display_height.getFloat();
 
     // Create ZIP file with Zipper
     try {
         Zipper zip(fname, Zipper::FAST_COMPRESSION);
 
-        // Create manifest.xml (Wanhao format)
+            // Create manifest.xml (Wanhao format)
         std::ostringstream manifest;
         manifest << "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n";
         manifest << "<manifest FileVersion=\"1\">\n";
@@ -587,21 +562,25 @@ void UVToolsCWSArchive::export_print(const std::string     fname,
         manifest << "  </Slices>\n";
         manifest << "  <SliceProfile><name>" << project << ".slicing</name></SliceProfile>\n";
         manifest << "  <GCode><name>" << project << ".gcode</name></GCode>\n";
+        manifest << "  <DisplayWidth>" << std::fixed << std::setprecision(2) << display_width_mm << "</DisplayWidth>\n";
+        manifest << "  <DisplayHeight>" << std::fixed << std::setprecision(2) << display_height_mm << "</DisplayHeight>\n";
         manifest << "</manifest>\n";
         
         std::string manifest_str = manifest.str();
         zip.add_entry("manifest.xml");
         zip << manifest_str;
 
-        // Create slicing profile with correct X/Y resolution
+        // Create slicing profile with correct X/Y resolution and display dimensions
         std::ostringstream slicing;
         slicing << "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n";
         slicing << "<SliceBuildConfig FileVersion=\"2\">\n";
         slicing << "  <XResolution>" << res_x << "</XResolution>\n";
         slicing << "  <YResolution>" << res_y << "</YResolution>\n";
+        slicing << "  <DisplayWidth>" << std::fixed << std::setprecision(2) << display_width_mm << "</DisplayWidth>\n";
+        slicing << "  <DisplayHeight>" << std::fixed << std::setprecision(2) << display_height_mm << "</DisplayHeight>\n";
+        slicing << "  <LayerThickness>" << std::fixed << std::setprecision(3) << layer_h << "</LayerThickness>\n";
         slicing << "  <LiftDistance>" << std::fixed << std::setprecision(2) << lift_h << "</LiftDistance>\n";
         slicing << "  <LiftSpeed>" << std::fixed << std::setprecision(2) << lift_spd << "</LiftSpeed>\n";
-        slicing << "  <LayerThickness>" << std::fixed << std::setprecision(3) << layer_h << "</LayerThickness>\n";
         slicing << "  <ExposureTime>" << std::fixed << std::setprecision(2) << exp_time << "</ExposureTime>\n";
         slicing << "</SliceBuildConfig>\n";
         
@@ -638,7 +617,6 @@ void UVToolsFDGArchive::export_print(const std::string     fname,
                                      const ThumbnailsList &,
                                      const std::string    &)
 {
-    const auto  &printer_cfg  = print.printer_config();
     const auto  &cfg          = print.full_print_config();
     const float layer_h       = cfg_float_or(cfg, "layer_height", 0.05f);
     const float initial_h     = cfg_float_or(cfg, "initial_layer_height", layer_h);
@@ -650,11 +628,13 @@ void UVToolsFDGArchive::export_print(const std::string     fname,
     if (layer_count == 0)
         throw RuntimeError("No rasterized layers available for FDG export");
 
-    // Get orientation-aware display dimensions from printer config
-    const auto dims = get_display_dimensions(printer_cfg);
+    // Get orientation-aware display dimensions and resolution
+    const auto dims = get_display_dimensions(m_cfg);
 
-    const uint32_t header_size = 54u * 4u;
-    const uint32_t layer_def_size = 9u * 4u;
+    // FDG Header: 124 bytes (32 fields with mixed uint/float/ushort)
+    const uint32_t header_size = 124u;
+    // LayerDef: 36 bytes (same as CTB, 9 fields)
+    const uint32_t layer_def_size = 36u;
     const uint32_t layer_defs_offset = header_size;
     const uint32_t layer_data_offset = layer_defs_offset + layer_def_size * layer_count;
 
@@ -665,73 +645,70 @@ void UVToolsFDGArchive::export_print(const std::string     fname,
         current_data += uint32_t(m_layers[i].size());
     }
 
+    // Calculate total model height
+    float total_height = initial_h * float(std::min(layer_count, bottom_count)) + 
+                        layer_h * float(std::max(0u, layer_count - bottom_count));
+
     std::ofstream out(fname, std::ios::binary | std::ios::trunc);
     if (!out)
         throw RuntimeError("Failed to open output file for FDG export");
 
-    write_u32_le(out, 0xBD3C7AC8u);
-    write_u32_le(out, 2u);
-    write_u32_le(out, layer_count);
-    write_u32_le(out, bottom_count);
-    write_u32_le(out, 0u);
-    write_u32_le(out, bottom_count);
-    write_u32_le(out, dims.resolution_x);
-    write_u32_le(out, dims.resolution_y);
-    write_f32_le(out, layer_h);
-    write_f32_le(out, exp);
-    write_f32_le(out, initial_exp);
-    write_u32_le(out, 0u);
-    write_u32_le(out, 0u);
-    write_u32_le(out, layer_defs_offset);
-    write_u32_le(out, 0u);
-    write_u32_le(out, 1u);
-    write_u16_le(out, 255u);
-    write_u16_le(out, 255u);
+    // Write FDG header (124 bytes) following exact UVtools FDGFile.cs field order:
+    write_u32_le(out, 0xBD3C7AC8u);                      // 0: Magic
+    write_u32_le(out, 2u);                               // 1: Version
+    write_u32_le(out, layer_count);                      // 2: LayerCount
+    write_u32_le(out, bottom_count);                     // 3: BottomLayersCount
+    write_u32_le(out, 0u);                               // 4: ProjectorType
+    write_u32_le(out, bottom_count);                     // 5: BottomLayersCount2 (duplicate)
+    write_u32_le(out, dims.resolution_x);               // 6: ResolutionX
+    write_u32_le(out, dims.resolution_y);               // 7: ResolutionY
+    write_f32_le(out, layer_h);                          // 8: LayerHeightMillimeter
+    write_f32_le(out, exp);                              // 9: LayerExposureSeconds
+    write_f32_le(out, initial_exp);                      // 10: BottomExposureSeconds
+    write_u32_le(out, 0u);                               // 11: PreviewLargeOffsetAddress
+    write_u32_le(out, 0u);                               // 12: PreviewSmallOffsetAddress
+    write_u32_le(out, layer_defs_offset);                // 13: LayersDefinitionOffsetAddress
+    write_u32_le(out, 0u);                               // 14: PrintTime
+    write_u32_le(out, 1u);                               // 15: AntiAliasLevel
+    write_u16_le(out, 255u);                             // 16: LightPWM (ushort!)
+    write_u16_le(out, 255u);                             // 17: BottomLightPWM (ushort!)
+    write_u32_le(out, 0u);                               // 18: Padding1
+    write_u32_le(out, 0u);                               // 19: Padding2
+    write_f32_le(out, total_height);                     // 20: OverallHeightMillimeter
+    write_f32_le(out, 68.04f);                           // 21: BedSizeX
+    write_f32_le(out, 120.96f);                          // 22: BedSizeY
+    write_f32_le(out, 150.0f);                           // 23: BedSizeZ
+    write_u32_le(out, 0u);                               // 24: EncryptionKey
+    write_u32_le(out, 1u);                               // 25: AntiAliasLevelInfo
+    write_u32_le(out, 0x4Cu);                            // 26: EncryptionMode
+    write_f32_le(out, 0.0f);                             // 27: VolumeMl
+    write_f32_le(out, 0.0f);                             // 28: WeightG
+    write_f32_le(out, 0.0f);                             // 29: CostDollars
+    write_u32_le(out, 0u);                               // 30: MachineNameAddress
+    write_u32_le(out, 0u);                               // 31: MachineNameSize
 
-    for (int i = 0; i < 3; ++i)
-        write_u32_le(out, 0u);
-
-    write_f32_le(out, initial_h * float(bottom_count) + layer_h * float(layer_count - std::min(layer_count, bottom_count)));
-    write_f32_le(out, float(dims.display_width_mm));
-    write_f32_le(out, float(dims.display_height_mm));
-    write_f32_le(out, 150.0f);
-    write_u32_le(out, 0u);
-    write_u32_le(out, 0u);
-    write_u32_le(out, 0x4Cu);
-    write_f32_le(out, 0.0f);
-    write_f32_le(out, 0.0f);
-    write_f32_le(out, 0.0f);
-    write_u32_le(out, 0u);
-    write_u32_le(out, 0u);
-    write_f32_le(out, 1.0f);
-    write_f32_le(out, 1.0f);
-    write_u32_le(out, 0u);
-    write_f32_le(out, 5.0f);
-    write_f32_le(out, 60.0f);
-    write_f32_le(out, 5.0f);
-    write_f32_le(out, 60.0f);
-    write_f32_le(out, 60.0f);
-
-    while (out.tellp() < std::streampos(header_size))
-        write_u32_le(out, 0u);
-
+    // Write layer definitions (36 bytes per layer = 9 fields)
     for (uint32_t i = 0; i < layer_count; ++i) {
-        const float z = (i < bottom_count) ? initial_h * float(i + 1) : (initial_h * float(bottom_count) + layer_h * float(i - bottom_count + 1));
+        const float z = (i < bottom_count) ? initial_h * float(i + 1) : 
+                        (initial_h * float(bottom_count) + layer_h * float(i - bottom_count + 1));
         const float lexp = (i < bottom_count) ? initial_exp : exp;
 
-        write_f32_le(out, z);
-        write_f32_le(out, lexp);
-        write_f32_le(out, 1.0f);
-        write_u32_le(out, data_offsets[i]);
-        write_u32_le(out, uint32_t(m_layers[i].size()));
-        write_u32_le(out, 0u);
-        write_u32_le(out, 84u);
-        write_u32_le(out, 0u);
-        write_u32_le(out, 0u);
+        write_f32_le(out, z);                            // 0: PositionZ
+        write_f32_le(out, lexp);                         // 1: ExposureTime
+        write_f32_le(out, 0.0f);                         // 2: LightOffSeconds
+        write_u32_le(out, data_offsets[i]);              // 3: DataAddress
+        write_u32_le(out, uint32_t(m_layers[i].size())); // 4: DataSize
+        write_u32_le(out, 0u);                           // 5: PageNumber
+        write_u32_le(out, 36u);                          // 6: TableSize
+        write_u32_le(out, 0u);                           // 7: Unknown3
+        write_u32_le(out, 0u);                           // 8: Unknown4
     }
 
+    // Write layer RLE data
     for (uint32_t i = 0; i < layer_count; ++i)
         out.write(reinterpret_cast<const char *>(m_layers[i].data()), std::streamsize(m_layers[i].size()));
+
+    out.close();
 }
 
 void UVToolsCXDLPArchive::export_print(const std::string     fname,
@@ -739,7 +716,6 @@ void UVToolsCXDLPArchive::export_print(const std::string     fname,
                                        const ThumbnailsList &,
                                        const std::string    &)
 {
-    const auto &printer_cfg = print.printer_config();
     const auto &cfg = print.full_print_config();
 
     const uint32_t layer_count = uint32_t(m_layers.size());
@@ -752,8 +728,12 @@ void UVToolsCXDLPArchive::export_print(const std::string     fname,
     const uint16_t bottom_count = uint16_t(std::max(0, cfg_int_or(cfg, "initial_layer_count", 6)));
     const float lift_h  = cfg_float_or(cfg, "lift_distance", 5.0f);
 
-    // Get display dimensions from printer config
-    const auto dims = get_display_dimensions(printer_cfg);
+    // Get display dimensions from m_cfg (set at archive creation)
+    const auto dims = get_display_dimensions(m_cfg);
+    
+    // Get raw display dimensions from printer profile (no orientation swap)
+    double display_width_mm = m_cfg.display_width.getFloat();
+    double display_height_mm = m_cfg.display_height.getFloat();
 
     std::ofstream out(fname, std::ios::binary | std::ios::trunc);
     if (!out)
@@ -781,9 +761,9 @@ void UVToolsCXDLPArchive::export_print(const std::string     fname,
     }
 
     std::ostringstream wss;
-    wss << std::fixed << std::setprecision(2) << dims.display_width_mm;
+    wss << std::fixed << std::setprecision(2) << display_width_mm;
     std::ostringstream hss;
-    hss << std::fixed << std::setprecision(2) << dims.display_height_mm;
+    hss << std::fixed << std::setprecision(2) << display_height_mm;
     std::ostringstream lhss;
     lhss << std::fixed << std::setprecision(3) << layer_h;
 
@@ -997,7 +977,6 @@ void UVToolsChituboxArchive::export_print(const std::string     fname,
                                           const ThumbnailsList &,
                                           const std::string    &)
 {
-    const auto  &printer_cfg  = print.printer_config();
     const auto  &cfg          = print.full_print_config();
     const float layer_h       = cfg_float_or(cfg, "layer_height", 0.05f);
     const float initial_h     = cfg_float_or(cfg, "initial_layer_height", layer_h);
@@ -1009,11 +988,18 @@ void UVToolsChituboxArchive::export_print(const std::string     fname,
     if (layer_count == 0)
         throw RuntimeError("No rasterized layers available for Chitubox export");
 
-    // Get orientation-aware display dimensions from printer config
-    const auto dims = get_display_dimensions(printer_cfg);
+    // Get orientation-aware display dimensions and resolution
+    const auto dims = get_display_dimensions(m_cfg);
 
-    const uint32_t header_size = 24u * 4u;
-    const uint32_t layer_def_size = 9u * 4u;
+    // Get printer bed dimensions (full dimensions, not just usable display area)
+    double bed_size_x = 68.04;  // Default, can be configured
+    double bed_size_y = 120.96; // Default, can be configured
+    double bed_size_z = 150.0;  // Default, can be configured
+
+    // CTB Header: 112 bytes (fields 0-28: 24 uint/float + 2 ushort + 4 uint)
+    const uint32_t header_size = 112u;
+    // LayerDef: 36 bytes (9 fields: 3 float + 6 uint = 12 + 24 = 36)
+    const uint32_t layer_def_size = 36u;
     const uint32_t layer_defs_offset = header_size;
     const uint32_t layer_data_offset = layer_defs_offset + layer_def_size * layer_count;
 
@@ -1024,44 +1010,64 @@ void UVToolsChituboxArchive::export_print(const std::string     fname,
         current_data += uint32_t(m_layers[i].size());
     }
 
+    // Calculate total model height
+    float total_height = initial_h * float(std::min(layer_count, bottom_count)) + 
+                        layer_h * float(std::max(0u, layer_count - bottom_count));
+
     std::ofstream out(fname, std::ios::binary | std::ios::trunc);
     if (!out)
         throw RuntimeError("Failed to open output file for Chitubox export");
 
-    write_u32_le(out, m_magic);
-    write_u32_le(out, layer_count);
-    write_f32_le(out, layer_h);
-    write_f32_le(out, exp);
-    write_f32_le(out, initial_exp);
-    write_u32_le(out, uint32_t(bottom_count));
-    write_f32_le(out, initial_h);
-    write_f32_le(out, float(dims.display_width_mm));
-    write_f32_le(out, float(dims.display_height_mm));
-    write_u32_le(out, 0u);
-    write_u32_le(out, 0u);
-    write_u32_le(out, layer_defs_offset);
-    write_f32_le(out, 1.0f);
-    write_f32_le(out, 1.0f);
-    write_u32_le(out, 0u);
+    // Write header (112 bytes) following exact UVtools ChituboxFile.cs field order:
+    // FieldOrder 0-28 in precise sequence
+    write_u32_le(out, m_magic);                          // 0: Magic
+    write_u32_le(out, 5u);                               // 1: Version (5 = latest)
+    write_f32_le(out, float(bed_size_x));                // 2: BedSizeX (mm)
+    write_f32_le(out, float(bed_size_y));                // 3: BedSizeY (mm)
+    write_f32_le(out, float(bed_size_z));                // 4: BedSizeZ (mm)
+    write_u32_le(out, 0u);                               // 5: Unknown1
+    write_u32_le(out, 0u);                               // 6: Unknown2
+    write_f32_le(out, total_height);                     // 7: TotalHeightMillimeter
+    write_f32_le(out, layer_h);                          // 8: LayerHeightMillimeter
+    write_f32_le(out, exp);                              // 9: LayerExposureSeconds
+    write_f32_le(out, initial_exp);                      // 10: BottomExposureSeconds
+    write_f32_le(out, 0.0f);                             // 11: LightOffDelay (none by default)
+    write_u32_le(out, bottom_count);                     // 12: BottomLayersCount
+    write_u32_le(out, dims.resolution_x);               // 13: ResolutionX (pixels)
+    write_u32_le(out, dims.resolution_y);               // 14: ResolutionY (pixels)
+    write_u32_le(out, 0u);                               // 15: PreviewLargeOffsetAddress (0 = no preview)
+    write_u32_le(out, layer_defs_offset);                // 16: LayersDefinitionOffsetAddress
+    write_u32_le(out, layer_count);                      // 17: LayerCount
+    write_u32_le(out, 0u);                               // 18: PreviewSmallOffsetAddress (0 = no preview)
+    write_u32_le(out, 0u);                               // 19: PrintTime (estimated, 0 = unknown)
+    write_u32_le(out, 0u);                               // 20: ProjectorType (0 = normal, 1 = LCD mirrored)
+    write_u32_le(out, 0u);                               // 21: PrintParametersOffsetAddress
+    write_u32_le(out, 0u);                               // 22: PrintParametersSize
+    write_u32_le(out, 1u);                               // 23: AntiAliasLevel (1 = no AA)
+    write_u16_le(out, 255u);                             // 24: LightPWM (ushort, not uint!)
+    write_u16_le(out, 255u);                             // 25: BottomLightPWM (ushort, not uint!)
+    write_u32_le(out, 0u);                               // 26: EncryptionKey (0 = no encryption)
+    write_u32_le(out, 0u);                               // 27: SlicerOffset (for extended metadata)
+    write_u32_le(out, 0u);                               // 28: SlicerSize
 
-    for (int i = 0; i < 8; ++i)
-        write_u32_le(out, 0u);
-
+    // Write layer definition table (36 bytes per layer = 9 fields)
     for (uint32_t i = 0; i < layer_count; ++i) {
-        const float z = (i < bottom_count) ? initial_h * float(i + 1) : (initial_h * float(bottom_count) + layer_h * float(i - bottom_count + 1));
+        const float z = (i < bottom_count) ? initial_h * float(i + 1) : 
+                        (initial_h * float(bottom_count) + layer_h * float(i - bottom_count + 1));
         const float lexp = (i < bottom_count) ? initial_exp : exp;
 
-        write_f32_le(out, z);
-        write_f32_le(out, lexp);
-        write_f32_le(out, 1.0f);
-        write_u32_le(out, data_offsets[i]);
-        write_u32_le(out, uint32_t(m_layers[i].size()));
-        write_u32_le(out, 0u);
-        write_u32_le(out, 84u);
-        write_u32_le(out, 0u);
-        write_u32_le(out, 0u);
+        write_f32_le(out, z);                            // 0: PositionZ
+        write_f32_le(out, lexp);                         // 1: ExposureTime
+        write_f32_le(out, 0.0f);                         // 2: LightOffSeconds
+        write_u32_le(out, data_offsets[i]);              // 3: DataAddress (layer RLE offset)
+        write_u32_le(out, uint32_t(m_layers[i].size())); // 4: DataSize (layer RLE size)
+        write_u32_le(out, 0u);                           // 5: PageNumber
+        write_u32_le(out, 36u);                          // 6: TableSize (36 = sizeof LayerDef)
+        write_u32_le(out, 0u);                           // 7: Unknown3
+        write_u32_le(out, 0u);                           // 8: Unknown4
     }
 
+    // Write layer raster data
     for (uint32_t i = 0; i < layer_count; ++i)
         out.write(reinterpret_cast<const char *>(m_layers[i].data()), std::streamsize(m_layers[i].size()));
 
@@ -1097,12 +1103,15 @@ void UVToolsGR1Archive::export_print(const std::string     fname,
                                      const ThumbnailsList &,
                                      const std::string    &projectname)
 {
-    const auto  &printer_cfg = print.printer_config();
     const auto  &cfg      = print.full_print_config();
     const float layer_h   = cfg_float_or(cfg, "layer_height", 0.05f);
-    // Get orientation-aware display dimensions from printer config
-    const auto dims       = get_display_dimensions(printer_cfg);
+    // Get orientation-aware display dimensions from m_cfg (set at archive creation)
+    const auto dims       = get_display_dimensions(m_cfg);
     const auto layer_count = uint32_t(m_layers.size());
+
+    // Get display dimensions from printer profile (actual bed size, no orientation swap)
+    double display_width_mm = m_cfg.display_width.getFloat();
+    double display_height_mm = m_cfg.display_height.getFloat();
 
     std::ofstream out(fname, std::ios::binary | std::ios::trunc);
     if (!out)
@@ -1112,8 +1121,8 @@ void UVToolsGR1Archive::export_print(const std::string     fname,
     out.write("GR1 FILE", 8);
     write_u32_le(out, 1u);  // Version
     write_u32_le(out, layer_count);
-    write_f32_le(out, float(dims.display_width_mm));
-    write_f32_le(out, float(dims.display_height_mm));
+    write_f32_le(out, float(display_width_mm));
+    write_f32_le(out, float(display_height_mm));
     write_u32_le(out, dims.resolution_x);
     write_u32_le(out, dims.resolution_y);
     write_f32_le(out, layer_h);
@@ -1141,33 +1150,62 @@ void UVToolsLGSArchive::export_print(const std::string     fname,
                                      const ThumbnailsList &,
                                      const std::string    &projectname)
 {
-    const auto  &printer_cfg = print.printer_config();
     const auto  &cfg      = print.full_print_config();
     const float layer_h   = cfg_float_or(cfg, "layer_height", 0.05f);
-    // Get orientation-aware display dimensions from printer config
-    const auto dims       = get_display_dimensions(printer_cfg);
+    const auto dims       = get_display_dimensions(m_cfg);
     const auto layer_count = uint32_t(m_layers.size());
+    double display_width_mm = m_cfg.display_width.getFloat();
+    double display_height_mm = m_cfg.display_height.getFloat();
 
     std::ofstream out(fname, std::ios::binary | std::ios::trunc);
     if (!out)
         throw RuntimeError("Failed to open output file for LGS export");
 
-    // Write LGS header (200+ bytes)
-    out.write("LGS FILE", 8);
-    write_u32_le(out, 1u);
-    write_u32_le(out, layer_count);
-    write_f32_le(out, float(dims.display_width_mm));
-    write_f32_le(out, float(dims.display_height_mm));
-    write_u32_le(out, dims.resolution_x);
-    write_u32_le(out, dims.resolution_y);
-    write_f32_le(out, layer_h);
-    write_f32_le(out, cfg_float_or(cfg, "exposure_time", 2.5f));
-    write_f32_le(out, cfg_float_or(cfg, "initial_exposure_time", 20.0f));
-    
-    // Pad to 256 bytes minimum
-    const auto header_end = out.tellp();
-    while (out.tellp() < std::streampos(256))
-        out.put(0);
+    // LGS header - "Longer3D" (8 bytes) + 44 fields (all little-endian)
+    out.write("Longer3D", 8);
+    write_u32_le(out, 0xFF000001u);  // Uint_08
+    write_u32_le(out, 1u);           // Uint_0c
+    write_u32_le(out, 30u);          // PrinterModel
+    write_u32_le(out, 0u);           // Uint_14
+    write_u32_le(out, 34u);          // MagicKey
+    write_f32_le(out, 15.404f);      // PixelPerMmX
+    write_f32_le(out, 4.866f);       // PixelPerMmY
+    write_f32_le(out, float(dims.resolution_x)); // ResolutionX
+    write_f32_le(out, float(dims.resolution_y)); // ResolutionY
+    write_f32_le(out, layer_h);      // LayerHeight
+    write_f32_le(out, cfg_float_or(cfg, "exposure_time", 2.5f));       // ExposureTimeMs
+    write_f32_le(out, cfg_float_or(cfg, "initial_exposure_time", 20.0f)); // BottomExposureTimeMs
+    write_f32_le(out, 10.0f);        // Float_38
+    write_f32_le(out, 1000.0f);      // WaitTimeBeforeCureMs
+    write_f32_le(out, 2000.0f);      // BottomWaitTimeBeforeCureMs
+    write_f32_le(out, 5.0f);         // BottomHeight
+    write_f32_le(out, 0.6f);         // Float_48
+    write_f32_le(out, 4.0f);         // BottomLiftHeight
+    write_f32_le(out, 5.0f);         // LiftHeight
+    write_f32_le(out, 150.0f);       // LiftSpeed
+    write_f32_le(out, 150.0f);       // LiftSpeed_
+    write_f32_le(out, 90.0f);        // BottomLiftSpeed
+    write_f32_le(out, 90.0f);        // BottomLiftSpeed_
+    write_f32_le(out, 5.0f);         // Float_64
+    write_f32_le(out, 60.0f);        // Float_68
+    write_f32_le(out, 10.0f);        // Float_6c
+    write_f32_le(out, 600.0f);       // Float_70
+    write_f32_le(out, 600.0f);       // Float_74
+    write_f32_le(out, 2.0f);         // Float_78
+    write_f32_le(out, 0.2f);         // Float_7c
+    write_f32_le(out, 60.0f);        // Float_80
+    write_f32_le(out, 1.0f);         // Float_84
+    write_f32_le(out, 6.0f);         // Float_88
+    write_f32_le(out, 150.0f);       // Float_8c
+    write_f32_le(out, 1001.0f);      // Float_90
+    write_f32_le(out, 140.0f);       // MachineZ
+    write_u32_le(out, 0u);           // Uint_98
+    write_u32_le(out, 0u);           // Uint_9c
+    write_u32_le(out, 0u);           // Uint_a0
+    write_u32_le(out, layer_count);  // LayerCount
+    write_u32_le(out, 4u);           // Uint_a8
+    write_u32_le(out, 120u);         // PreviewSizeX
+    write_u32_le(out, 150u);         // PreviewSizeY
 
     // Write layer data
     for (const auto &layer : m_layers) {
@@ -1188,12 +1226,15 @@ void UVToolsOSFArchive::export_print(const std::string     fname,
                                      const ThumbnailsList &,
                                      const std::string    &)
 {
-    const auto  &printer_cfg = print.printer_config();
     const auto  &cfg      = print.full_print_config();
     const float layer_h   = cfg_float_or(cfg, "layer_height", 0.05f);
-    // Get orientation-aware display dimensions from printer config
-    const auto dims       = get_display_dimensions(printer_cfg);
+    // Get orientation-aware display dimensions from m_cfg (set at archive creation)
+    const auto dims       = get_display_dimensions(m_cfg);
     const auto layer_count = uint32_t(m_layers.size());
+
+    // Get display dimensions from printer profile (actual bed size, no orientation swap)
+    double display_width_mm = m_cfg.display_width.getFloat();
+    double display_height_mm = m_cfg.display_height.getFloat();
 
     std::ofstream out(fname, std::ios::binary | std::ios::trunc);
     if (!out)
@@ -1203,8 +1244,8 @@ void UVToolsOSFArchive::export_print(const std::string     fname,
     out.write("OSF!", 4);
     write_u32_be(out, 1u);
     write_u32_be(out, layer_count);
-    write_f32_le(out, float(dims.display_width_mm));
-    write_f32_le(out, float(dims.display_height_mm));
+    write_f32_le(out, float(display_width_mm));
+    write_f32_le(out, float(display_height_mm));
     write_u32_le(out, dims.resolution_x);
     write_u32_le(out, dims.resolution_y);
     write_f32_le(out, layer_h);
@@ -1229,34 +1270,178 @@ void UVToolsGOOArchive::export_print(const std::string     fname,
                                      const ThumbnailsList &,
                                      const std::string    &)
 {
-    const auto  &printer_cfg = print.printer_config();
     const auto  &cfg      = print.full_print_config();
     const float layer_h   = cfg_float_or(cfg, "layer_height", 0.05f);
     const float exp       = cfg_float_or(cfg, "exposure_time", 2.5f);
     const float init_exp  = cfg_float_or(cfg, "initial_exposure_time", 20.0f);
-    // Get orientation-aware display dimensions from printer config
-    const auto dims       = get_display_dimensions(printer_cfg);
+    const float lightoff  = cfg_float_or(cfg, "light_off_delay", 0.0f);
+    const float bottom_exp = cfg_float_or(cfg, "initial_exposure_time", 20.0f);
+    // Get orientation-aware display dimensions from m_cfg (set at archive creation)
+    const auto dims       = get_display_dimensions(m_cfg);
     const auto layer_count = uint32_t(m_layers.size());
+
+    // Get display dimensions from printer profile (actual bed size, no orientation swap)
+    double display_width_mm = m_cfg.display_width.getFloat();
+    double display_height_mm = m_cfg.display_height.getFloat();
 
     std::ofstream out(fname, std::ios::binary | std::ios::trunc);
     if (!out)
         throw RuntimeError("Failed to open output file for GOO export");
 
-    // Write ASCII header
-    out << "# Elegoo GOO Format\n";
-    out << "# Generated by PrusaSlicer\n";
-    out << "# Version: 1\n";
-    out << "Layers: " << layer_count << "\n";
-    out << "Width: " << dims.resolution_x << "\n";
-    out << "Height: " << dims.resolution_y << "\n";
-    out << "Display Width: " << dims.display_width_mm << " mm\n";
-    out << "Display Height: " << dims.display_height_mm << " mm\n";
-    out << "Layer Height: " << layer_h << " mm\n";
-    out << "Exposure Time: " << exp << " s\n";
-    out << "Initial Exposure: " << init_exp << " s\n";
-    out << "# End header\n";
-
-    // Write layer data (RGB565 packed pixels)
+    // GOO binary header (big-endian structured)
+    // Version: "V3.0" (4 bytes, big-endian format)
+    out.write("V3.0", 4);
+    // Magic: 07 00 00 00 44 4C 50 00
+    out.put(0x07);
+    out.put(0x00);
+    out.put(0x00);
+    out.put(0x00);
+    out.put(0x44);  // 'D'
+    out.put(0x4C);  // 'L'
+    out.put(0x50);  // 'P'
+    out.put(0x00);
+    
+    // SoftwareName (32 bytes, null-terminated)
+    std::string software_name = "PrusaSlicer";
+    out.write(software_name.c_str(), software_name.length());
+    out.write(std::string(32 - software_name.length(), '\0').c_str(), 32 - software_name.length());
+    
+    // SoftwareVersion (24 bytes)
+    std::string version = "5.0.0";
+    out.write(version.c_str(), version.length());
+    out.write(std::string(24 - version.length(), '\0').c_str(), 24 - version.length());
+    
+    // FileCreateTime (24 bytes)
+    std::string timestamp = "2024-01-01 00:00:00";
+    out.write(timestamp.c_str(), timestamp.length());
+    out.write(std::string(24 - timestamp.length(), '\0').c_str(), 24 - timestamp.length());
+    
+    // MachineName (32 bytes)
+    std::string machine = "Elegoo Mars";
+    out.write(machine.c_str(), machine.length());
+    out.write(std::string(32 - machine.length(), '\0').c_str(), 32 - machine.length());
+    
+    // MachineType (32 bytes) - "DLP"
+    out.write("DLP", 3);
+    out.write(std::string(32 - 3, '\0').c_str(), 32 - 3);
+    
+    // ProfileName (32 bytes)
+    out.write(machine.c_str(), machine.length());
+    out.write(std::string(32 - machine.length(), '\0').c_str(), 32 - machine.length());
+    
+    // AntiAliasingLevel (2 bytes, BE ushort)
+    write_u16_be(out, 1u);
+    // GreyLevel (2 bytes, BE ushort)
+    write_u16_be(out, 1u);
+    // BlurLevel (2 bytes, BE ushort)
+    write_u16_be(out, 0u);
+    
+    // SmallPreview565 (116×116×2 = 26,912 bytes) - write zeros for now
+    for (int i = 0; i < 116 * 116; i++) {
+        out.put(0);
+        out.put(0);
+    }
+    // SmallPreviewDelimiter
+    out.put(0x0D);
+    out.put(0x0A);
+    
+    // BigPreview565 (290×290×2 = 168,100 bytes) - write zeros for now
+    for (int i = 0; i < 290 * 290; i++) {
+        out.put(0);
+        out.put(0);
+    }
+    // BigPreviewDelimiter
+    out.put(0x0D);
+    out.put(0x0A);
+    
+    // LayerCount (4 bytes, BE uint32)
+    write_u32_be(out, layer_count);
+    // ResolutionX/Y (2 bytes each, BE ushort)
+    write_u16_be(out, dims.resolution_x);
+    write_u16_be(out, dims.resolution_y);
+    
+    // MirrorX/Y (bool, 1 byte each)
+    out.put(0);  // MirrorX
+    out.put(0);  // MirrorY
+    
+    // DisplayWidth/Height (4 bytes each, BE float32)
+    write_f32_be(out, float(display_width_mm));
+    write_f32_be(out, float(display_height_mm));
+    
+    // MachineZ (4 bytes, BE float32)
+    write_f32_be(out, 170.0f);
+    // LayerHeight (4 bytes, BE float32)
+    write_f32_be(out, layer_h);
+    
+    // ExposureTime (4 bytes, BE float32)
+    write_f32_be(out, exp);
+    // DelayMode (1 byte) - 1 = WaitTime
+    out.put(1);
+    // LightOffDelay (4 bytes, BE float32)
+    write_f32_be(out, lightoff);
+    
+    // Multiple timing parameters (all BE float32)
+    write_f32_be(out, 0.5f);  // BottomWaitTimeAfterCure
+    write_f32_be(out, 0.5f);  // BottomWaitTimeAfterLift
+    write_f32_be(out, 1.0f);  // BottomWaitTimeBeforeCure
+    write_f32_be(out, 0.5f);  // WaitTimeAfterCure
+    write_f32_be(out, 0.5f);  // WaitTimeAfterLift
+    write_f32_be(out, 1.0f);  // WaitTimeBeforeCure
+    
+    // BottomExposureTime (4 bytes, BE float32)
+    write_f32_be(out, bottom_exp);
+    // BottomLayerCount (4 bytes, BE uint32)
+    write_u32_be(out, 1u);
+    
+    // Movement parameters (all BE float32)
+    write_f32_be(out, 5.0f);   // BottomLiftHeight
+    write_f32_be(out, 50.0f);  // BottomLiftSpeed
+    write_f32_be(out, 5.0f);   // LiftHeight
+    write_f32_be(out, 100.0f); // LiftSpeed
+    write_f32_be(out, 3.0f);   // BottomRetractHeight
+    write_f32_be(out, 30.0f);  // BottomRetractSpeed
+    write_f32_be(out, 3.0f);   // RetractHeight
+    write_f32_be(out, 60.0f);  // RetractSpeed
+    
+    // Secondary movement parameters (BE float32)
+    write_f32_be(out, 0.0f);   // BottomLiftHeight2
+    write_f32_be(out, 0.0f);   // BottomLiftSpeed2
+    write_f32_be(out, 0.0f);   // LiftHeight2
+    write_f32_be(out, 0.0f);   // LiftSpeed2
+    write_f32_be(out, 0.0f);   // BottomRetractHeight2
+    write_f32_be(out, 0.0f);   // BottomRetractSpeed2
+    write_f32_be(out, 0.0f);   // RetractHeight2
+    write_f32_be(out, 0.0f);   // RetractSpeed2
+    
+    // PWM values (2 bytes each, BE ushort)
+    write_u16_be(out, 200u);   // BottomLightPWM
+    write_u16_be(out, 250u);   // LightPWM
+    
+    // PerLayerSettings (bool)
+    out.put(0);
+    
+    // PrintTime (4 bytes, BE uint32)
+    write_u32_be(out, 0u);
+    
+    // Volume/Material (BE float32)
+    write_f32_be(out, 0.0f);   // Volume
+    write_f32_be(out, 0.0f);   // MaterialGrams
+    write_f32_be(out, 0.0f);   // MaterialCost
+    
+    // PriceCurrencySymbol (8 bytes)
+    out.write("$", 1);
+    out.write(std::string(7, '\0').c_str(), 7);
+    
+    // LayerDefAddress (4 bytes, BE uint32) - placeholder
+    write_u32_be(out, 195477u);
+    
+    // GrayScaleLevel (1 byte)
+    out.put(1);
+    
+    // TransitionLayerCount (2 bytes, BE ushort)
+    write_u16_be(out, 0u);
+    
+    // Write layer data - use m_layers as-is for now
     for (const auto &layer : m_layers) {
         out.write(reinterpret_cast<const char *>(layer.data()), std::streamsize(layer.size()));
     }
@@ -1284,7 +1469,6 @@ void UVToolsAnetArchive::export_print(const std::string     fname,
                                       const ThumbnailsList &,
                                       const std::string    &)
 {
-    const auto  &printer_cfg  = print.printer_config();
     const auto  &cfg          = print.full_print_config();
     const float layer_h       = cfg_float_or(cfg, "layer_height", 0.05f);
     const float exp           = cfg_float_or(cfg, "exposure_time", 2.5f);
@@ -1294,8 +1478,12 @@ void UVToolsAnetArchive::export_print(const std::string     fname,
     if (layer_count == 0)
         throw RuntimeError("No rasterized layers available for Anet export");
 
-    // Get orientation-aware display dimensions from printer config
-    const auto dims = get_display_dimensions(printer_cfg);
+    // Get orientation-aware display dimensions from m_cfg (set at archive creation)
+    const auto dims = get_display_dimensions(m_cfg);
+    
+    // Get display dimensions from printer profile (actual bed size, no orientation swap)
+    double display_width_mm = m_cfg.display_width.getFloat();
+    double display_height_mm = m_cfg.display_height.getFloat();
 
     std::ofstream out(fname, std::ios::binary | std::ios::trunc);
     if (!out)
@@ -1310,8 +1498,8 @@ void UVToolsAnetArchive::export_print(const std::string     fname,
     write_f32_le(out, exp);
     write_u32_le(out, dims.resolution_x);
     write_u32_le(out, dims.resolution_y);
-    write_f32_le(out, float(dims.display_width_mm));
-    write_f32_le(out, float(dims.display_height_mm));
+    write_f32_le(out, float(display_width_mm));
+    write_f32_le(out, float(display_height_mm));
 
     // Layer data offset (simplified - point directly after header)
     uint32_t data_offset = 256u;
@@ -1348,9 +1536,13 @@ void UVToolsQDTArchive::export_print(const std::string     fname,
 {
     const auto  &cfg      = print.full_print_config();
     const float layer_h   = cfg_float_or(cfg, "layer_height", 0.05f);
-    // Get display dimensions from current print config (not stale m_cfg)
-    const auto dims       = get_display_dimensions_from_print_config(cfg);
+    // Get orientation-aware display dimensions from m_cfg (set at archive creation)
+    const auto dims       = get_display_dimensions(m_cfg);
     const auto layer_count = uint32_t(m_layers.size());
+
+    // Get display dimensions from printer profile (actual bed size, no orientation swap)
+    double display_width_mm = m_cfg.display_width.getFloat();
+    double display_height_mm = m_cfg.display_height.getFloat();
 
     std::ofstream out(fname, std::ios::binary | std::ios::trunc);
     if (!out)
@@ -1369,8 +1561,8 @@ void UVToolsQDTArchive::export_print(const std::string     fname,
     out << "\n[Resolution]\n";
     out << "X=" << dims.resolution_x << "\n";
     out << "Y=" << dims.resolution_y << "\n";
-    out << "Width=" << dims.display_width_mm << "\n";
-    out << "Height=" << dims.display_height_mm << "\n";
+    out << "Width=" << display_width_mm << "\n";
+    out << "Height=" << display_height_mm << "\n";
     out << "\n[Data]\n";
     out << "# Vector layer definitions would go here\n";
     out << "# QDT is a vector format - actual implementation requires geometry extraction\n";

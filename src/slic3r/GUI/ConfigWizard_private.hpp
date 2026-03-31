@@ -408,6 +408,30 @@ struct Materials
     static const std::string& get_material_vendor(const Preset* preset);
 };
 
+struct PageProfilePrinters: ConfigWizardPage
+{
+    PageProfilePrinters(ConfigWizard *parent);
+
+    bool any_selected() const;
+    bool profile_printer_accepted() const { return m_profile_accepted; }
+    std::string get_selected_profile_path() const;
+    std::string get_selected_profile_name() const;
+    DynamicPrintConfig get_selected_config() const;
+    std::string get_selected_profile_filename() const;
+
+private:
+    wxListBox *profile_list = nullptr;
+    wxButton *btn_use_profile = nullptr;
+    std::vector<std::pair<std::string, std::string>> profiles; // {name, full path}
+    std::string profiles_dir;
+    std::string selected_profile_filename;
+    bool m_profile_accepted = false;
+
+    void load_profiles();
+    void on_profile_selected(wxCommandEvent &event);
+    void on_use_profile_clicked(wxCommandEvent &event);
+    bool copy_profile_to_system();
+};
 
 struct PageCustom: ConfigWizardPage
 {
@@ -653,6 +677,7 @@ struct ConfigWizard::priv
     PageUpdateManager*page_update_manager = nullptr;
     PageMaterials    *page_filaments = nullptr;
     PageMaterials    *page_sla_materials = nullptr;
+    PageProfilePrinters *page_profile_printers = nullptr;
     PageCustom       *page_custom = nullptr;
     PageUpdate* page_update = nullptr;
     PageDownloader* page_downloader = nullptr;

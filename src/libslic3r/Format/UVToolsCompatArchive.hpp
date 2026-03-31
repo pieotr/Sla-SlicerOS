@@ -157,9 +157,9 @@ public:
 class UVToolsChituboxArchive : public UVToolsRLEBinaryBase {
     uint32_t m_magic;
 public:
-    explicit UVToolsChituboxArchive(const SLAPrinterConfig &cfg, uint32_t magic = 0x12FD0019)
+    explicit UVToolsChituboxArchive(const SLAPrinterConfig &cfg, uint32_t magic = 0x12FD0086)
         : UVToolsRLEBinaryBase(cfg), m_magic(magic) {}
-    explicit UVToolsChituboxArchive(SLAPrinterConfig &&cfg, uint32_t magic = 0x12FD0019)
+    explicit UVToolsChituboxArchive(SLAPrinterConfig &&cfg, uint32_t magic = 0x12FD0086)
         : UVToolsRLEBinaryBase(std::move(cfg)), m_magic(magic) {}
     sla::RasterEncoder get_encoder() const override;
     void export_print(const std::string fname, const SLAPrint &print,

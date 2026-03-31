@@ -38,6 +38,7 @@
 #include <wx/display.h>
 #include <wx/filefn.h>
 #include <wx/wupdlock.h>
+#include <wx/stdpaths.h>
 #include <wx/debug.h>
 
 #ifdef WIN32
@@ -1514,6 +1515,239 @@ void PageMaterials::on_activate()
     first_paint = true;
 }
 
+// ============================================================================
+// ProfilePrinters Page
+// ============================================================================
+
+PageProfilePrinters::PageProfilePrinters(ConfigWizard *parent)
+    : ConfigWizardPage(parent, _L("Profile Printers"), _L("Profile Printers"))
+{
+    wxBoxSizer *vsizer = new wxBoxSizer(wxVERTICAL);
+    
+    auto text = new wxStaticText(this, wxID_ANY,
+        _L("Select a printer profile from the community library and click \"Use Profile\" to add it."));
+    vsizer->Add(text, 0, wxEXPAND | wxTOP | wxLEFT | wxRIGHT, INDENT_SPACING);
+    vsizer->AddSpacer(VERTICAL_SPACING);
+
+    // Create list box for profiles
+    profile_list = new wxListBox(this, wxID_ANY);
+    profile_list->Bind(wxEVT_LISTBOX, &PageProfilePrinters::on_profile_selected, this);
+    vsizer->Add(profile_list, 1, wxEXPAND | wxLEFT | wxRIGHT, INDENT_SPACING);
+
+    // Add button sizer for "Use Profile"
+    wxBoxSizer *btn_sizer = new wxBoxSizer(wxHORIZONTAL);
+    btn_use_profile = new wxButton(this, wxID_ANY, _L("Use Selected Profile"));
+    btn_use_profile->Bind(wxEVT_BUTTON, &PageProfilePrinters::on_use_profile_clicked, this);
+    btn_use_profile->Enable(false);  // Disabled until a profile is selected
+    btn_sizer->Add(btn_use_profile, 0, wxALIGN_RIGHT | wxRIGHT, INDENT_SPACING);
+    
+    vsizer->AddSpacer(VERTICAL_SPACING);
+    vsizer->Add(btn_sizer, 0, wxEXPAND | wxBOTTOM | wxLEFT | wxRIGHT, INDENT_SPACING);
+
+    SetSizer(vsizer);
+
+    // Load profiles from directory
+    load_profiles();
+}
+
+void PageProfilePrinters::load_profiles()
+{
+    // Load from resources/printer directory where we've copied all the profiles
+    // Get the application resources path
+    boost::filesystem::path resources_path = boost::filesystem::path(wxStandardPaths::Get().GetExecutablePath().ToStdString()).parent_path() / "resources" / "printer";
+    
+    // Fallback to the source directory if resources path doesn't exist
+    if (!fs::is_directory(resources_path)) {
+        resources_path = boost::filesystem::path(Slic3r::resources_dir()) / "printer";
+    }
+    
+    profiles_dir = resources_path.string();
+    profile_list->Clear();
+    profiles.clear();
+
+    if (!fs::is_directory(profiles_dir)) {
+        BOOST_LOG_TRIVIAL(warning) << "Profile printers directory not found: " << profiles_dir;
+        profile_list->Append(_L("No profiles directory found"));
+        return;
+    }
+
+    // Scan directory for .ini files
+    std::vector<std::pair<std::string, std::string>> sorted_profiles;
+    
+    try {
+        for (const auto& entry : fs::directory_iterator(profiles_dir)) {
+            if (entry.path().extension() == ".ini") {
+                std::string filename = entry.path().stem().string();
+                std::string fullpath = entry.path().string();
+                sorted_profiles.push_back({filename, fullpath});
+            }
+        }
+    } catch (const std::exception& e) {
+        BOOST_LOG_TRIVIAL(error) << "Error reading profiles directory: " << e.what();
+        return;
+    }
+
+    // Sort by name
+    std::sort(sorted_profiles.begin(), sorted_profiles.end(),
+        [](const auto& a, const auto& b) { return a.first < b.first; });
+
+    // Add to list box
+    for (const auto& profile : sorted_profiles) {
+        profile_list->Append(from_u8(profile.first));
+        profiles.push_back(profile);
+    }
+}
+
+bool PageProfilePrinters::any_selected() const
+{
+    return profile_list->GetSelection() != wxNOT_FOUND;
+}
+
+std::string PageProfilePrinters::get_selected_profile_path() const
+{
+    int sel = profile_list->GetSelection();
+    if (sel == wxNOT_FOUND || sel < 0 || sel >= static_cast<int>(profiles.size()))
+        return "";
+    return profiles[sel].second;
+}
+
+std::string PageProfilePrinters::get_selected_profile_name() const
+{
+    int sel = profile_list->GetSelection();
+    if (sel == wxNOT_FOUND || sel < 0 || sel >= static_cast<int>(profiles.size()))
+        return "";
+    return profiles[sel].first;
+}
+
+DynamicPrintConfig PageProfilePrinters::get_selected_config() const
+{
+    DynamicPrintConfig cfg;
+    std::string path = get_selected_profile_path();
+    
+    if (!path.empty()) {
+        try {
+            cfg.load_from_ini(path, ForwardCompatibilitySubstitutionRule::Disable);
+        } catch (const std::exception& e) {
+            BOOST_LOG_TRIVIAL(error) << "Error loading profile config: " << e.what();
+        }
+    }
+    
+    return cfg;
+}
+
+std::string PageProfilePrinters::get_selected_profile_filename() const
+{
+    return selected_profile_filename;
+}
+
+bool PageProfilePrinters::copy_profile_to_system()
+{
+    std::string profile_path = get_selected_profile_path();
+    if (profile_path.empty()) {
+        BOOST_LOG_TRIVIAL(warning) << "No profile selected for copying";
+        return false;
+    }
+
+    // Get user's printer config directory
+    boost::filesystem::path user_printer_dir = boost::filesystem::path(wxStandardPaths::Get().GetUserConfigDir().ToStdString()) / "PrusaSlicer" / "presets" / "printer";
+    
+    // Create directory if it doesn't exist
+    if (!fs::is_directory(user_printer_dir)) {
+        try {
+            fs::create_directories(user_printer_dir);
+        } catch (const std::exception& e) {
+            BOOST_LOG_TRIVIAL(error) << "Failed to create printer config directory: " << e.what();
+            return false;
+        }
+    }
+
+    // Copy the profile file to the user directory
+    std::string filename = selected_profile_filename.empty() ? get_selected_profile_name() : selected_profile_filename;
+    boost::filesystem::path dest_path = user_printer_dir / (filename + ".ini");
+    
+    try {
+        fs::copy_file(profile_path, dest_path, fs::copy_options::overwrite_existing);
+        BOOST_LOG_TRIVIAL(info) << "Copied printer profile to: " << dest_path.string();
+        return true;
+    } catch (const std::exception& e) {
+        BOOST_LOG_TRIVIAL(error) << "Failed to copy printer profile: " << e.what();
+        return false;
+    }
+}
+
+void PageProfilePrinters::on_profile_selected(wxCommandEvent &event)
+{
+    // Enable button when a profile is selected
+    if (any_selected()) {
+        selected_profile_filename = fs::path(get_selected_profile_path()).stem().string();
+    } else {
+        selected_profile_filename.clear();
+    }
+    btn_use_profile->Enable(any_selected());
+    event.Skip();
+}
+
+void PageProfilePrinters::on_use_profile_clicked(wxCommandEvent &event)
+{
+    if (!any_selected()) {
+        wxMessageBox(_L("Please select a profile first."), _L("No Profile Selected"), wxOK | wxICON_WARNING);
+        return;
+    }
+
+    // Copy the selected profile to the system's printer directory
+    if (!copy_profile_to_system()) {
+        wxMessageBox(_L("Failed to add printer profile to system. Check permissions."), _L("Error"), wxOK | wxICON_ERROR);
+        return;
+    }
+
+    // Get the selected profile name
+    std::string profile_name = get_selected_profile_name();
+
+    // Register the printer in the preset system
+    try {
+        Slic3r::GUI::GUI_App &app = wxGetApp();
+        
+        // Get the full path to the copied file
+        boost::filesystem::path user_printer_dir = boost::filesystem::path(wxStandardPaths::Get().GetUserConfigDir().ToStdString()) / "PrusaSlicer" / "presets" / "printer";
+        std::string filename = selected_profile_filename.empty() ? profile_name : selected_profile_filename;
+        boost::filesystem::path preset_file_path = user_printer_dir / (filename + ".ini");
+        
+        BOOST_LOG_TRIVIAL(info) << "Loading printer preset from: " << preset_file_path.string();
+        
+        // Directly load this single preset file and add it to the collection
+        Slic3r::DynamicPrintConfig config;
+        config.load_from_ini(preset_file_path.string(), Slic3r::ForwardCompatibilitySubstitutionRule::Disable);
+        
+        // Load the preset directly into the collection
+        app.preset_bundle->printers.load_preset(preset_file_path.string(), profile_name, config, true);
+        
+        // Select this printer
+        app.preset_bundle->printers.select_preset_by_name(profile_name, true);
+        
+        // Also set it in the app config so it persists
+        app.app_config->set("printer_model", profile_name);
+        app.app_config->set("printer_technology", "SLA");
+        
+        BOOST_LOG_TRIVIAL(info) << "Successfully registered and selected printer profile: " << profile_name;
+    } catch (const std::exception& e) {
+        BOOST_LOG_TRIVIAL(error) << "Failed to apply printer profile: " << e.what();
+        wxMessageBox(
+            from_u8(boost::str(boost::format(_u8L("Failed to apply printer profile: %1%")) % e.what())),
+            _L("Error"),
+            wxOK | wxICON_ERROR
+        );
+        return;
+    }
+
+    // Mark that we've accepted the profile
+    m_profile_accepted = true;
+    
+    // Close the wizard to complete the operation
+    ConfigWizard* wizard = dynamic_cast<ConfigWizard*>(parent);
+    if (wizard) {
+        wizard->EndModal(wxID_OK);
+    }
+}
 
 const char *PageCustom::default_profile_name = "My Settings";
 
@@ -2892,6 +3126,10 @@ void ConfigWizard::priv::load_pages()
                 }
             }
 
+        }
+
+        if (page_profile_printers != nullptr) {
+            index->add_page(page_profile_printers);
         }
 
         if (page_custom != nullptr) {
@@ -4296,6 +4534,9 @@ void ConfigWizard::priv::load_pages_from_archive()
 
     if (!page_custom) {
         add_page(page_custom = new PageCustom(q));
+    }
+    if (!page_profile_printers) {
+        add_page(page_profile_printers = new PageProfilePrinters(q));
     }
     custom_printer_selected = page_custom->custom_wanted();
 
