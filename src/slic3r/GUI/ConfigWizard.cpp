@@ -1707,22 +1707,29 @@ void PageProfilePrinters::on_use_profile_clicked(wxCommandEvent &event)
     try {
         Slic3r::GUI::GUI_App &app = wxGetApp();
         
-        // Get the full path to the copied file
-        boost::filesystem::path user_printer_dir = boost::filesystem::path(wxStandardPaths::Get().GetUserConfigDir().ToStdString()) / "PrusaSlicer" / "presets" / "printer";
-        std::string filename = selected_profile_filename.empty() ? profile_name : selected_profile_filename;
-        boost::filesystem::path preset_file_path = user_printer_dir / (filename + ".ini");
+        BOOST_LOG_TRIVIAL(info) << "Reloading preset bundle to discover new printer profile: " << profile_name;
         
-        BOOST_LOG_TRIVIAL(info) << "Loading printer preset from: " << preset_file_path.string();
+        // Reload the printer presets from the user's presets directory
+        // This will discover and load the newly copied printer INI file
+        std::string user_presets_dir = wxStandardPaths::Get().GetUserConfigDir().ToStdString() + "/PrusaSlicer/presets";
+        Slic3r::PresetsConfigSubstitutions substitutions;
+        app.preset_bundle->printers.load_presets(
+            user_presets_dir,
+            "printer",
+            substitutions,
+            Slic3r::ForwardCompatibilitySubstitutionRule::Disable
+        );
         
-        // Directly load this single preset file and add it to the collection
-        Slic3r::DynamicPrintConfig config;
-        config.load_from_ini(preset_file_path.string(), Slic3r::ForwardCompatibilitySubstitutionRule::Disable);
-        
-        // Load the preset directly into the collection
-        app.preset_bundle->printers.load_preset(preset_file_path.string(), profile_name, config, true);
-        
-        // Select this printer
+        // Now select the newly loaded printer
         app.preset_bundle->printers.select_preset_by_name(profile_name, true);
+        
+        // Verify it was selected
+        const Slic3r::Preset* selected = app.preset_bundle->printers.find_preset(profile_name);
+        if (!selected) {
+            throw std::runtime_error("Failed to find the loaded printer preset: " + profile_name);
+        }
+        
+        BOOST_LOG_TRIVIAL(info) << "Found and selected printer preset: " << selected->name;
         
         // Also set it in the app config so it persists
         app.app_config->set("printer_model", profile_name);
