@@ -11,7 +11,21 @@
 #include "SL1_SVG.hpp"
 #include "AnycubicSLA.hpp"
 #include "CrealityCXDLPv4.hpp"
+#include "CrealityCXDLPv1Archive.hpp"
 #include "UVToolsCompatArchive.hpp"
+#include "NanoDLPArchive.hpp"
+#include "LongerOrangeArchive.hpp"
+#include "AnetArchive.hpp"
+#include "ZCodeArchive.hpp"
+#include "UniformationArchive.hpp"
+#include "PhrozenArchive.hpp"
+#include "VoxeldanceArchive.hpp"
+#include "MakerbaseArchive.hpp"
+#include "FlashforgeArchive.hpp"
+#include "Emake3DArchive.hpp"
+#include "StructoVlareArchive.hpp"
+#include "OpenStandardsArchive.hpp"
+#include "ChituboxArchive.hpp"
 #include "SLAArchiveWriterFactory.hpp"
 #include "libslic3r/I18N.hpp"
 #include "SLAArchiveFormatRegistry.hpp"
@@ -86,7 +100,7 @@ class Registry {
                 L("Chitubox CBDDLP"),
                 "cbddlp",
                 {},
-                [] (const auto &cfg) { return std::make_unique<AnycubicSLAArchive>(cfg, ANYCUBIC_SLA_FORMAT_VERSION_1); },
+                [] (const auto &cfg) { return std::make_unique<ChituboxCBDDLPv1Archive>(cfg); },
                 [] (const std::string &fname, SLAImportQuality quality, const ProgrFn &progr) {
                     return std::make_unique<SL1Reader>(fname, quality, progr);
                 }
@@ -96,7 +110,7 @@ class Registry {
                 L("Chitubox CTB"),
                 "cbt",
                 {},
-                [] (const auto &cfg) { return std::make_unique<AnycubicSLAArchive>(cfg, ANYCUBIC_SLA_FORMAT_VERSION_1); },
+                [] (const auto &cfg) { return std::make_unique<ChituboxCTBv1Archive>(cfg); },
                 [] (const std::string &fname, SLAImportQuality quality, const ProgrFn &progr) {
                     return std::make_unique<SL1Reader>(fname, quality, progr);
                 }
@@ -106,7 +120,7 @@ class Registry {
                 L("Chitubox Photon"),
                 "photon",
                 {},
-                [] (const auto &cfg) { return std::make_unique<AnycubicSLAArchive>(cfg, ANYCUBIC_SLA_FORMAT_VERSION_1); },
+                [] (const auto &cfg) { return std::make_unique<ChituboxPhotonArchive>(cfg); },
                 [] (const std::string &fname, SLAImportQuality quality, const ProgrFn &progr) {
                     return std::make_unique<SL1Reader>(fname, quality, progr);
                 }
@@ -116,7 +130,7 @@ class Registry {
                 L("Chitubox PhotonS"),
                 "photons",
                 {},
-                [] (const auto &cfg) { return std::make_unique<AnycubicSLAArchive>(cfg, ANYCUBIC_SLA_FORMAT_VERSION_1); },
+                [] (const auto &cfg) { return std::make_unique<ChituboxPhotonSArchive>(cfg); },
                 [] (const std::string &fname, SLAImportQuality quality, const ProgrFn &progr) {
                     return std::make_unique<SL1Reader>(fname, quality, progr);
                 }
@@ -136,7 +150,7 @@ class Registry {
                 L("Chitubox PHZ"),
                 "phz",
                 {},
-                [] (const auto &cfg) { return std::make_unique<AnycubicSLAArchive>(cfg, ANYCUBIC_SLA_FORMAT_VERSION_1); },
+                [] (const auto &cfg) { return std::make_unique<PhrozenSonicMiniArchive>(cfg); },
                 [] (const std::string &fname, SLAImportQuality quality, const ProgrFn &progr) {
                     return std::make_unique<SL1Reader>(fname, quality, progr);
                 }
@@ -145,10 +159,10 @@ class Registry {
             // Creality CXDLP family
             {
                 "cxdlp",
-                L("Creality CXDLP"),
+                L("Creality CXDLP v1"),
                 "cxdlp",
                 {"v1.cxdlp"},
-                [] (const auto &cfg) { return std::make_unique<UVToolsCXDLPArchive>(cfg); },
+                [] (const auto &cfg) { return std::make_unique<CrealityCXDLPv1Archive>(cfg); },
                 [] (const std::string &fname, SLAImportQuality quality, const ProgrFn &progr) {
                     return std::make_unique<SL1Reader>(fname, quality, progr);
                 }
@@ -170,7 +184,7 @@ class Registry {
                 L("NanoDLP"),
                 "nanodlp",
                 {},
-                [] (const auto &cfg) { return std::make_unique<AnycubicSLAArchive>(cfg, ANYCUBIC_SLA_FORMAT_VERSION_1); },
+                [] (const auto &cfg) { return std::make_unique<NanoDLPArchive>(cfg); },
                 [] (const std::string &fname, SLAImportQuality quality, const ProgrFn &progr) {
                     return std::make_unique<SL1Reader>(fname, quality, progr);
                 }
@@ -182,7 +196,7 @@ class Registry {
                 L("Longer Orange 10"),
                 "lgs",
                 {},
-                [] (const auto &cfg) { return std::make_unique<AnycubicSLAArchive>(cfg, ANYCUBIC_SLA_FORMAT_VERSION_1); },
+                [] (const auto &cfg) { return std::make_unique<LongerOrange10Archive>(cfg); },
                 [] (const std::string &fname, SLAImportQuality quality, const ProgrFn &progr) {
                     return std::make_unique<SL1Reader>(fname, quality, progr);
                 }
@@ -192,7 +206,7 @@ class Registry {
                 L("Longer Orange 30"),
                 "lgs30",
                 {},
-                [] (const auto &cfg) { return std::make_unique<AnycubicSLAArchive>(cfg, ANYCUBIC_SLA_FORMAT_VERSION_1); },
+                [] (const auto &cfg) { return std::make_unique<LongerOrange30Archive>(cfg); },
                 [] (const std::string &fname, SLAImportQuality quality, const ProgrFn &progr) {
                     return std::make_unique<SL1Reader>(fname, quality, progr);
                 }
@@ -202,7 +216,7 @@ class Registry {
                 L("Longer Orange 120"),
                 "lgs120",
                 {},
-                [] (const auto &cfg) { return std::make_unique<AnycubicSLAArchive>(cfg, ANYCUBIC_SLA_FORMAT_VERSION_1); },
+                [] (const auto &cfg) { return std::make_unique<LongerOrange120Archive>(cfg); },
                 [] (const std::string &fname, SLAImportQuality quality, const ProgrFn &progr) {
                     return std::make_unique<SL1Reader>(fname, quality, progr);
                 }
@@ -212,7 +226,7 @@ class Registry {
                 L("Longer Orange 4K"),
                 "lgs4k",
                 {},
-                [] (const auto &cfg) { return std::make_unique<AnycubicSLAArchive>(cfg, ANYCUBIC_SLA_FORMAT_VERSION_1); },
+                [] (const auto &cfg) { return std::make_unique<LongerOrange4KArchive>(cfg); },
                 [] (const std::string &fname, SLAImportQuality quality, const ProgrFn &progr) {
                     return std::make_unique<SL1Reader>(fname, quality, progr);
                 }
@@ -224,7 +238,7 @@ class Registry {
                 L("Voxeldance Tango"),
                 "vdt",
                 {},
-                [] (const auto &cfg) { return std::make_unique<AnycubicSLAArchive>(cfg, ANYCUBIC_SLA_FORMAT_VERSION_1); },
+                [] (const auto &cfg) { return std::make_unique<VoxeldanceTangoArchive>(cfg); },
                 [] (const std::string &fname, SLAImportQuality quality, const ProgrFn &progr) {
                     return std::make_unique<SL1Reader>(fname, quality, progr);
                 }
@@ -244,7 +258,7 @@ class Registry {
                 L("Anet N4"),
                 "n4",
                 {},
-                [] (const auto &cfg) { return std::make_unique<AnycubicSLAArchive>(cfg, ANYCUBIC_SLA_FORMAT_VERSION_1); },
+                [] (const auto &cfg) { return std::make_unique<AnetN4Archive>(cfg); },
                 [] (const std::string &fname, SLAImportQuality quality, const ProgrFn &progr) {
                     return std::make_unique<SL1Reader>(fname, quality, progr);
                 }
@@ -254,7 +268,7 @@ class Registry {
                 L("Anet N7"),
                 "n7",
                 {},
-                [] (const auto &cfg) { return std::make_unique<AnycubicSLAArchive>(cfg, ANYCUBIC_SLA_FORMAT_VERSION_1); },
+                [] (const auto &cfg) { return std::make_unique<AnetN7Archive>(cfg); },
                 [] (const std::string &fname, SLAImportQuality quality, const ProgrFn &progr) {
                     return std::make_unique<SL1Reader>(fname, quality, progr);
                 }
@@ -274,7 +288,7 @@ class Registry {
                 L("Elegoo GOO"),
                 "goo",
                 {},
-                [] (const auto &cfg) { return std::make_unique<AnycubicSLAArchive>(cfg, ANYCUBIC_SLA_FORMAT_VERSION_1); },
+                [] (const auto &cfg) { return std::make_unique<UVToolsGOOArchive>(cfg); },
                 [] (const std::string &fname, SLAImportQuality quality, const ProgrFn &progr) {
                     return std::make_unique<SL1Reader>(fname, quality, progr);
                 }
@@ -284,7 +298,7 @@ class Registry {
                 L("Phrozen Sonic Mini 8K S"),
                 "prz",
                 {},
-                [] (const auto &cfg) { return std::make_unique<AnycubicSLAArchive>(cfg, ANYCUBIC_SLA_FORMAT_VERSION_1); },
+                [] (const auto &cfg) { return std::make_unique<PhrozenSonicMiniArchive>(cfg); },
                 [] (const std::string &fname, SLAImportQuality quality, const ProgrFn &progr) {
                     return std::make_unique<SL1Reader>(fname, quality, progr);
                 }
@@ -294,7 +308,7 @@ class Registry {
                 L("UnizMaker IBEE"),
                 "zcode",
                 {},
-                [] (const auto &cfg) { return std::make_unique<AnycubicSLAArchive>(cfg, ANYCUBIC_SLA_FORMAT_VERSION_1); },
+                [] (const auto &cfg) { return std::make_unique<ZCodeArchive>(cfg); },
                 [] (const std::string &fname, SLAImportQuality quality, const ProgrFn &progr) {
                     return std::make_unique<SL1Reader>(fname, quality, progr);
                 }
@@ -304,7 +318,7 @@ class Registry {
                 L("Uniformation GKone"),
                 "jxs",
                 {},
-                [] (const auto &cfg) { return std::make_unique<AnycubicSLAArchive>(cfg, ANYCUBIC_SLA_FORMAT_VERSION_1); },
+                [] (const auto &cfg) { return std::make_unique<UniformationGKoneArchive>(cfg); },
                 [] (const std::string &fname, SLAImportQuality quality, const ProgrFn &progr) {
                     return std::make_unique<SL1Reader>(fname, quality, progr);
                 }
@@ -314,7 +328,7 @@ class Registry {
                 L("Z-Suite ZCodex"),
                 "zcodex",
                 {},
-                [] (const auto &cfg) { return std::make_unique<AnycubicSLAArchive>(cfg, ANYCUBIC_SLA_FORMAT_VERSION_1); },
+                [] (const auto &cfg) { return std::make_unique<ZCodexArchive>(cfg); },
                 [] (const std::string &fname, SLAImportQuality quality, const ProgrFn &progr) {
                     return std::make_unique<SL1Reader>(fname, quality, progr);
                 }
@@ -324,7 +338,7 @@ class Registry {
                 L("Makerbase MDLP"),
                 "mdlp",
                 {},
-                [] (const auto &cfg) { return std::make_unique<AnycubicSLAArchive>(cfg, ANYCUBIC_SLA_FORMAT_VERSION_1); },
+                [] (const auto &cfg) { return std::make_unique<MakerbaseMDLPArchive>(cfg); },
                 [] (const std::string &fname, SLAImportQuality quality, const ProgrFn &progr) {
                     return std::make_unique<SL1Reader>(fname, quality, progr);
                 }
@@ -334,7 +348,7 @@ class Registry {
                 L("GR1 Workshop"),
                 "gr1",
                 {},
-                [] (const auto &cfg) { return std::make_unique<AnycubicSLAArchive>(cfg, ANYCUBIC_SLA_FORMAT_VERSION_1); },
+                [] (const auto &cfg) { return std::make_unique<MakerbaseGR1Archive>(cfg); },
                 [] (const std::string &fname, SLAImportQuality quality, const ProgrFn &progr) {
                     return std::make_unique<SL1Reader>(fname, quality, progr);
                 }
@@ -344,7 +358,7 @@ class Registry {
                 L("Flashforge SVGX"),
                 "svgx",
                 {},
-                [] (const auto &cfg) { return std::make_unique<AnycubicSLAArchive>(cfg, ANYCUBIC_SLA_FORMAT_VERSION_1); },
+                [] (const auto &cfg) { return std::make_unique<FlashforgeSVGXArchive>(cfg); },
                 [] (const std::string &fname, SLAImportQuality quality, const ProgrFn &progr) {
                     return std::make_unique<SL1Reader>(fname, quality, progr);
                 }
@@ -354,7 +368,7 @@ class Registry {
                 L("Emake3D Galaxy"),
                 "qdt",
                 {},
-                [] (const auto &cfg) { return std::make_unique<AnycubicSLAArchive>(cfg, ANYCUBIC_SLA_FORMAT_VERSION_1); },
+                [] (const auto &cfg) { return std::make_unique<Emake3DGalaxyArchive>(cfg); },
                 [] (const std::string &fname, SLAImportQuality quality, const ProgrFn &progr) {
                     return std::make_unique<SL1Reader>(fname, quality, progr);
                 }
@@ -364,7 +378,7 @@ class Registry {
                 L("Open SLA"),
                 "osla",
                 {},
-                [] (const auto &cfg) { return std::make_unique<AnycubicSLAArchive>(cfg, ANYCUBIC_SLA_FORMAT_VERSION_1); },
+                [] (const auto &cfg) { return std::make_unique<OpenSLAArchive>(cfg); },
                 [] (const std::string &fname, SLAImportQuality quality, const ProgrFn &progr) {
                     return std::make_unique<SL1Reader>(fname, quality, progr);
                 }
@@ -374,7 +388,7 @@ class Registry {
                 L("Vlare OSF"),
                 "osf",
                 {},
-                [] (const auto &cfg) { return std::make_unique<AnycubicSLAArchive>(cfg, ANYCUBIC_SLA_FORMAT_VERSION_1); },
+                [] (const auto &cfg) { return std::make_unique<VlareOSFArchive>(cfg); },
                 [] (const std::string &fname, SLAImportQuality quality, const ProgrFn &progr) {
                     return std::make_unique<SL1Reader>(fname, quality, progr);
                 }
@@ -384,7 +398,7 @@ class Registry {
                 L("UVJ Format"),
                 "uvj",
                 {},
-                [] (const auto &cfg) { return std::make_unique<AnycubicSLAArchive>(cfg, ANYCUBIC_SLA_FORMAT_VERSION_1); },
+                [] (const auto &cfg) { return std::make_unique<UVJArchive>(cfg); },
                 [] (const std::string &fname, SLAImportQuality quality, const ProgrFn &progr) {
                     return std::make_unique<SL1Reader>(fname, quality, progr);
                 }

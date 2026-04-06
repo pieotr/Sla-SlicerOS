@@ -8,6 +8,7 @@
 #include <array>
 #include <cstdint>
 #include <cstring>
+#include <ctime>
 #include <fstream>
 #include <vector>
 
@@ -112,6 +113,8 @@ uint32_t crc32_uvtools_style(std::ifstream &in, std::streamoff size)
     return checksum;
 }
 
+
+
 struct CXDLPv4RasterEncoder
 {
     sla::EncodedRaster operator()(const void *ptr,
@@ -213,7 +216,7 @@ sla::RasterEncoder CrealityCXDLPv4Archive::get_encoder() const
 
 void CrealityCXDLPv4Archive::export_print(const std::string     fname,
                                           const SLAPrint       &print,
-                                          const ThumbnailsList &,
+                                          const ThumbnailsList &thumbnails,
                                           const std::string    &)
 {
     const uint32_t layer_count = uint32_t(m_layers.size());
@@ -262,12 +265,28 @@ void CrealityCXDLPv4Archive::export_print(const std::string     fname,
         2 + 2 + // light pwm fields (ushort each)
         3 * 4; // 3 final uint32 fields
 
-    const uint32_t print_params_offset = header_size;
+    // Preview dimensions for CXDLPV4
+    static constexpr uint32_t PREVIEW_SMALL_WIDTH = 120;
+    static constexpr uint32_t PREVIEW_SMALL_HEIGHT = 120;
+    static constexpr uint32_t PREVIEW_LARGE_WIDTH = 300;
+    static constexpr uint32_t PREVIEW_LARGE_HEIGHT = 300;
+    static constexpr uint32_t PREVIEW_HEADER_SIZE = 16;  // 4 uint32s per preview header
+
+    // For now: calculate offsets with fixed preview header sizes (no image data)
+    // This allows the file structure to be valid even without preview images
+    const uint32_t preview_small_offset = header_size;
+    const uint32_t preview_large_offset = preview_small_offset + PREVIEW_HEADER_SIZE;
+    const uint32_t print_params_offset = preview_large_offset + PREVIEW_HEADER_SIZE;
     const uint32_t layer_defs_offset = print_params_offset + uint32_t(PRINT_PARAMS_SIZE);
 
     std::vector<uint32_t> data_sizes;
     data_sizes.reserve(layer_count);
     uint32_t data_blob_offset = layer_defs_offset + uint32_t(LAYER_DEF_SIZE * layer_count);
+    
+    // Calculate slicer section offset (after all layer data)
+    uint32_t total_layer_data_size = 0;
+    uint32_t slicer_offset = 0;  // Will be calculated after knowing all layer sizes
+    static constexpr uint32_t slicer_size = 76;  // Fixed slicer info size
     
     BOOST_LOG_TRIVIAL(debug) << "[CXDLPv4] Starting data_sizes calculation for " << layer_count << " layers";
     BOOST_LOG_TRIVIAL(debug) << "[CXDLPv4] data_blob_offset=" << data_blob_offset << ", LAYER_DEF_EX_SIZE=" << LAYER_DEF_EX_SIZE;
@@ -288,7 +307,11 @@ void CrealityCXDLPv4Archive::export_print(const std::string     fname,
         }
         
         data_sizes.push_back(layer_blob);
+        total_layer_data_size += layer_blob;
     }
+    
+    // Calculate slicer offset
+    slicer_offset = data_blob_offset + total_layer_data_size;
     
     // Verify m_layers count matches expected layer_count
     if (m_layers.size() != size_t(layer_count)) {
@@ -320,10 +343,10 @@ void CrealityCXDLPv4Archive::export_print(const std::string     fname,
         write_f32_le(out, float(layer_count) * layer_height);
         write_f32_le(out, layer_height);
         write_u32_le(out, std::min(bottom_layers, layer_count));
-        write_u32_le(out, 0); // preview small offset
+        write_u32_le(out, preview_small_offset);  // preview small offset
         write_u32_le(out, layer_defs_offset);
         write_u32_le(out, layer_count);
-        write_u32_le(out, 0); // preview large offset
+        write_u32_le(out, preview_large_offset);  // preview large offset
         write_u32_le(out, uint32_t(print.print_statistics().estimated_print_time));
         write_u32_le(out, 1); // projector type
         write_u32_le(out, print_params_offset);
@@ -332,8 +355,21 @@ void CrealityCXDLPv4Archive::export_print(const std::string     fname,
         write_u16_le(out, 255); // light pwm (ushort)
         write_u16_le(out, 255); // bottom light pwm (ushort)
         write_u32_le(out, 0); // encryption key
-        write_u32_le(out, 0); // slicer address
-        write_u32_le(out, 0); // slicer size
+        write_u32_le(out, slicer_offset);  // slicer address - NOW WITH CORRECT OFFSET
+        write_u32_le(out, slicer_size);    // slicer size
+
+        // Write Preview sections (zero-length, minimal headers only)
+        // PreviewSmall header
+        write_u32_le(out, PREVIEW_SMALL_WIDTH);
+        write_u32_le(out, PREVIEW_SMALL_HEIGHT);
+        write_u32_le(out, preview_small_offset + PREVIEW_HEADER_SIZE);  // ImageOffset (after header)
+        write_u32_le(out, 0);  // ImageLength (0 bytes - no image data for now)
+        
+        // PreviewLarge header
+        write_u32_le(out, PREVIEW_LARGE_WIDTH);
+        write_u32_le(out, PREVIEW_LARGE_HEIGHT);
+        write_u32_le(out, preview_large_offset + PREVIEW_HEADER_SIZE);  // ImageOffset (after header)
+        write_u32_le(out, 0);  // ImageLength (0 bytes - no image data for now)
 
         // Print parameters section
         const SLAPrintStatistics stats = print.print_statistics();
@@ -392,6 +428,25 @@ void CrealityCXDLPv4Archive::export_print(const std::string     fname,
             const sla::EncodedRaster &rst = m_layers[size_t(i)];
             out.write(reinterpret_cast<const char *>(rst.data()), std::streamsize(rst.size()));
         }
+
+        // Write Slicer Info section (76 bytes)
+        write_u32_le(out, 0); // Checksum placeholder
+        write_f32_le(out, 300.0f); // RestTime fields
+        write_f32_le(out, 0.0f);
+        write_f32_le(out, 300.0f);
+        write_f32_le(out, 0.0f);
+        write_f32_le(out, 80.0f);
+        write_f32_le(out, 0.0f);
+        write_f32_le(out, 0.0f);
+        write_u32_le(out, uint32_t(std::time(nullptr))); // Timestamp
+        write_u32_le(out, 0); // PerLayerSettings
+        for (int j = 0; j < 8; ++j) {
+            write_u32_le(out, 0); // Padding
+        }
+        write_f32_le(out, normal_exposure);
+        write_f32_le(out, bottom_exposure);
+        write_u32_le(out, 0);
+        write_u32_le(out, 0);
 
         out.flush();
         out.close();

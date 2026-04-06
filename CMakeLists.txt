@@ -9,6 +9,7 @@
 #/|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
 #/|/
 cmake_minimum_required(VERSION 3.13)
+set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
 project(PrusaSlicer)
 
 include("version.inc")
@@ -386,7 +387,10 @@ endif()
 # boost::process was introduced first in version 1.64.0,
 # boost::beast::detail::base64 was introduced first in version 1.66.0
 set(MINIMUM_BOOST_VERSION "1.83.0")
-set(_boost_components "system;filesystem;thread;log;locale;regex;chrono;atomic;date_time;iostreams;nowide")
+# Use legacy FindBoost for compatibility with modern Boost versions like 1.90
+cmake_policy(SET CMP0167 OLD)
+set(Boost_No_BOOST_CMAKE TRUE)
+set(_boost_components "filesystem;thread;log;locale;regex;chrono;atomic;date_time;iostreams;nowide")
 find_package(Boost ${MINIMUM_BOOST_VERSION} REQUIRED COMPONENTS ${_boost_components})
 
 find_package(Eigen3 3.3.7 REQUIRED)
@@ -584,14 +588,13 @@ if(SLIC3R_STATIC)
     set(USE_BLOSC TRUE)
 endif ()
 
-find_package(OpenVDB 5.0 COMPONENTS openvdb)
+find_package(OpenVDB 5.0 COMPONENTS openvdb QUIET)
 if(OpenVDB_FOUND)
     slic3r_remap_configs(IlmBase::Half RelWithDebInfo Release)
     slic3r_remap_configs(Blosc::blosc RelWithDebInfo Release)
+    message(STATUS "OpenVDB found and enabled")
 else ()
-    message(FATAL_ERROR "OpenVDB could not be found with the bundled find module. "
-                   "You can try to specify the find module location of your "
-                   "OpenVDB installation with the OPENVDB_FIND_MODULE_PATH cache variable.")
+    message(STATUS "OpenVDB not found - building without OpenVDB support")
 endif ()
 
 set(TOP_LEVEL_PROJECT_DIR ${PROJECT_SOURCE_DIR})

@@ -6,8 +6,10 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cstdint>
 #include <cstring>
+#include <ctime>
 #include <fstream>
 #include <iomanip>
 #include <sstream>
@@ -1259,10 +1261,118 @@ void UVToolsOSFArchive::export_print(const std::string     fname,
     out.close();
 }
 
-// GOO (Elegoo) - RGB565 packed with comprehensive ASCII header
+// GOO RLE Encoder - encodes grayscale image to RLE compression
+// Based on UVtools format
+std::vector<uint8_t> encode_goo_rle(const uint8_t* src, size_t pixel_count)
+{
+    std::vector<uint8_t> rle;
+    rle.push_back(0x55);  // Layer magic
+    
+    uint8_t previous_color = 0;
+    uint8_t current_color = 0;
+    uint32_t stride = 0;
+
+    auto add_rep = [&rle, &current_color, &previous_color, &stride]() {
+        if (stride == 0) return;
+        
+        size_t first_byte_idx = rle.size();
+        rle.push_back(0);
+
+        // Try color difference compression
+        uint8_t color_diff = (current_color > previous_color) 
+            ? (current_color - previous_color) 
+            : (previous_color - current_color);
+        
+        if (color_diff <= 0x0F && stride <= 0xFF && current_color > 0 && current_color < 0xFF) {
+            // Use difference mode (0x2)
+            rle[first_byte_idx] = 0x80;  // 0b10 << 6
+            rle[first_byte_idx] |= (color_diff & 0x0F);
+            
+            if (stride > 1) {
+                rle[first_byte_idx] |= 0x10;  // 0b01 << 4 (extended run length)
+                rle.push_back(static_cast<uint8_t>(stride));
+            }
+            
+            if (current_color < previous_color) {
+                rle[first_byte_idx] |= 0x20;  // 0b01 << 5 (negative difference)
+            }
+        } else {
+            // Use standard mode
+            uint8_t chunk_type = 0;
+            if (current_color == 0xFF) {
+                chunk_type = 3;  // 0b11
+            } else if (current_color == 0x00) {
+                chunk_type = 0;  // 0b00
+            } else {
+                chunk_type = 1;  // 0b01
+                rle.push_back(current_color);
+            }
+            
+            rle[first_byte_idx] = chunk_type << 6;
+            rle[first_byte_idx] |= (stride & 0x0F);
+            
+            // Determine run length encoding type based on stride value
+            if (stride <= 0x0F) {
+                // Run length in byte0[3:0], no extra bytes
+                // run_len_type = 0b00 (bits [5:4])
+            } else if (stride <= 0xFFF) {
+                // Run length = byte1[7:0] (8 bits) + byte0[3:0] (4 bits) = 12 bits
+                rle[first_byte_idx] |= 0x10;  // 0b01 << 4
+                rle.push_back(static_cast<uint8_t>(stride >> 4));
+            } else if (stride <= 0xFFFFF) {
+                // Run length = byte1[7:0] (8 bits) + byte2[7:0] (8 bits) + byte0[3:0] (4 bits) = 20 bits
+                rle[first_byte_idx] |= 0x20;  // 0b10 << 4
+                rle.push_back(static_cast<uint8_t>(stride >> 12));
+                rle.push_back(static_cast<uint8_t>(stride >> 4));
+            } else if (stride <= 0xFFFFFFF) {
+                // Run length = byte1[7:0] + byte2[7:0] + byte3[7:0] + byte0[3:0] = 28 bits
+                rle[first_byte_idx] |= 0x30;  // 0b11 << 4
+                rle.push_back(static_cast<uint8_t>(stride >> 20));
+                rle.push_back(static_cast<uint8_t>(stride >> 12));
+                rle.push_back(static_cast<uint8_t>(stride >> 4));
+            }
+        }
+    };
+
+    for (size_t i = 0; i < pixel_count; i++) {
+        if (current_color == src[i]) {
+            stride++;
+        } else {
+            add_rep();
+            stride = 1;
+            previous_color = current_color;
+            current_color = src[i];
+        }
+    }
+
+    add_rep();
+
+    // Calculate and add checksum
+    uint8_t checksum = 0;
+    for (size_t i = 1; i < rle.size(); i++) {
+        checksum += rle[i];
+    }
+    rle.push_back(~checksum);
+
+    return rle;
+}
+
+// GOO (Elegoo) - Grayscale with RLE compression
 sla::RasterEncoder UVToolsGOOArchive::get_encoder() const
 {
-    return GR1RasterEncoder{};  // GOO uses RGB565 like GR1
+    // Return a grayscale encoder - non-RLE version for the raster
+    // RLE compression happens during export_print
+    return [](const void *ptr, size_t w, size_t h, size_t num_components) {
+        const uint8_t *src = reinterpret_cast<const uint8_t *>(ptr);
+        std::vector<uint8_t> out;
+        out.reserve(w * h);
+
+        for (size_t i = 0; i < w * h * num_components; i += num_components) {
+            out.push_back(src[i]);
+        }
+
+        return sla::EncodedRaster(std::move(out), "goo");
+    };
 }
 
 void UVToolsGOOArchive::export_print(const std::string     fname,
@@ -1275,12 +1385,9 @@ void UVToolsGOOArchive::export_print(const std::string     fname,
     const float exp       = cfg_float_or(cfg, "exposure_time", 2.5f);
     const float init_exp  = cfg_float_or(cfg, "initial_exposure_time", 20.0f);
     const float lightoff  = cfg_float_or(cfg, "light_off_delay", 0.0f);
-    const float bottom_exp = cfg_float_or(cfg, "initial_exposure_time", 20.0f);
-    // Get orientation-aware display dimensions from m_cfg (set at archive creation)
     const auto dims       = get_display_dimensions(m_cfg);
     const auto layer_count = uint32_t(m_layers.size());
 
-    // Get display dimensions from printer profile (actual bed size, no orientation swap)
     double display_width_mm = m_cfg.display_width.getFloat();
     double display_height_mm = m_cfg.display_height.getFloat();
 
@@ -1288,112 +1395,104 @@ void UVToolsGOOArchive::export_print(const std::string     fname,
     if (!out)
         throw RuntimeError("Failed to open output file for GOO export");
 
-    // GOO binary header (big-endian structured)
-    // Version: "V3.0" (4 bytes, big-endian format)
+    // Generate current timestamp
+    auto now = std::chrono::system_clock::now();
+    auto time = std::chrono::system_clock::to_time_t(now);
+    std::tm* timeinfo = std::localtime(&time);
+    char timestamp_buf[24] = {0};
+    std::strftime(timestamp_buf, sizeof(timestamp_buf), "%Y-%m-%d %H:%M:%S", timeinfo);
+    std::string timestamp(timestamp_buf);
+
+    // Get machine name from config, default to "Anycubic Photon Mono"
+    std::string machine_name = m_cfg.printer_model.value.empty() ? "Anycubic Photon Mono" : m_cfg.printer_model.value;
+
+    // ============ WRITE HEADER ============
     out.write("V3.0", 4);
-    // Magic: 07 00 00 00 44 4C 50 00
     out.put(0x07);
     out.put(0x00);
     out.put(0x00);
     out.put(0x00);
-    out.put(0x44);  // 'D'
-    out.put(0x4C);  // 'L'
-    out.put(0x50);  // 'P'
+    out.write("DLP", 3);
     out.put(0x00);
     
-    // SoftwareName (32 bytes, null-terminated)
-    std::string software_name = "PrusaSlicer";
-    out.write(software_name.c_str(), software_name.length());
-    out.write(std::string(32 - software_name.length(), '\0').c_str(), 32 - software_name.length());
+    // SoftwareName (32 bytes) - use "UVtools" for compatibility
+    std::string software = "UVtools";
+    out.write(software.c_str(), software.length());
+    out.write(std::string(32 - software.length(), '\0').c_str(), 32 - software.length());
     
     // SoftwareVersion (24 bytes)
-    std::string version = "5.0.0";
+    std::string version = "5.2.1";
     out.write(version.c_str(), version.length());
     out.write(std::string(24 - version.length(), '\0').c_str(), 24 - version.length());
     
     // FileCreateTime (24 bytes)
-    std::string timestamp = "2024-01-01 00:00:00";
     out.write(timestamp.c_str(), timestamp.length());
     out.write(std::string(24 - timestamp.length(), '\0').c_str(), 24 - timestamp.length());
     
     // MachineName (32 bytes)
-    std::string machine = "Elegoo Mars";
-    out.write(machine.c_str(), machine.length());
-    out.write(std::string(32 - machine.length(), '\0').c_str(), 32 - machine.length());
+    out.write(machine_name.c_str(), machine_name.length());
+    out.write(std::string(32 - machine_name.length(), '\0').c_str(), 32 - machine_name.length());
     
-    // MachineType (32 bytes) - "DLP"
+    // MachineType (32 bytes)
     out.write("DLP", 3);
-    out.write(std::string(32 - 3, '\0').c_str(), 32 - 3);
+    out.write(std::string(29, '\0').c_str(), 29);
     
     // ProfileName (32 bytes)
-    out.write(machine.c_str(), machine.length());
-    out.write(std::string(32 - machine.length(), '\0').c_str(), 32 - machine.length());
+    out.write(software.c_str(), software.length());
+    out.write(std::string(32 - software.length(), '\0').c_str(), 32 - software.length());
     
-    // AntiAliasingLevel (2 bytes, BE ushort)
+    // AntiAliasingLevel, GreyLevel, BlurLevel
+    write_u16_be(out, 8u);
     write_u16_be(out, 1u);
-    // GreyLevel (2 bytes, BE ushort)
-    write_u16_be(out, 1u);
-    // BlurLevel (2 bytes, BE ushort)
     write_u16_be(out, 0u);
     
-    // SmallPreview565 (116×116×2 = 26,912 bytes) - write zeros for now
+    // SmallPreview565 (116×116×2)
     for (int i = 0; i < 116 * 116; i++) {
         out.put(0);
         out.put(0);
     }
-    // SmallPreviewDelimiter
     out.put(0x0D);
     out.put(0x0A);
     
-    // BigPreview565 (290×290×2 = 168,100 bytes) - write zeros for now
+    // BigPreview565 (290×290×2)
     for (int i = 0; i < 290 * 290; i++) {
         out.put(0);
         out.put(0);
     }
-    // BigPreviewDelimiter
     out.put(0x0D);
     out.put(0x0A);
     
-    // LayerCount (4 bytes, BE uint32)
+    // LayerCount, Resolution
     write_u32_be(out, layer_count);
-    // ResolutionX/Y (2 bytes each, BE ushort)
     write_u16_be(out, dims.resolution_x);
     write_u16_be(out, dims.resolution_y);
     
-    // MirrorX/Y (bool, 1 byte each)
-    out.put(0);  // MirrorX
-    out.put(0);  // MirrorY
+    // Mirroring
+    out.put(0);
+    out.put(0);
     
-    // DisplayWidth/Height (4 bytes each, BE float32)
+    // Display dimensions and machine Z
     write_f32_be(out, float(display_width_mm));
     write_f32_be(out, float(display_height_mm));
-    
-    // MachineZ (4 bytes, BE float32)
-    write_f32_be(out, 170.0f);
-    // LayerHeight (4 bytes, BE float32)
+    write_f32_be(out, 170.0f);  // MachineZ
     write_f32_be(out, layer_h);
     
-    // ExposureTime (4 bytes, BE float32)
+    // Exposure and delay
     write_f32_be(out, exp);
-    // DelayMode (1 byte) - 1 = WaitTime
-    out.put(1);
-    // LightOffDelay (4 bytes, BE float32)
+    out.put(1);  // DelayMode = WaitTime
     write_f32_be(out, lightoff);
     
-    // Multiple timing parameters (all BE float32)
+    // Timing parameters
     write_f32_be(out, 0.5f);  // BottomWaitTimeAfterCure
     write_f32_be(out, 0.5f);  // BottomWaitTimeAfterLift
     write_f32_be(out, 1.0f);  // BottomWaitTimeBeforeCure
     write_f32_be(out, 0.5f);  // WaitTimeAfterCure
     write_f32_be(out, 0.5f);  // WaitTimeAfterLift
     write_f32_be(out, 1.0f);  // WaitTimeBeforeCure
+    write_f32_be(out, init_exp);  // BottomExposureTime
+    write_u32_be(out, 1u);  // BottomLayerCount
     
-    // BottomExposureTime (4 bytes, BE float32)
-    write_f32_be(out, bottom_exp);
-    // BottomLayerCount (4 bytes, BE uint32)
-    write_u32_be(out, 1u);
-    
-    // Movement parameters (all BE float32)
+    // Movement parameters
     write_f32_be(out, 5.0f);   // BottomLiftHeight
     write_f32_be(out, 50.0f);  // BottomLiftSpeed
     write_f32_be(out, 5.0f);   // LiftHeight
@@ -1403,48 +1502,100 @@ void UVToolsGOOArchive::export_print(const std::string     fname,
     write_f32_be(out, 3.0f);   // RetractHeight
     write_f32_be(out, 60.0f);  // RetractSpeed
     
-    // Secondary movement parameters (BE float32)
-    write_f32_be(out, 0.0f);   // BottomLiftHeight2
-    write_f32_be(out, 0.0f);   // BottomLiftSpeed2
-    write_f32_be(out, 0.0f);   // LiftHeight2
-    write_f32_be(out, 0.0f);   // LiftSpeed2
-    write_f32_be(out, 0.0f);   // BottomRetractHeight2
-    write_f32_be(out, 0.0f);   // BottomRetractSpeed2
-    write_f32_be(out, 0.0f);   // RetractHeight2
-    write_f32_be(out, 0.0f);   // RetractSpeed2
+    // Secondary movement parameters
+    write_f32_be(out, 0.0f);
+    write_f32_be(out, 0.0f);
+    write_f32_be(out, 0.0f);
+    write_f32_be(out, 0.0f);
+    write_f32_be(out, 0.0f);
+    write_f32_be(out, 0.0f);
+    write_f32_be(out, 0.0f);
+    write_f32_be(out, 0.0f);
     
-    // PWM values (2 bytes each, BE ushort)
-    write_u16_be(out, 200u);   // BottomLightPWM
-    write_u16_be(out, 250u);   // LightPWM
+    // PWM values
+    write_u16_be(out, 200u);  // BottomLightPWM
+    write_u16_be(out, 250u);  // LightPWM
     
-    // PerLayerSettings (bool)
+    // Per-layer settings
     out.put(0);
     
-    // PrintTime (4 bytes, BE uint32)
+    // PrintTime
     write_u32_be(out, 0u);
     
-    // Volume/Material (BE float32)
-    write_f32_be(out, 0.0f);   // Volume
-    write_f32_be(out, 0.0f);   // MaterialGrams
-    write_f32_be(out, 0.0f);   // MaterialCost
+    // Volume/Material
+    write_f32_be(out, 0.0f);
+    write_f32_be(out, 0.0f);
+    write_f32_be(out, 0.0f);
     
-    // PriceCurrencySymbol (8 bytes)
+    // Currency symbol
     out.write("$", 1);
     out.write(std::string(7, '\0').c_str(), 7);
     
-    // LayerDefAddress (4 bytes, BE uint32) - placeholder
-    write_u32_be(out, 195477u);
+    // LayerDefAddress - points to start of first LayerDef
+    // Remaining header: 4 (LayerDefAddress) + 1 (GrayScaleLevel) + 2 (TransitionLayerCount) = 7 bytes
+    uint32_t layer_def_address = static_cast<uint32_t>(out.tellp()) + 7;
+    write_u32_be(out, layer_def_address);
     
-    // GrayScaleLevel (1 byte)
+    // GrayScaleLevel
     out.put(1);
     
-    // TransitionLayerCount (2 bytes, BE ushort)
+    // TransitionLayerCount
     write_u16_be(out, 0u);
     
-    // Write layer data - use m_layers as-is for now
-    for (const auto &layer : m_layers) {
-        out.write(reinterpret_cast<const char *>(layer.data()), std::streamsize(layer.size()));
+    // ============ WRITE LAYERS ============
+    for (const auto &layer_data : m_layers) {
+        // Write LayerDef metadata
+        write_u16_be(out, 0u);  // Pause
+        write_f32_be(out, 0.0f);  // PausePositionZ
+        write_f32_be(out, 0.0f);  // PositionZ
+        write_f32_be(out, exp);   // ExposureTime
+        write_f32_be(out, lightoff);  // LightOffDelay
+        write_f32_be(out, 0.5f);  // WaitTimeAfterCure
+        write_f32_be(out, 0.5f);  // WaitTimeAfterLift
+        write_f32_be(out, 1.0f);  // WaitTimeBeforeCure
+        write_f32_be(out, 5.0f);  // LiftHeight
+        write_f32_be(out, 100.0f);  // LiftSpeed
+        write_f32_be(out, 0.0f);  // LiftHeight2
+        write_f32_be(out, 0.0f);  // LiftSpeed2
+        write_f32_be(out, 3.0f);  // RetractHeight
+        write_f32_be(out, 60.0f);  // RetractSpeed
+        write_f32_be(out, 0.0f);  // RetractHeight2
+        write_f32_be(out, 0.0f);  // RetractSpeed2
+        write_u16_be(out, 250u);  // LightPWM
+        
+        // Delimiter
+        out.put(0x0D);
+        out.put(0x0A);
+        
+        // Encode layer to RLE
+        auto rle_data = encode_goo_rle(
+            reinterpret_cast<const uint8_t*>(layer_data.data()), 
+            layer_data.size()
+        );
+        
+        // Write DataLength
+        write_u32_be(out, static_cast<uint32_t>(rle_data.size()));
+        
+        // Write RLE data
+        out.write(reinterpret_cast<const char*>(rle_data.data()), rle_data.size());
+        
+        // Delimiter
+        out.put(0x0D);
+        out.put(0x0A);
     }
+    
+    // ============ WRITE FOOTER ============
+    out.put(0x00);  // Padding byte 1
+    out.put(0x00);  // Padding byte 2
+    out.put(0x00);  // Padding byte 3
+    out.put(0x07);  // Magic byte 1
+    out.put(0x00);  // Magic byte 2
+    out.put(0x00);  // Magic byte 3
+    out.put(0x00);  // Magic byte 4
+    out.put(0x44);  // 'D'
+    out.put(0x4C);  // 'L'
+    out.put(0x50);  // 'P'
+    out.put(0x00);  // Magic byte 11 (null terminator)
 
     out.close();
 }

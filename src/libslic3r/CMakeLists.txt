@@ -5,7 +5,7 @@
 #/|/
 #/|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
 #/|/
-cmake_minimum_required(VERSION 3.13)
+cmake_minimum_required(VERSION 3.13...3.30)
 project(libslic3r)
 
 include(PrecompiledHeader)
@@ -155,6 +155,34 @@ set(SLIC3R_SOURCES
     Format/AnycubicSLA.cpp
     Format/CrealityCXDLPv4.hpp
     Format/CrealityCXDLPv4.cpp
+    Format/AnetArchive.hpp
+    Format/AnetArchive.cpp
+    Format/ChituboxArchive.hpp
+    Format/ChituboxArchive.cpp
+    Format/CrealityCXDLPv1Archive.hpp
+    Format/CrealityCXDLPv1Archive.cpp
+    Format/Emake3DArchive.hpp
+    Format/Emake3DArchive.cpp
+    Format/FlashforgeArchive.hpp
+    Format/FlashforgeArchive.cpp
+    Format/LongerOrangeArchive.hpp
+    Format/LongerOrangeArchive.cpp
+    Format/MakerbaseArchive.hpp
+    Format/MakerbaseArchive.cpp
+    Format/NanoDLPArchive.hpp
+    Format/NanoDLPArchive.cpp
+    Format/OpenStandardsArchive.hpp
+    Format/OpenStandardsArchive.cpp
+    Format/PhrozenArchive.hpp
+    Format/PhrozenArchive.cpp
+    Format/StructoVlareArchive.hpp
+    Format/StructoVlareArchive.cpp
+    Format/UniformationArchive.hpp
+    Format/UniformationArchive.cpp
+    Format/VoxeldanceArchive.hpp
+    Format/VoxeldanceArchive.cpp
+    Format/ZCodeArchive.hpp
+    Format/ZCodeArchive.cpp
     Format/UVToolsCompatArchive.hpp
     Format/UVToolsCompatArchive.cpp
     Format/SLAArchiveWriterFactory.hpp
@@ -169,7 +197,7 @@ set(SLIC3R_SOURCES
     Format/SVG.cpp
     Format/SLAArchiveFormatRegistry.hpp
     Format/SLAArchiveFormatRegistry.cpp
-    Format/PrintRequest.cpp
+    Format/PrintRequest.hpp
     Format/PrintRequest.cpp
     GCode/ThumbnailData.cpp
     GCode/ThumbnailData.hpp
