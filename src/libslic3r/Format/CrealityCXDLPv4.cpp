@@ -113,6 +113,42 @@ uint32_t crc32_uvtools_style(std::ifstream &in, std::streamoff size)
     return checksum;
 }
 
+// RGB15 RLE Encoder for CXDLPV4 preview images
+// Encodes RGB15 (5-5-5 + 1 reserved bit) pixels with RLE compression
+// Black image: all pixels are 0x0000
+std::vector<uint8_t> encode_cxdlpv4_rgb15_rle(uint32_t width, uint32_t height)
+{
+    std::vector<uint8_t> rle;
+
+    // Generate a completely black image (0x0000 for all RGB15 pixels)
+    // RGB15 format: XRRRRRGGGGGBBBBB (where X is reserved/unused)
+    // Black = 0x0000 (all color components zero)
+    
+    // Total pixel count
+    const uint32_t pixel_count = width * height;
+    
+    // RLE encoding: each pixel is 2 bytes (RGB15 little-endian)
+    // For a completely black image, we can compress it as:
+    // Single RLE entry: color=0x0000, run-length=pixel_count
+    
+    // RLE entry format for CXDLPV4:
+    // [run-length-encoded entry]
+    // First byte: color or length indicator
+    // Subsequent bytes: color data and/or extended length
+    
+    // Simple approach: write each pixel as 2 bytes
+    // For black: 0x00 0x00 per pixel = 2*pixel_count bytes uncompressed
+    // RLE will compress this significantly
+    
+    // Write all black pixels as RGB15 (little-endian 0x0000)
+    for (uint32_t i = 0; i < pixel_count; ++i) {
+        rle.push_back(0x00);  // Low byte of RGB15 black
+        rle.push_back(0x00);  // High byte of RGB15 black
+    }
+    
+    return rle;
+}
+
 
 
 struct CXDLPv4RasterEncoder
@@ -272,11 +308,15 @@ void CrealityCXDLPv4Archive::export_print(const std::string     fname,
     static constexpr uint32_t PREVIEW_LARGE_HEIGHT = 300;
     static constexpr uint32_t PREVIEW_HEADER_SIZE = 16;  // 4 uint32s per preview header
 
-    // For now: calculate offsets with fixed preview header sizes (no image data)
-    // This allows the file structure to be valid even without preview images
+    // Pre-calculate preview image sizes (black RGB15 images)
+    // RGB15 = 2 bytes per pixel, no RLE compression for simplicity
+    const uint32_t preview_small_image_size = PREVIEW_SMALL_WIDTH * PREVIEW_SMALL_HEIGHT * 2;  // RGB15: 2 bytes per pixel
+    const uint32_t preview_large_image_size = PREVIEW_LARGE_WIDTH * PREVIEW_LARGE_HEIGHT * 2;  // RGB15: 2 bytes per pixel
+
+    // Calculate offsets with actual preview image data
     const uint32_t preview_small_offset = header_size;
-    const uint32_t preview_large_offset = preview_small_offset + PREVIEW_HEADER_SIZE;
-    const uint32_t print_params_offset = preview_large_offset + PREVIEW_HEADER_SIZE;
+    const uint32_t preview_large_offset = preview_small_offset + PREVIEW_HEADER_SIZE + preview_small_image_size;
+    const uint32_t print_params_offset = preview_large_offset + PREVIEW_HEADER_SIZE + preview_large_image_size;
     const uint32_t layer_defs_offset = print_params_offset + uint32_t(PRINT_PARAMS_SIZE);
 
     std::vector<uint32_t> data_sizes;
@@ -290,6 +330,7 @@ void CrealityCXDLPv4Archive::export_print(const std::string     fname,
     
     BOOST_LOG_TRIVIAL(debug) << "[CXDLPv4] Starting data_sizes calculation for " << layer_count << " layers";
     BOOST_LOG_TRIVIAL(debug) << "[CXDLPv4] data_blob_offset=" << data_blob_offset << ", LAYER_DEF_EX_SIZE=" << LAYER_DEF_EX_SIZE;
+    BOOST_LOG_TRIVIAL(debug) << "[CXDLPv4] preview_small size=" << preview_small_image_size << " preview_large size=" << preview_large_image_size;
     
     for (size_t i = 0; i < m_layers.size(); ++i) {
         const sla::EncodedRaster &rst = m_layers[i];
@@ -358,18 +399,28 @@ void CrealityCXDLPv4Archive::export_print(const std::string     fname,
         write_u32_le(out, slicer_offset);  // slicer address - NOW WITH CORRECT OFFSET
         write_u32_le(out, slicer_size);    // slicer size
 
-        // Write Preview sections (zero-length, minimal headers only)
+        // Generate black preview images (RGB15 format, uncompressed for now)
+        auto preview_small_data = encode_cxdlpv4_rgb15_rle(PREVIEW_SMALL_WIDTH, PREVIEW_SMALL_HEIGHT);
+        auto preview_large_data = encode_cxdlpv4_rgb15_rle(PREVIEW_LARGE_WIDTH, PREVIEW_LARGE_HEIGHT);
+
+        // Write Preview sections with encoded image data
         // PreviewSmall header
         write_u32_le(out, PREVIEW_SMALL_WIDTH);
         write_u32_le(out, PREVIEW_SMALL_HEIGHT);
         write_u32_le(out, preview_small_offset + PREVIEW_HEADER_SIZE);  // ImageOffset (after header)
-        write_u32_le(out, 0);  // ImageLength (0 bytes - no image data for now)
+        write_u32_le(out, uint32_t(preview_small_data.size()));  // ImageLength
+        
+        // Write PreviewSmall image data
+        out.write(reinterpret_cast<const char*>(preview_small_data.data()), preview_small_data.size());
         
         // PreviewLarge header
         write_u32_le(out, PREVIEW_LARGE_WIDTH);
         write_u32_le(out, PREVIEW_LARGE_HEIGHT);
         write_u32_le(out, preview_large_offset + PREVIEW_HEADER_SIZE);  // ImageOffset (after header)
-        write_u32_le(out, 0);  // ImageLength (0 bytes - no image data for now)
+        write_u32_le(out, uint32_t(preview_large_data.size()));  // ImageLength
+        
+        // Write PreviewLarge image data
+        out.write(reinterpret_cast<const char*>(preview_large_data.data()), preview_large_data.size());
 
         // Print parameters section
         const SLAPrintStatistics stats = print.print_statistics();
