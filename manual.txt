@@ -1,0 +1,88 @@
+SLA-Slicer — instrukcja wersji rozwojowej
+======================================
+
+Stan programu
+-------------
+Projekt jest w trakcie przebudowy. Lista formatów eksportu nie jest listą
+potwierdzonej zgodności z drukarkami. Edytor pikseli, PCB i pełny zestaw
+kalibracji UVtools nadal wymagają wdrożenia. Stan prac: doc/REFACTOR_STATUS.md.
+
+Budowanie na Linux
+------------------
+Otwórz terminal w katalogu Sla-SlicerOS. Wymagane są kompilator C/C++, CMake,
+narzędzia budowania oraz biblioteki systemowe opisane w install.md.
+Pierwsze budowanie zależności może wymagać dostępu do sieci.
+
+  bash ./build_linux.sh --jobs 4 --tests --run
+
+Skrypt buduje zależności w deps/build i aplikację w build. Opcja --tests
+włącza testy regresji SLA. --run sprawdza uruchomienie polecenia --help.
+Opcja --deps wymusza ponowne budowanie zależności.
+Opcja --clean usuwa katalogi build i deps/build; używaj jej świadomie.
+
+Uruchamianie
+------------
+  bash ./run_prusa_slicer.sh
+
+Do sprawdzania wersji rozwojowej z oddzielnymi ustawieniami:
+
+  bash ./run_prusa_slicer.sh --datadir "$PWD/build/gui-test-config"
+
+Nie usuwaj ani nie zastępuj dotychczasowych profili przed wykonaniem kopii.
+Oddzielny katalog testowy pozwala sprawdzać kreator pierwszego uruchomienia.
+
+Przygotowanie wydruku
+--------------------
+1. W kreatorze wybierz lub utwórz drukarkę SLA.
+2. Sprawdź wymiary ekranu w mm, rozdzielczość w pikselach, wysokość druku,
+   orientację i odbicia. Prostokątne pole robocze jest wyliczane automatycznie
+   z wymiarów ekranu. Nie ma już oddzielnego edytora obrysu pola SLA.
+   Orientacja i odbicia dotyczą obrazu warstw, nie rozmiaru sceny 3D.
+3. Wybierz materiał i preset procesu. Sprawdź wysokość warstwy, ekspozycję
+   zwykłą i początkową oraz parametry ruchu obsługiwane przez format.
+4. Wczytaj model. Ustaw pozycję, obrót i skalę; przygotuj podpory i drążenie
+   odpowiednio do modelu. Zachowaj projekt, aby móc wrócić do sceny 3D.
+5. Wykonaj slicing i sprawdź podgląd warstw.
+6. Wybierz format zgodny z modelem drukarki i firmware. Przy zmianie filtra
+   eksportu sprawdź również rozszerzenie nazwy pliku.
+7. Dla niezweryfikowanego formatu sprawdź wynik niezależnym dekoderem UVtools:
+   liczbę i obrazy warstw, wymiary, orientację, ekspozycję i ruch osi Z.
+
+Otwieranie wydruku warstwowego nie odtwarza oryginalnej sceny edytowalnych
+modeli. Natywne czytniki formatów binarnych są jeszcze niekompletne; program
+nie powinien traktować takiego pliku jako archiwum SL1.
+
+PCB, kalibracje i edycja PNG
+--------------------------
+Pełne narzędzia nie są jeszcze dostępne w tej aplikacji. Plan wdrożenia
+obejmuje dokument warstwowy, edycję z cofaniem, import Gerber/Excellon,
+generatory kalibracyjne i eksport przez wspólny rejestr formatów.
+
+Zgłaszanie błędów
+----------------
+Zapisz: wersję systemu, wersję aplikacji, model i firmware drukarki, format
+i jego wersję, użyte profile, dokładne kroki, oczekiwany wynik i komunikat
+błędu. Dołącz mały model lub plik, który odtwarza problem.
+
+Instrukcja testów: doc/TESTING.md.
+Wyniki sprawdzenia bieżącej partii zmian: doc/VALIDATION.md.
+
+Geometria archiwów SL1:
+Nowe pliki zawierają w config.ini znacznik slaSlicerProfileGeometry=raster-v1.
+Pozwala on poprawnie przywrócić wymiary profilu drukarki po eksporcie portretowym.
+Nie usuwaj znacznika podczas ręcznej edycji archiwum. Starsze pliki bez znacznika
+są interpretowane według pierwotnej konwencji PrusaSlicer; portretowe pliki
+z poprzednich wersji tego forka mogą wymagać ponownego eksportu z projektu.
+
+Niedostępny eksport:
+Formaty z niedokończoną implementacją oraz PWSZ zgłaszają teraz konkretny błąd
+podczas rasteryzacji lub eksportu. Można nadal otwierać ich profile. Obecność
+rozszerzenia w ustawieniach nie potwierdza obsługi drukarki; nie zmieniaj samego
+rozszerzenia pliku, aby obejść brak kodeka. Ta blokada nie zastępuje implementacji.
+
+Edycja warstw SL1:
+Po eksporcie SL1 otwórz Window → SL1 Layer Editor. Wybierz warstwę i promień
+pędzla, ustaw jasność (0 = gumka, 255 = naświetlenie), kliknij podgląd.
+Dostępne są progowanie, Undo/Redo i Save as SL1. Szczegóły oraz ograniczenia
+są w doc/LAYER_EDITOR.md. Edycje zapisują się w archiwum, nie w modelu 3D.
+Miniatury i statystyki źródłowe nie są przeliczane po edycji.

@@ -24,7 +24,8 @@ To make modern Linux toolchains build reliably, the dependency build scripts wer
 - Uses explicit, local C/C++ flags and host/build target handling.
 - Passes explicit compilers (`CC`, `CXX`) so MPFR matches the GMP toolchain.
 
-These changes are build-system-only. No slicer runtime logic was modified.
+These dependency fixes are separate from the ongoing application refactor.
+See [implementation status](doc/REFACTOR_STATUS.md) for runtime changes.
 
 ## Prerequisites
 
@@ -70,11 +71,18 @@ This keeps the build focused on SLA workflows and improves incremental iteration
 ```bash
 bash ./build_linux.sh --clean --run
 bash ./build_linux.sh --jobs 4
+bash ./build_linux.sh --jobs 4 --tests --run
 ```
 
 - `--clean`: remove previous build directories first.
 - `--jobs N`: app build parallelism.
 - `--run`: run smoke test after build.
+- `--tests`: enable the SLA test target and run fast archive regression and SL1
+  slicing/readback checks. This does not certify all formats. See
+  [testing instructions](doc/TESTING.md) for suite selection and known missing
+  fixtures in the legacy test suites.
+
+`--run` alone checks `--help`; it does not open or exercise the GUI.
 
 ## Run the app
 
@@ -84,3 +92,25 @@ bash ./run_prusa_slicer.sh
 
 The launcher auto-detects a valid CA bundle and exports `SSL_CERT_FILE` when needed.
 This avoids startup/runtime TLS issues on distros that do not use the default OpenSSL cert path.
+
+## Existing builds after a compiler update
+
+Static libraries containing GCC LTO bytecode must match the compiler used for
+linking. A message such as `libtbb.a ... generated with LTO version ... instead
+of the expected ...` means the cached dependency needs rebuilding; disabling
+application LTO does not repair the library.
+
+For the existing bundled TBB source/build layout, rebuild only that dependency:
+
+```sh
+cmake -S deps/build/dep_TBB-prefix/src/dep_TBB -B deps/build/builds/TBB \
+  -DTBB_STRICT=OFF
+cmake --build deps/build/builds/TBB --clean-first -j 4
+cmake --install deps/build/builds/TBB
+```
+
+These commands require a previously configured local dependency build, including
+its install prefix inside `deps/build/destdir/usr/local`. `TBB_STRICT=OFF` allows
+new compiler warnings in the older bundled TBB source without treating them as
+errors. Then rebuild the application and rerun the tests. Other compiler/ABI
+changes may require rebuilding all dependencies using `--clean --deps`.

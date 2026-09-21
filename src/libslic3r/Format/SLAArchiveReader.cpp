@@ -25,48 +25,31 @@ std::unique_ptr<SLAArchiveReader> SLAArchiveReader::create(
     SLAImportQuality         quality,
     const ProgrFn & progr)
 {
-    // Create an instance of SLAArchiveReader using the registered archive
-    // reader implementations.
-    // If format_id is specified and valid, that archive format will be
-    // preferred. When format_id is emtpy, the file extension is compared
-    // with the advertised extensions of registered readers and the first
-    // match will be used.
-
-    std::string ext = boost::filesystem::path(fname).extension().string();
-    boost::algorithm::to_lower(ext);
-
-    std::unique_ptr<SLAArchiveReader> ret;
-
-    auto registry = registered_sla_archives();
-
-    auto arch_from = registry.begin();
-    auto arch_to   = registry.end();
-
-    auto arch_it = registry.find(ArchiveEntry{format_id.c_str()});
-    if (arch_it != registry.end()) {
-        arch_from = arch_it;
-        arch_to   = arch_it;
+    // Explicit IDs also allow extensionless files. Do not silently substitute
+    // another reader when a caller requests an unknown or unsupported format.
+    if (!format_id.empty()) {
+        const auto factory = get_reader_factory(format_id.c_str());
+        return factory ? factory(fname, quality, progr) : nullptr;
     }
 
-    if (!ext.empty()) {
-        if (ext.front() == '.')
-            ext.erase(ext.begin());
-
-        for (auto it = arch_from; !ret && it != arch_to; ++it) {
-            const auto &entry = *it;
-            if (entry.rdfactoryfn) {
-                auto extensions = get_extensions(entry);
-                for (const std::string& supportedext : extensions) {
-                    if (ext == supportedext) {
-                        ret = entry.rdfactoryfn(fname, quality, progr);
-                        break;
-                    }
-                }
+    // Keep compound suffixes intact. Equal suffixes retain registry order until
+    // content-based detection is available for ambiguous containers such as ZIP.
+    const std::string filename = boost::algorithm::to_lower_copy(
+        boost::filesystem::path(fname).filename().string());
+    const ArchiveEntry *match = nullptr;
+    size_t longest_suffix = 0;
+    for (const ArchiveEntry &entry : registered_sla_archives()) {
+        if (!entry.rdfactoryfn)
+            continue;
+        for (const std::string &extension : get_extensions(entry)) {
+            const std::string suffix = "." + boost::algorithm::to_lower_copy(extension);
+            if (suffix.size() > longest_suffix && boost::algorithm::ends_with(filename, suffix)) {
+                match = &entry;
+                longest_suffix = suffix.size();
             }
         }
     }
-
-    return ret;
+    return match ? match->rdfactoryfn(fname, quality, progr) : nullptr;
 }
 
 struct SliceParams { double layerh = 0., initial_layerh = 0.; };

@@ -101,9 +101,7 @@ class Registry {
                 "cbddlp",
                 {},
                 [] (const auto &cfg) { return std::make_unique<ChituboxCBDDLPv1Archive>(cfg); },
-                [] (const std::string &fname, SLAImportQuality quality, const ProgrFn &progr) {
-                    return std::make_unique<SL1Reader>(fname, quality, progr);
-                }
+                {} // No native reader yet; SL1Reader cannot decode this format.
             },
             {
                 "cbt",
@@ -111,9 +109,7 @@ class Registry {
                 "cbt",
                 {},
                 [] (const auto &cfg) { return std::make_unique<ChituboxCTBv1Archive>(cfg); },
-                [] (const std::string &fname, SLAImportQuality quality, const ProgrFn &progr) {
-                    return std::make_unique<SL1Reader>(fname, quality, progr);
-                }
+                {} // No native reader yet; SL1Reader cannot decode this format.
             },
             {
                 "photon",
@@ -121,9 +117,7 @@ class Registry {
                 "photon",
                 {},
                 [] (const auto &cfg) { return std::make_unique<ChituboxPhotonArchive>(cfg); },
-                [] (const std::string &fname, SLAImportQuality quality, const ProgrFn &progr) {
-                    return std::make_unique<SL1Reader>(fname, quality, progr);
-                }
+                {} // No native reader yet; SL1Reader cannot decode this format.
             },
             {
                 "photons",
@@ -131,9 +125,7 @@ class Registry {
                 "photons",
                 {},
                 [] (const auto &cfg) { return std::make_unique<ChituboxPhotonSArchive>(cfg); },
-                [] (const std::string &fname, SLAImportQuality quality, const ProgrFn &progr) {
-                    return std::make_unique<SL1Reader>(fname, quality, progr);
-                }
+                {} // No native reader yet; SL1Reader cannot decode this format.
             },
             {
                 "ctb",
@@ -141,9 +133,7 @@ class Registry {
                 "ctb",
                 {"encrypted.ctb"},
                 [] (const auto &cfg) { return std::make_unique<UVToolsChituboxArchive>(cfg); },
-                [] (const std::string &fname, SLAImportQuality quality, const ProgrFn &progr) {
-                    return std::make_unique<SL1Reader>(fname, quality, progr);
-                }
+                {} // No native reader yet; SL1Reader cannot decode this format.
             },
             {
                 "phz",
@@ -151,9 +141,7 @@ class Registry {
                 "phz",
                 {},
                 [] (const auto &cfg) { return std::make_unique<PhrozenSonicMiniArchive>(cfg); },
-                [] (const std::string &fname, SLAImportQuality quality, const ProgrFn &progr) {
-                    return std::make_unique<SL1Reader>(fname, quality, progr);
-                }
+                {} // No native reader yet; SL1Reader cannot decode this format.
             },
 
             // Creality CXDLP family
@@ -163,9 +151,7 @@ class Registry {
                 "cxdlp",
                 {"v1.cxdlp"},
                 [] (const auto &cfg) { return std::make_unique<CrealityCXDLPv1Archive>(cfg); },
-                [] (const std::string &fname, SLAImportQuality quality, const ProgrFn &progr) {
-                    return std::make_unique<SL1Reader>(fname, quality, progr);
-                }
+                {} // No native reader yet; SL1Reader cannot decode this format.
             },
             {
                 "cxdlpv4",
@@ -173,9 +159,7 @@ class Registry {
                 "cxdlpv4",
                 {},
                 [] (const auto &cfg) { return std::make_unique<CrealityCXDLPv4Archive>(cfg); },
-                [] (const std::string &fname, SLAImportQuality quality, const ProgrFn &progr) {
-                    return std::make_unique<SL1Reader>(fname, quality, progr);
-                }
+                {} // No native reader yet; SL1Reader cannot decode this format.
             },
 
             // NanoDLP
@@ -185,9 +169,7 @@ class Registry {
                 "nanodlp",
                 {},
                 [] (const auto &cfg) { return std::make_unique<NanoDLPArchive>(cfg); },
-                [] (const std::string &fname, SLAImportQuality quality, const ProgrFn &progr) {
-                    return std::make_unique<SL1Reader>(fname, quality, progr);
-                }
+                {} // No native reader yet; SL1Reader cannot decode this format.
             },
 
             // Longer Orange (LGS family)
@@ -197,9 +179,7 @@ class Registry {
                 "lgs",
                 {},
                 [] (const auto &cfg) { return std::make_unique<LongerOrange10Archive>(cfg); },
-                [] (const std::string &fname, SLAImportQuality quality, const ProgrFn &progr) {
-                    return std::make_unique<SL1Reader>(fname, quality, progr);
-                }
+                {} // No native reader yet; SL1Reader cannot decode this format.
             },
             {
                 "lgs30",
@@ -207,9 +187,7 @@ class Registry {
                 "lgs30",
                 {},
                 [] (const auto &cfg) { return std::make_unique<LongerOrange30Archive>(cfg); },
-                [] (const std::string &fname, SLAImportQuality quality, const ProgrFn &progr) {
-                    return std::make_unique<SL1Reader>(fname, quality, progr);
-                }
+                {} // No native reader yet; SL1Reader cannot decode this format.
             },
             {
                 "lgs120",
@@ -217,9 +195,7 @@ class Registry {
                 "lgs120",
                 {},
                 [] (const auto &cfg) { return std::make_unique<LongerOrange120Archive>(cfg); },
-                [] (const std::string &fname, SLAImportQuality quality, const ProgrFn &progr) {
-                    return std::make_unique<SL1Reader>(fname, quality, progr);
-                }
+                {} // No native reader yet; SL1Reader cannot decode this format.
             },
             {
                 "lgs4k",
@@ -227,9 +203,7 @@ class Registry {
                 "lgs4k",
                 {},
                 [] (const auto &cfg) { return std::make_unique<LongerOrange4KArchive>(cfg); },
-                [] (const std::string &fname, SLAImportQuality quality, const ProgrFn &progr) {
-                    return std::make_unique<SL1Reader>(fname, quality, progr);
-                }
+                {} // No native reader yet; SL1Reader cannot decode this format.
             },
 
             // Voxeladditives / Other families
@@ -239,9 +213,7 @@ class Registry {
                 "vdt",
                 {},
                 [] (const auto &cfg) { return std::make_unique<VoxeldanceTangoArchive>(cfg); },
-                [] (const std::string &fname, SLAImportQuality quality, const ProgrFn &progr) {
-                    return std::make_unique<SL1Reader>(fname, quality, progr);
-                }
+                {} // No native reader yet; SL1Reader cannot decode this format.
             },
             {
                 "cws",
@@ -249,9 +221,7 @@ class Registry {
                 "cws",
                 {},
                 [] (const auto &cfg) { return std::make_unique<UVToolsCWSArchive>(cfg); },
-                [] (const std::string &fname, SLAImportQuality quality, const ProgrFn &progr) {
-                    return std::make_unique<SL1Reader>(fname, quality, progr);
-                }
+                {} // No native reader yet; SL1Reader cannot decode this format.
             },
             {
                 "n4",
@@ -259,9 +229,7 @@ class Registry {
                 "n4",
                 {},
                 [] (const auto &cfg) { return std::make_unique<AnetN4Archive>(cfg); },
-                [] (const std::string &fname, SLAImportQuality quality, const ProgrFn &progr) {
-                    return std::make_unique<SL1Reader>(fname, quality, progr);
-                }
+                {} // No native reader yet; SL1Reader cannot decode this format.
             },
             {
                 "n7",
@@ -269,9 +237,7 @@ class Registry {
                 "n7",
                 {},
                 [] (const auto &cfg) { return std::make_unique<AnetN7Archive>(cfg); },
-                [] (const std::string &fname, SLAImportQuality quality, const ProgrFn &progr) {
-                    return std::make_unique<SL1Reader>(fname, quality, progr);
-                }
+                {} // No native reader yet; SL1Reader cannot decode this format.
             },
             {
                 "fdg",
@@ -279,9 +245,7 @@ class Registry {
                 "fdg",
                 {},
                 [] (const auto &cfg) { return std::make_unique<UVToolsFDGArchive>(cfg); },
-                [] (const std::string &fname, SLAImportQuality quality, const ProgrFn &progr) {
-                    return std::make_unique<SL1Reader>(fname, quality, progr);
-                }
+                {} // No native reader yet; SL1Reader cannot decode this format.
             },
             {
                 "goo",
@@ -289,9 +253,7 @@ class Registry {
                 "goo",
                 {},
                 [] (const auto &cfg) { return std::make_unique<UVToolsGOOArchive>(cfg); },
-                [] (const std::string &fname, SLAImportQuality quality, const ProgrFn &progr) {
-                    return std::make_unique<SL1Reader>(fname, quality, progr);
-                }
+                {} // No native reader yet; SL1Reader cannot decode this format.
             },
             {
                 "prz",
@@ -299,9 +261,7 @@ class Registry {
                 "prz",
                 {},
                 [] (const auto &cfg) { return std::make_unique<PhrozenSonicMiniArchive>(cfg); },
-                [] (const std::string &fname, SLAImportQuality quality, const ProgrFn &progr) {
-                    return std::make_unique<SL1Reader>(fname, quality, progr);
-                }
+                {} // No native reader yet; SL1Reader cannot decode this format.
             },
             {
                 "zcode",
@@ -309,9 +269,7 @@ class Registry {
                 "zcode",
                 {},
                 [] (const auto &cfg) { return std::make_unique<ZCodeArchive>(cfg); },
-                [] (const std::string &fname, SLAImportQuality quality, const ProgrFn &progr) {
-                    return std::make_unique<SL1Reader>(fname, quality, progr);
-                }
+                {} // No native reader yet; SL1Reader cannot decode this format.
             },
             {
                 "jxs",
@@ -319,9 +277,7 @@ class Registry {
                 "jxs",
                 {},
                 [] (const auto &cfg) { return std::make_unique<UniformationGKoneArchive>(cfg); },
-                [] (const std::string &fname, SLAImportQuality quality, const ProgrFn &progr) {
-                    return std::make_unique<SL1Reader>(fname, quality, progr);
-                }
+                {} // No native reader yet; SL1Reader cannot decode this format.
             },
             {
                 "zcodex",
@@ -329,9 +285,7 @@ class Registry {
                 "zcodex",
                 {},
                 [] (const auto &cfg) { return std::make_unique<ZCodexArchive>(cfg); },
-                [] (const std::string &fname, SLAImportQuality quality, const ProgrFn &progr) {
-                    return std::make_unique<SL1Reader>(fname, quality, progr);
-                }
+                {} // No native reader yet; SL1Reader cannot decode this format.
             },
             {
                 "mdlp",
@@ -339,9 +293,7 @@ class Registry {
                 "mdlp",
                 {},
                 [] (const auto &cfg) { return std::make_unique<MakerbaseMDLPArchive>(cfg); },
-                [] (const std::string &fname, SLAImportQuality quality, const ProgrFn &progr) {
-                    return std::make_unique<SL1Reader>(fname, quality, progr);
-                }
+                {} // No native reader yet; SL1Reader cannot decode this format.
             },
             {
                 "gr1",
@@ -349,9 +301,7 @@ class Registry {
                 "gr1",
                 {},
                 [] (const auto &cfg) { return std::make_unique<MakerbaseGR1Archive>(cfg); },
-                [] (const std::string &fname, SLAImportQuality quality, const ProgrFn &progr) {
-                    return std::make_unique<SL1Reader>(fname, quality, progr);
-                }
+                {} // No native reader yet; SL1Reader cannot decode this format.
             },
             {
                 "svgx",
@@ -359,9 +309,7 @@ class Registry {
                 "svgx",
                 {},
                 [] (const auto &cfg) { return std::make_unique<FlashforgeSVGXArchive>(cfg); },
-                [] (const std::string &fname, SLAImportQuality quality, const ProgrFn &progr) {
-                    return std::make_unique<SL1Reader>(fname, quality, progr);
-                }
+                {} // No native reader yet; SL1Reader cannot decode this format.
             },
             {
                 "qdt",
@@ -369,9 +317,7 @@ class Registry {
                 "qdt",
                 {},
                 [] (const auto &cfg) { return std::make_unique<Emake3DGalaxyArchive>(cfg); },
-                [] (const std::string &fname, SLAImportQuality quality, const ProgrFn &progr) {
-                    return std::make_unique<SL1Reader>(fname, quality, progr);
-                }
+                {} // No native reader yet; SL1Reader cannot decode this format.
             },
             {
                 "osla",
@@ -379,9 +325,7 @@ class Registry {
                 "osla",
                 {},
                 [] (const auto &cfg) { return std::make_unique<OpenSLAArchive>(cfg); },
-                [] (const std::string &fname, SLAImportQuality quality, const ProgrFn &progr) {
-                    return std::make_unique<SL1Reader>(fname, quality, progr);
-                }
+                {} // No native reader yet; SL1Reader cannot decode this format.
             },
             {
                 "osf",
@@ -389,9 +333,7 @@ class Registry {
                 "osf",
                 {},
                 [] (const auto &cfg) { return std::make_unique<VlareOSFArchive>(cfg); },
-                [] (const std::string &fname, SLAImportQuality quality, const ProgrFn &progr) {
-                    return std::make_unique<SL1Reader>(fname, quality, progr);
-                }
+                {} // No native reader yet; SL1Reader cannot decode this format.
             },
             {
                 "uvj",
@@ -399,9 +341,7 @@ class Registry {
                 "uvj",
                 {},
                 [] (const auto &cfg) { return std::make_unique<UVJArchive>(cfg); },
-                [] (const std::string &fname, SLAImportQuality quality, const ProgrFn &progr) {
-                    return std::make_unique<SL1Reader>(fname, quality, progr);
-                }
+                {} // No native reader yet; SL1Reader cannot decode this format.
             },
         };
     }
@@ -442,6 +382,22 @@ std::vector<std::string> get_extensions(const ArchiveEntry &entry)
 
 namespace {
 const ArchiveEntry *find_archive_entry_by_id(const char *formatid);
+}
+
+std::string archive_export_unavailable_reason(const char *formatid)
+{
+    const auto *entry = find_archive_entry_by_id(formatid);
+    if (!entry)
+        return "Unknown SLA archive format";
+    const std::string id = entry->id;
+    if (id == "pwsz")
+        return "PWSZ export is unavailable: the required Anycubic ZIP encoder is not implemented";
+    static const std::set<std::string> incomplete = {
+        "n4", "n7", "cbddlp", "cbt", "photon", "photons", "cxdlp", "qdt",
+        "svgx", "lgs", "lgs30", "lgs120", "lgs4k", "gr1", "mdlp", "nanodlp",
+        "osla", "uvj", "phz", "prz", "osf", "jxs", "vdt", "zcode", "zcodex"
+    };
+    return incomplete.count(id) ? "SLA export is not implemented for format: " + id : "";
 }
 
 ArchiveWriterFactory get_writer_factory(const char *formatid)
@@ -521,11 +477,14 @@ std::string normalized_extension(const char *extension)
     if (!out.empty() && out.front() == '.')
         out.erase(out.begin());
 
-    // Keep extension tokens strict to avoid UI wildcard artifacts leaking in
-    // (for example trailing ')' from malformed filename edits).
-    out.erase(std::remove_if(out.begin(), out.end(), [](unsigned char c) {
-        return !std::isalnum(c);
-    }), out.end());
+    // Validate rather than deleting punctuation: "ctb)" must not select CTB,
+    // and compound/underscore suffixes must remain distinct.
+    if (out.empty() || out.front() == '.' || out.back() == '.' || out.find("..") != std::string::npos)
+        return {};
+    if (!std::all_of(out.begin(), out.end(), [](unsigned char c) {
+            return std::isalnum(c) || c == '.' || c == '_';
+        }))
+        return {};
 
     std::transform(out.begin(), out.end(), out.begin(), [](unsigned char c) {
         return static_cast<char>(std::tolower(c));

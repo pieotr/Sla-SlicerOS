@@ -288,12 +288,17 @@ void PresetComboBox::update(std::string select_preset_name)
     if (!presets.front().is_visible)
         set_label_marker(Append(separator(L("System presets")), NullBitmapBndl()));
 
-    for (size_t i = presets.front().is_visible ? 0 : m_collection->num_default_presets(); i < presets.size(); ++i)
+    for (size_t i = 0; i < presets.size(); ++i)
     {
         const Preset& preset = presets[i];
+#ifdef SLIC3R_SLA_ONLY
+        if (m_type == Preset::TYPE_PRINTER && preset.printer_technology() != ptSLA)
+            continue;
+#endif
         const bool is_compatible = m_type == Preset::TYPE_FILAMENT && extruder_filaments ? extruder_filaments->filament(i).is_compatible : preset.is_compatible;
 
-        if (!m_show_all && (!preset.is_visible || !is_compatible))
+        if ((preset.is_default && !preset.is_visible) ||
+            (!m_show_all && (!preset.is_visible || !is_compatible)))
             continue;
 
         // marker used for disable incompatible printer models for the selected physical printer
@@ -1095,9 +1100,13 @@ void PlaterPresetComboBox::update()
     if (!presets.front().is_visible)
         this->set_label_marker(this->Append(separator(L("System presets")), NullBitmapBndl()));
 
-    for (size_t i = presets.front().is_visible ? 0 : m_collection->num_default_presets(); i < presets.size(); ++i) 
+    for (size_t i = 0; i < presets.size(); ++i)
     {
         const Preset& preset = presets[i];
+#ifdef SLIC3R_SLA_ONLY
+        if (m_type == Preset::TYPE_PRINTER && preset.printer_technology() != ptSLA)
+            continue;
+#endif
         const bool is_selected =  m_type == Preset::TYPE_FILAMENT ?
                             selected_filament_preset->name == preset.name :
                             // The case, when some physical printer is selected
@@ -1399,9 +1408,13 @@ void TabPresetComboBox::update()
             m_preset_bundle->physical_printers.unselect_printer();
     }
 
-    for (size_t i = presets.front().is_visible ? 0 : m_collection->num_default_presets(); i < presets.size(); ++i)
+    for (size_t i = 0; i < presets.size(); ++i)
     {
         const Preset& preset = presets[i];
+#ifdef SLIC3R_SLA_ONLY
+        if (m_type == Preset::TYPE_PRINTER && preset.printer_technology() != ptSLA)
+            continue;
+#endif
 
         const bool is_compatible = m_type == Preset::TYPE_FILAMENT ? extruder_filaments.filament(i).is_compatible : preset.is_compatible;
 

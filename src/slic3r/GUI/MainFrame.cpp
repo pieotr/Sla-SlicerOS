@@ -10,6 +10,7 @@
 ///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
 ///|/
 #include "MainFrame.hpp"
+#include "LayerEditorDialog.hpp"
 
 #include <wx/panel.h>
 #include <wx/notebook.h>
@@ -1788,6 +1789,9 @@ void MainFrame::init_menubar_as_editor()
         }
 
         windowMenu->AppendSeparator();
+        append_menu_item(windowMenu, wxID_ANY, _L("SL1 Layer Editor") + "\tCtrl+Shift+L", _L("Edit pixels in an SL1 archive"),
+            [this](wxCommandEvent &) { show_layer_editor(this); });
+
         append_menu_item(windowMenu, wxID_ANY, _L("Shape Gallery"), _L("Open the dialog to modify shape gallery"),
             [this](wxCommandEvent&) {
                 if (gallery_dialog()->show(true) == wxID_OK) {

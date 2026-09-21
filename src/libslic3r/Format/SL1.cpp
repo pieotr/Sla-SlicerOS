@@ -1,3 +1,4 @@
+#include "libslic3r/SLA/PrinterRaster.hpp"
 ///|/ Copyright (c) Prusa Research 2020 - 2023 Tomáš Mészáros @tamasmeszaros, Oleksandra Iushchenko @YuSanka, Lukáš Matěna @lukasmatena, Vojtěch Bubník @bubnikv
 ///|/
 ///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
@@ -8,6 +9,7 @@
 #include <boost/filesystem.hpp>
 
 #include <sstream>
+#include <cmath>
 
 #include "libslic3r/Time.hpp"
 #include "libslic3r/Zipper.hpp"
@@ -239,57 +241,20 @@ void fill_slicerconf(ConfMap &m, const SLAPrint &print)
         if (! is_banned(key) && !is_tilt_param(key) && ! cfg.option(key)->is_nil())
             m[key] = cfg.opt_serialize(key);
 
-    // Keep printer geometry in metadata consistent with oriented raster output.
-    double w  = cfg.opt_float("display_width");
-    double h  = cfg.opt_float("display_height");
-    int    pw = cfg.opt_int("display_pixels_x");
-    int    ph = cfg.opt_int("display_pixels_y");
-    const int ro = cfg.opt_int("display_orientation");
-    if (ro == sla::RasterBase::roPortrait) {
-        std::swap(w, h);
-        std::swap(pw, ph);
+    // External consumers use raster-axis geometry. The config.ini marker lets
+    // our reader recover the original scene-axis printer profile unambiguously.
+    if (cfg.option("display_orientation")->getInt() == sla::RasterBase::roPortrait) {
+        std::swap(m["display_width"], m["display_height"]);
+        std::swap(m["display_pixels_x"], m["display_pixels_y"]);
     }
 
-    m["display_width"] = std::to_string(w);
-    m["display_height"] = std::to_string(h);
-    m["display_pixels_x"] = std::to_string(pw);
-    m["display_pixels_y"] = std::to_string(ph);
-    
 }
 
 } // namespace
 
 std::unique_ptr<sla::RasterBase> SL1Archive::create_raster() const
 {
-    sla::Resolution res;
-    sla::PixelDim   pxdim;
-    std::array<bool, 2>         mirror;
-
-    double w  = m_cfg.display_width.getFloat();
-    double h  = m_cfg.display_height.getFloat();
-    auto   pw = size_t(m_cfg.display_pixels_x.getInt());
-    auto   ph = size_t(m_cfg.display_pixels_y.getInt());
-
-    mirror[X] = m_cfg.display_mirror_x.getBool();
-    mirror[Y] = m_cfg.display_mirror_y.getBool();
-    
-    auto ro = m_cfg.display_orientation.getInt();
-    sla::RasterBase::Orientation orientation =
-        ro == sla::RasterBase::roPortrait ? sla::RasterBase::roPortrait :
-                                            sla::RasterBase::roLandscape;
-    
-    if (orientation == sla::RasterBase::roPortrait) {
-        std::swap(w, h);
-        std::swap(pw, ph);
-    }
-
-    res   = sla::Resolution{pw, ph};
-    pxdim = sla::PixelDim{w / pw, h / ph};
-    sla::RasterBase::Trafo tr{orientation, mirror};
-
-    double gamma = m_cfg.gamma_correction.getFloat();
-
-    return sla::create_raster_grayscale_aa(res, pxdim, gamma, tr);
+    return sla::create_printer_raster(m_cfg);
 }
 
 sla::RasterEncoder SL1Archive::get_encoder() const
@@ -329,6 +294,7 @@ void SL1Archive::export_print(Zipper               &zipper,
     fill_iniconf(iniconf, print);
 
     iniconf["jobDir"] = project;
+    iniconf["slaSlicerProfileGeometry"] = "raster-v1";
 
     fill_slicerconf(slicerconf, print);
 
@@ -448,10 +414,17 @@ RasterParams get_raster_params(const DynamicPrintConfig &cfg)
         !opt_mirror_x || !opt_mirror_y || !opt_orient)
         throw MissingProfileError("Invalid SL1 / SL1S file");
 
+    if (opt_disp_cols->value <= 0 || opt_disp_rows->value <= 0 ||
+        !std::isfinite(opt_disp_w->value) || !std::isfinite(opt_disp_h->value) ||
+        opt_disp_w->value <= 0. || opt_disp_h->value <= 0.)
+        throw MissingProfileError("Invalid SL1 display dimensions or resolution");
+
     RasterParams rstp;
 
-    rstp.px_w = opt_disp_w->value / (opt_disp_cols->value - 1);
-    rstp.px_h = opt_disp_h->value / (opt_disp_rows->value - 1);
+    rstp.px_w = opt_disp_w->value / opt_disp_cols->value;
+    rstp.px_h = opt_disp_h->value / opt_disp_rows->value;
+    if (opt_orient->value == sladoPortrait)
+        std::swap(rstp.px_w, rstp.px_h);
 
     rstp.trafo = sla::RasterBase::Trafo{opt_orient->value == sladoLandscape ?
                                             sla::RasterBase::roLandscape :
@@ -573,7 +546,7 @@ ConfigSubstitutions SL1Reader::read(std::vector<ExPolygons> &slices,
 ConfigSubstitutions SL1Reader::read(DynamicPrintConfig &out)
 {
     ZipperArchive arch = read_zipper_archive(m_fname, {"ini"}, {"png", "thumbnail"});
-    return out.load(arch.profile, ForwardCompatibilitySubstitutionRule::Enable);
+    return extract_profile(arch, out).second;
 }
 
 } // namespace Slic3r

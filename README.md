@@ -1,1 +1,20 @@
-A fork of a prusa slicer that combines it with UVtools to create an open source sla slicer software. its under developement now and its really not stable, as im removing a lot of prusa's funcitonlities from fff workloads and all of its networking featurs, and i will be building the UVtools on top of the cleaned version 
+# SLA-Slicer
+
+A PrusaSlicer-based SLA application undergoing a major refactor to incorporate
+UVtools layer editing, formats, PCB exposure and calibration workflows.
+These capabilities are not yet all implemented or verified.
+
+- [User manual (Polish)](manual.txt)
+- [SL1 layer editor](doc/LAYER_EDITOR.md)
+- [Linux build instructions](install.md)
+- [Implementation status and remaining work](doc/REFACTOR_STATUS.md)
+- [Format and UVtools operation inventory](doc/COMPATIBILITY_INVENTORY.md)
+- [Tests and acceptance checklist](doc/TESTING.md)
+- [Validation results](doc/VALIDATION.md)
+
+Build and run the focused checks with:
+
+```sh
+bash ./build_linux.sh --jobs 4 --tests --run
+bash ./run_prusa_slicer.sh
+```

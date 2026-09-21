@@ -113,40 +113,81 @@ uint32_t crc32_uvtools_style(std::ifstream &in, std::streamoff size)
     return checksum;
 }
 
-// RGB15 RLE Encoder for CXDLPV4 preview images
-// Encodes RGB15 (5-5-5 + 1 reserved bit) pixels with RLE compression
-// Black image: all pixels are 0x0000
-std::vector<uint8_t> encode_cxdlpv4_rgb15_rle(uint32_t width, uint32_t height)
+// RGB15 Encoder for CXDLPV4 preview images
+// Converts RGBA thumbnail data to RGB15 (5-5-5 + 1 reserved bit) format
+// Scales thumbnail to target dimensions using nearest-neighbor interpolation
+// RGB15 format: XRRRRRGGGGGBBBBB (where X is reserved/unused, little-endian)
+std::vector<uint8_t> encode_cxdlpv4_rgb15(uint32_t width, uint32_t height, const ThumbnailsList &thumbnails)
 {
-    std::vector<uint8_t> rle;
+    std::vector<uint8_t> out;
+    out.reserve(width * height * 2);  // 2 bytes per RGB15 pixel
 
-    // Generate a completely black image (0x0000 for all RGB15 pixels)
-    // RGB15 format: XRRRRRGGGGGBBBBB (where X is reserved/unused)
-    // Black = 0x0000 (all color components zero)
-    
-    // Total pixel count
-    const uint32_t pixel_count = width * height;
-    
-    // RLE encoding: each pixel is 2 bytes (RGB15 little-endian)
-    // For a completely black image, we can compress it as:
-    // Single RLE entry: color=0x0000, run-length=pixel_count
-    
-    // RLE entry format for CXDLPV4:
-    // [run-length-encoded entry]
-    // First byte: color or length indicator
-    // Subsequent bytes: color data and/or extended length
-    
-    // Simple approach: write each pixel as 2 bytes
-    // For black: 0x00 0x00 per pixel = 2*pixel_count bytes uncompressed
-    // RLE will compress this significantly
-    
-    // Write all black pixels as RGB15 (little-endian 0x0000)
-    for (uint32_t i = 0; i < pixel_count; ++i) {
-        rle.push_back(0x00);  // Low byte of RGB15 black
-        rle.push_back(0x00);  // High byte of RGB15 black
+    // If no thumbnail available, generate black image
+    if (thumbnails.empty()) {
+        // Write all black pixels as RGB15 (little-endian 0x0000)
+        for (uint32_t i = 0; i < width * height; ++i) {
+            out.push_back(0x00);  // Low byte of RGB15 black
+            out.push_back(0x00);  // High byte of RGB15 black
+        }
+        return out;
     }
-    
-    return rle;
+
+    const auto &thumbnail = thumbnails[0];  // Use first thumbnail
+
+    // If thumbnail is invalid or has no pixel data, generate black image
+    if (thumbnail.width == 0 || thumbnail.height == 0 || thumbnail.pixels.empty()) {
+        for (uint32_t i = 0; i < width * height; ++i) {
+            out.push_back(0x00);
+            out.push_back(0x00);
+        }
+        return out;
+    }
+
+    // Convert RGBA pixels to RGB15 with scaling to target dimensions
+    // Use nearest-neighbor interpolation for simplicity
+    for (uint32_t y = 0; y < height; ++y) {
+        for (uint32_t x = 0; x < width; ++x) {
+            // Map destination pixel (x, y) to source pixel using nearest-neighbor
+            uint32_t src_x = (x * thumbnail.width) / width;
+            uint32_t src_y = (y * thumbnail.height) / height;
+
+            // Clamp to valid range
+            if (src_x >= thumbnail.width) src_x = thumbnail.width - 1;
+            if (src_y >= thumbnail.height) src_y = thumbnail.height - 1;
+
+            // Get source pixel index (RGBA, 4 bytes per pixel)
+            size_t src_idx = (src_y * thumbnail.width + src_x) * 4;
+
+            // Validate index is within bounds
+            if (src_idx + 3 >= thumbnail.pixels.size()) {
+                // Out of bounds, write black
+                out.push_back(0x00);
+                out.push_back(0x00);
+                continue;
+            }
+
+            // Extract RGBA components
+            uint8_t r = thumbnail.pixels[src_idx];      // Red
+            uint8_t g = thumbnail.pixels[src_idx + 1];  // Green
+            uint8_t b = thumbnail.pixels[src_idx + 2];  // Blue
+            // Skip alpha at src_idx + 3
+
+            // Convert to RGB15: XRRRRRGGGGGBBBBB
+            // 5-bit values: shift right by 3 to get 5 bits from 8-bit channel
+            uint16_t r5 = (r >> 3) & 0x1F;  // 5 bits
+            uint16_t g5 = (g >> 3) & 0x1F;  // 5 bits
+            uint16_t b5 = (b >> 3) & 0x1F;  // 5 bits
+
+            // Assemble RGB15: X(1) + R(5) + G(5) + B(5) = 16 bits
+            uint16_t rgb15 = (r5 << 10) | (g5 << 5) | b5;
+
+            // Write as little-endian: low byte first, then high byte
+            out.push_back(rgb15 & 0xFF);           // Low byte
+            out.push_back((rgb15 >> 8) & 0xFF);    // High byte
+        }
+    }
+
+    return out;
 }
 
 
@@ -399,9 +440,9 @@ void CrealityCXDLPv4Archive::export_print(const std::string     fname,
         write_u32_le(out, slicer_offset);  // slicer address - NOW WITH CORRECT OFFSET
         write_u32_le(out, slicer_size);    // slicer size
 
-        // Generate black preview images (RGB15 format, uncompressed for now)
-        auto preview_small_data = encode_cxdlpv4_rgb15_rle(PREVIEW_SMALL_WIDTH, PREVIEW_SMALL_HEIGHT);
-        auto preview_large_data = encode_cxdlpv4_rgb15_rle(PREVIEW_LARGE_WIDTH, PREVIEW_LARGE_HEIGHT);
+        // Generate preview images from thumbnail data (or black if no thumbnails)
+        auto preview_small_data = encode_cxdlpv4_rgb15(PREVIEW_SMALL_WIDTH, PREVIEW_SMALL_HEIGHT, thumbnails);
+        auto preview_large_data = encode_cxdlpv4_rgb15(PREVIEW_LARGE_WIDTH, PREVIEW_LARGE_HEIGHT, thumbnails);
 
         // Write Preview sections with encoded image data
         // PreviewSmall header

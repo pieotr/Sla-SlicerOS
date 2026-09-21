@@ -25,6 +25,7 @@
 #include "libslic3r/Utils.hpp"
 #include "libslic3r/Model.hpp"
 #include "libslic3r/SLAPrint.hpp"
+#include "libslic3r/SLA/PrinterGeometry.hpp"
 #include "libslic3r/GCode/GCodeProcessor.hpp"
 #include "libslic3r/GCode/GCodeWriter.hpp"
 #include "libslic3r/GCode/Thumbnails.hpp"
@@ -2629,6 +2630,7 @@ void TabPrinter::build()
     m_presets = &m_preset_bundle->printers;
     m_printer_technology = m_presets->get_selected_preset().printer_technology();
 
+#ifndef SLIC3R_SLA_ONLY
     // For DiffPresetDialog we use options list which is saved in Searcher class.
     // Options for the Searcher is added in the moment of pages creation.
     // So, build first of all printer pages for non-selected printer technology...
@@ -2637,6 +2639,7 @@ void TabPrinter::build()
     m_printer_technology == ptSLA ? build_fff() : build_sla();
     if (m_printer_technology == ptSLA)
         m_extruders_count_old = 0;// revert this value 
+#endif
 
     // ... and than for selected printer technology
     load_initial_data();
@@ -3011,9 +3014,10 @@ void TabPrinter::build_sla()
     auto page = add_options_page(L("General"), "printer");
     auto optgroup = page->new_optgroup(L("Size and coordinates"));
 
-    create_line_with_widget(optgroup.get(), "bed_shape", "custom-svg-and-png-bed-textures_124612", [this](wxWindow* parent) {
-        return 	create_bed_shape_widget(parent);
-    });
+    // SLA build dimensions come from the display; an independent polygon
+    // editor would allow the scene and exported raster to disagree.
+    optgroup->append_single_option_line("bed_custom_texture");
+    optgroup->append_single_option_line("bed_custom_model");
     optgroup->append_single_option_line("max_print_height");
 
     optgroup = page->new_optgroup(L("Display"));
@@ -3744,6 +3748,10 @@ void TabPrinter::update_fff()
 
 void TabPrinter::update_sla()
 {
+    // Propagate the derived bed before update() notifies the plater, and include
+    // it in dirty tracking so saving a printer persists the same geometry.
+    if (sla::synchronize_bed_shape(*m_config))
+        update_dirty();
 }
 
 void Tab::update_ui_items_related_on_parent_preset(const Preset* selected_preset_parent)

@@ -43,14 +43,15 @@ public:
 
     // Creates a reader instance based on the provided file path.
     // format_id can be one of the archive type identifiers returned by
-    // registered_archives(). If left empty, only the file extension will
-    // be considered. If more archive types have the same extension (like *.zip)
-    // The first match is used.
+    // registered_sla_archives(). An explicit ID takes precedence over the
+    // filename; unknown IDs and formats without readers return nullptr.
+    // If empty, the longest registered filename suffix is used. Equal suffixes
+    // (like *.zip) use the first registered reader; contents are not probed.
     static std::unique_ptr<SLAArchiveReader> create(
         const std::string &fname,
         const std::string &format_id,
         SLAImportQuality   quality = SLAImportQuality::Balanced,
-        const ProgrFn     &progr   = [](int) { return false; });
+        const ProgrFn     &progr   = [](int) { return true; });
 };
 
 // Raised in import_sla_archive when a nullptr reader is returned by

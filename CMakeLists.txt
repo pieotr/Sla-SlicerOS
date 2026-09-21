@@ -89,9 +89,9 @@ option(SLIC3R_BUILD_SANDBOXES   "Build development sandboxes" OFF)
 option(SLIC3R_BUILD_TESTS       "Build unit tests" ON)
 
 if (SLIC3R_SLA_ONLY)
-    # SLA-only branch: keep auxiliary build trees disabled.
+    # Sandboxes may require FFF, but SLA and shared geometry tests remain useful.
+    # Respect SLIC3R_BUILD_TESTS instead of silently overriding the caller.
     set(SLIC3R_BUILD_SANDBOXES OFF CACHE BOOL "" FORCE)
-    set(SLIC3R_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 endif ()
 
 if (IS_CROSS_COMPILE)
@@ -388,7 +388,9 @@ endif()
 # boost::beast::detail::base64 was introduced first in version 1.66.0
 set(MINIMUM_BOOST_VERSION "1.83.0")
 # Use legacy FindBoost for compatibility with modern Boost versions like 1.90
-cmake_policy(SET CMP0167 OLD)
+if (POLICY CMP0167)
+    cmake_policy(SET CMP0167 OLD)
+endif ()
 set(Boost_No_BOOST_CMAKE TRUE)
 set(_boost_components "filesystem;thread;log;locale;regex;chrono;atomic;date_time;iostreams;nowide")
 find_package(Boost ${MINIMUM_BOOST_VERSION} REQUIRED COMPONENTS ${_boost_components})

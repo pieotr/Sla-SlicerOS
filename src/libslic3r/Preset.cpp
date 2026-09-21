@@ -47,6 +47,7 @@
 #include "libslic3r/GCode/Thumbnails.hpp"
 
 #include "PresetBundle.hpp"
+#include "SLA/PrinterGeometry.hpp"
 
 using boost::property_tree::ptree;
 
@@ -339,6 +340,7 @@ void Preset::normalize(DynamicPrintConfig &config)
         }
 
     handle_legacy_sla(config);
+    sla::synchronize_bed_shape(config);
 }
 
 std::string Preset::remove_invalid_keys(DynamicPrintConfig &config, const DynamicPrintConfig &default_config)
@@ -1309,10 +1311,19 @@ size_t PresetCollection::first_visible_idx() const
 {
     size_t idx = m_default_suppressed ? m_num_default_presets : 0;
     for (; idx < m_presets.size(); ++ idx)
-        if (m_presets[idx].is_visible)
+        if (m_presets[idx].is_visible
+#ifdef SLIC3R_SLA_ONLY
+            && (m_type != Preset::TYPE_PRINTER || m_presets[idx].printer_technology() == ptSLA)
+#endif
+        )
             break;
     if (idx == m_presets.size())
         idx = 0;
+#ifdef SLIC3R_SLA_ONLY
+    if (m_type == Preset::TYPE_PRINTER && m_num_default_presets > 1 &&
+        m_presets[idx].printer_technology() != ptSLA)
+        idx = 1;
+#endif
     return idx;
 }
 
@@ -1528,6 +1539,13 @@ Preset& PresetCollection::select_preset(size_t idx)
         preset.is_dirty = false;
     if (idx >= m_presets.size())
         idx = first_visible_idx();
+#ifdef SLIC3R_SLA_ONLY
+    // Empty/stale application selections used to fall back to default FFF.
+    // Keep its schema available for migration, but never activate it in SLA UI.
+    if (m_type == Preset::TYPE_PRINTER && m_num_default_presets > 1 &&
+        m_presets[idx].printer_technology() != ptSLA)
+        idx = first_visible_idx();
+#endif
     m_idx_selected = idx;
     if (!m_presets[idx].is_visible)
         // The newly selected preset can be activated -> make it visible.

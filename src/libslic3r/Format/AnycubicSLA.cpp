@@ -1,3 +1,4 @@
+#include "libslic3r/SLA/PrinterRaster.hpp"
 ///|/ Copyright (c) 2023 Mimoja @Mimoja
 ///|/ Copyright (c) Prusa Research 2022 Tomáš Mészáros @tamasmeszaros, Lukáš Hejl @hejllukas
 ///|/ Copyright (c) 2022 ole00 @ole00
@@ -400,35 +401,7 @@ void fill_header(anycubicsla_format_header &h,
 
 std::unique_ptr<sla::RasterBase> AnycubicSLAArchive::create_raster() const
 {
-    sla::Resolution     res;
-    sla::PixelDim       pxdim;
-    std::array<bool, 2> mirror;
-
-    double w  = m_cfg.display_width.getFloat();
-    double h  = m_cfg.display_height.getFloat();
-    auto   pw = size_t(m_cfg.display_pixels_x.getInt());
-    auto   ph = size_t(m_cfg.display_pixels_y.getInt());
-
-    mirror[X] = m_cfg.display_mirror_x.getBool();
-    mirror[Y] = m_cfg.display_mirror_y.getBool();
-
-    auto                         ro = m_cfg.display_orientation.getInt();
-    sla::RasterBase::Orientation orientation =
-        ro == sla::RasterBase::roPortrait ? sla::RasterBase::roPortrait :
-                                            sla::RasterBase::roLandscape;
-
-    if (orientation == sla::RasterBase::roPortrait) {
-        std::swap(w, h);
-        std::swap(pw, ph);
-    }
-
-    res   = sla::Resolution{pw, ph};
-    pxdim = sla::PixelDim{w / pw, h / ph};
-    sla::RasterBase::Trafo tr{orientation, mirror};
-
-    double gamma = m_cfg.gamma_correction.getFloat();
-
-    return sla::create_raster_grayscale_aa(res, pxdim, gamma, tr);
+    return sla::create_printer_raster(m_cfg);
 }
 
 sla::RasterEncoder AnycubicSLAArchive::get_encoder() const

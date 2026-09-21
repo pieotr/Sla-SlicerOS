@@ -471,6 +471,8 @@ set(SLIC3R_SOURCES
     SLA/Rotfinder.cpp
     SLA/SpatIndex.hpp
     SLA/SpatIndex.cpp
+    SLA/LayerDocument.cpp
+    SLA/LayerDocument.hpp
     SLA/RasterBase.hpp
     SLA/RasterBase.cpp
     SLA/AGGRaster.hpp

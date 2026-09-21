@@ -6015,8 +6015,8 @@ std::optional<fs::path> Plater::get_output_path(const std::string &start_dir, co
             evt.Skip();
         });
 
-        int last_filter_index = sla_initial_filter_index;
-        dlg.Bind(wxEVT_TIMER, [&dlg, &last_filter_index, update_filename_for_filter](wxTimerEvent &) {
+        // ShowModal() runs after this block ends: the handler must own its state.
+        dlg.Bind(wxEVT_TIMER, [&dlg, last_filter_index = sla_initial_filter_index, update_filename_for_filter](wxTimerEvent &) mutable {
             const int current_filter_index = dlg.GetFilterIndex();
             if (current_filter_index != last_filter_index) {
                 update_filename_for_filter(current_filter_index);

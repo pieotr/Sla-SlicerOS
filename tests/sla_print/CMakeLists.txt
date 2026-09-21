@@ -10,6 +10,9 @@ add_executable(${_TEST_NAME}_tests ${_TEST_NAME}_tests_main.cpp
     sla_lineUtils_tests.cpp
     sla_supptreeutils_tests.cpp
     sla_archive_readwrite_tests.cpp
+    sla_archive_registry_tests.cpp
+    sla_printer_profile_tests.cpp
+    sla_layer_document_tests.cpp
     sla_zcorrection_tests.cpp)
 
 # mold linker for successful linking needs also to link TBB library and link it before libslic3r.
@@ -23,6 +26,14 @@ endif()
 # catch_discover_tests(${_TEST_NAME}_tests TEST_PREFIX "${_TEST_NAME}: ")
 add_test(${_TEST_NAME}_tests ${_TEST_NAME}_tests ${CATCH_EXTRA_ARGS})
 
+# Fast regression checks, separate from the exhaustive slicing/export suite.
+add_test(NAME sla_archive_registry COMMAND ${_TEST_NAME}_tests "[sla_registry]")
+set_tests_properties(sla_archive_registry PROPERTIES LABELS "sla;formats;smoke")
+add_test(NAME sla_reference_roundtrip COMMAND ${_TEST_NAME}_tests "[sla_reference]")
+set_tests_properties(sla_reference_roundtrip PROPERTIES LABELS "sla;formats;smoke" TIMEOUT 120)
+add_test(NAME sla_printer_profiles COMMAND ${_TEST_NAME}_tests "[sla_profiles]")
+set_tests_properties(sla_printer_profiles PROPERTIES LABELS "sla;profiles;smoke")
+
 if (WIN32)
     # Adds a post-build copy of libgmp-10.dll
     add_custom_command(TARGET ${_TEST_NAME}_tests POST_BUILD
@@ -30,3 +41,6 @@ if (WIN32)
           "${CMAKE_PREFIX_PATH}/bin/libgmp-10.dll"
           $<TARGET_FILE_DIR:${_TEST_NAME}_tests>)
 endif()
+
+add_test(NAME sla_layer_document COMMAND ${_TEST_NAME}_tests "[sla_layers]")
+set_tests_properties(sla_layer_document PROPERTIES LABELS "sla;layers;smoke")

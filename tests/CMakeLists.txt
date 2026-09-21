@@ -23,13 +23,17 @@ endif()
 
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
-add_subdirectory(arrange)
-add_subdirectory(thumbnails)
-add_subdirectory(libslic3r)
+set(SLIC3R_TEST_SUITES "arrange;thumbnails;libslic3r;sla_print" CACHE STRING
+    "Shared test suites to configure (semicolon-separated)")
+foreach(suite IN LISTS SLIC3R_TEST_SUITES)
+    if (NOT suite MATCHES "^(arrange|thumbnails|libslic3r|sla_print)$")
+        message(FATAL_ERROR "Unknown SLIC3R_TEST_SUITES entry: ${suite}")
+    endif()
+    add_subdirectory(${suite})
+endforeach()
 if (NOT SLIC3R_SLA_ONLY)
     add_subdirectory(fff_print)
 endif()
-add_subdirectory(sla_print)
 add_subdirectory(cpp17 EXCLUDE_FROM_ALL)    # does not have to be built all the time
 
 if (SLIC3R_GUI AND NOT SLIC3R_SLA_ONLY)

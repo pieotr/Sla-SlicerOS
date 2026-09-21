@@ -34,3 +34,6 @@ Testing/
 *.dylib
 *.dll
 *.exe
+*.zip
+*.tar.*
+*.md

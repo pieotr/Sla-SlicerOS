@@ -1,3 +1,4 @@
+#include "libslic3r/SLA/PrinterRaster.hpp"
 ///|/ Copyright (c) Prusa Research 2026
 ///|/
 ///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
@@ -77,33 +78,7 @@ DisplayDimensions get_display_dimensions(const SLAPrinterConfig &cfg)
 
 std::unique_ptr<sla::RasterBase> make_common_raster(const SLAPrinterConfig &cfg)
 {
-    sla::Resolution     res;
-    sla::PixelDim       pxdim;
-    std::array<bool, 2> mirror;
-
-    double w  = cfg.display_width.getFloat();
-    double h  = cfg.display_height.getFloat();
-    auto   pw = size_t(cfg.display_pixels_x.getInt());
-    auto   ph = size_t(cfg.display_pixels_y.getInt());
-
-    mirror[X] = cfg.display_mirror_x.getBool();
-    mirror[Y] = cfg.display_mirror_y.getBool();
-
-    auto                         ro = cfg.display_orientation.getInt();
-    sla::RasterBase::Orientation orientation =
-        ro == sla::RasterBase::roPortrait ? sla::RasterBase::roPortrait : sla::RasterBase::roLandscape;
-
-    if (orientation == sla::RasterBase::roPortrait) {
-        std::swap(w, h);
-        std::swap(pw, ph);
-    }
-
-    res   = sla::Resolution{pw, ph};
-    pxdim = sla::PixelDim{w / pw, h / ph};
-    sla::RasterBase::Trafo tr{orientation, mirror};
-
-    const double gamma = cfg.gamma_correction.getFloat();
-    return sla::create_raster_grayscale_aa(res, pxdim, gamma, tr);
+    return sla::create_printer_raster(cfg);
 }
 
 void write_u16_be(std::ofstream &out, uint16_t v)
@@ -443,34 +418,7 @@ struct ChituboxRasterEncoder {
 // UVToolsRLEBinaryBase implementation
 std::unique_ptr<sla::RasterBase> UVToolsRLEBinaryBase::create_raster() const
 {
-    sla::Resolution     res;
-    sla::PixelDim       pxdim;
-    std::array<bool, 2> mirror;
-
-    double w  = m_cfg.display_width.getFloat();
-    double h  = m_cfg.display_height.getFloat();
-    auto   pw = size_t(m_cfg.display_pixels_x.getInt());
-    auto   ph = size_t(m_cfg.display_pixels_y.getInt());
-
-    mirror[0] = m_cfg.display_mirror_x.getBool();
-    mirror[1] = m_cfg.display_mirror_y.getBool();
-
-    auto                         ro = m_cfg.display_orientation.getInt();
-    sla::RasterBase::Orientation orientation =
-        ro == sla::RasterBase::roPortrait ? sla::RasterBase::roPortrait :
-                                            sla::RasterBase::roLandscape;
-
-    if (orientation == sla::RasterBase::roPortrait) {
-        std::swap(w, h);
-        std::swap(pw, ph);
-    }
-
-    res   = sla::Resolution{pw, ph};
-    pxdim = sla::PixelDim{w / pw, h / ph};
-    sla::RasterBase::Trafo tr{orientation, mirror};
-
-    const double gamma = m_cfg.gamma_correction.getFloat();
-    return sla::create_raster_grayscale_aa(res, pxdim, gamma, tr);
+    return sla::create_printer_raster(m_cfg);
 }
 
 // FDG encoder implementation
@@ -488,34 +436,7 @@ sla::RasterEncoder UVToolsCXDLPArchive::get_encoder() const
 // CXDLP raster creation - PNG-based line format
 std::unique_ptr<sla::RasterBase> UVToolsCXDLPArchive::create_raster() const
 {
-    sla::Resolution     res;
-    sla::PixelDim       pxdim;
-    std::array<bool, 2> mirror;
-
-    double w  = m_cfg.display_width.getFloat();
-    double h  = m_cfg.display_height.getFloat();
-    auto   pw = size_t(m_cfg.display_pixels_x.getInt());
-    auto   ph = size_t(m_cfg.display_pixels_y.getInt());
-
-    mirror[0] = m_cfg.display_mirror_x.getBool();
-    mirror[1] = m_cfg.display_mirror_y.getBool();
-
-    auto                         ro = m_cfg.display_orientation.getInt();
-    sla::RasterBase::Orientation orientation =
-        ro == sla::RasterBase::roPortrait ? sla::RasterBase::roPortrait :
-                                            sla::RasterBase::roLandscape;
-
-    if (orientation == sla::RasterBase::roPortrait) {
-        std::swap(w, h);
-        std::swap(pw, ph);
-    }
-
-    res   = sla::Resolution{pw, ph};
-    pxdim = sla::PixelDim{w / pw, h / ph};
-    sla::RasterBase::Trafo tr{orientation, mirror};
-
-    const double gamma = m_cfg.gamma_correction.getFloat();
-    return sla::create_raster_grayscale_aa(res, pxdim, gamma, tr);
+    return sla::create_printer_raster(m_cfg);
 }
 
 void UVToolsCWSArchive::export_print(const std::string     fname,

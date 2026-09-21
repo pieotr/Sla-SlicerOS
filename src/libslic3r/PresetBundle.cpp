@@ -83,7 +83,12 @@ PresetBundle::PresetBundle() :
     this->sla_prints.default_preset().inherits();
 
     this->printers.add_default_preset(Preset::sla_printer_options(), static_cast<const SLAMaterialConfig&>(SLAFullPrintConfig::defaults()), "- default SLA -");
+    // The global technology default may be SLA in this fork. The legacy FFF
+    // template must still identify its own schema, otherwise the SLA UI reads
+    // missing display/exposure options from a nozzle-based configuration.
+    this->printers.default_preset(0).printer_technology_ref() = ptFFF;
     this->printers.preset(1).printer_technology_ref() = ptSLA;
+    Preset::normalize(this->printers.default_preset(1).config);
     for (size_t i = 0; i < 2; ++ i) {
 		// The following ugly switch is to avoid printers.preset(0) to return the edited instance, as the 0th default is the current one.
 		Preset &preset = this->printers.default_preset(i);
@@ -109,7 +114,11 @@ PresetBundle::PresetBundle() :
     this->sla_prints   .select_preset(0);
     this->filaments    .select_preset(0);
     this->sla_materials.select_preset(0);
+#ifdef SLIC3R_SLA_ONLY
+    this->printers     .select_preset(1);
+#else
     this->printers     .select_preset(0);
+#endif
 
     this->project_config.apply_only(FullPrintConfig::defaults(), s_project_options);
 }
@@ -166,6 +175,9 @@ void PresetBundle::reset(bool delete_files)
     this->filaments    .reset(delete_files);
     this->sla_materials.reset(delete_files);
     this->printers     .reset(delete_files);
+#ifdef SLIC3R_SLA_ONLY
+    this->printers     .select_preset(1);
+#endif
     this->extruders_filaments.clear();
     this->obsolete_presets.prints.clear();
     this->obsolete_presets.sla_prints.clear();

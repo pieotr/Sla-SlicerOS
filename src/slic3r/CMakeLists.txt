@@ -127,6 +127,8 @@ set(SLIC3R_GUI_SOURCES
     GUI/I18N.hpp
     GUI/IconManager.cpp
     GUI/IconManager.hpp
+    GUI/LayerEditorDialog.cpp
+    GUI/LayerEditorDialog.hpp
     GUI/MainFrame.cpp
     GUI/MainFrame.hpp
     GUI/UpdatesUIManager.cpp

@@ -33,13 +33,14 @@ detect_ca_bundle() {
 
 usage() {
   cat <<'EOF'
-Usage: ./build_linux.sh [--run] [--jobs N] [--clean] [--deps]
+Usage: ./build_linux.sh [--run] [--tests] [--jobs N] [--clean] [--deps]
 
 Builds PrusaSlicer statically with bundled deps on Linux.
 Default behavior is optimized for incremental rebuild speed.
 
 Options:
   --run       Run a quick smoke test after build (prusa-slicer --help)
+  --tests     Build SLA tests and run archive/profile smoke checks
   --jobs N    Number of parallel jobs for app build (default: nproc)
   --clean     Remove build and deps/build directories before configuring
   --deps      Force dependency rebuild before app build
@@ -51,6 +52,7 @@ RUN_AFTER_BUILD=0
 JOBS="$(nproc)"
 CLEAN=0
 BUILD_DEPS=0
+BUILD_TESTS=OFF
 
 deps_ready() {
   [[ -f "${PREFIX_PATH}/lib/libwx_gtk3u_core-3.2.a" ]]
@@ -62,10 +64,14 @@ while [[ $# -gt 0 ]]; do
       RUN_AFTER_BUILD=1
       shift
       ;;
+    --tests)
+      BUILD_TESTS=ON
+      shift
+      ;;
     --jobs)
       JOBS="${2:-}"
-      if [[ -z "$JOBS" ]]; then
-        echo "Missing value for --jobs" >&2
+      if [[ ! "$JOBS" =~ ^[1-9][0-9]*$ ]]; then
+        echo "--jobs requires a positive integer" >&2
         exit 1
       fi
       shift 2
@@ -115,13 +121,19 @@ cmake -S "$ROOT_DIR" -B "$APP_BUILD_DIR" \
   -DSLIC3R_PCH=OFF \
   -DSLIC3R_SLA_ONLY=ON \
   -DSLIC3R_OFFLINE_ONLY=ON \
-  -DSLIC3R_BUILD_TESTS=OFF \
+  -DSLIC3R_BUILD_TESTS="$BUILD_TESTS" \
+  '-DSLIC3R_TEST_SUITES=sla_print;thumbnails' \
   -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=OFF \
   -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
   -DCMAKE_PREFIX_PATH="$PREFIX_PATH"
 
 echo "[5/5] Building PrusaSlicer target (incremental)"
 cmake --build "$APP_BUILD_DIR" --target PrusaSlicer -- -j"$JOBS"
+
+if [[ "$BUILD_TESTS" == ON ]]; then
+  cmake --build "$APP_BUILD_DIR" --target sla_print_tests -- -j"$JOBS"
+  (cd "$APP_BUILD_DIR" && ctest --output-on-failure -L smoke)
+fi
 
 BIN="$APP_BUILD_DIR/src/prusa-slicer"
 if [[ ! -x "$BIN" ]]; then
