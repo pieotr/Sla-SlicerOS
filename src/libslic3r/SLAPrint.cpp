@@ -4,6 +4,8 @@
 ///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
 ///|/
 #include "SLAPrint.hpp"
+#include "SLA/ProjectArchive.hpp"
+#include <boost/algorithm/string/predicate.hpp>
 #include "SLAPrintSteps.hpp" // IWYU pragma: keep
 #include "CSGMesh/CSGMeshCopy.hpp"
 #include "CSGMesh/PerformCSGMeshBooleans.hpp"
@@ -11,15 +13,19 @@
 #include "StaticMap.hpp"
 
 #include "Format/SLAArchiveFormatRegistry.hpp"
+#include "SLA/PrintParameters.hpp"
 
 #include "Geometry.hpp"
 #include "Thread.hpp"
 
 #include <unordered_set>
+#include <unordered_map>
+#include <string_view>
 #include <numeric>
 
 #include <tbb/parallel_for.h>
 #include <boost/filesystem/path.hpp>
+#include <boost/filesystem.hpp>
 #include <boost/log/trivial.hpp>
 
 #include "libslic3r/MultipleBeds.hpp"
@@ -159,6 +165,13 @@ void SLAPrint::clear()
     std::scoped_lock<std::mutex> lock(this->state_mutex());
     // The following call should stop background processing if it is running.
     this->invalidate_all_steps();
+    m_layer_document.reset();
+    m_printer_input.clear();
+    m_archiver.reset();
+    m_print_statistics.clear();
+    m_raster_job = false;
+    m_pending_project_layers.reset();
+    m_project_layer_restore_failed = false;
     for (SLAPrintObject *object : m_objects)
         delete object;
     m_objects.clear();
@@ -262,6 +275,10 @@ static t_config_option_keys print_config_diffs(const StaticPrintConfig     &curr
 
 SLAPrint::ApplyStatus SLAPrint::apply(const Model &model, DynamicPrintConfig config, std::vector<std::string> *warnings)
 {
+    const bool had_layer_edits = finished() && m_layer_document && m_layer_document->revision() != 0;
+    // Applying a model/config starts a normal slicing job. Generated jobs are
+    // separate documents; their masks cannot survive a geometry replacement.
+    if (m_raster_job) clear();
 #ifdef _DEBUG
     check_model_ids_validity(model);
 #endif /* _DEBUG */
@@ -325,13 +342,20 @@ SLAPrint::ApplyStatus SLAPrint::apply(const Model &model, DynamicPrintConfig con
     // It is also safe to change m_config now after this->invalidate_state_by_config_options() call.
     m_print_config.apply_only(config, print_diff, true);
     m_printer_config.apply_only(config, printer_diff, true);
+    if (!printer_diff.empty() && m_printer_config.sla_archive_format.value == "SL1SVG")
+        m_layer_document.reset(); // Pixel edits cannot be encoded as vector contours.
     // Handle changes to material config.
     m_material_config.apply_only(config, material_diff, true);
     // Handle changes to object config defaults
     m_default_object_config.apply_only(config, object_diff, true);
 
-    if (!m_archiver || !printer_diff.empty())
-        m_archiver = SLAArchiveWriter::create(m_printer_config.sla_archive_format.value.c_str(), m_printer_config);
+    if (!m_archiver || !printer_diff.empty()) {
+        const auto &selected = m_printer_config.sla_archive_format.value;
+        // A printer with an unfinished container can still slice and edit PNG
+        // masks. Export independently checks its actual destination codec.
+        const auto raster_format = archive_export_unavailable_reason(selected.c_str()).empty() ? selected : std::string("SL1");
+        m_archiver = SLAArchiveWriter::create(raster_format, m_printer_config);
+    }
 
     struct ModelObjectStatus {
         enum Status {
@@ -355,6 +379,7 @@ SLAPrint::ApplyStatus SLAPrint::apply(const Model &model, DynamicPrintConfig con
         // Stop background processing.
         this->call_cancel_callback();
         update_apply_status(this->invalidate_all_steps());
+        m_layer_document.reset();
         for (SLAPrintObject *object : m_objects) {
             model_object_status.emplace(object->model_object()->id(), ModelObjectStatus::Deleted);
             update_apply_status(object->invalidate_all_steps());
@@ -579,6 +604,7 @@ SLAPrint::ApplyStatus SLAPrint::apply(const Model &model, DynamicPrintConfig con
     if (m_objects != print_objects_new) {
         this->call_cancel_callback();
         update_apply_status(this->invalidate_all_steps());
+        m_layer_document.reset();
         m_objects = print_objects_new;
         // Delete the PrintObjects marked as Unknown or Deleted.
         for (auto &pos : print_object_status)
@@ -600,6 +626,9 @@ SLAPrint::ApplyStatus SLAPrint::apply(const Model &model, DynamicPrintConfig con
 #endif /* _DEBUG */
 
     m_full_print_config = std::move(config);
+
+    if (had_layer_edits && !m_layer_document && warnings)
+        warnings->push_back(_u8L("The model or raster settings changed. Previously applied pixel edits were discarded; the layers must be sliced again."));
 
     return static_cast<ApplyStatus>(apply_status);
 }
@@ -624,6 +653,25 @@ std::string SLAPrint::output_filename(const std::string &filename_base) const
 
 std::string SLAPrint::validate(std::vector<std::string>*) const
 {
+    for (const auto &setting : sla::machine_settings) {
+        const auto *option = m_material_config.option(setting.key);
+        if (!option) continue;
+        const double value = setting.integer ? option->getInt() : option->getFloat();
+        if (!std::isfinite(value) || value < 0 ||
+            (std::string(setting.key).find("light_pwm") != std::string::npos && value > 255))
+            return std::string("Invalid LCD setting: ") + setting.label;
+    }
+    for (const bool bottom : {false, true}) {
+        const std::string prefix = bottom ? "sla_bottom_" : "sla_";
+        auto value = [&](const char *key) { return m_material_config.option(prefix + key)->getFloat(); };
+        const double height = value("lift_height"), height2 = value("lift_height2");
+        if ((height > 0 && value("lift_speed") <= 0) || (height2 > 0 && value("lift_speed2") <= 0) ||
+            (height + height2 > 0 && value("retract_speed") <= 0) ||
+            (value("retract_height2") > 0 && value("retract_speed2") <= 0))
+            return "LCD motion speeds must be greater than zero for enabled moves";
+        if (value("retract_height2") > height + height2)
+            return "The second retract height cannot exceed the total lift height";
+    }
     for(SLAPrintObject * po : m_objects) {
 
         const ModelObject *mo = po->model_object();
@@ -704,13 +752,291 @@ std::string SLAPrint::validate(std::vector<std::string>*) const
     return "";
 }
 
+namespace {
+void validate_layer_document(const SLAPrint &print, const sla::LayerDocument &document)
+{
+    if (!document.layer_count() || document.layer_count() != print.print_layers().size())
+        throw RuntimeError("Layer document does not match the sliced result");
+    const auto first = document.image(0);
+    const auto &config = print.printer_config();
+    const bool portrait = config.display_orientation.value == sladoPortrait;
+    const auto width = portrait ? config.display_pixels_y.value : config.display_pixels_x.value;
+    const auto height = portrait ? config.display_pixels_x.value : config.display_pixels_y.value;
+    if (first.cols != size_t(width) || first.rows != size_t(height))
+        throw RuntimeError("Edited layers must retain the printer's oriented raster dimensions");
+}
+SLAPrintStatistics raster_job_statistics(const SLAPrint &print, const sla::LayerDocument &document)
+{
+    validate_layer_document(print, document);
+    const auto &printer = print.printer_config();
+    const bool portrait = printer.display_orientation.value == sladoPortrait;
+    const size_t columns = size_t(portrait ? printer.display_pixels_y.value : printer.display_pixels_x.value);
+    const size_t rows = size_t(portrait ? printer.display_pixels_x.value : printer.display_pixels_y.value);
+    const double pixel_area = printer.display_width.value * printer.display_height.value / double(columns * rows);
+    SLAPrintStatistics statistics;
+    // Equality compares the complete PNG bytes, so hash collisions cannot
+    // conflate masks. Keys borrow immutable bytes for this calculation only.
+    std::unordered_map<std::string_view, size_t> repeated_masks;
+    std::vector<size_t> representative(document.layer_count()), unique;
+    std::vector<double> areas(document.layer_count());
+    for (size_t i=0;i<document.layer_count();++i) {
+        const auto encoded=document.encoded_layer(i);
+        const std::string_view key{static_cast<const char *>(encoded.buf),encoded.sz};
+        const auto found=repeated_masks.find(key);
+        if (found!=repeated_masks.end()) representative[i]=found->second;
+        else {
+            representative[i]=i; unique.push_back(i);
+            if (repeated_masks.size()<1024) repeated_masks.emplace(key,i);
+        }
+    }
+    // Full-resolution PNG inflation dominates this step. Bound concurrent
+    // decoded buffers to the same 512 MiB budget as rasterization/encoding.
+    const int workers=int(std::clamp<uint64_t>((uint64_t(512)<<20)/
+        std::max<uint64_t>(1,uint64_t(columns)*rows*4),1,8));
+    tbb::task_arena arena(workers);
+    arena.execute([&] { execution::for_each(ExecutionTBB{},size_t(0),unique.size(),[&](size_t index) {
+        const auto i=unique[index];
+        const auto mask=document.image(i);
+        if (mask.cols!=columns || mask.rows!=rows)
+            throw RuntimeError("Raster job masks must match the oriented printer resolution");
+        areas[i]=double(std::count_if(mask.buf.begin(),mask.buf.end(),[](uint8_t value){return value!=0;}))*pixel_area;
+    }); });
+    double previous_z = 0;
+    for (size_t i = 0; i < document.layer_count(); ++i) {
+        const double area=areas[representative[i]];
+        const double z = double(print.print_layers()[i].level()) * SCALING_FACTOR;
+        statistics.layers_areas.push_back(area);
+        statistics.objects_used_material += area * (z-previous_z);
+        statistics.estimated_print_time += sla::lcd_layer_time(print, i);
+        statistics.layers_times_running_total.push_back(statistics.estimated_print_time);
+        previous_z = z;
+    }
+    statistics.slow_layers_count = sla::bottom_layers(print, document.layer_count());
+    statistics.fast_layers_count = document.layer_count()-statistics.slow_layers_count;
+    const auto &material = print.material_config();
+    const double milliliters = statistics.objects_used_material / 1000.;
+    statistics.total_weight = milliliters * material.material_density.value;
+    if (material.bottle_volume.value > 0)
+        statistics.total_cost = milliliters * material.bottle_cost.value / material.bottle_volume.value;
+    return statistics;
+}
+
+template<class Export>
+void export_atomically(const std::string &filename, Export &&write)
+{
+    const boost::filesystem::path destination(filename);
+    const auto temporary = destination.parent_path() /
+        (boost::filesystem::unique_path(".sla-export-%%%%-%%%%").string() + destination.extension().string());
+    try {
+        write(temporary.string());
+        if (!boost::filesystem::exists(temporary) || boost::filesystem::file_size(temporary) == 0)
+            throw FileIOError("The SLA encoder did not produce a complete file");
+        const auto error = rename_file(temporary.string(), destination.string());
+        if (error) throw FileIOError("Cannot replace SLA output: " + error.message());
+    } catch (...) {
+        boost::system::error_code ignored;
+        boost::filesystem::remove(temporary, ignored);
+        throw;
+    }
+}
+}
+
+std::unique_ptr<SLAPrint> SLAPrint::create_raster_job(const DynamicPrintConfig &configuration,
+    const sla::LayerDocument &document, const std::vector<double> &positions_z)
+{
+    if (!document.layer_count() || positions_z.size() != document.layer_count())
+        throw RuntimeError("A raster job requires one Z position per mask");
+    DynamicPrintConfig config;
+    config.apply(SLAFullPrintConfig{}); config.apply(configuration);
+    if (config.option("printer_technology")->getInt() != ptSLA)
+        throw RuntimeError("A raster job requires an SLA printer profile");
+    const auto *format_entry = get_archive_entry(config.opt_string("sla_archive_format").c_str());
+    if (!format_entry) throw RuntimeError("Unknown raster job archive format");
+    config.set("sla_archive_format", std::string(format_entry->id));
+    if (config.opt_string("sla_archive_format") == "SL1SVG")
+        throw RuntimeError("A generated raster job requires a pixel-based format");
+    auto job = std::make_unique<SLAPrint>();
+    job->apply(Model{}, config);
+    const auto validation = job->validate();
+    if (!validation.empty()) throw RuntimeError(validation);
+    for (const char *key : {"exposure_time", "initial_exposure_time", "layer_height"}) {
+        const double value = config.opt_float(key);
+        if (!std::isfinite(value) || value <= 0) throw RuntimeError(std::string("Invalid raster job setting: ") + key);
+    }
+    const auto &printer = job->printer_config();
+    if (printer.display_pixels_x.value <= 0 || printer.display_pixels_y.value <= 0 ||
+        !std::isfinite(printer.display_width.value) || !std::isfinite(printer.display_height.value) ||
+        printer.display_width.value <= 0 || printer.display_height.value <= 0 ||
+        !std::isfinite(printer.max_print_height.value) || printer.max_print_height.value <= 0)
+        throw RuntimeError("Invalid raster job printer geometry");
+    double previous_z = 0;
+    for (size_t i = 0; i < positions_z.size(); ++i) {
+        const double z = positions_z[i];
+        if (!std::isfinite(z) || z <= previous_z || z > printer.max_print_height.value ||
+            z / SCALING_FACTOR > double(std::numeric_limits<coord_t>::max()))
+            throw RuntimeError("Raster job Z must increase within the printer height");
+        const coord_t level = scaled<coord_t>(z);
+        if (!job->m_printer_input.empty() && level <= job->m_printer_input.back().level())
+            throw RuntimeError("Raster job Z increments are below coordinate precision");
+        job->m_printer_input.emplace_back(level);
+        previous_z = z;
+    }
+    // Synchronize the first layer height with the actual first raster level;
+    // encoders must not reuse an unrelated process preset's initial height.
+    job->m_material_config.initial_layer_height.value = positions_z.front();
+    job->m_full_print_config.set("initial_layer_height", positions_z.front());
+    job->m_layer_document = std::make_unique<sla::LayerDocument>(document);
+    job->m_encoded_revision = std::numeric_limits<uint64_t>::max();
+    job->m_raster_job = true;
+    job->m_print_statistics = raster_job_statistics(*job, document);
+    return job;
+}
+
+// Edited masks cannot use a thumbnail rendered from the unchanged 3D mesh.
+// Show the first layer in raster coordinates, preserving aspect ratio. The
+// thumbnail buffer uses OpenGL's bottom-up rows, as all archive writers expect.
+static ThumbnailsList layer_thumbnails(const sla::LayerDocument &document, const ThumbnailsList &requested)
+{
+    const auto mask = document.image(0);
+    if (mask.cols == 0 || mask.rows == 0) throw ExportError("Cannot preview an empty layer mask");
+    std::vector<std::pair<unsigned, unsigned>> sizes;
+    for (const auto &thumbnail : requested)
+        if (thumbnail.is_valid() && thumbnail.width <= 2048 && thumbnail.height <= 2048 && sizes.size() < 8)
+            sizes.emplace_back(thumbnail.width, thumbnail.height);
+    if (sizes.empty()) sizes = {{400, 400}, {800, 480}};
+    ThumbnailsList result;
+    for (const auto &[width, height] : sizes) {
+        ThumbnailData thumbnail;
+        thumbnail.set(width, height);
+        const double scale = std::min(double(width) / mask.cols, double(height) / mask.rows);
+        const unsigned columns = std::max(1u, unsigned(std::round(mask.cols * scale)));
+        const unsigned rows = std::max(1u, unsigned(std::round(mask.rows * scale)));
+        const unsigned left = (width - columns) / 2, top = (height - rows) / 2;
+        for (unsigned y = 0; y < height; ++y)
+            for (unsigned x = 0; x < width; ++x) {
+                uint8_t gray = 0;
+                if (x >= left && x < left + columns && y >= top && y < top + rows) {
+                    const size_t sx = std::min(mask.cols - 1, size_t(x - left) * mask.cols / columns);
+                    const size_t sy = std::min(mask.rows - 1, size_t(y - top) * mask.rows / rows);
+                    gray = mask.buf[sy * mask.cols + sx];
+                }
+                const size_t offset = (size_t(height - 1 - y) * width + x) * 4;
+                thumbnail.pixels[offset] = thumbnail.pixels[offset + 1] = thumbnail.pixels[offset + 2] = gray;
+                thumbnail.pixels[offset + 3] = 255;
+            }
+        result.push_back(std::move(thumbnail));
+    }
+    return result;
+}
+
 void SLAPrint::export_print(const std::string &fname, const ThumbnailsList &thumbnails, const std::string &projectname)
 {
-    if (m_archiver)
-        m_archiver->export_print(fname, *this, thumbnails, projectname);
+    if (!finished()) throw ExportError("Slice the model before exporting");
+    if (boost::algorithm::iends_with(fname, ".encrypted.ctb"))
+        throw ExportError("Encrypted CTB export is unavailable; the CTB v2 encoder produces unencrypted files");
+    const auto suffix = boost::filesystem::path(fname).extension().string();
+    const auto *requested = get_archive_entry_by_extension(suffix.c_str());
+    // Compound extensions identify independent schemas (for example v1.cxdlp).
+    // A filesystem's final suffix alone loses that version information.
+    size_t suffix_length=suffix.size();
+    for(const auto &entry:registered_sla_archives())
+        for(const auto &extension:get_extensions(entry))
+            if(extension.size()+1>suffix_length && boost::algorithm::iends_with(fname,"."+extension)) {
+                requested=&entry;suffix_length=extension.size()+1;
+            }
+    // ZIP is shared by several SLA containers. A filename alias must keep
+    // the printer's selected schema rather than picking the first registry ID.
+    if (const auto *selected = get_archive_entry(m_printer_config.sla_archive_format.value.c_str()))
+        for (const auto &extension : get_extensions(*selected))
+            if (boost::algorithm::iends_with(fname, "." + extension)) {
+                requested = selected;
+                break;
+            }
+    if (!requested) throw ExportError("Unknown SLA output extension: " + suffix);
+    const auto reason = archive_export_unavailable_reason(requested->id);
+    if (!reason.empty()) throw ExportError(reason);
+    if (requested->id != m_printer_config.sla_archive_format.value) {
+        if (!m_layer_document)
+            throw ExportError("This vector result cannot be converted to a raster container without slicing again");
+        export_layer_document(*m_layer_document, requested->id, fname, thumbnails, projectname);
+        return;
+    }
+    if (m_archiver) {
+        if (m_layer_document && m_layer_document->revision() != m_encoded_revision) {
+            m_archiver->encode_layers(*m_layer_document);
+            m_encoded_revision = m_layer_document->revision();
+        }
+        const bool has_preview = std::any_of(thumbnails.begin(), thumbnails.end(), [](const auto &image) { return image.is_valid(); });
+        const auto previews = m_layer_document && (m_layer_document->revision() != 0 || (m_raster_job && !has_preview))
+            ? layer_thumbnails(*m_layer_document, thumbnails) : thumbnails;
+        export_atomically(fname, [&](const std::string &temporary) { m_archiver->export_print(temporary, *this, previews, projectname); });
+    }
     else {
         throw ExportError(format(_u8L("Unknown archive format: %s"), m_printer_config.sla_archive_format.value));
     }
+}
+
+void SLAPrint::queue_project_layers(std::shared_ptr<const sla::ProjectRasterState> state)
+{
+    m_pending_project_layers = std::move(state);
+    m_project_layer_restore_failed = false;
+}
+
+void SLAPrint::replace_layer_document(const sla::LayerDocument &document)
+{
+    if (!finished() || document.layer_count() != m_printer_input.size())
+        throw RuntimeError("Layer edits do not match the current sliced result");
+    validate_layer_document(*this, document);
+    // Compute into a temporary before replacing masks, so failures preserve
+    // both the old document and its statistics.
+    // Once pixels have been edited, polygon/model statistics no longer
+    // describe the job. Derive material use and timing from the actual masks.
+    auto statistics = raster_job_statistics(*this, document);
+    auto replacement = std::make_unique<sla::LayerDocument>(document);
+    m_layer_document = std::move(replacement);
+    m_print_statistics = std::move(statistics);
+    // A document can come from a different editing history with the same revision.
+    m_encoded_revision = std::numeric_limits<uint64_t>::max();
+}
+
+void SLAPrint::export_layer_document(const sla::LayerDocument &document, const std::string &format,
+                                   const std::string &path, const ThumbnailsList &thumbnails,
+                                   const std::string &projectname) const
+{
+    if (!finished()) throw ExportError("Slice the model before exporting edited layers");
+    if (boost::algorithm::iends_with(path, ".encrypted.ctb"))
+        throw ExportError("Encrypted CTB export is unavailable; the CTB v2 encoder produces unencrypted files");
+    if (document.layer_count() != m_printer_input.size())
+        throw RuntimeError("Layer document does not match the sliced result");
+    validate_layer_document(*this, document);
+    auto writer = SLAArchiveWriter::create(format, m_printer_config);
+    if (!writer) throw RuntimeError("Unknown SLA archive format: " + format);
+    writer->encode_layers(document);
+    // Export without Apply must use statistics for this exact document for
+    // mesh jobs as well as generated jobs. It must not mutate the source.
+    std::vector<double> levels;
+    for (const auto &layer : m_printer_input) levels.push_back(double(layer.level()) * SCALING_FACTOR);
+    // The explicitly chosen destination owns the export context. A source
+    // preset may use another container, an unfinished codec, or a label saved
+    // by an older GUI; none of those should override this valid destination.
+    auto export_config = m_full_print_config;
+    export_config.set("sla_archive_format", format);
+    auto raster_context = create_raster_job(export_config, document, levels);
+    // SL1 records whether any source object was hollowed. Retain that object
+    // configuration without duplicating large meshes or slicing them again.
+    // These lightweight descriptors borrow source model pointers only during
+    // this synchronous export; their destructor does not own model objects.
+    raster_context->m_objects.reserve(m_objects.size());
+    for (auto *object : m_objects) {
+        auto *descriptor = new SLAPrintObject(raster_context.get(), object->model_object());
+        raster_context->m_objects.push_back(descriptor);
+        descriptor->config_apply(object->config());
+    }
+    const bool has_preview = std::any_of(thumbnails.begin(), thumbnails.end(), [](const auto &image) { return image.is_valid(); });
+    const auto previews = document.revision() != 0 || !has_preview ? layer_thumbnails(document, thumbnails) : thumbnails;
+    export_atomically(path, [&](const std::string &temporary) {
+        writer->export_print(temporary, *raster_context, previews, projectname);
+    });
 }
 
 bool SLAPrint::is_prusa_print(const std::string& printer_model)
@@ -726,6 +1052,8 @@ bool SLAPrint::is_prusa_print(const std::string& printer_model)
 bool SLAPrint::invalidate_step(SLAPrintStep step)
 {
     bool invalidated = Inherited::invalidate_step(step);
+    // Invalidation cancels background work before releasing its raster cache.
+    m_layer_document.reset();
 
     // propagate to dependent steps
     if (step == slapsMergeSlicesAndEval) {
@@ -824,6 +1152,19 @@ void SLAPrint::process()
         st += printsteps.progressrange(currentstep);
     }
 
+    if (m_pending_project_layers) {
+        auto saved = std::move(m_pending_project_layers);
+        try {
+            m_project_layer_restore_failed = !sla::restore_project_layers(*this, m_model, m_full_print_config, *saved);
+        } catch (const std::exception &error) {
+            m_project_layer_restore_failed = true;
+            BOOST_LOG_TRIVIAL(warning) << "Cannot restore saved SLA masks: " << error.what();
+        }
+    }
+
+    if (m_layer_document && m_layer_document->revision() != 0)
+        m_print_statistics = raster_job_statistics(*this, *m_layer_document);
+
     // If everything vent well
     m_report_status(*this, 100, _u8L("Slicing done"));
 
@@ -865,7 +1206,6 @@ bool SLAPrint::invalidate_state_by_config_options(const std::vector<t_config_opt
         "elefant_foot_compensation"sv,
         "elefant_foot_min_width"sv,
         "zcorrection_layers"sv,
-        "gamma_correction"sv,
     };
 
     // Cache the plenty of parameters, which influence the final rasterization only,
@@ -938,9 +1278,17 @@ bool SLAPrint::invalidate_state_by_config_options(const std::vector<t_config_opt
     bool invalidated = false;
 
     for (std::string_view opt_key : opt_keys) {
-        if (steps_rasterize.find(opt_key) != steps_rasterize.end()) {
+        if (opt_key == "gamma_correction") {
+            // Gamma changes antialiasing only. Preserve supports, mesh slices
+            // and merged polygons; rebuild the encoded raster masks.
+            steps.emplace_back(slapsRasterize);
+        } else if (steps_rasterize.find(opt_key) != steps_rasterize.end()) {
             // These options only affect the final rasterization, or they are just notes without influence on the output,
             // so there is nothing to invalidate.
+            steps.emplace_back(slapsMergeSlicesAndEval);
+        } else if (opt_key.find("sla_") == 0 && std::any_of(std::begin(sla::machine_settings), std::end(sla::machine_settings),
+                   [&](const auto &setting) { return opt_key == setting.key; })) {
+            // Machine motion does not affect polygon slicing.
             steps.emplace_back(slapsMergeSlicesAndEval);
         } else if (steps_ignore.find(opt_key) != steps_ignore.end()) {
             // These steps have no influence on the output. Just ignore them.
@@ -954,6 +1302,22 @@ bool SLAPrint::invalidate_state_by_config_options(const std::vector<t_config_opt
         }
     }
 
+    // Exposure and machine motion change metadata, not the already edited masks.
+    // Keep those masks through statistics/encoding updates. Geometry, display,
+    // orientation and gamma changes still invalidate them normally.
+    const bool metadata_only = std::all_of(opt_keys.begin(), opt_keys.end(), [](std::string_view key) {
+        return key == "exposure_time" || key == "initial_exposure_time" ||
+            key == "min_exposure_time" || key == "max_exposure_time" ||
+            key == "min_initial_exposure_time" || key == "max_initial_exposure_time" ||
+            key == "sla_archive_format" ||
+            std::any_of(std::begin(sla::machine_settings), std::end(sla::machine_settings),
+                        [&](const auto &setting) { return key == setting.key; });
+    });
+    std::unique_ptr<sla::LayerDocument> preserved;
+    if (metadata_only) {
+        this->call_cancel_callback();
+        preserved = std::move(m_layer_document);
+    }
     sort_remove_duplicates(steps);
     for (SLAPrintStep step : steps)
         invalidated |= this->invalidate_step(step);
@@ -961,6 +1325,10 @@ bool SLAPrint::invalidate_state_by_config_options(const std::vector<t_config_opt
     for (SLAPrintObjectStep ostep : osteps)
         for (SLAPrintObject *object : m_objects)
             invalidated |= object->invalidate_step(ostep);
+    if (preserved) {
+        m_layer_document = std::move(preserved);
+        m_encoded_revision = std::numeric_limits<uint64_t>::max();
+    }
     return invalidated;
 }
 
@@ -1107,7 +1475,10 @@ bool SLAPrintObject::invalidate_step(SLAPrintObjectStep step)
 
 bool SLAPrintObject::invalidate_all_steps()
 {
-    return Inherited::invalidate_all_steps() || m_print->invalidate_all_steps();
+    // Both caches must be invalidated even when the first call returns true.
+    const bool object_invalidated = Inherited::invalidate_all_steps();
+    const bool print_invalidated = m_print->invalidate_step(slapsMergeSlicesAndEval);
+    return object_invalidated || print_invalidated;
 }
 
 double SLAPrintObject::get_elevation() const {

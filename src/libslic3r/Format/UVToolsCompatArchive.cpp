@@ -1,9 +1,13 @@
 #include "libslic3r/SLA/PrinterRaster.hpp"
+#include "libslic3r/SLA/ColorMask.hpp"
 ///|/ Copyright (c) Prusa Research 2026
 ///|/
 ///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
 ///|/
 #include "UVToolsCompatArchive.hpp"
+#include "CrealityCXDLPv1Archive.hpp"
+#include "CrealityContourArea.hpp"
+#include "CrealityChecksum.hpp"
 
 #include <algorithm>
 #include <array>
@@ -21,6 +25,7 @@
 
 #include "libslic3r/PrintConfig.hpp"
 #include "libslic3r/SLAPrint.hpp"
+#include "libslic3r/SLA/PrintParameters.hpp"
 #include "libslic3r/SLA/RasterBase.hpp"
 #include "libslic3r/Zipper.hpp"
 
@@ -144,40 +149,6 @@ void write_utf16be_string(std::ofstream &out, const std::string &s)
         out.write(reinterpret_cast<const char *>(bytes.data()), std::streamsize(bytes.size()));
 }
 
-uint32_t crc32_uvtools_style(std::ifstream &in, std::streamoff size)
-{
-    uint32_t table[256] = {0};
-    for (uint32_t i = 0; i < 256; ++i) {
-        uint32_t val = i;
-        for (int j = 0; j < 8; ++j)
-            val = ((val & 1u) == 0u) ? (val >> 1) : ((val >> 1) ^ 0xEDB88320u);
-        table[i] = val;
-    }
-
-    uint32_t checksum = 0;
-    in.clear();
-    in.seekg(0, std::ios::beg);
-
-    std::vector<char> buf(1 << 20);
-    std::streamoff    remaining = size;
-    while (remaining > 0 && in) {
-        const std::streamsize chunk = std::streamsize(std::min<std::streamoff>(remaining, std::streamoff(buf.size())));
-        in.read(buf.data(), chunk);
-        const std::streamsize got = in.gcount();
-        if (got <= 0)
-            break;
-
-        for (std::streamsize i = 0; i < got; ++i) {
-            const uint8_t idx = uint8_t(checksum) ^ uint8_t(buf[size_t(i)]);
-            checksum          = table[idx] ^ (checksum >> 8);
-        }
-
-        remaining -= got;
-    }
-
-    return checksum;
-}
-
 float cfg_float_or(const DynamicPrintConfig &cfg, const std::string &key, float fallback)
 {
     return cfg.has(key) ? cfg.opt_float(key) : fallback;
@@ -247,77 +218,6 @@ struct FDGRasterEncoder {
     }
 };
 
-std::array<uint8_t, 6> make_cxdlp_line(uint16_t start_y, uint16_t end_y, uint16_t start_x, uint8_t gray)
-{
-    std::array<uint8_t, 6> b{};
-    b[0] = uint8_t((start_y >> 5) & 0xFF);
-    b[1] = uint8_t(((start_y << 3) + (end_y >> 10)) & 0xFF);
-    b[2] = uint8_t((end_y >> 2) & 0xFF);
-    b[3] = uint8_t(((end_y << 6) + (start_x >> 8)) & 0xFF);
-    b[4] = uint8_t(start_x);
-    b[5] = gray;
-    return b;
-}
-
-struct CXDLPRasterEncoder {
-    sla::EncodedRaster operator()(const void *ptr, size_t w, size_t h, size_t num_components) const
-    {
-        const uint8_t *src = reinterpret_cast<const uint8_t *>(ptr);
-        std::vector<uint8_t> layer;
-        layer.reserve((w * h) / 3);
-
-        uint32_t line_count      = 0;
-        uint32_t non_zero_pixels = 0;
-
-        for (size_t x = 0; x < w; ++x) {
-            int32_t run_start = -1;
-            uint8_t run_gray  = 0;
-
-            for (size_t y = 0; y < h; ++y) {
-                const uint8_t gray = src[(y * w + x) * num_components];
-
-                if (gray == run_gray && gray != 0)
-                    continue;
-
-                if (run_start >= 0) {
-                    const auto line = make_cxdlp_line(uint16_t(run_start), uint16_t(y - 1), uint16_t(x), run_gray);
-                    layer.insert(layer.end(), line.begin(), line.end());
-                    non_zero_pixels += uint32_t(y - size_t(run_start));
-                    ++line_count;
-                }
-
-                run_start = (gray == 0) ? -1 : int32_t(y);
-                run_gray  = gray;
-            }
-
-            if (run_start >= 0) {
-                const auto line = make_cxdlp_line(uint16_t(run_start), uint16_t(h - 1), uint16_t(x), run_gray);
-                layer.insert(layer.end(), line.begin(), line.end());
-                non_zero_pixels += uint32_t(h - size_t(run_start));
-                ++line_count;
-            }
-        }
-
-        std::vector<uint8_t> out;
-        out.reserve(8 + layer.size() + 2);
-
-        out.push_back(uint8_t((non_zero_pixels >> 24) & 0xFF));
-        out.push_back(uint8_t((non_zero_pixels >> 16) & 0xFF));
-        out.push_back(uint8_t((non_zero_pixels >> 8) & 0xFF));
-        out.push_back(uint8_t(non_zero_pixels & 0xFF));
-
-        out.push_back(uint8_t((line_count >> 24) & 0xFF));
-        out.push_back(uint8_t((line_count >> 16) & 0xFF));
-        out.push_back(uint8_t((line_count >> 8) & 0xFF));
-        out.push_back(uint8_t(line_count & 0xFF));
-
-        out.insert(out.end(), layer.begin(), layer.end());
-        out.push_back(0x0D);
-        out.push_back(0x0A);
-
-        return sla::EncodedRaster(std::move(out), "cxdlp");
-    }
-};
 
 } // namespace
 
@@ -343,26 +243,6 @@ struct GR1RasterEncoder {
         }
 
         return sla::EncodedRaster(std::move(out), "gr1");
-    }
-};
-
-// UInt24 big-endian encoder for OSF format
-struct OSFRasterEncoder {
-    sla::EncodedRaster operator()(const void *ptr, size_t w, size_t h, size_t num_components) const
-    {
-        const uint8_t *src = reinterpret_cast<const uint8_t *>(ptr);
-        std::vector<uint8_t> out;
-        out.reserve(w * h * 3);
-
-        for (size_t i = 0; i < w * h * num_components; i += num_components) {
-            uint8_t gray = src[i];
-            // Store as big-endian UInt24: R, G, B
-            out.push_back(gray);
-            out.push_back(gray);
-            out.push_back(gray);
-        }
-
-        return sla::EncodedRaster(std::move(out), "osf");
     }
 };
 
@@ -430,7 +310,22 @@ sla::RasterEncoder UVToolsFDGArchive::get_encoder() const
 // CXDLP encoder implementation
 sla::RasterEncoder UVToolsCXDLPArchive::get_encoder() const
 {
-    return CXDLPRasterEncoder{};
+    const auto dimensions=get_display_dimensions(m_cfg);
+    // Match UVtools' rounded pixel dimensions and float PixelArea.
+    const float pitch_x=float(std::round(float(dimensions.display_width_mm)/dimensions.resolution_x*10000.f)/10000.f);
+    const float pitch_y=float(std::round(float(dimensions.display_height_mm)/dimensions.resolution_y*10000.f)/10000.f);
+    const float pixel_area=pitch_x*pitch_y;
+    return [pixel_area](const void *data,size_t width,size_t height,size_t components) {
+        const auto raster=CrealityCXDLPv1Archive::encode_mask(data,width,height,components);
+        const double area=sla::creality_largest_contour_area(static_cast<const uint8_t *>(data),width,height)*pixel_area*1000.;
+        if(!std::isfinite(area) || area>UINT32_MAX) throw ExportError("CXDLP contour area exceeds 32 bits");
+        const uint32_t value=uint32_t(area);
+        const auto *bytes=static_cast<const uint8_t *>(raster.data());
+        std::vector<uint8_t> output(bytes,bytes+raster.size());
+        for(unsigned i=0;i<4;++i) output[i]=uint8_t(value>>(24-8*i));
+        output.insert(output.end(),{13,10});
+        return sla::EncodedRaster(std::move(output),"cxdlp");
+    };
 }
 
 // CXDLP raster creation - PNG-based line format
@@ -439,100 +334,162 @@ std::unique_ptr<sla::RasterBase> UVToolsCXDLPArchive::create_raster() const
     return sla::create_printer_raster(m_cfg);
 }
 
-void UVToolsCWSArchive::export_print(const std::string     fname,
-                                     const SLAPrint       &print,
-                                     const ThumbnailsList &,
-                                     const std::string    &projectname)
+void UVToolsCWSArchive::export_print(const std::string fname, const SLAPrint &print,
+                                   const ThumbnailsList &, const std::string &)
 {
-    const uint32_t layer_count = uint32_t(m_layers.size());
-    if (layer_count == 0)
-        throw RuntimeError("No layers available for CWS export");
-        
-    const std::string project =
-        projectname.empty() ? std::filesystem::path(fname).stem().string() : projectname;
-
-    // Get printer-specific config and generic config for parameters
-    const auto &cfg = print.full_print_config();
-    const float layer_h = cfg_float_or(cfg, "layer_height", 0.05f);
-    const float exp_time = cfg_float_or(cfg, "exposure_time", 2.5f);
-    const float lift_h = cfg_float_or(cfg, "lift_distance", 5.0f);
-    const float lift_spd = cfg_float_or(cfg, "lift_speed", 60.0f);
-
-    // Get orientation-aware display dimensions from m_cfg (set at archive creation)
+    // Native CWS: field names and layer commands follow UVtools' CWSFile
+    // and GCodeBuilder. Commands live only inside this SLA container.
+    const size_t count = m_layers.size();
+    if (!count || count != print.print_layers().size()) throw ExportError("CWS layer count mismatch");
     const auto dims = get_display_dimensions(m_cfg);
-
-    // CWS requires XResolution x YResolution to match actual raster dimensions
-    // The raster is already created with correct orientation, so use actual layer dimensions
-    // If no layers yet, use dims; otherwise validate against first layer
-    uint32_t res_x = dims.resolution_x;
-    uint32_t res_y = dims.resolution_y;
-    
-    // Get display dimensions from printer profile (actual bed size)
-    double display_width_mm = m_cfg.display_width.getFloat();
-    double display_height_mm = m_cfg.display_height.getFloat();
-
-    // Create ZIP file with Zipper
-    try {
-        Zipper zip(fname, Zipper::FAST_COMPRESSION);
-
-            // Create manifest.xml (Wanhao format)
-        std::ostringstream manifest;
-        manifest << "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n";
-        manifest << "<manifest FileVersion=\"1\">\n";
-        manifest << "  <Slices>\n";
-        for (uint32_t i = 0; i < layer_count; ++i)
-            manifest << "    <Slice><name>" << layer_name(project, i) << "</name></Slice>\n";
-        manifest << "  </Slices>\n";
-        manifest << "  <SliceProfile><name>" << project << ".slicing</name></SliceProfile>\n";
-        manifest << "  <GCode><name>" << project << ".gcode</name></GCode>\n";
-        manifest << "  <DisplayWidth>" << std::fixed << std::setprecision(2) << display_width_mm << "</DisplayWidth>\n";
-        manifest << "  <DisplayHeight>" << std::fixed << std::setprecision(2) << display_height_mm << "</DisplayHeight>\n";
-        manifest << "</manifest>\n";
-        
-        std::string manifest_str = manifest.str();
-        zip.add_entry("manifest.xml");
-        zip << manifest_str;
-
-        // Create slicing profile with correct X/Y resolution and display dimensions
-        std::ostringstream slicing;
-        slicing << "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n";
-        slicing << "<SliceBuildConfig FileVersion=\"2\">\n";
-        slicing << "  <XResolution>" << res_x << "</XResolution>\n";
-        slicing << "  <YResolution>" << res_y << "</YResolution>\n";
-        slicing << "  <DisplayWidth>" << std::fixed << std::setprecision(2) << display_width_mm << "</DisplayWidth>\n";
-        slicing << "  <DisplayHeight>" << std::fixed << std::setprecision(2) << display_height_mm << "</DisplayHeight>\n";
-        slicing << "  <LayerThickness>" << std::fixed << std::setprecision(3) << layer_h << "</LayerThickness>\n";
-        slicing << "  <LiftDistance>" << std::fixed << std::setprecision(2) << lift_h << "</LiftDistance>\n";
-        slicing << "  <LiftSpeed>" << std::fixed << std::setprecision(2) << lift_spd << "</LiftSpeed>\n";
-        slicing << "  <ExposureTime>" << std::fixed << std::setprecision(2) << exp_time << "</ExposureTime>\n";
-        slicing << "</SliceBuildConfig>\n";
-        
-        std::string slicing_str = slicing.str();
-        zip.add_entry(project + ".slicing");
-        zip << slicing_str;
-
-        // Create minimal GCode
-        std::ostringstream gcode;
-        gcode << ";Generated by PrusaSlicer SLA\n";
-        gcode << ";Number of slices = " << layer_count << "\n";
-        gcode << ";X Resolution = " << res_x << "\n";
-        gcode << ";Y Resolution = " << res_y << "\n";
-        
-        std::string gcode_str = gcode.str();
-        zip.add_entry(project + ".gcode");
-        zip << gcode_str;
-
-        // Add layer images (already PNG-encoded from m_layers)
-        for (uint32_t i = 0; i < layer_count; ++i) {
-            const auto &rst = m_layers[i];
-            zip.add_entry(layer_name(project, i), rst.data(), rst.size());
-        }
-
-        // Force proper ZIP closure and finalization
-        zip.finalize();
-    } catch (const std::exception &e) {
-        throw RuntimeError(std::string("CWS export failed: ") + e.what());
+    if (dims.resolution_x > UINT16_MAX || dims.resolution_y > UINT16_MAX ||
+        dims.display_width_mm <= 0 || dims.display_height_mm <= 0)
+        throw ExportError("CWS requires positive display dimensions and 16-bit resolution");
+    // A fixed non-numeric prefix avoids ambiguous layer suffixes, XML escaping,
+    // and archive path traversal through user-provided project names.
+    const std::string project = "sla_job";
+    const bool xml_cws = m_cfg.sla_archive_format.value == "cwsxml";
+    const bool rgb_cws = m_cfg.sla_archive_format.value == "cwsrgb";
+    const bool novamaker = m_cfg.sla_archive_format.value == "cwsnovamaker" || rgb_cws;
+    if(rgb_cws && dims.resolution_x%3)throw ExportError("RGB.CWS requires an LCD raster width divisible by three after orientation");
+    const auto &material = print.material_config();
+    const auto bottom = sla::bottom_layers(print, count);
+    auto parameter = [&](const char *key, bool is_bottom = false) {
+        return double(sla::motion_parameter(print, key, is_bottom));
+    };
+    auto milliseconds = [](double seconds) {
+        if (!std::isfinite(seconds) || seconds < 0 || seconds * 1000 > UINT32_MAX)
+            throw ExportError("CWS time is outside its millisecond range");
+        return uint32_t(std::lround(seconds * 1000));
+    };
+    const double thickness = print.default_object_config().layer_height.value;
+    std::ostringstream manifest, profile, commands;
+    manifest.imbue(std::locale::classic()); profile.imbue(std::locale::classic()); commands.imbue(std::locale::classic());
+    profile << std::setprecision(9); commands << std::setprecision(9);
+    manifest << "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<manifest FileVersion=\"1\"><Slices>\n";
+    for (size_t i = 0; i < count; ++i)
+        manifest << "<Slice><name>" << layer_name(project, uint32_t(i)) << "</name></Slice>\n";
+    manifest << "</Slices><SliceProfile><name>" << project << ".slicing</name></SliceProfile>"
+             << "<GCode><name>" << project << ".gcode</name></GCode></manifest>\n";
+    profile << "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<SliceBuildConfig FileVersion=\"2\">\n";
+    auto xml = [&](const char *name, auto value) { profile << '<' << name << '>' << value << "</" << name << ">\n"; };
+    xml("XResolution", dims.resolution_x); xml("YResolution", dims.resolution_y);
+    xml("DotsPermmX", dims.resolution_x / dims.display_width_mm);
+    xml("DotsPermmY", dims.resolution_y / dims.display_height_mm);
+    xml("BlankTime", milliseconds(parameter("wait_before_cure")));
+    xml("TopTime", milliseconds(parameter("wait_after_lift")));
+    xml("LiftDistance", parameter("lift_height")); xml("LiftFeedRate", parameter("lift_speed"));
+    xml("BottomLiftFeedRate", parameter("lift_speed", true)); xml("LiftRetractRate", parameter("retract_speed"));
+    xml("SettleTime", milliseconds(parameter("wait_before_cure"))); xml("Direction", "Bottom_Up");
+    profile << "<InkConfig><Name>Resin</Name><SliceHeight>" << thickness << "</SliceHeight><LayerTime>"
+            << milliseconds(material.exposure_time.value) << "</LayerTime><FirstLayerTime>"
+            << milliseconds(material.initial_exposure_time.value) << "</FirstLayerTime><NumberofBottomLayers>"
+            << bottom << "</NumberofBottomLayers></InkConfig><SelectedInk>Resin</SelectedInk>\n</SliceBuildConfig>\n";
+    commands << "; SLA-Slicer CWS exposure sequence\n";
+    auto header = [&](const char *name, auto value) { commands << ";(" << name << " = " << value << ")\n"; };
+    header("Pix per mm X", dims.resolution_x / dims.display_width_mm);
+    header("Pix per mm Y", dims.resolution_y / dims.display_height_mm);
+    header("X Resolution", dims.resolution_x); header("Y Resolution", dims.resolution_y);
+    header("Layer Thickness", thickness); header("Layer Time", milliseconds(material.exposure_time.value));
+    header("Bottom Layers Time", milliseconds(material.initial_exposure_time.value));
+    header("Number of Bottom Layers", bottom); header("Blanking Layer Time", milliseconds(parameter("wait_before_cure")));
+    header("Build Direction", "Bottom_Up"); header("Lift Distance", parameter("lift_height"));
+    header("Z Lift Feed Rate", parameter("lift_speed")); header("Z Bottom Lift Feed Rate", parameter("lift_speed", true));
+    header("Z Lift Retract Rate", parameter("retract_speed"));
+    header("Platform X Size", dims.display_width_mm); header("Platform Y Size", dims.display_height_mm);
+    header("Platform Z Size", m_cfg.max_print_height.value);
+    header("Layer Light PWM", parameter("light_pwm")); header("Bottom Layer Light PWM", parameter("light_pwm", true));
+    header("Flip X", "False"); header("Flip Y", "False"); // Masks already have the printer transform.
+    commands << ";Number of Slices = " << count << "\nG21\nG91\nM17\nM106 S0\n;<Slice> Blank\nG28 Z\nM400\n";
+    double previous_z = 0;
+    for (size_t i = 0; i < count; ++i) {
+        const bool is_bottom = i < bottom;
+        auto param = [&](const char *key) { return parameter(key, is_bottom); };
+        const double z = sla::layer_z(print, i), delta = z - previous_z;
+        if (!std::isfinite(z) || delta <= 0 || z > m_cfg.max_print_height.value)
+            throw ExportError("CWS layers require increasing Z within the printer height");
+        const double lift = param("lift_height"), lift2 = param("lift_height2"), retract2 = param("retract_height2");
+        if (lift < 0 || lift2 < 0 || retract2 < 0 || retract2 > lift + lift2)
+            throw ExportError("CWS retract distance exceeds lift distance");
+        auto move = [&](double distance, double speed) {
+            if (!distance) return 0.;
+            if (!std::isfinite(distance) || !std::isfinite(speed) || speed <= 0)
+                throw ExportError("CWS movement requires finite distance and positive speed");
+            commands << "G1 Z" << distance << " F" << speed << '\n';
+            return std::abs(distance) * 60 / speed;
+        };
+        // XML.CWS uses <Takes> for motion duration. NovaMaker uses a leading
+        // zero on <Delay>, which UVtools recognizes as synchronization.
+        auto sync = [&](double seconds) {
+            commands << (xml_cws ? ";<Takes> " : ";<Delay> 0")
+                     << milliseconds(seconds) << "\nM400\n";
+        };
+        commands << ";LAYER_START:" << i << "\n;PositionZ:" << z << "mm\n";
+        double lift_seconds = 0;
+        if (lift > 0) {
+            lift_seconds += move(delta + lift, param("lift_speed"));
+            lift_seconds += move(lift2, param("lift_speed2"));
+        } else lift_seconds = move(delta + lift2, param(lift2 > 0 ? "lift_speed2" : "lift_speed"));
+        sync(lift_seconds);
+        if (param("wait_after_lift") > 0)
+            commands << ";<Delay> " << milliseconds(param("wait_after_lift")) << "\n";
+        double retract_seconds = move(-(lift + lift2 - retract2), param("retract_speed"));
+        retract_seconds += move(-retract2, param("retract_speed2"));
+        sync(retract_seconds);
+        commands << ";<Delay> " << milliseconds(param("wait_before_cure")) << "\n;<Slice> " << i << "\n";
+        if (sla::layer_exposure(print, i) > 0 && param("light_pwm") > 0)
+            commands << "M106 S" << int(param("light_pwm")) << "\n;<Delay> "
+                     << milliseconds(sla::layer_exposure(print, i)) << "\nM106 S0\n";
+        commands << ";<Slice> Blank\n";
+        if (param("wait_after_cure") > 0)
+            commands << ";<Delay> " << milliseconds(param("wait_after_cure")) << "\n";
+        commands << ";LAYER_END:" << i << "\n";
+        previous_z = z;
     }
+    commands << "M106 S0\n;<Slice> Blank\nM400\nM18\n;<Completed>\n";
+    Zipper zip(fname, Zipper::FAST_COMPRESSION);
+    if (novamaker) {
+        if (bottom > UINT16_MAX) throw ExportError("NovaMaker bottom layer count exceeds its 16-bit field");
+        std::ostringstream settings;
+        settings.imbue(std::locale::classic()); settings << std::setprecision(9);
+        auto field = [&](const char *key, auto value) { settings << key << " = " << value << '\n'; };
+        settings << "# SLA-Slicer NovaMaker CWS\n# conf version 1.0\n";
+        field("xppm", dims.resolution_x/dims.display_width_mm);
+        field("yppm", dims.resolution_y/dims.display_height_mm);
+        field("xres", dims.resolution_x); field("yres", dims.resolution_y);
+        field("thickness", thickness); field("layers_num", count); field("head_layers_num", bottom);
+        field("layers_expo_ms", milliseconds(material.exposure_time.value));
+        field("head_layers_expo_ms", milliseconds(material.initial_exposure_time.value));
+        field("wait_before_expo_ms", milliseconds(parameter("wait_before_cure")));
+        field("lift_distance", parameter("lift_height")); field("lift_up_speed", parameter("lift_speed"));
+        field("lift_down_speed", parameter("retract_speed"));
+        field("lift_when_finished", 0); // The actual footer does not raise Z.
+        zip.add_entry("slice.conf"); zip << settings.str();
+    } else {
+        zip.add_entry("manifest.xml"); zip << manifest.str();
+        zip.add_entry(project + ".slicing"); zip << profile.str();
+    }
+    zip.add_entry(project + ".gcode"); zip << commands.str();
+    sla::EncodedRaster converted;
+    const sla::EncodedRaster *previous=nullptr;
+    for (size_t i = 0; i < count; ++i) {
+        if (xml_cws || rgb_cws) {
+            // Flat model sections often share consecutive masks. Reuse the
+            // conversion only after an exact compressed-byte comparison;
+            // per-layer Z/exposure/motion commands remain independent.
+            if(!previous || previous->size()!=m_layers[i].size() ||
+                std::memcmp(previous->data(),m_layers[i].data(),m_layers[i].size())!=0) {
+                png::ImageGreyscale mask;
+                if (!png::decode_png(png::ReadBuf{m_layers[i].data(),m_layers[i].size()},mask) ||
+                    mask.cols!=dims.resolution_x || mask.rows!=dims.resolution_y)
+                    throw ExportError("CWS mask does not match the printer resolution");
+                converted=rgb_cws?sla::encode_bgr_packed_mask(mask):sla::encode_rgba_mask(mask);
+            }
+            previous=&m_layers[i];
+            zip.add_entry(layer_name(project,uint32_t(i)),converted.data(),converted.size());
+        } else zip.add_entry(layer_name(project,uint32_t(i)),m_layers[i].data(),m_layers[i].size());
+    }
+    zip.finalize();
 }
 
 void UVToolsFDGArchive::export_print(const std::string     fname,
@@ -634,142 +591,99 @@ void UVToolsFDGArchive::export_print(const std::string     fname,
     out.close();
 }
 
-void UVToolsCXDLPArchive::export_print(const std::string     fname,
-                                       const SLAPrint       &print,
-                                       const ThumbnailsList &,
-                                       const std::string    &)
+void UVToolsCXDLPArchive::export_print(const std::string fname, const SLAPrint &print,
+                                       const ThumbnailsList &thumbnails, const std::string &)
 {
-    const auto &cfg = print.full_print_config();
-
-    const uint32_t layer_count = uint32_t(m_layers.size());
-    if (layer_count == 0)
-        throw RuntimeError("No rasterized layers available for CXDLP export");
-
-    const float layer_h = cfg_float_or(cfg, "layer_height", 0.05f);
-    const float exp     = cfg_float_or(cfg, "exposure_time", 2.5f);
-    const float bexp    = cfg_float_or(cfg, "initial_exposure_time", 20.0f);
-    const uint16_t bottom_count = uint16_t(std::max(0, cfg_int_or(cfg, "initial_layer_count", 6)));
-    const float lift_h  = cfg_float_or(cfg, "lift_distance", 5.0f);
-
-    // Get display dimensions from m_cfg (set at archive creation)
-    const auto dims = get_display_dimensions(m_cfg);
-    
-    // Get raw display dimensions from printer profile (no orientation swap)
-    double display_width_mm = m_cfg.display_width.getFloat();
-    double display_height_mm = m_cfg.display_height.getFloat();
-
-    std::ofstream out(fname, std::ios::binary | std::ios::trunc);
-    if (!out)
-        throw RuntimeError("Failed to open output file for CXDLP export");
-
-    write_u32_be(out, 9u);
-    out.write("CXSW3DV2", 8);
-    out.put('\0');
-    write_u16_be(out, 3u);
-    write_be_len_nt_string(out, "CL-60");
-    write_u16_be(out, uint16_t(layer_count));
-    write_u16_be(out, uint16_t(dims.resolution_x));
-    write_u16_be(out, uint16_t(dims.resolution_y));
-
-    std::array<uint8_t, 64> zero64{};
-    out.write(reinterpret_cast<const char *>(zero64.data()), std::streamsize(zero64.size()));
-
-    const size_t thumb_sizes[3] = {116u * 116u * 2u, 290u * 290u * 2u, 290u * 290u * 2u};
-    std::vector<uint8_t> zeros;
-    for (size_t ts : thumb_sizes) {
-        zeros.assign(ts, 0u);
-        out.write(reinterpret_cast<const char *>(zeros.data()), std::streamsize(zeros.size()));
-        out.put('\r');
-        out.put('\n');
+    const uint16_t version=m_cfg.sla_archive_format.value=="cxdlpv2"?2:3;
+    const auto dimensions=get_display_dimensions(m_cfg);
+    const auto &material=print.material_config();
+    const size_t count=m_layers.size();
+    if(!count || count>UINT16_MAX || count!=print.print_layers().size() ||
+       !dimensions.resolution_x || !dimensions.resolution_y || dimensions.resolution_x>16384 || dimensions.resolution_y>8192)
+        throw ExportError("CXDLP resolution or layer count exceeds the schema limits");
+    if(std::abs(dimensions.display_width_mm*100-std::round(dimensions.display_width_mm*100))>1e-6 ||
+       std::abs(dimensions.display_height_mm*1000-std::round(dimensions.display_height_mm*1000))>1e-6)
+        throw ExportError("CXDLP display width requires 2 decimal places and height 3");
+    sla::require_single_stage_motion(print,"CXDLP v2/v3",true);
+    if(material.sla_transition_layers.value!=0) throw ExportError("CXDLP v2/v3 cannot store transition exposures");
+    const double layer_height=print.default_object_config().layer_height.value;
+    for(size_t i=0;i<count;++i)
+        if(std::abs(double(print.print_layers()[i].level())*SCALING_FACTOR-(i+1)*layer_height)>1e-5)
+            throw ExportError("CXDLP v2/v3 requires uniform layer height including the first layer");
+    auto parameter=[&](const char *key,bool bottom=false){return double(sla::motion_parameter(print,key,bottom));};
+    auto integer=[](double value,const char *name,bool positive=false) {
+        if(!std::isfinite(value) || value<(positive?1.:0.) || value>UINT16_MAX || std::abs(value-std::round(value))>1e-6)
+            throw ExportError(std::string("CXDLP v2/v3 requires a ")+(positive?"positive ":"")+"16-bit integer for "+name);
+        return uint16_t(std::llround(value));
+    };
+    if(parameter("wait_before_cure")!=parameter("wait_before_cure",true))
+        throw ExportError("CXDLP v2/v3 requires the same bottom and normal wait before exposure");
+    const std::array<uint16_t,11> settings{
+        integer(material.exposure_time.value*10.,"exposure in tenths of a second",true),
+        integer(parameter("wait_before_cure"),"wait before exposure",true),
+        integer(material.initial_exposure_time.value,"bottom exposure in seconds",true),uint16_t(sla::bottom_layers(print,count)),
+        integer(parameter("lift_height",true),"bottom lift height",true),integer(parameter("lift_speed",true)/60.,"bottom lift speed in mm/s",true),
+        integer(parameter("lift_height"),"lift height",true),integer(parameter("lift_speed")/60.,"lift speed in mm/s",true),
+        integer(parameter("retract_speed")/60.,"retract speed in mm/s",true),
+        integer(parameter("light_pwm",true),"bottom PWM"),integer(parameter("light_pwm"),"PWM")};
+    auto be32=[](const void *data){const auto *p=static_cast<const uint8_t *>(data);return(uint32_t(p[0])<<24)|(uint32_t(p[1])<<16)|(uint32_t(p[2])<<8)|p[3];};
+    for(const auto &layer:m_layers) {
+        if(layer.size()<10 || layer.size()!=10+uint64_t(be32(static_cast<const uint8_t *>(layer.data())+4))*6)
+            throw ExportError("Incomplete CXDLP raster table");
     }
-
-    std::ostringstream wss;
-    wss << std::fixed << std::setprecision(2) << display_width_mm;
-    std::ostringstream hss;
-    hss << std::fixed << std::setprecision(2) << display_height_mm;
-    std::ostringstream lhss;
-    lhss << std::fixed << std::setprecision(3) << layer_h;
-
-    write_utf16be_string(out, wss.str());
-    write_utf16be_string(out, hss.str());
-    write_utf16be_string(out, lhss.str());
-
-    write_u16_be(out, clamp_cast<uint16_t>(exp * 10.0f, 1u, 60000u));
-    write_u16_be(out, 1u);
-    write_u16_be(out, clamp_cast<uint16_t>(bexp, 1u, 60000u));
-    write_u16_be(out, bottom_count);
-    write_u16_be(out, clamp_cast<uint16_t>(lift_h, 1u, 1000u));
-    write_u16_be(out, 1u);
-    write_u16_be(out, clamp_cast<uint16_t>(lift_h, 1u, 1000u));
-    write_u16_be(out, 1u);
-    write_u16_be(out, 1u);
-    write_u16_be(out, 255u);
-    write_u16_be(out, 255u);
-
-    const std::streamoff area_pos = out.tellp();
-    for (uint32_t i = 0; i < layer_count; ++i)
-        write_u32_be(out, 0u);
-    out.put('\r');
-    out.put('\n');
-
-    write_be_len_nt_string(out, "PrusaSlicer");
-    write_be_len_nt_string(out, "");
-    out.put(char(0));
-    write_u32_le(out, 600u);
-    write_u32_le(out, 300000u);
-    out.put(char(1));
-    write_u16_le(out, 0u);
-    out.put(char(0));
-    write_u16_le(out, 1000u);
-    out.put(char(1));
-    out.put(char(1));
-    out.put(char(255));
-    out.put(char(0));
-    out.put(char(2));
-    out.put('\r');
-    out.put('\n');
-
-    std::vector<uint32_t> areas(layer_count, 0);
-    for (uint32_t i = 0; i < layer_count; ++i) {
-        const auto &rst = m_layers[i];
-        const auto *data = reinterpret_cast<const uint8_t *>(rst.data());
-        if (rst.size() >= 4) {
-            areas[i] = (uint32_t(data[0]) << 24) | (uint32_t(data[1]) << 16) |
-                       (uint32_t(data[2]) << 8) | uint32_t(data[3]);
+    const auto &model=m_cfg.printer_model.value;
+    if(model.size()>255 || model.find('\0')!=std::string::npos ||
+       (model.compare(0,2,"CL")!=0 && model.compare(0,2,"CT")!=0))
+        throw ExportError("CXDLP requires the actual Creality printer model starting with CL or CT in the printer profile");
+    std::ofstream output(fname,std::ios::binary|std::ios::trunc);
+    if(!output) throw FileIOError("Cannot write CXDLP output");
+    write_u32_be(output,9);output.write("CXSW3DV2\0",9);write_u16_be(output,version);
+    write_be_len_nt_string(output,model);write_u16_be(output,uint16_t(count));
+    write_u16_be(output,uint16_t(dimensions.resolution_x));write_u16_be(output,uint16_t(dimensions.resolution_y));
+    const std::array<char,64> padding{};output.write(padding.data(),padding.size());
+    const auto valid=std::find_if(thumbnails.begin(),thumbnails.end(),[](const ThumbnailData &image){return image.is_valid() && image.width<=4096 && image.height<=4096;});
+    for(const unsigned size:{116,290,290}) {
+        const ThumbnailData *source=valid==thumbnails.end()?nullptr:&*valid;
+        size_t width=0,height=0,left=0,top=0;
+        if(source) {
+            const double scale=std::min(double(size)/source->width,double(size)/source->height);
+            width=std::max<size_t>(1,std::lround(source->width*scale));height=std::max<size_t>(1,std::lround(source->height*scale));
+            left=(size-width)/2;top=(size-height)/2;
         }
-        out.write(reinterpret_cast<const char *>(rst.data()), std::streamsize(rst.size()));
+        for(size_t y=0;y<size;++y) for(size_t x=0;x<size;++x) {
+            uint16_t rgb=0;
+            if(source && x>=left && x<left+width && y>=top && y<top+height) {
+                const size_t sx=std::min<size_t>(source->width-1,(x-left)*source->width/width);
+                const size_t sy=source->height-1-std::min<size_t>(source->height-1,(y-top)*source->height/height);
+                const auto *rgba=source->pixels.data()+4*(sy*source->width+sx);
+                const unsigned r=(unsigned(rgba[0])*rgba[3]+127)/255,g=(unsigned(rgba[1])*rgba[3]+127)/255,b=(unsigned(rgba[2])*rgba[3]+127)/255;
+                rgb=uint16_t(((r>>3)<<11)|((g>>2)<<5)|(b>>3));
+            }
+            write_u16_be(output,rgb);
+        }
+        output.write("\r\n",2);
     }
-
-    write_u32_be(out, 9u);
-    out.write("CXSW3DV2", 8);
-    out.put('\0');
-
-    out.close();
-    if (!out)
-        throw RuntimeError("Failed to close CXDLP output file before checksum calculation");
-
-    // Reopen file in read mode to calculate checksum
-    std::ifstream in_crc(fname, std::ios::binary);
-    if (!in_crc)
-        throw RuntimeError("Failed to reopen CXDLP output file for checksum");
-
-    in_crc.seekg(0, std::ios::end);
-    const std::streamoff file_size = in_crc.tellg();
-    const uint32_t checksum = crc32_uvtools_style(in_crc, file_size);
-    in_crc.close();
-
-    // Reopen in append mode to add checksum and update areas
-    out.open(fname, std::ios::binary | std::ios::app);
-    if (!out)
-        throw RuntimeError("Failed to reopen CXDLP output file for final updates");
-
-    write_u32_be(out, checksum);
-
-    out.seekp(area_pos, std::ios::beg);
-    for (uint32_t a : areas)
-        write_u32_be(out, a);
-
-    out.close();
+    auto numeric=[&](double value){std::ostringstream text;text.imbue(std::locale::classic());text<<std::setprecision(12)<<value;write_utf16be_string(output,text.str());};
+    numeric(dimensions.display_width_mm);numeric(dimensions.display_height_mm);numeric(layer_height);
+    for(const auto value:settings) write_u16_be(output,value);
+    // Complete the area table BEFORE calculating the checksum. Append-mode
+    // seekp cannot update it and used to leave a corrupt table after the CRC.
+    for(const auto &layer:m_layers) write_u32_be(output,be32(layer.data()));
+    output.write("\r\n",2);
+    if(version>=3) {
+    write_be_len_nt_string(output,"SLA-Slicer");write_be_len_nt_string(output,"");
+    output.put(0);write_u32_le(output,600);write_u32_le(output,300000);
+    output.put(0);write_u16_le(output,0);output.put(0);write_u16_le(output,1000);
+    output.put(1);output.put(1);output.put(char(255));output.put(0);output.put(2);output.write("\r\n",2);
+    }
+    for(const auto &layer:m_layers) output.write(static_cast<const char *>(layer.data()),layer.size());
+    write_u32_be(output,9);output.write("CXSW3DV2\0",9);
+    output.close();if(!output) throw FileIOError("Cannot finish CXDLP output before checksum");
+    std::ifstream input(fname,std::ios::binary);
+    if(!input) throw FileIOError("Cannot read CXDLP output for checksum");
+    const auto checksum=sla::creality_checksum(input,version);
+    input.close();output.open(fname,std::ios::binary|std::ios::app);write_u32_be(output,checksum);
+    output.close();if(!output) throw FileIOError("Cannot append CXDLP checksum");
 }
 
 // ============================================================================
@@ -786,13 +700,140 @@ sla::RasterEncoder UVToolsZIPArchiveBase::get_encoder() const
     return sla::PNGRasterEncoder{};
 }
 
+void UVToolsChituboxZIPArchive::export_print(const std::string fname, const SLAPrint &print,
+                                           const ThumbnailsList &thumbnails, const std::string &)
+{
+    const auto screen=get_display_dimensions(m_cfg);
+    const size_t count=m_layers.size(), bottom=sla::bottom_layers(print,count);
+    if(!count || count!=print.print_layers().size() || bottom>UINT16_MAX)
+        throw ExportError("Chitubox ZIP layer count is outside the schema limits");
+    const auto &material=print.material_config();
+    auto parameter=[&](const char *key,bool base=false){return double(sla::motion_parameter(print,key,base));};
+    auto milliseconds=[](double seconds){
+        if(!std::isfinite(seconds) || seconds<0 || seconds*1000>UINT32_MAX)
+            throw ExportError("Chitubox ZIP delay exceeds the millisecond range");
+        return uint32_t(std::llround(seconds*1000));
+    };
+    std::ostringstream sequence; sequence.imbue(std::locale::classic()); sequence<<std::setprecision(12);
+    auto header=[&](const char *name,const auto &value){sequence<<';'<<name<<':'<<value<<'\n';};
+    const auto &stats=print.print_statistics();
+    const double volume=(stats.objects_used_material+stats.support_used_material)/1000.;
+    header("fileName","sla_job"); header("machineType","SLA-Slicer");
+    header("estimatedPrintTime",sla::lcd_print_time(print)); header("volume",volume);
+    header("weight",volume*material.material_density.value);
+    header("price",material.bottle_volume.value>0?volume*material.bottle_cost.value/material.bottle_volume.value:0.);
+    header("layerHeight",print.default_object_config().layer_height.value);
+    header("resolutionX",screen.resolution_x); header("resolutionY",screen.resolution_y);
+    header("machineX",screen.display_width_mm); header("machineY",screen.display_height_mm);
+    header("machineZ",m_cfg.max_print_height.value); header("projectType","Normal"); header("mirror",0);
+    header("normalExposureTime",material.exposure_time.value);
+    header("bottomLayExposureTime",material.initial_exposure_time.value); header("bottomLayerExposureTime",material.initial_exposure_time.value);
+    header("bottomLayCount",bottom); header("bottomLayerCount",bottom); header("totalLayer",count);
+    header("normalDropSpeed",parameter("retract_speed"));
+    header("normalLayerLiftSpeed",parameter("lift_speed")); header("normalLayerLiftHeight",parameter("lift_height"));
+    header("bottomLayerLiftSpeed",parameter("lift_speed",true)); header("bottomLayerLiftHeight",parameter("lift_height",true));
+    header("bottomLightOffTime",parameter("wait_before_cure",true)); header("lightOffTime",parameter("wait_before_cure"));
+    header("bottomPWMLight",int(parameter("light_pwm",true))); header("PWMLight",int(parameter("light_pwm")));
+    header("antiAliasLevel",1);
+    sequence<<"G21\nG90\nM106 S0\nM17\nG28 Z0\n";
+    double previous_z=0.;
+    for(size_t i=0;i<count;++i) {
+        const double z=double(print.print_layers()[i].level())*SCALING_FACTOR;
+        if(!std::isfinite(z) || z<=previous_z || z>m_cfg.max_print_height.value)
+            throw ExportError("Chitubox ZIP requires increasing layer Z within the printer height");
+        auto param=[&](const char *key){return parameter(key,i<bottom);};
+        const double lift=param("lift_height"), lift2=param("lift_height2"), retract2=param("retract_height2");
+        if(lift<0 || lift2<0 || retract2<0 || retract2>lift+lift2)
+            throw ExportError("Chitubox ZIP retract distance exceeds lift distance");
+        sequence<<";LAYER_START:"<<i<<"\n;PositionZ:"<<z<<"mm\nM6054 \""<<i+1<<".png\"\n";
+        double position=previous_z;
+        auto move=[&](double target,double speed){
+            if(target==position) return;
+            if(!std::isfinite(target) || !std::isfinite(speed) || speed<=0.)
+                throw ExportError("Chitubox ZIP movement requires finite positions and positive speeds");
+            sequence<<"G0 Z"<<target<<" F"<<speed<<'\n'; position=target;
+        };
+        if(lift>0) move(z+lift,param("lift_speed"));
+        if(lift2>0) move(z+lift+lift2,param("lift_speed2"));
+        if(lift+lift2==0.) move(z,param("lift_speed"));
+        // Leading-zero delays are UVtools' movement synchronization markers.
+        // G0 completes before the explicit exposure/wait intervals below.
+        sequence<<"G4 P00\n";
+        if(lift+lift2>0. && param("wait_after_lift")>0.) sequence<<"G4 P"<<milliseconds(param("wait_after_lift"))<<'\n';
+        move(z+retract2,param("retract_speed"));
+        move(z,param("retract_speed2"));
+        sequence<<"G4 P00\nG4 P"<<milliseconds(param("wait_before_cure"))<<'\n';
+        const double exposure=sla::layer_exposure(print,i);
+        const int pwm=int(param("light_pwm"));
+        if(exposure>0. && pwm>0)
+            sequence<<"M106 S"<<pwm<<"\nG4 P"<<milliseconds(exposure)<<"\nM106 S0\n";
+        if(param("wait_after_cure")>0.) sequence<<"G4 P"<<milliseconds(param("wait_after_cure"))<<'\n';
+        sequence<<";LAYER_END:"<<i<<'\n'; previous_z=z;
+    }
+    sequence<<"M106 S0\nM18\n";
+    Zipper zip(fname);
+    zip.add_entry("run.gcode"); zip<<sequence.str();
+    for(size_t i=0;i<count;++i) zip.add_entry(std::to_string(i+1)+".png",m_layers[i].data(),m_layers[i].size());
+    size_t preview=0;
+    for(const auto &thumbnail:thumbnails) {
+        if(!thumbnail.is_valid() || thumbnail.width>2048 || thumbnail.height>2048) continue;
+        std::vector<uint8_t> pixels(thumbnail.pixels.size());
+        const size_t row_bytes=size_t(thumbnail.width)*4;
+        for(size_t row=0;row<thumbnail.height;++row)
+            std::copy_n(thumbnail.pixels.data()+(thumbnail.height-row-1)*row_bytes,row_bytes,pixels.data()+row*row_bytes);
+        const auto encoded=sla::PNGRasterEncoder{}(pixels.data(),thumbnail.width,thumbnail.height,4);
+        if(!encoded.size()) throw ExportError("Cannot encode Chitubox ZIP preview");
+        zip.add_entry(preview?"preview_cropping.png":"preview.png",encoded.data(),encoded.size());
+        if(++preview==2) break;
+    }
+    zip.finalize();
+}
+
 // GenericZIP - ZIP with manifest.uvtools
 void UVToolsGenericZIPArchive::export_print(const std::string     fname,
                                             const SLAPrint       &print,
-                                            const ThumbnailsList &,
+                                            const ThumbnailsList &thumbnails,
                                             const std::string    &projectname)
 {
-    throw RuntimeError("GenericZIP format not yet fully implemented");
+    // UVtools GenericZIP intentionally stores images and screen geometry.
+    // Exposure and movement belong to the receiving printer, not this schema.
+    const auto dimensions = get_display_dimensions(m_cfg);
+    const double height = print.default_object_config().layer_height.value;
+    if (m_layers.empty() || m_layers.size() != print.print_layers().size() ||
+        dimensions.resolution_x > UINT16_MAX || dimensions.resolution_y > UINT16_MAX ||
+        !std::isfinite(height) || height <= 0.)
+        throw ExportError("Generic ZIP requires masks, positive layer height and 16-bit screen resolution");
+    for (size_t i = 0; i < m_layers.size(); ++i)
+        if (std::abs(double(print.print_layers()[i].level())*SCALING_FACTOR - double(i+1)*height) > 1e-5)
+            throw ExportError("Generic ZIP cannot store a different first layer height or variable Z positions");
+    std::ostringstream manifest;
+    manifest.imbue(std::locale::classic()); manifest << std::setprecision(12);
+    manifest << "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<Manifest>\n"
+        << "<CreatedBy>SLA-Slicer</CreatedBy><UpdatedBy>SLA-Slicer</UpdatedBy>\n"
+        << "<LayerHeight>" << height << "</LayerHeight>\n"
+        << "<ResolutionX>" << dimensions.resolution_x << "</ResolutionX>\n"
+        << "<ResolutionY>" << dimensions.resolution_y << "</ResolutionY>\n"
+        << "<DisplayWidth>" << dimensions.display_width_mm << "</DisplayWidth>\n"
+        << "<DisplayHeight>" << dimensions.display_height_mm << "</DisplayHeight>\n"
+        << "<MachineZ>" << m_cfg.max_print_height.value << "</MachineZ>\n</Manifest>\n";
+    Zipper zip(fname);
+    for (size_t i = 0; i < m_layers.size(); ++i) {
+        std::ostringstream name; name << std::setw(8) << std::setfill('0') << i+1 << ".png";
+        zip.add_entry(name.str(), m_layers[i].data(), m_layers[i].size());
+    }
+    size_t preview = 0;
+    for (const auto &thumbnail : thumbnails) {
+        if (!thumbnail.is_valid() || thumbnail.width > 2048 || thumbnail.height > 2048) continue;
+        std::vector<uint8_t> top_down(thumbnail.pixels.size());
+        const size_t row_bytes = size_t(thumbnail.width) * 4;
+        for (size_t row = 0; row < thumbnail.height; ++row)
+            std::copy_n(thumbnail.pixels.data() + (thumbnail.height-row-1)*row_bytes, row_bytes, top_down.data()+row*row_bytes);
+        const auto png = sla::PNGRasterEncoder{}(top_down.data(), thumbnail.width, thumbnail.height, 4);
+        if (!png.size()) throw ExportError("Cannot encode Generic ZIP preview");
+        zip.add_entry(preview == 0 ? "preview.png" : "preview_cropping.png", png.data(), png.size());
+        if (++preview == 2) break;
+    }
+    zip.add_entry("manifest.uvtools"); zip << manifest.str(); zip.finalize();
 }
 
 // ZCode - ZIP with XML task/profile structure
@@ -849,13 +890,44 @@ void UVToolsUVJArchive::export_print(const std::string     fname,
     throw RuntimeError("UVJ format not yet fully implemented");
 }
 
-// VDA (Structo) - ZIP with XML root structure
+// Voxeldance Additive ZIP, following UVtools VDARoot.
 void UVToolsVDAArchive::export_print(const std::string     fname,
                                      const SLAPrint       &print,
                                      const ThumbnailsList &,
                                      const std::string    &projectname)
 {
-    throw RuntimeError("VDA format not yet fully implemented");
+    const auto dimensions = get_display_dimensions(m_cfg);
+    const double height = print.default_object_config().layer_height.value;
+    if (m_layers.empty() || m_layers.size() != print.print_layers().size() ||
+        dimensions.resolution_x > UINT16_MAX || dimensions.resolution_y > UINT16_MAX ||
+        !std::isfinite(height) || height <= 0.)
+        throw ExportError("Voxeldance Additive ZIP requires masks, positive layer height and 16-bit resolution");
+    for (size_t i = 0; i < m_layers.size(); ++i)
+        if (std::abs(double(print.print_layers()[i].level())*SCALING_FACTOR - double(i+1)*height) > 1e-5)
+            throw ExportError("Voxeldance Additive ZIP requires uniform Z for UVtools compatibility");
+    auto layer_filename = [](size_t index) {
+        std::ostringstream name; name << std::setw(4) << std::setfill('0') << index+1 << ".png"; return name.str();
+    };
+    std::ostringstream manifest;
+    manifest.imbue(std::locale::classic()); manifest << std::setprecision(12);
+    manifest << "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<root>\n"
+        << "<FileInfo><Version><Major>1</Major><Minor>2</Minor></Version>"
+        << "<Written><By ApplicationName=\"SLA-Slicer\" ApplicationVersion=\"1\"/></Written></FileInfo>\n"
+        << "<Slices><Count>1</Count><thickness>" << height << "</thickness>"
+        << "<startHeight>" << height << "</startHeight><endHeight>"
+        << double(print.print_layers().back().level())*SCALING_FACTOR << "</endHeight><layersCount>" << m_layers.size() << "</layersCount></Slices>\n"
+        << "<Machines><FileType>ZIP File</FileType><Resolution>" << dimensions.resolution_x << '*' << dimensions.resolution_y << "P</Resolution>"
+        << "<PixelXSize>" << dimensions.display_width_mm/dimensions.resolution_x*1000. << "um</PixelXSize>"
+        << "<PixelYSize>" << dimensions.display_height_mm/dimensions.resolution_y*1000. << "um</PixelYSize>"
+        << "<Anti-Aliasing>1</Anti-Aliasing><XLength>" << dimensions.display_width_mm << "</XLength>"
+        << "<YWidth>" << dimensions.display_height_mm << "</YWidth><ZHeight>" << m_cfg.max_print_height.value << "</ZHeight></Machines>\n<Layers>\n";
+    for (size_t i = 0; i < m_layers.size(); ++i)
+        manifest << "<VDALayer><Index>" << i << "</Index><zvalue>" << double(print.print_layers()[i].level())*SCALING_FACTOR
+                 << "</zvalue><filename>" << layer_filename(i) << "</filename></VDALayer>\n";
+    manifest << "</Layers></root>\n";
+    Zipper zip(fname);
+    for (size_t i = 0; i < m_layers.size(); ++i) zip.add_entry(layer_filename(i), m_layers[i].data(), m_layers[i].size());
+    zip.add_entry("sla_job.xml"); zip << manifest.str(); zip.finalize();
 }
 
 // VDT - ZIP with manifest.json + 10 preview variants
@@ -900,12 +972,12 @@ void UVToolsChituboxArchive::export_print(const std::string     fname,
                                           const ThumbnailsList &,
                                           const std::string    &)
 {
+    sla::require_single_stage_motion(print, "CTB v2", true);
     const auto  &cfg          = print.full_print_config();
     const float layer_h       = cfg_float_or(cfg, "layer_height", 0.05f);
-    const float initial_h     = cfg_float_or(cfg, "initial_layer_height", layer_h);
     const float exp           = cfg_float_or(cfg, "exposure_time", 2.5f);
     const float initial_exp   = cfg_float_or(cfg, "initial_exposure_time", 20.0f);
-    const auto   bottom_count = uint32_t(std::max(0, cfg_int_or(cfg, "initial_layer_count", 6)));
+    const auto   bottom_count = uint32_t(sla::bottom_layers(print, m_layers.size()));
 
     const uint32_t layer_count = uint32_t(m_layers.size());
     if (layer_count == 0)
@@ -915,15 +987,16 @@ void UVToolsChituboxArchive::export_print(const std::string     fname,
     const auto dims = get_display_dimensions(m_cfg);
 
     // Get printer bed dimensions (full dimensions, not just usable display area)
-    double bed_size_x = 68.04;  // Default, can be configured
-    double bed_size_y = 120.96; // Default, can be configured
-    double bed_size_z = 150.0;  // Default, can be configured
+    double bed_size_x = dims.display_width_mm;
+    double bed_size_y = dims.display_height_mm;
+    double bed_size_z = m_cfg.max_print_height.value;
 
     // CTB Header: 112 bytes (fields 0-28: 24 uint/float + 2 ushort + 4 uint)
     const uint32_t header_size = 112u;
     // LayerDef: 36 bytes (9 fields: 3 float + 6 uint = 12 + 24 = 36)
     const uint32_t layer_def_size = 36u;
-    const uint32_t layer_defs_offset = header_size;
+    const uint32_t print_parameters_size = 60u;
+    const uint32_t layer_defs_offset = header_size + print_parameters_size;
     const uint32_t layer_data_offset = layer_defs_offset + layer_def_size * layer_count;
 
     std::vector<uint32_t> data_offsets(layer_count);
@@ -934,8 +1007,7 @@ void UVToolsChituboxArchive::export_print(const std::string     fname,
     }
 
     // Calculate total model height
-    float total_height = initial_h * float(std::min(layer_count, bottom_count)) + 
-                        layer_h * float(std::max(0u, layer_count - bottom_count));
+    const float total_height = sla::layer_z(print, layer_count-1);
 
     std::ofstream out(fname, std::ios::binary | std::ios::trunc);
     if (!out)
@@ -944,7 +1016,7 @@ void UVToolsChituboxArchive::export_print(const std::string     fname,
     // Write header (112 bytes) following exact UVtools ChituboxFile.cs field order:
     // FieldOrder 0-28 in precise sequence
     write_u32_le(out, m_magic);                          // 0: Magic
-    write_u32_le(out, 5u);                               // 1: Version (5 = latest)
+    write_u32_le(out, 2u);                               // 1: This writer emits v2, without v3+ extension blocks
     write_f32_le(out, float(bed_size_x));                // 2: BedSizeX (mm)
     write_f32_le(out, float(bed_size_y));                // 3: BedSizeY (mm)
     write_f32_le(out, float(bed_size_z));                // 4: BedSizeZ (mm)
@@ -962,26 +1034,42 @@ void UVToolsChituboxArchive::export_print(const std::string     fname,
     write_u32_le(out, layer_defs_offset);                // 16: LayersDefinitionOffsetAddress
     write_u32_le(out, layer_count);                      // 17: LayerCount
     write_u32_le(out, 0u);                               // 18: PreviewSmallOffsetAddress (0 = no preview)
-    write_u32_le(out, 0u);                               // 19: PrintTime (estimated, 0 = unknown)
+    write_u32_le(out, sla::lcd_print_time(print));        // 19: Estimated print time
     write_u32_le(out, 0u);                               // 20: ProjectorType (0 = normal, 1 = LCD mirrored)
-    write_u32_le(out, 0u);                               // 21: PrintParametersOffsetAddress
-    write_u32_le(out, 0u);                               // 22: PrintParametersSize
+    write_u32_le(out, header_size);                      // 21: PrintParametersOffsetAddress
+    write_u32_le(out, print_parameters_size);            // 22: PrintParametersSize
     write_u32_le(out, 1u);                               // 23: AntiAliasLevel (1 = no AA)
-    write_u16_le(out, 255u);                             // 24: LightPWM (ushort, not uint!)
-    write_u16_le(out, 255u);                             // 25: BottomLightPWM (ushort, not uint!)
+    write_u16_le(out, uint16_t(sla::motion_parameter(print, "light_pwm", false)));
+    write_u16_le(out, uint16_t(sla::motion_parameter(print, "light_pwm", true)));
     write_u32_le(out, 0u);                               // 26: EncryptionKey (0 = no encryption)
     write_u32_le(out, 0u);                               // 27: SlicerOffset (for extended metadata)
     write_u32_le(out, 0u);                               // 28: SlicerSize
 
+    // UVtools ChituboxFile.PrintParameters, fields 0..14 (v2).
+    for (const bool bottom : {true, false}) {
+        write_f32_le(out, sla::motion_parameter(print, "lift_height", bottom));
+        write_f32_le(out, sla::motion_parameter(print, "lift_speed", bottom));
+    }
+    write_f32_le(out, sla::motion_parameter(print, "retract_speed", false));
+    const auto &stats = print.print_statistics();
+    const auto &material = print.material_config();
+    const float volume = float((stats.objects_used_material + stats.support_used_material) / 1000.);
+    write_f32_le(out, volume);
+    write_f32_le(out, float(volume * material.material_density.value));
+    write_f32_le(out, material.bottle_volume.value > 0 ? float(volume * material.bottle_cost.value / material.bottle_volume.value) : 0.f);
+    write_f32_le(out, sla::motion_parameter(print, "wait_before_cure", true));
+    write_f32_le(out, sla::motion_parameter(print, "wait_before_cure", false));
+    write_u32_le(out, bottom_count);
+    for (unsigned i = 0; i < 4; ++i) write_u32_le(out, 0);
+
     // Write layer definition table (36 bytes per layer = 9 fields)
     for (uint32_t i = 0; i < layer_count; ++i) {
-        const float z = (i < bottom_count) ? initial_h * float(i + 1) : 
-                        (initial_h * float(bottom_count) + layer_h * float(i - bottom_count + 1));
-        const float lexp = (i < bottom_count) ? initial_exp : exp;
+        const float z = sla::layer_z(print, i);
+        const float lexp = sla::layer_exposure(print, i);
 
         write_f32_le(out, z);                            // 0: PositionZ
         write_f32_le(out, lexp);                         // 1: ExposureTime
-        write_f32_le(out, 0.0f);                         // 2: LightOffSeconds
+        write_f32_le(out, sla::motion_parameter(print, "wait_before_cure", i < bottom_count));
         write_u32_le(out, data_offsets[i]);              // 3: DataAddress (layer RLE offset)
         write_u32_le(out, uint32_t(m_layers[i].size())); // 4: DataSize (layer RLE size)
         write_u32_le(out, 0u);                           // 5: PageNumber
@@ -994,6 +1082,8 @@ void UVToolsChituboxArchive::export_print(const std::string     fname,
     for (uint32_t i = 0; i < layer_count; ++i)
         out.write(reinterpret_cast<const char *>(m_layers[i].data()), std::streamsize(m_layers[i].size()));
 
+    out.flush();
+    if (!out) throw RuntimeError("Cannot finish writing CTB data");
     out.close();
 }
 
@@ -1138,50 +1228,6 @@ void UVToolsLGSArchive::export_print(const std::string     fname,
     out.close();
 }
 
-// OSF (Vlare) - Big-endian UInt24 packed pixels
-sla::RasterEncoder UVToolsOSFArchive::get_encoder() const
-{
-    return OSFRasterEncoder{};
-}
-
-void UVToolsOSFArchive::export_print(const std::string     fname,
-                                     const SLAPrint       &print,
-                                     const ThumbnailsList &,
-                                     const std::string    &)
-{
-    const auto  &cfg      = print.full_print_config();
-    const float layer_h   = cfg_float_or(cfg, "layer_height", 0.05f);
-    // Get orientation-aware display dimensions from m_cfg (set at archive creation)
-    const auto dims       = get_display_dimensions(m_cfg);
-    const auto layer_count = uint32_t(m_layers.size());
-
-    // Get display dimensions from printer profile (actual bed size, no orientation swap)
-    double display_width_mm = m_cfg.display_width.getFloat();
-    double display_height_mm = m_cfg.display_height.getFloat();
-
-    std::ofstream out(fname, std::ios::binary | std::ios::trunc);
-    if (!out)
-        throw RuntimeError("Failed to open output file for OSF export");
-
-    // Write OSF header
-    out.write("OSF!", 4);
-    write_u32_be(out, 1u);
-    write_u32_be(out, layer_count);
-    write_f32_le(out, float(display_width_mm));
-    write_f32_le(out, float(display_height_mm));
-    write_u32_le(out, dims.resolution_x);
-    write_u32_le(out, dims.resolution_y);
-    write_f32_le(out, layer_h);
-    write_f32_le(out, cfg_float_or(cfg, "exposure_time", 2.5f));
-
-    // Write layer data (UInt24 big-endian pixels)
-    for (const auto &layer : m_layers) {
-        out.write(reinterpret_cast<const char *>(layer.data()), std::streamsize(layer.size()));
-    }
-
-    out.close();
-}
-
 // GOO RLE Encoder - encodes grayscale image to RLE compression
 // Based on UVtools format
 std::vector<uint8_t> encode_goo_rle(const uint8_t* src, size_t pixel_count)
@@ -1281,18 +1327,12 @@ std::vector<uint8_t> encode_goo_rle(const uint8_t* src, size_t pixel_count)
 // GOO (Elegoo) - Grayscale with RLE compression
 sla::RasterEncoder UVToolsGOOArchive::get_encoder() const
 {
-    // Return a grayscale encoder - non-RLE version for the raster
-    // RLE compression happens during export_print
+    // Keep compressed layers rather than allocating resolution * layer_count
+    // bytes until export. The native stream can be written without re-encoding.
     return [](const void *ptr, size_t w, size_t h, size_t num_components) {
+        if (!w || !h || num_components != 1) throw RuntimeError("GOO requires a nonempty grayscale raster");
         const uint8_t *src = reinterpret_cast<const uint8_t *>(ptr);
-        std::vector<uint8_t> out;
-        out.reserve(w * h);
-
-        for (size_t i = 0; i < w * h * num_components; i += num_components) {
-            out.push_back(src[i]);
-        }
-
-        return sla::EncodedRaster(std::move(out), "goo");
+        return sla::EncodedRaster(encode_goo_rle(src, w * h), "goo");
     };
 }
 
@@ -1309,8 +1349,11 @@ void UVToolsGOOArchive::export_print(const std::string     fname,
     const auto dims       = get_display_dimensions(m_cfg);
     const auto layer_count = uint32_t(m_layers.size());
 
-    double display_width_mm = m_cfg.display_width.getFloat();
-    double display_height_mm = m_cfg.display_height.getFloat();
+    if (!layer_count) throw RuntimeError("No rasterized layers available for GOO export");
+    const auto bottom_count = uint32_t(sla::bottom_layers(print, layer_count));
+
+    double display_width_mm = dims.display_width_mm;
+    double display_height_mm = dims.display_height_mm;
 
     std::ofstream out(fname, std::ios::binary | std::ios::trunc);
     if (!out)
@@ -1325,7 +1368,7 @@ void UVToolsGOOArchive::export_print(const std::string     fname,
     std::string timestamp(timestamp_buf);
 
     // Get machine name from config, default to "Anycubic Photon Mono"
-    std::string machine_name = m_cfg.printer_model.value.empty() ? "Anycubic Photon Mono" : m_cfg.printer_model.value;
+    std::string machine_name = m_cfg.printer_model.value.substr(0, 31);
 
     // ============ WRITE HEADER ============
     out.write("V3.0", 4);
@@ -1337,12 +1380,12 @@ void UVToolsGOOArchive::export_print(const std::string     fname,
     out.put(0x00);
     
     // SoftwareName (32 bytes) - use "UVtools" for compatibility
-    std::string software = "UVtools";
+    std::string software = "SLA-Slicer";
     out.write(software.c_str(), software.length());
     out.write(std::string(32 - software.length(), '\0').c_str(), 32 - software.length());
     
     // SoftwareVersion (24 bytes)
-    std::string version = "5.2.1";
+    std::string version = "1.0";
     out.write(version.c_str(), version.length());
     out.write(std::string(24 - version.length(), '\0').c_str(), 24 - version.length());
     
@@ -1395,7 +1438,7 @@ void UVToolsGOOArchive::export_print(const std::string     fname,
     // Display dimensions and machine Z
     write_f32_be(out, float(display_width_mm));
     write_f32_be(out, float(display_height_mm));
-    write_f32_be(out, 170.0f);  // MachineZ
+    write_f32_be(out, float(m_cfg.max_print_height.value));
     write_f32_be(out, layer_h);
     
     // Exposure and delay
@@ -1404,49 +1447,52 @@ void UVToolsGOOArchive::export_print(const std::string     fname,
     write_f32_be(out, lightoff);
     
     // Timing parameters
-    write_f32_be(out, 0.5f);  // BottomWaitTimeAfterCure
-    write_f32_be(out, 0.5f);  // BottomWaitTimeAfterLift
-    write_f32_be(out, 1.0f);  // BottomWaitTimeBeforeCure
-    write_f32_be(out, 0.5f);  // WaitTimeAfterCure
-    write_f32_be(out, 0.5f);  // WaitTimeAfterLift
-    write_f32_be(out, 1.0f);  // WaitTimeBeforeCure
+    write_f32_be(out, sla::motion_parameter(print, "wait_after_cure", true));
+    write_f32_be(out, sla::motion_parameter(print, "wait_after_lift", true));
+    write_f32_be(out, sla::motion_parameter(print, "wait_before_cure", true));
+    write_f32_be(out, sla::motion_parameter(print, "wait_after_cure", false));
+    write_f32_be(out, sla::motion_parameter(print, "wait_after_lift", false));
+    write_f32_be(out, sla::motion_parameter(print, "wait_before_cure", false));
     write_f32_be(out, init_exp);  // BottomExposureTime
-    write_u32_be(out, 1u);  // BottomLayerCount
+    write_u32_be(out, bottom_count);
     
     // Movement parameters
-    write_f32_be(out, 5.0f);   // BottomLiftHeight
-    write_f32_be(out, 50.0f);  // BottomLiftSpeed
-    write_f32_be(out, 5.0f);   // LiftHeight
-    write_f32_be(out, 100.0f); // LiftSpeed
-    write_f32_be(out, 3.0f);   // BottomRetractHeight
-    write_f32_be(out, 30.0f);  // BottomRetractSpeed
-    write_f32_be(out, 3.0f);   // RetractHeight
-    write_f32_be(out, 60.0f);  // RetractSpeed
+    write_f32_be(out, sla::motion_parameter(print, "lift_height", true));
+    write_f32_be(out, sla::motion_parameter(print, "lift_speed", true));
+    write_f32_be(out, sla::motion_parameter(print, "lift_height", false));
+    write_f32_be(out, sla::motion_parameter(print, "lift_speed", false));
+    write_f32_be(out, sla::motion_parameter(print, "lift_height", true) + sla::motion_parameter(print, "lift_height2", true) - sla::motion_parameter(print, "retract_height2", true));
+    write_f32_be(out, sla::motion_parameter(print, "retract_speed", true));
+    write_f32_be(out, sla::motion_parameter(print, "lift_height", false) + sla::motion_parameter(print, "lift_height2", false) - sla::motion_parameter(print, "retract_height2", false));
+    write_f32_be(out, sla::motion_parameter(print, "retract_speed", false));
     
     // Secondary movement parameters
-    write_f32_be(out, 0.0f);
-    write_f32_be(out, 0.0f);
-    write_f32_be(out, 0.0f);
-    write_f32_be(out, 0.0f);
-    write_f32_be(out, 0.0f);
-    write_f32_be(out, 0.0f);
-    write_f32_be(out, 0.0f);
-    write_f32_be(out, 0.0f);
+    write_f32_be(out, sla::motion_parameter(print, "lift_height2", true));
+    write_f32_be(out, sla::motion_parameter(print, "lift_speed2", true));
+    write_f32_be(out, sla::motion_parameter(print, "lift_height2", false));
+    write_f32_be(out, sla::motion_parameter(print, "lift_speed2", false));
+    write_f32_be(out, sla::motion_parameter(print, "retract_height2", true));
+    write_f32_be(out, sla::motion_parameter(print, "retract_speed2", true));
+    write_f32_be(out, sla::motion_parameter(print, "retract_height2", false));
+    write_f32_be(out, sla::motion_parameter(print, "retract_speed2", false));
     
     // PWM values
-    write_u16_be(out, 200u);  // BottomLightPWM
-    write_u16_be(out, 250u);  // LightPWM
+    write_u16_be(out, uint16_t(sla::motion_parameter(print, "light_pwm", true)));
+    write_u16_be(out, uint16_t(sla::motion_parameter(print, "light_pwm", false)));
     
     // Per-layer settings
-    out.put(0);
+    out.put(1);
     
     // PrintTime
-    write_u32_be(out, 0u);
+    write_u32_be(out, sla::lcd_print_time(print));
     
     // Volume/Material
-    write_f32_be(out, 0.0f);
-    write_f32_be(out, 0.0f);
-    write_f32_be(out, 0.0f);
+    const auto &stats = print.print_statistics();
+    const auto &material = print.material_config();
+    const float volume = float((stats.objects_used_material + stats.support_used_material) / 1000.);
+    write_f32_be(out, volume);
+    write_f32_be(out, float(volume * material.material_density.value));
+    write_f32_be(out, material.bottle_volume.value > 0 ? float(volume * material.bottle_cost.value / material.bottle_volume.value) : 0.f);
     
     // Currency symbol
     out.write("$", 1);
@@ -1461,44 +1507,35 @@ void UVToolsGOOArchive::export_print(const std::string     fname,
     out.put(1);
     
     // TransitionLayerCount
-    write_u16_be(out, 0u);
+    write_u16_be(out, uint16_t(std::min(65535, std::max(0, print.material_config().sla_transition_layers.value))));
     
     // ============ WRITE LAYERS ============
-    for (const auto &layer_data : m_layers) {
+    for (size_t i = 0; i < m_layers.size(); ++i) {
+        const auto &layer_data = m_layers[i];
+        const bool is_bottom = i < bottom_count;
         // Write LayerDef metadata
         write_u16_be(out, 0u);  // Pause
         write_f32_be(out, 0.0f);  // PausePositionZ
-        write_f32_be(out, 0.0f);  // PositionZ
-        write_f32_be(out, exp);   // ExposureTime
+        write_f32_be(out, sla::layer_z(print, i));
+        write_f32_be(out, sla::layer_exposure(print, i));
         write_f32_be(out, lightoff);  // LightOffDelay
-        write_f32_be(out, 0.5f);  // WaitTimeAfterCure
-        write_f32_be(out, 0.5f);  // WaitTimeAfterLift
-        write_f32_be(out, 1.0f);  // WaitTimeBeforeCure
-        write_f32_be(out, 5.0f);  // LiftHeight
-        write_f32_be(out, 100.0f);  // LiftSpeed
-        write_f32_be(out, 0.0f);  // LiftHeight2
-        write_f32_be(out, 0.0f);  // LiftSpeed2
-        write_f32_be(out, 3.0f);  // RetractHeight
-        write_f32_be(out, 60.0f);  // RetractSpeed
-        write_f32_be(out, 0.0f);  // RetractHeight2
-        write_f32_be(out, 0.0f);  // RetractSpeed2
-        write_u16_be(out, 250u);  // LightPWM
+        for (const char *key : {"wait_after_cure", "wait_after_lift", "wait_before_cure", "lift_height", "lift_speed", "lift_height2", "lift_speed2"})
+            write_f32_be(out, sla::motion_parameter(print, key, is_bottom));
+        write_f32_be(out, sla::motion_parameter(print, "lift_height", is_bottom) + sla::motion_parameter(print, "lift_height2", is_bottom) - sla::motion_parameter(print, "retract_height2", is_bottom));
+        for (const char *key : {"retract_speed", "retract_height2", "retract_speed2"})
+            write_f32_be(out, sla::motion_parameter(print, key, is_bottom));
+        write_u16_be(out, uint16_t(sla::motion_parameter(print, "light_pwm", is_bottom)));
         
         // Delimiter
         out.put(0x0D);
         out.put(0x0A);
         
         // Encode layer to RLE
-        auto rle_data = encode_goo_rle(
-            reinterpret_cast<const uint8_t*>(layer_data.data()), 
-            layer_data.size()
-        );
-        
         // Write DataLength
-        write_u32_be(out, static_cast<uint32_t>(rle_data.size()));
+        write_u32_be(out, static_cast<uint32_t>(layer_data.size()));
         
         // Write RLE data
-        out.write(reinterpret_cast<const char*>(rle_data.data()), rle_data.size());
+        out.write(reinterpret_cast<const char*>(layer_data.data()), layer_data.size());
         
         // Delimiter
         out.put(0x0D);
@@ -1518,6 +1555,8 @@ void UVToolsGOOArchive::export_print(const std::string     fname,
     out.put(0x50);  // 'P'
     out.put(0x00);  // Magic byte 11 (null terminator)
 
+    out.flush();
+    if (!out) throw RuntimeError("Cannot finish writing GOO data");
     out.close();
 }
 

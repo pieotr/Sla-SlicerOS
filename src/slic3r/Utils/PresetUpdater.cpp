@@ -17,7 +17,6 @@
 #include <boost/filesystem/fstream.hpp> // IWYU pragma: keep
 #include <boost/lexical_cast.hpp>
 #include <boost/log/trivial.hpp>
-#include <curl/curl.h>
 
 #include <wx/app.h>
 #include <wx/msgdlg.h>
@@ -1390,4 +1389,3 @@ void PresetUpdater::update_index_db()
 }
 
 }
-

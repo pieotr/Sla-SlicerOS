@@ -12,7 +12,8 @@ inline std::unique_ptr<RasterBase> create_printer_raster(const SLAPrinterConfig 
     const double width = cfg.display_width.value, height = cfg.display_height.value;
     const int cols = cfg.display_pixels_x.value, rows = cfg.display_pixels_y.value;
     if (!std::isfinite(width) || !std::isfinite(height) || width <= 0. || height <= 0. ||
-        cols <= 0 || rows <= 0)
+        cols <= 0 || rows <= 0 || cols > 32768 || rows > 32768 ||
+        uint64_t(cols) * uint64_t(rows) > 128ULL * 1024 * 1024)
         throw RuntimeError("Invalid SLA display dimensions or resolution");
     const auto orientation = cfg.display_orientation.value == sladoPortrait ?
         RasterBase::roPortrait : RasterBase::roLandscape;

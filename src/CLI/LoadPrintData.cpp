@@ -9,7 +9,7 @@
 
 #include "libslic3r/libslic3r.h"
 #include "libslic3r/Config.hpp"
-#include "libslic3r/GCode/PostProcessor.hpp"
+#include "libslic3r/SLA/PrinterGeometry.hpp"
 #include "libslic3r/Model.hpp"
 #include "libslic3r/FileReader.hpp"
 
@@ -27,6 +27,12 @@ PrinterTechnology get_printer_technology(const DynamicConfig &config)
 // may be "validate_and_apply_printer_technology" will be better? 
 static bool can_apply_printer_technology(PrinterTechnology& printer_technology, const PrinterTechnology& other_printer_technology)
 {
+#ifdef SLIC3R_SLA_ONLY
+    if (printer_technology == ptFFF || other_printer_technology == ptFFF) {
+        boost::nowide::cerr << "This application requires an SLA printer configuration" << std::endl;
+        return false;
+    }
+#endif
     if (printer_technology == ptUnknown) {
         printer_technology = other_printer_technology;
         return true;
@@ -84,7 +90,9 @@ static bool load_print_config(DynamicPrintConfig &print_config, PrinterTechnolog
 
             print_config_substitutions(config_substitutions, file);
 
+#ifndef SLIC3R_SLA_ONLY
             config.normalize_fdm();
+#endif
             print_config.apply(config);
         }
     }
@@ -106,7 +114,9 @@ static bool load_print_config(DynamicPrintConfig &print_config, PrinterTechnolog
         if (!can_apply_printer_technology(printer_technology, get_printer_technology(config)))
             return false;
 
+#ifndef SLIC3R_SLA_ONLY
         config.normalize_fdm();
+#endif
 
         // config is applied with print_config loaded before
         config += std::move(print_config);
@@ -119,8 +129,9 @@ static bool load_print_config(DynamicPrintConfig &print_config, PrinterTechnolog
 static bool process_input_files(std::vector<Model>& models, DynamicPrintConfig& print_config, PrinterTechnology& printer_technology, Data& cli)
 {
     for (const std::string& file : cli.input_files) {
-        if (boost::starts_with(file, "prusaslicer://")) {
-            continue;
+        if (file.find("://") != std::string::npos) {
+            boost::nowide::cerr << "Only local input files are supported: " << file << std::endl;
+            return false;
         }
         if (!boost::filesystem::exists(file)) {
             boost::nowide::cerr << "No such file: " << file << std::endl;
@@ -180,24 +191,32 @@ static bool finalize_print_config(DynamicPrintConfig& print_config, PrinterTechn
     // (command line options override --load files or congiguration which is loaded prom profiles)
     print_config.apply(cli.overrides_config, true);
     // Normalizing after importing the 3MFs / AMFs
+#ifndef SLIC3R_SLA_ONLY
     print_config.normalize_fdm();
+#else
+    if (!can_apply_printer_technology(printer_technology, get_printer_technology(print_config)))
+        return false;
+    printer_technology = ptSLA;
+#endif
 
     if (printer_technology == ptUnknown)
         printer_technology = cli.actions_config.has("export_sla") ? ptSLA : ptFFF;
     print_config.option<ConfigOptionEnum<PrinterTechnology>>("printer_technology", true)->value = printer_technology;
 
-    // Initialize full print configs for both the FFF and SLA technologies.
-    FullPrintConfig    fff_print_config;
     SLAFullPrintConfig sla_print_config;
 
     // Synchronize the default parameters and the ones received on the command line.
+#ifndef SLIC3R_SLA_ONLY
+    FullPrintConfig fff_print_config;
     if (printer_technology == ptFFF) {
         fff_print_config.apply(print_config, true);
         print_config.apply(fff_print_config, true);
     }
-    else {
+    else
+#endif
+    {
         assert(printer_technology == ptSLA);
-        sla_print_config.output_filename_format.value = "[input_filename_base].sl1";
+        sla_print_config.output_filename_format.value = "[input_filename_base][default_output_extension]";
 
         // The default bed shape should reflect the default display parameters
         // and not the fff defaults.
@@ -207,6 +226,8 @@ static bool finalize_print_config(DynamicPrintConfig& print_config, PrinterTechn
 
         sla_print_config.apply(print_config, true);
         print_config.apply(sla_print_config, true);
+        // Scene axes retain the physical LCD dimensions in either raster orientation.
+        sla::synchronize_bed_shape(print_config);
     }
 
     // validate print configuration

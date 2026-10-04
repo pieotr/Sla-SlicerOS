@@ -40,6 +40,7 @@ namespace pt = boost::property_tree;
 #include <LocalesUtils.hpp>
 
 #include "libslic3r/miniz_extension.hpp"
+#include "libslic3r/SLA/ProjectArchive.hpp"
 
 #include "libslic3r/TextConfiguration.hpp"
 #include "libslic3r/EmbossShape.hpp"
@@ -1007,6 +1008,12 @@ namespace Slic3r {
         // Correct all instances/volumes for which this does not hold
         for (int obj_id = 0; obj_id < int(model.objects.size()); ++obj_id) {
             ModelObject* o = model.objects[obj_id];
+            // SLA annotations are stored in the object's coordinate frame.
+            // Moving a volume's origin into instance offsets would move these
+            // points/holes in world space unless every annotation is adjusted.
+            // Retain that frame when loading an annotated resin object.
+            if (!o->sla_support_points.empty() || !o->sla_drain_holes.empty())
+                continue;
             if (o->volumes.size() == 1) {
                 ModelVolume* v = o->volumes.front();
                 const Slic3r::Geometry::Transformation& first_inst_trafo = o->instances.front()->get_transformation();
@@ -2773,9 +2780,11 @@ namespace Slic3r {
 
         bool m_fullpath_sources{ true };
         bool m_zip64 { true };
+        const sla::ProjectRasterState *m_raster_state = nullptr;
 
     public:
-        bool save_model_to_file(const std::string& filename, Model& model, const DynamicPrintConfig* config, bool fullpath_sources, const ThumbnailData* thumbnail_data, bool zip64);
+        bool save_model_to_file(const std::string& filename, Model& model, const DynamicPrintConfig* config, bool fullpath_sources, const ThumbnailData* thumbnail_data, bool zip64,
+                                const sla::ProjectRasterState* raster_state = nullptr);
         static void add_transformation(std::stringstream &stream, const Transform3d &tr);
     private:
         void _publish(Model &model);
@@ -2798,11 +2807,13 @@ namespace Slic3r {
         bool _add_wipe_tower_information_file_to_archive( mz_zip_archive& archive, Model& model);
     };
 
-    bool _3MF_Exporter::save_model_to_file(const std::string& filename, Model& model, const DynamicPrintConfig* config, bool fullpath_sources, const ThumbnailData* thumbnail_data, bool zip64)
+    bool _3MF_Exporter::save_model_to_file(const std::string& filename, Model& model, const DynamicPrintConfig* config, bool fullpath_sources, const ThumbnailData* thumbnail_data, bool zip64,
+                                         const sla::ProjectRasterState* raster_state)
     {
         clear_errors();
         m_fullpath_sources = fullpath_sources;
         m_zip64 = zip64;
+        m_raster_state = raster_state;
         return _save_model_to_file(filename, model, config, thumbnail_data);
     }
 
@@ -2931,6 +2942,17 @@ namespace Slic3r {
             return false;
         }
 
+        if (m_raster_state) {
+            try {
+                sla::write_project_layers(archive, *m_raster_state);
+            } catch (const std::exception &error) {
+                add_error(error.what());
+                close_zip_writer(&archive);
+                boost::filesystem::remove(filename);
+                return false;
+            }
+        }
+
         if (!mz_zip_writer_finalize_archive(&archive)) {
             close_zip_writer(&archive);
             boost::filesystem::remove(filename);
@@ -2951,6 +2973,7 @@ namespace Slic3r {
         stream << " <Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/>\n";
         stream << " <Default Extension=\"model\" ContentType=\"application/vnd.ms-package.3dmanufacturing-3dmodel+xml\"/>\n";
         stream << " <Default Extension=\"png\" ContentType=\"image/png\"/>\n";
+        if (m_raster_state) stream << " <Default Extension=\"json\" ContentType=\"application/json\"/>\n";
         stream << "</Types>";
 
         std::string out = stream.str();
@@ -4011,7 +4034,8 @@ bool load_3mf(
     return res;
 }
 
-bool store_3mf(const char* path, Model* model, const DynamicPrintConfig* config, bool fullpath_sources, const ThumbnailData* thumbnail_data, bool zip64)
+bool store_3mf(const char* path, Model* model, const DynamicPrintConfig* config, bool fullpath_sources, const ThumbnailData* thumbnail_data, bool zip64,
+               const sla::ProjectRasterState* raster_state)
 {
     // All export should use "C" locales for number formatting.
     CNumericLocalesSetter locales_setter;
@@ -4019,12 +4043,23 @@ bool store_3mf(const char* path, Model* model, const DynamicPrintConfig* config,
     if (path == nullptr || model == nullptr)
         return false;
 
+    // Stage the entire project, including optional layer payload. A failed
+    // manifest/PNG write or final rename must preserve the previous project.
+    const boost::filesystem::path destination(path);
+    const auto temporary = destination.parent_path() / boost::filesystem::unique_path(
+        destination.filename().string() + ".%%%%-%%%%.partial.3mf");
+    struct Cleanup {
+        boost::filesystem::path path;
+        ~Cleanup() { boost::system::error_code ignored; boost::filesystem::remove(path, ignored); }
+    } cleanup{temporary};
     _3MF_Exporter exporter;
-    bool res = exporter.save_model_to_file(path, *model, config, fullpath_sources, thumbnail_data, zip64);
-    if (!res)
+    if (!exporter.save_model_to_file(temporary.string(), *model, config, fullpath_sources, thumbnail_data, zip64, raster_state)) {
         exporter.log_errors();
-
-    return res;
+        return false;
+    }
+    const auto error = Slic3r::rename_file(temporary.string(), destination.string());
+    if (error) throw FileIOError("Cannot replace project: " + error.message());
+    return true;
 }
 
 namespace{

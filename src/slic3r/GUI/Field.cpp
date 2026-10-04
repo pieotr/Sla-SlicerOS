@@ -1118,6 +1118,7 @@ void Choice::propagate_value()
 
     if (is_defined_input_value<choice_ctrl>(window, m_opt.type)) {
         switch (m_opt.type) {
+        case coString:
         case coFloatOrPercent:
         {
             std::string old_val = !m_value.empty() ? boost::any_cast<std::string>(m_value) : "";
@@ -1179,6 +1180,10 @@ void Choice::set_selection()
 		text_value = wxString::Format(_T("%i"), int(m_opt.default_value->getInt()));
 		break;
 	}
+	case coString:{
+        text_value = m_opt.get_default_value<ConfigOptionString>()->value;
+        break;
+    }
 	case coStrings:{
 		text_value = m_opt.get_default_value<ConfigOptionStrings>()->get_at(m_opt_idx);
 		break;
@@ -1322,9 +1327,26 @@ boost::any& Choice::get_value()
 		if (m_opt_id == rp_option)
 			return m_value = boost::any(ret_str);
 
-	if (m_opt.type == coEnum || m_opt.type == coEnums)
+    if (m_opt.type == coEnum || m_opt.type == coEnums)
         // Closed enum: The combo box item index returned by the field must be convertible to an enum value.
         m_value = m_opt.enum_def->index_to_enum(field->GetSelection());
+    else if (m_opt.type == coString && m_opt.gui_type == ConfigOptionDef::GUIType::select_open &&
+             m_opt.enum_def && m_opt.enum_def->has_values()) {
+        // Editable string choices display labels but configuration stores stable
+        // values (for example "SL1", never "SL1 archive (.sl1)"). Resolve
+        // typed labels as well as selected labels; preserve unknown custom IDs.
+        auto index = m_opt.enum_def->value_to_index(into_u8(ret_str));
+        if (!index)
+            for (size_t i = 0; i < m_opt.enum_def->labels().size(); ++i)
+                if (ret_str == _(from_u8(m_opt.enum_def->label(i)))) {
+                    index = int(i);
+                    break;
+                }
+        if (index)
+            m_value = m_opt.enum_def->value(*index);
+        else
+            get_value_by_opt_type(ret_str);
+    }
     else if (m_opt.gui_type == ConfigOptionDef::GUIType::f_enum_open || m_opt.gui_type == ConfigOptionDef::GUIType::i_enum_open) {
         // Open enum: The combo box item index returned by the field 
         const int ret_enum = field->GetSelection();
@@ -1761,4 +1783,3 @@ boost::any& SliderCtrl::get_value()
 
 
 } // Slic3r :: GUI
-

@@ -15,7 +15,7 @@ namespace Slic3r {
 
 class SLAPrint;
 
-// Open SLA (OSLA) format - ZIP with binary header + PNG layers
+// Open SLA (OSLA): universal binary container with indexed PNG layers.
 class OpenSLAArchive : public SLAArchiveWriter {
     SLAPrinterConfig m_cfg;
 

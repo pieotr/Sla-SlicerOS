@@ -17,6 +17,7 @@
 
 namespace Slic3r {
 namespace GUI {
+#ifndef SLIC3R_OFFLINE_ONLY
 class CodeChalengeGenerator
 {
 public:
@@ -29,6 +30,7 @@ private:
     std::string base64_encode(const std::string& input);
     std::string sha256(const std::string& input);
 };
+#endif
 
 class UserAccountCommunication : public wxEvtHandler 
 {

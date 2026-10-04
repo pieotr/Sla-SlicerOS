@@ -18,9 +18,13 @@
 ///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
 ///|/
 #include "Plater.hpp"
+#include "LayerEditorDialog.hpp"
+#include "libslic3r/SLA/PrinterGeometry.hpp"
 #include "slic3r/GUI/BitmapCache.hpp"
 #include "slic3r/GUI/Jobs/UIThreadWorker.hpp"
+#ifndef SLIC3R_OFFLINE_ONLY
 #include "slic3r/Utils/PrusaConnect.hpp"
+#endif
 
 #include <cstddef>
 #include <algorithm>
@@ -84,6 +88,7 @@
 #include "libslic3r/Print.hpp"
 #include "libslic3r/PrintConfig.hpp"
 #include "libslic3r/SLAPrint.hpp"
+#include "libslic3r/SLA/ProjectArchive.hpp"
 #include "libslic3r/Format/SLAArchiveFormatRegistry.hpp"
 #include "libslic3r/Utils.hpp"
 #include "libslic3r/PresetBundle.hpp"
@@ -306,6 +311,7 @@ struct Plater::priv
     LoginWebViewDialog* login_dialog { nullptr };
 
     ProjectDirtyStateManager dirty_state;
+    std::shared_ptr<const sla::ProjectRasterState> pending_project_layers;
      
     BackgroundSlicingProcess    background_process;
     bool suppressed_backround_processing_update { false };
@@ -1639,8 +1645,22 @@ std::vector<size_t> Plater::priv::load_files(const std::vector<fs::path>& input_
                 }
             }
 
-            if (is_project_file)
+            if (is_project_file) {
                 plater_after_load_auto_arrange.disable();
+                // Covers File/Open and command-line startup alike. A project
+                // merged into an existing scene must not replace that scene's
+                // slice with unrelated cached masks.
+                if (type_3mf && load_model && input_files.size() == 1 &&
+                    obj_idxs.size() == this->model.objects.size() && printer_technology == ptSLA) {
+                    try {
+                        auto saved = sla::read_project_layers(path.string());
+                        if (saved) {
+                            pending_project_layers = std::make_shared<sla::ProjectRasterState>(std::move(*saved));
+                            q->active_sla_print().queue_project_layers(pending_project_layers);
+                        }
+                    } catch (const std::exception &error) { GUI::show_error(q, from_u8(error.what())); }
+                }
+            }
         }
     }
 
@@ -2110,6 +2130,8 @@ void Plater::priv::delete_all_objects_from_model()
 void Plater::priv::reset()
 {
     Plater::TakeSnapshot snapshot(q, _L("Reset Project"), UndoRedo::SnapshotType::ProjectSeparator);
+    pending_project_layers.reset();
+    dirty_state.update_from_sla_layers(false);
 
 	clear_warnings();
 
@@ -3375,6 +3397,11 @@ void Plater::priv::on_slicing_update(SlicingStatusEvent &evt)
 
 void Plater::priv::on_slicing_completed(wxCommandEvent & evt)
 {
+    if (printer_technology == ptSLA && pending_project_layers && q->active_sla_print().finished()) {
+        pending_project_layers.reset();
+        if (q->active_sla_print().project_layer_restore_failed())
+            GUI::show_error(q, _L("Saved PNG edits belong to a different model or raster setup and were not applied. Reopen the original project to recover them."));
+    }
     if (view3D->is_dragging()) // updating scene now would interfere with the gizmo dragging
         delayed_scene_refresh = true;
     else {
@@ -4436,6 +4463,7 @@ Plater::~Plater() = default;
 bool Plater::is_project_dirty() const { return p->is_project_dirty(); }
 bool Plater::is_presets_dirty() const { return p->is_presets_dirty(); }
 void Plater::update_project_dirty_from_presets() { p->update_project_dirty_from_presets(); }
+void Plater::on_sla_layer_document_changed() { p->dirty_state.update_from_sla_layers(true); }
 int  Plater::save_project_if_dirty(const wxString& reason) { return p->save_project_if_dirty(reason); }
 void Plater::reset_project_dirty_after_save() { p->reset_project_dirty_after_save(); }
 void Plater::reset_project_dirty_initial_presets() { p->reset_project_dirty_initial_presets(); }
@@ -5882,7 +5910,7 @@ std::optional<fs::path> Plater::get_output_path(const std::string &start_dir, co
     const std::string ext = default_output_file.extension().string();
     const std::string default_stem = default_output_file.stem().string();
 
-    wxString wildcard = printer_technology() == ptFFF ? GUI::file_wildcards(FT_GCODE, ext) : GUI::sla_wildcards(nullptr, "");
+    wxString wildcard = printer_technology() == ptFFF ? GUI::file_wildcards(FT_GCODE, ext) : GUI::sla_wildcards(nullptr, "", true);
 
     std::vector<std::string> sla_filter_extensions;
     int sla_initial_filter_index = 0;
@@ -5949,7 +5977,9 @@ std::optional<fs::path> Plater::get_output_path(const std::string &start_dir, co
 
             std::string preferred_ext;
             const Preset &edited_printer = wxGetApp().preset_bundle->printers.get_edited_preset();
-            const std::string current_format = edited_printer.config.opt_string("sla_archive_format");
+            std::string current_format = wxGetApp().app_config->sla_export_format(edited_printer.name);
+            if (!get_archive_entry(current_format.c_str()) || !archive_export_unavailable_reason(current_format.c_str()).empty())
+                current_format = edited_printer.config.opt_string("sla_archive_format");
             const std::string fallback_ext = boost::algorithm::to_lower_copy(std::string(get_default_extension(current_format.c_str())));
             if (!fallback_ext.empty())
                 preferred_ext = "." + fallback_ext;
@@ -5979,7 +6009,7 @@ std::optional<fs::path> Plater::get_output_path(const std::string &start_dir, co
         if (size_t(sla_initial_filter_index) < sla_filter_extensions.size()) {
             const std::string &selected_ext = sla_filter_extensions[size_t(sla_initial_filter_index)];
             if (!selected_ext.empty())
-                dlg.SetFilename(from_u8(default_stem + selected_ext));
+                dlg.SetFilename(from_u8(sla_archive_filename(default_output_file.filename().string(), selected_ext)));
         }
 
         auto update_filename_for_filter = [&dlg, &sla_filter_extensions, &detect_sla_suffix, &default_stem](int filter_index) {
@@ -5995,19 +6025,7 @@ std::optional<fs::path> Plater::get_output_path(const std::string &start_dir, co
             if (name.empty())
                 name = default_stem;
 
-            const std::string known_suffix = detect_sla_suffix(filename);
-            if (!known_suffix.empty()) {
-                if (name.size() > known_suffix.size())
-                    name.resize(name.size() - known_suffix.size());
-                dlg.SetFilename(from_u8(name + selected_ext));
-                return;
-            }
-
-            // Keep user-entered custom extensions untouched.
-            if (!filename.extension().empty())
-                return;
-
-            dlg.SetFilename(from_u8(name + selected_ext));
+            dlg.SetFilename(from_u8(sla_archive_filename(name, selected_ext)));
         };
 
         dlg.Bind(wxEVT_FILECTRL_FILTERCHANGED, [update_filename_for_filter](wxFileCtrlEvent &evt) {
@@ -6036,17 +6054,23 @@ std::optional<fs::path> Plater::get_output_path(const std::string &start_dir, co
     if (sla_filter_sync_timer)
         sla_filter_sync_timer->Stop();
 
-    fs::path output_path{into_path(dlg.GetPath())};
+    const fs::path chosen_path{into_path(dlg.GetPath())};
+    fs::path output_path = chosen_path;
     if (printer_technology() == ptSLA) {
-        // Top-bar filename has priority. Only append selected extension if user left filename without extension.
-        if (output_path.extension().empty()) {
-            const int filter_index = dlg.GetFilterIndex();
-            if (filter_index >= 0 && size_t(filter_index) < sla_filter_extensions.size()) {
-                const std::string &selected_ext = sla_filter_extensions[size_t(filter_index)];
-                if (!selected_ext.empty())
-                    output_path = output_path.parent_path() / fs::path(output_path.filename().string() + selected_ext);
-            }
+        const int filter_index = dlg.GetFilterIndex();
+        if (filter_index >= 0 && size_t(filter_index) < sla_filter_extensions.size()) {
+            const auto &selected_ext = sla_filter_extensions[size_t(filter_index)];
+            if (!selected_ext.empty())
+                output_path = output_path.parent_path() / sla_archive_filename(output_path.filename().string(), selected_ext);
         }
+    }
+
+    // Native overwrite confirmation applied to the typed path, which may have
+    // changed when enforcing the selected format's suffix.
+    if (output_path != chosen_path && fs::exists(output_path)) {
+        wxMessageDialog overwrite(this, _L("Replace the existing output file?") + "\n" + from_path(output_path),
+                                  _L("Confirm overwrite"), wxYES_NO | wxNO_DEFAULT | wxICON_QUESTION);
+        if (overwrite.ShowModal() != wxID_YES) return std::nullopt;
     }
 
     if (auto error{check_output_path_has_error(output_path)}) {
@@ -6059,10 +6083,10 @@ std::optional<fs::path> Plater::get_output_path(const std::string &start_dir, co
         const std::string extension = detect_sla_suffix(output_path);
         if (!extension.empty()) {
             if (const ArchiveEntry *entry = get_archive_entry_by_extension(extension.c_str())) {
-                Preset &edited_printer = wxGetApp().preset_bundle->printers.get_edited_preset();
-                const std::string current = edited_printer.config.opt_string("sla_archive_format");
-                if (!boost::iequals(current, entry->id))
-                    edited_printer.config.set("sla_archive_format", std::string(entry->id));
+                const Preset &edited_printer = wxGetApp().preset_bundle->printers.get_edited_preset();
+                // Export preferences must not dirty hardware presets or reslice
+                // the model (which would discard applied pixel edits).
+                wxGetApp().app_config->set_sla_export_format(edited_printer.name, entry->id);
             }
         }
     }
@@ -6083,6 +6107,21 @@ std::optional<fs::path> Plater::get_multiple_output_dir(const std::string &start
 
     const fs::path output_path{into_path(dlg.GetPath())};
     return output_path;
+}
+
+void Plater::edit_sliced_layers()
+{
+    // Finish the triggering native/accessible button or menu action before
+    // entering a modal event loop. Nested GTK accessibility actions otherwise
+    // stop servicing AT-SPI while the editor is open.
+    CallAfter([this] {
+        if (printer_technology() != ptSLA || p->background_process.running() ||
+            is_background_process_update_scheduled() || !active_sla_print().finished()) {
+            GUI::show_error(this, _L("Finish slicing before editing layers."));
+            return;
+        }
+        show_layer_editor(this, active_sla_print());
+    });
 }
 
 void Plater::export_gcode(bool prefer_removable)
@@ -6563,13 +6602,27 @@ bool Plater::export_3mf(const boost::filesystem::path& output_path)
     bool ret = false;
     try
     {
-        ret = Slic3r::store_3mf(path_u8.c_str(), &p->model, export_config ? &cfg : nullptr, full_pathnames, &thumbnail_data);
+        std::optional<sla::ProjectRasterState> raster_state;
+        if (printer_technology() == ptSLA) {
+            if (p->pending_project_layers &&
+                sla::raster_source_fingerprint(p->model, cfg) == p->pending_project_layers->source_fingerprint)
+                raster_state = *p->pending_project_layers;
+            else if (!p->background_process.running() && !is_background_process_update_scheduled() &&
+                     active_sla_print().finished() && active_sla_print().layer_document() &&
+                     active_sla_print().layer_document()->revision() != 0)
+                raster_state = sla::capture_project_layers(p->model, cfg, active_sla_print());
+        }
+        ret = Slic3r::store_3mf(path_u8.c_str(), &p->model, export_config ? &cfg : nullptr, full_pathnames, &thumbnail_data,
+                              true, raster_state ? &*raster_state : nullptr);
     }
     catch (boost::filesystem::filesystem_error& e)
     {
         const wxString what = _("Unable to save file") + ": " + path_u8 + "\n" + e.code().message();
         MessageDialog dlg(this, what, _("Error saving 3mf file"), wxOK | wxICON_ERROR);
         dlg.ShowModal();
+    }
+    catch (const std::exception &error) {
+        show_error(this, from_u8(error.what()));
     }
     if (ret) {
         // Success
@@ -6755,6 +6808,9 @@ void Plater::printables_to_connect_gcode(const std::string& url)
 
 std::optional<PrintHostJob> Plater::get_connect_print_host_job(bool multiple_beds) 
 {
+#ifdef SLIC3R_OFFLINE_ONLY
+    return std::nullopt;
+#else
     assert(p->user_account->is_logged());
     std::string  dialog_msg;
     {
@@ -6807,6 +6863,7 @@ std::optional<PrintHostJob> Plater::get_connect_print_host_job(bool multiple_bed
     upload_job.upload_data.upload_path = boost::filesystem::path(filename);
 
     return upload_job;
+#endif
 }
 
 void Plater::connect_gcode()
@@ -6817,6 +6874,7 @@ void Plater::connect_gcode()
 }
 
 void Plater::connect_gcode_all() {
+#ifndef SLIC3R_OFFLINE_ONLY
     auto optional_upload_job{get_connect_print_host_job(true)};
     if (!optional_upload_job) {
         return;
@@ -6902,6 +6960,7 @@ void Plater::connect_gcode_all() {
             }
         );
     }
+#endif
 }
 
 void Plater::send_gcode()
@@ -7123,8 +7182,10 @@ bool Plater::update_filament_colors_in_full_config()
     return true;
 }
 
-void Plater::on_config_change(const DynamicPrintConfig &config)
+void Plater::on_config_change(const DynamicPrintConfig &incoming)
 {
+    DynamicPrintConfig config = incoming;
+    sla::synchronize_bed_shape(config);
     bool update_scheduled = false;
     bool bed_shape_changed = false;
     for (auto opt_key : p->config->diff(config)) {

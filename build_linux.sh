@@ -6,30 +6,6 @@ DEPS_BUILD_DIR="${ROOT_DIR}/deps/build"
 APP_BUILD_DIR="${ROOT_DIR}/build"
 PREFIX_PATH="${DEPS_BUILD_DIR}/destdir/usr/local"
 
-detect_ca_bundle() {
-  local candidates=(
-    "/etc/pki/tls/certs/ca-bundle.crt"
-    "/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem"
-    "/etc/ssl/certs/ca-certificates.crt"
-    "/etc/ssl/certs/ca-bundle.crt"
-    "/etc/ca-certificates/extracted/tls-ca-bundle.pem"
-    "/usr/share/ssl/certs/ca-bundle.crt"
-    "/usr/local/share/certs/ca-root-nss.crt"
-    "/etc/ssl/certs/ca-root-nss.crt"
-    "/etc/ssl/cert.pem"
-    "/etc/ssl/ca-bundle.pem"
-  )
-
-  local candidate
-  for candidate in "${candidates[@]}"; do
-    if [[ -f "$candidate" ]]; then
-      printf '%s\n' "$candidate"
-      return 0
-    fi
-  done
-
-  return 1
-}
 
 usage() {
   cat <<'EOF'
@@ -105,6 +81,7 @@ if [[ "$BUILD_DEPS" -eq 1 ]] || ! deps_ready; then
   echo "[2/5] Configuring dependencies"
   cmake -S "$ROOT_DIR/deps" -B "$DEPS_BUILD_DIR" \
     -DDEP_WX_GTK3=ON \
+    -DSLIC3R_OFFLINE_ONLY=ON \
     -DCMAKE_POLICY_VERSION_MINIMUM=3.5
 
   echo "[3/5] Building dependencies (top-level serial, inner builds parallelized by deps scripts)"
@@ -142,13 +119,6 @@ if [[ ! -x "$BIN" ]]; then
 fi
 
 if [[ "$RUN_AFTER_BUILD" -eq 1 ]]; then
-  if ca_bundle="$(detect_ca_bundle)"; then
-    export SSL_CERT_FILE="$ca_bundle"
-    echo "Using SSL_CERT_FILE=$SSL_CERT_FILE"
-  else
-    echo "Warning: no system CA bundle detected; HTTPS features may fail" >&2
-  fi
-
   echo "Running smoke test: $BIN --help"
   "$BIN" --help >/dev/null
   echo "Smoke test passed"

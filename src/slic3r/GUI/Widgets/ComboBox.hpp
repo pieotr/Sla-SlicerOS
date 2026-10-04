@@ -17,6 +17,9 @@ class ComboBox : public wxWindowWithItems<TextInput, wxItemContainer>
     DropDown               drop;
     bool     drop_down = false;
     bool     text_off = false;
+    int      popup_selection = wxNOT_FOUND;
+    wxString popup_value;
+    bool     popup_committed = false;
 
 public:
     ComboBox(wxWindow *      parent,
@@ -94,6 +97,8 @@ private:
     void keyDown(wxKeyEvent &event);
 
     void sendComboBoxEvent();
+    void openPopup();
+    void closePopup(bool commit);
 
     DECLARE_EVENT_TABLE()
 };

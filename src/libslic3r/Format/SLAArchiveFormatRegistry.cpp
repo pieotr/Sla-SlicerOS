@@ -10,6 +10,7 @@
 #include "SL1.hpp"
 #include "SL1_SVG.hpp"
 #include "AnycubicSLA.hpp"
+#include "AnycubicZipArchive.hpp"
 #include "CrealityCXDLPv4.hpp"
 #include "CrealityCXDLPv1Archive.hpp"
 #include "UVToolsCompatArchive.hpp"
@@ -23,10 +24,8 @@
 #include "MakerbaseArchive.hpp"
 #include "FlashforgeArchive.hpp"
 #include "Emake3DArchive.hpp"
-#include "StructoVlareArchive.hpp"
 #include "OpenStandardsArchive.hpp"
 #include "ChituboxArchive.hpp"
-#include "SLAArchiveWriterFactory.hpp"
 #include "libslic3r/I18N.hpp"
 #include "SLAArchiveFormatRegistry.hpp"
 #include "libslic3r/Format/SLAArchiveReader.hpp"
@@ -66,7 +65,14 @@ class Registry {
                     return std::make_unique<SL1_SVGReader>(fname, quality, progr);
                 }
             },
-            // Anycubic / Photon - All supported variants
+            // Distinct ZIP families share an extension but not a schema.
+            {"chitubox_zip", L("Chitubox ZIP"), "zip", {},
+                [](const auto &cfg) { return std::make_unique<UVToolsChituboxZIPArchive>(cfg); }, {}},
+            {"genericzip", L("Generic ZIP (images and geometry; no exposure or motion)"), "zip", {},
+                [](const auto &cfg) { return std::make_unique<UVToolsGenericZIPArchive>(cfg); }, {}},
+            {"vda", L("Voxeldance Additive ZIP (images and geometry; no exposure or motion)"), "zip", {},
+                [](const auto &cfg) { return std::make_unique<UVToolsVDAArchive>(cfg); }, {}},
+            // Anycubic / Photon
             anycubic_sla_format_versioned("pws", "Photon / Photon S", ANYCUBIC_SLA_FORMAT_VERSION_1),
             anycubic_sla_format_versioned("pw0", "Photon Zero", ANYCUBIC_SLA_FORMAT_VERSION_1),
             anycubic_sla_format_versioned("pwx", "Photon X", ANYCUBIC_SLA_FORMAT_VERSION_1),
@@ -88,11 +94,15 @@ class Registry {
             anycubic_sla_format_versioned("pm5", "Photon Mono M5", ANYCUBIC_SLA_FORMAT_VERSION_515),
             anycubic_sla_format_versioned("pm5s", "Photon Mono M5s", ANYCUBIC_SLA_FORMAT_VERSION_515),
             anycubic_sla_format_versioned("m5sp", "Photon Mono M5s Pro", ANYCUBIC_SLA_FORMAT_VERSION_515),
-            anycubic_sla_format_versioned("pwc", "Anycubic Custom", ANYCUBIC_SLA_FORMAT_VERSION_515),
-            anycubic_sla_format_versioned("pm4u", "Photon Mono 4U", ANYCUBIC_SLA_FORMAT_VERSION_515),
-            anycubic_sla_format_versioned("pm7", "Photon Mono M7", ANYCUBIC_SLA_FORMAT_VERSION_515),
-            anycubic_sla_format_versioned("pm7m", "Photon Mono M7 Max", ANYCUBIC_SLA_FORMAT_VERSION_515),
-            anycubic_sla_format_versioned("pwsz", "Photon Mono M7 Pro", ANYCUBIC_SLA_FORMAT_VERSION_515),
+            anycubic_sla_format_versioned("pwc", "Anycubic Custom (machine table)", ANYCUBIC_SLA_FORMAT_VERSION_516),
+            {"pm4u", L("Photon Mono 4 Ultra"), "pm4u", {},
+                [](const auto &cfg) { return std::make_unique<AnycubicZipArchive>(cfg, "pm4u"); }, {}},
+            {"pm7", L("Photon Mono M7"), "pm7", {},
+                [](const auto &cfg) { return std::make_unique<AnycubicZipArchive>(cfg, "pm7"); }, {}},
+            {"pm7m", L("Photon Mono M7 Max"), "pm7m", {},
+                [](const auto &cfg) { return std::make_unique<AnycubicZipArchive>(cfg, "pm7m"); }, {}},
+            {"pwsz", L("Photon Mono M7 Pro"), "pwsz", {},
+                [](const auto &cfg) { return std::make_unique<AnycubicZipArchive>(cfg, "pwsz"); }, {}},
 
             // Chitubox / Photon variants (CBDDLPv1, CBDDLPv2, CTBv3, CTBv4, encrypted CTB)
             {
@@ -129,7 +139,7 @@ class Registry {
             },
             {
                 "ctb",
-                L("Chitubox CTB v3/v4"),
+                L("Chitubox CTB v2"),
                 "ctb",
                 {"encrypted.ctb"},
                 [] (const auto &cfg) { return std::make_unique<UVToolsChituboxArchive>(cfg); },
@@ -147,11 +157,27 @@ class Registry {
             // Creality CXDLP family
             {
                 "cxdlp",
-                L("Creality CXDLP v1"),
+                L("Creality CXDLP v3 (fixed layer height)"),
                 "cxdlp",
-                {"v1.cxdlp"},
-                [] (const auto &cfg) { return std::make_unique<CrealityCXDLPv1Archive>(cfg); },
+                {},
+                [] (const auto &cfg) { return std::make_unique<UVToolsCXDLPArchive>(cfg); },
                 {} // No native reader yet; SL1Reader cannot decode this format.
+            },
+            {
+                "cxdlpv2",
+                L("Creality CXDLP v2 (fixed layer height)"),
+                "v2.cxdlp",
+                {},
+                [] (const auto &cfg) { return std::make_unique<UVToolsCXDLPArchive>(cfg); },
+                {}
+            },
+            {
+                "cxdlpv1",
+                L("Creality CXDLP v1 (fixed layer height)"),
+                "v1.cxdlp",
+                {},
+                [] (const auto &cfg) { return std::make_unique<CrealityCXDLPv1Archive>(cfg); },
+                {}
             },
             {
                 "cxdlpv4",
@@ -216,8 +242,20 @@ class Registry {
                 {} // No native reader yet; SL1Reader cannot decode this format.
             },
             {
+                "cwsxml",
+                L("Creation Workshop XML.CWS (RGBA)"),
+                "xml.cws",
+                {},
+                [] (const auto &cfg) { return std::make_unique<UVToolsCWSArchive>(cfg); },
+                {} // Mask editing is separate from 3D reconstruction.
+            },
+            {"cwsnovamaker", L("NovaMaker CWS"), "cws", {},
+                [](const auto &cfg) { return std::make_unique<UVToolsCWSArchive>(cfg); }, {}},
+            {"cwsrgb", L("NovaMaker RGB.CWS (packed BGR)"), "rgb.cws", {},
+                [](const auto &cfg) { return std::make_unique<UVToolsCWSArchive>(cfg); }, {}},
+            {
                 "cws",
-                L("NovaMaker CWS"),
+                L("CWS XML (8-bit grayscale)"),
                 "cws",
                 {},
                 [] (const auto &cfg) { return std::make_unique<UVToolsCWSArchive>(cfg); },
@@ -260,7 +298,7 @@ class Registry {
                 L("Phrozen Sonic Mini 8K S"),
                 "prz",
                 {},
-                [] (const auto &cfg) { return std::make_unique<PhrozenSonicMiniArchive>(cfg); },
+                [] (const auto &cfg) { return std::make_unique<UVToolsGOOArchive>(cfg); },
                 {} // No native reader yet; SL1Reader cannot decode this format.
             },
             {
@@ -329,10 +367,10 @@ class Registry {
             },
             {
                 "osf",
-                L("Vlare OSF"),
+                L("Vlare OSF v4 (7-bit grayscale)"),
                 "osf",
                 {},
-                [] (const auto &cfg) { return std::make_unique<VlareOSFArchive>(cfg); },
+                [] (const auto &cfg) { return std::make_unique<UVToolsOSFArchive>(cfg); },
                 {} // No native reader yet; SL1Reader cannot decode this format.
             },
             {
@@ -390,14 +428,36 @@ std::string archive_export_unavailable_reason(const char *formatid)
     if (!entry)
         return "Unknown SLA archive format";
     const std::string id = entry->id;
-    if (id == "pwsz")
-        return "PWSZ export is unavailable: the required Anycubic ZIP encoder is not implemented";
+    if (id == "fdg")
+        return "FDG export is unavailable: UVtools rejected the generated file as truncated";
     static const std::set<std::string> incomplete = {
-        "n4", "n7", "cbddlp", "cbt", "photon", "photons", "cxdlp", "qdt",
+        "cbddlp", "cbt", "photon", "photons", "qdt",
         "svgx", "lgs", "lgs30", "lgs120", "lgs4k", "gr1", "mdlp", "nanodlp",
-        "osla", "uvj", "phz", "prz", "osf", "jxs", "vdt", "zcode", "zcodex"
+        "phz", "jxs", "vdt", "zcode", "zcodex"
     };
     return incomplete.count(id) ? "SLA export is not implemented for format: " + id : "";
+}
+
+std::string sla_archive_filename(const std::string &filename, const std::string &extension)
+{
+    if (!get_archive_entry_by_extension(extension.c_str()))
+        throw std::invalid_argument("Unknown SLA output extension: " + extension);
+    std::string suffix = extension.front() == '.' ? extension : "." + extension;
+    std::transform(suffix.begin(), suffix.end(), suffix.begin(), [](unsigned char c) { return char(std::tolower(c)); });
+    std::string lower = filename;
+    std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char c) { return char(std::tolower(c)); });
+    size_t matched = 0;
+    for (const auto &entry : registered_sla_archives())
+        for (const auto &ext : get_extensions(entry)) {
+            const std::string candidate = "." + ext;
+            if (candidate.size() > matched && lower.size() > candidate.size() &&
+                lower.compare(lower.size()-candidate.size(), candidate.size(), candidate) == 0)
+                matched = candidate.size();
+        }
+    std::string stem = filename;
+    if (matched) stem.resize(stem.size()-matched);
+    else if (const auto dot = stem.rfind('.'); dot != std::string::npos && dot > 0) stem.resize(dot);
+    return (stem.empty() ? "print" : stem) + suffix;
 }
 
 ArchiveWriterFactory get_writer_factory(const char *formatid)

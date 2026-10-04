@@ -13,7 +13,6 @@
 #include <cinttypes>
 
 #include "SLAArchiveWriter.hpp"
-#include "SLAArchiveWriterFactory.hpp"
 #include "SLAArchiveFormatRegistry.hpp"
 #include "libslic3r/PrintConfig.hpp"
 #include "libslic3r/GCode/ThumbnailData.hpp"
@@ -30,9 +29,16 @@ constexpr uint16_t ANYCUBIC_SLA_FORMAT_VERSION_517 = 517;
 
 namespace Slic3r {
 
+// Versions 1 and 515 have no machine table. UVtools obtains these physical
+// dimensions from the extension, so an incompatible custom profile cannot be
+// represented faithfully by those versions.
+struct AnycubicLegacyGeometry { double width, height, machine_z; };
+const AnycubicLegacyGeometry *anycubic_legacy_geometry(const std::string &extension);
+
 class AnycubicSLAArchive: public SLAArchiveWriter {
     SLAPrinterConfig m_cfg;
-    uint16_t m_version;
+    uint16_t m_version = ANYCUBIC_SLA_FORMAT_VERSION_1;
+    bool m_pws = false;
 
 protected:
     std::unique_ptr<sla::RasterBase> create_raster() const override;
@@ -49,10 +55,10 @@ public:
     explicit AnycubicSLAArchive(SLAPrinterConfig &&cfg):
         m_cfg(std::move(cfg)), m_version(ANYCUBIC_SLA_FORMAT_VERSION_1) {}
 
-    explicit AnycubicSLAArchive(const SLAPrinterConfig &cfg, uint16_t version):
-        m_cfg(cfg), m_version(version) {}
-    explicit AnycubicSLAArchive(SLAPrinterConfig &&cfg, uint16_t version):
-        m_cfg(std::move(cfg)), m_version(version) {}
+    explicit AnycubicSLAArchive(const SLAPrinterConfig &cfg, uint16_t version, bool pws = false):
+        m_cfg(cfg), m_version(version), m_pws(pws) {}
+    explicit AnycubicSLAArchive(SLAPrinterConfig &&cfg, uint16_t version, bool pws = false):
+        m_cfg(std::move(cfg)), m_version(version), m_pws(pws) {}
 
     void export_print(const std::string     fname,
                       const SLAPrint       &print,
@@ -66,7 +72,8 @@ inline Slic3r::ArchiveEntry anycubic_sla_format_versioned(const char *fileformat
 
     entry.desc = desc;
     entry.ext  = fileformat;
-    entry.wrfactoryfn = [version] (const auto &cfg) { return std::make_unique<AnycubicSLAArchive>(cfg, version); };
+    const bool pws = std::string(fileformat) == "pws";
+    entry.wrfactoryfn = [version, pws] (const auto &cfg) { return std::make_unique<AnycubicSLAArchive>(cfg, version, pws); };
 
     return entry;
 }

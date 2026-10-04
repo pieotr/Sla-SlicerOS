@@ -11,6 +11,7 @@
 #include <locale>
 #include <ctime>
 #include <cstdarg>
+#include <cerrno>
 #include <stdio.h>
 #include <random>
 
@@ -486,8 +487,12 @@ std::error_code rename_file(const std::string &from, const std::string &to)
 #ifdef _WIN32
 	return WindowsSupport::rename(from, to);
 #else
-	boost::nowide::remove(to.c_str());
-	return std::make_error_code(static_cast<std::errc>(boost::nowide::rename(from.c_str(), to.c_str())));
+    // POSIX rename replaces an existing file atomically. Removing it first
+    // loses the last good output when rename fails (and even removes empty
+    // directories). The return value is 0/-1; the actual error is in errno.
+    if (boost::nowide::rename(from.c_str(), to.c_str()) == 0)
+        return {};
+    return std::error_code(errno, std::generic_category());
 #endif
 }
 

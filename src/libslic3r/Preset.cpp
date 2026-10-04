@@ -699,7 +699,11 @@ static std::vector<std::string> s_Preset_sla_tilt_options{
 };
 const std::vector<std::string>& tilt_options() { return s_Preset_sla_tilt_options; }
 
-static std::vector<std::string> s_Preset_sla_material_options_all = boost::copy_range<std::vector<std::string>>(boost::join(s_Preset_sla_material_options, s_Preset_sla_tilt_options));
+static std::vector<std::string> s_Preset_sla_material_options_all = [] {
+    auto keys = boost::copy_range<std::vector<std::string>>(boost::join(s_Preset_sla_material_options, s_Preset_sla_tilt_options));
+    for (const auto &setting : sla::machine_settings) keys.emplace_back(setting.key);
+    return keys;
+}();
 
 static std::vector<std::string> s_Preset_sla_printer_options {
     "printer_technology",
@@ -850,7 +854,7 @@ void PresetCollection::load_presets(
 // and select it, losing previous modifications.
 Preset& PresetCollection::load_preset(const std::string &path, const std::string &name, const DynamicPrintConfig &config, bool select)
 {
-    DynamicPrintConfig cfg(this->default_preset().config);
+    DynamicPrintConfig cfg(this->default_preset_for(config).config);
     cfg.apply_only(config, cfg.keys(), true);
     return this->load_preset(path, name, std::move(cfg), select);
 }
@@ -1016,65 +1020,39 @@ Preset& PresetCollection::load_preset(const std::string &path, const std::string
 
 bool PresetCollection::save_current_preset(const std::string &new_name, bool detach)
 {
-    bool is_saved_as_new{ false };
-    // 1) Find the preset with a new_name or create a new one,
-    // initialize it with the edited config.
-    auto it = this->find_preset_internal(new_name);
-    if (it != m_presets.end() && it->name == new_name) {
-        // Preset with the same name found.
-        Preset &preset = *it;
-        if (preset.is_default || preset.is_external || preset.is_system)
-            // Cannot overwrite the default preset.
-            return false;
-        // Overwriting an existing preset.
-        preset.config = std::move(m_edited_preset.config);
-        // The newly saved preset will be activated -> make it visible.
-        preset.is_visible = true;
-        if (detach) {
-            // Clear the link to the parent profile.
-            preset.vendor = nullptr;
-			preset.inherits().clear();
-			preset.alias.clear();
-			preset.renamed_from.clear();
-        }
-    } else {
-        is_saved_as_new = true;
-        // Creating a new preset.
-        Preset       &preset   = *m_presets.insert(it, m_edited_preset);
-        std::string  &inherits = preset.inherits();
-        std::string   old_name = preset.name;
-        preset.name = new_name;
-        preset.file = this->path_from_name(new_name);
-        preset.vendor = nullptr;
-		preset.alias.clear();
-        preset.renamed_from.clear();
-        if (detach) {
-        	// Clear the link to the parent profile.
-        	inherits.clear();
-        } else if (preset.is_system) {
-            // Inheriting from a system preset.
-            inherits = /* preset.vendor->name + "/" + */ old_name;
-        } else if (inherits.empty()) {
-            // Inheriting from a user preset. Link the new preset to the old preset.
-            // inherits = old_name;
-        } else {
-            // Inherited from a user preset. Just maintain the "inherited" flag,
-            // meaning it will inherit from either the system preset, or the inherited user preset.
-        }
-        preset.is_default  = false;
-        preset.is_system   = false;
-        preset.is_external = false;
-        // The newly saved preset will be activated -> make it visible.
-        preset.is_visible  = true;
-        // Just system presets have aliases
-        preset.alias.clear();
-    }
-    // 2) Activate the saved preset.
-    this->select_preset_by_name(new_name, true);
-    // 2) Store the active preset to disk.
-    this->get_selected_preset().save();
+    auto existing = this->find_preset_internal(new_name);
+    const bool created = existing == m_presets.end() || existing->name != new_name;
+    if (!created && (existing->is_default || existing->is_external || existing->is_system))
+        return false;
 
-    return is_saved_as_new;
+    // Prepare and persist a candidate before changing the collection or moving
+    // the edited config. Failure keeps selection, dirty edits and saved values.
+    Preset candidate = created ? m_edited_preset : *existing;
+    candidate.config = m_edited_preset.config;
+    if (created) {
+        const std::string parent_name = candidate.name;
+        candidate.name = new_name;
+        candidate.file = this->path_from_name(new_name);
+        if (candidate.is_system && !detach) candidate.inherits() = parent_name;
+        candidate.vendor = nullptr;
+        candidate.alias.clear();
+        candidate.renamed_from.clear();
+        candidate.is_default = candidate.is_system = candidate.is_external = false;
+    }
+    if (detach) {
+        candidate.vendor = nullptr;
+        candidate.inherits().clear();
+        candidate.alias.clear();
+        candidate.renamed_from.clear();
+    }
+    candidate.is_visible = true;
+    candidate.is_dirty = false;
+    if (candidate.printer_technology() == ptSLA) Preset::normalize(candidate.config);
+    candidate.save();
+    if (created) m_presets.insert(existing, std::move(candidate));
+    else *existing = std::move(candidate);
+    this->select_preset_by_name(new_name, true);
+    return created;
 }
 
 Preset& PresetCollection::get_preset_with_name(const std::string& new_name, const Preset* initial_preset)
@@ -1143,8 +1121,9 @@ bool PresetCollection::delete_current_preset()
     if (selected.is_default)
         return false;
     if (! selected.is_external && ! selected.is_system) {
-        // Erase the preset file.
-        boost::nowide::remove(selected.file.c_str());
+        boost::system::error_code error;
+        boost::filesystem::remove(selected.file, error);
+        if (error) throw FileIOError("Cannot delete preset '" + selected.name + "': " + error.message());
     }
     // Remove the preset from the list.
     m_presets.erase(m_presets.begin() + m_idx_selected);
@@ -1166,13 +1145,15 @@ bool PresetCollection::delete_preset(const std::string& name)
     const std::string selected_preset_name = this->get_selected_preset_name();
 
     auto it = this->find_preset_internal(name);
+    if (it == m_presets.end() || it->name != name) return false;
 
     const Preset& preset = *it;
     if (preset.is_default)
         return false;
     if (!preset.is_external && !preset.is_system) {
-        // Erase the preset file.
-        boost::nowide::remove(preset.file.c_str());
+        boost::system::error_code error;
+        boost::filesystem::remove(preset.file, error);
+        if (error) throw FileIOError("Cannot delete preset '" + preset.name + "': " + error.message());
     }
     m_presets.erase(it);
 
@@ -1715,8 +1696,10 @@ std::string PresetCollection::path_from_name(const std::string &new_name) const
 
 const Preset& PrinterPresetCollection::default_preset_for(const DynamicPrintConfig &config) const
 {
-    const ConfigOptionEnumGeneric *opt_printer_technology = config.opt<ConfigOptionEnumGeneric>("printer_technology");
-    return this->default_preset((opt_printer_technology == nullptr || opt_printer_technology->value == ptFFF) ? 0 : 1);
+    // Configs loaded from INI use a generic enum; configs assembled by the
+    // wizard can use ConfigOptionEnum<PrinterTechnology>. Accept both forms.
+    const auto *technology = config.option("printer_technology");
+    return this->default_preset(technology && technology->getInt() == ptSLA ? 1 : 0);
 }
 
 const Preset* PrinterPresetCollection::find_system_preset_by_model_and_variant(const std::string &model_id, const std::string& variant) const

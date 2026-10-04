@@ -42,11 +42,13 @@
 #include "libslic3r/SLA/Hollowing.hpp"
 #include "libslic3r/SLA/Pad.hpp"
 #include "libslic3r/SLA/SupportPoint.hpp"
+#include "libslic3r/SLA/LayerDocument.hpp"
 #include "libslic3r/TriangleMesh.hpp"
 #include "libslic3r/libslic3r.h"
 
 namespace Slic3r {
 namespace sla {
+struct ProjectRasterState;
 struct JobController;
 }  // namespace sla
 
@@ -502,7 +504,8 @@ public:
     // Returns true if an object step is done on all objects and there's at least one object.
     bool                is_step_done(SLAPrintObjectStep step) const;
     // Returns true if the last step was finished with success.
-    bool                finished() const override { return this->is_step_done(slaposSliceSupports) && this->Inherited::is_step_done(slapsRasterize); }
+    bool                finished() const override { return (m_raster_job && m_layer_document && !m_printer_input.empty()) ||
+        (this->is_step_done(slaposSliceSupports) && this->Inherited::is_step_done(slapsRasterize)); }
 
     const PrintObjects& objects() const { return m_objects; }
     // PrintObject by its ObjectID, to be used to uniquely bind slicing warnings to their source PrintObjects
@@ -576,6 +579,20 @@ public:
     // The aggregated and leveled print records from various objects.
     // TODO: use this structure for the preview in the future.
     const std::vector<PrintLayer>& print_layers() const { return m_printer_input; }
+    // Build an independent SLA raster job (PCB/calibration/import) without a
+    // dummy mesh or a slicing pass. Masks are already in oriented raster space.
+    static std::unique_ptr<SLAPrint> create_raster_job(const DynamicPrintConfig &config,
+        const sla::LayerDocument &document, const std::vector<double> &positions_z);
+    bool is_raster_job() const { return m_raster_job; }
+    const sla::LayerDocument *layer_document() const { return m_layer_document.get(); }
+    void replace_layer_document(const sla::LayerDocument &document);
+    // Restored masks are applied inside process(), before any export phase.
+    // Immutable state can also remain available to a project save in the GUI.
+    void queue_project_layers(std::shared_ptr<const sla::ProjectRasterState> state);
+    bool project_layer_restore_failed() const { return m_project_layer_restore_failed; }
+    void export_layer_document(const sla::LayerDocument &document, const std::string &format,
+                               const std::string &path, const ThumbnailsList &thumbnails = {},
+                               const std::string &projectname = "") const;
 
     void export_print(const std::string &fname, const std::string &projectname = "")
     {
@@ -609,6 +626,11 @@ private:
     
     // The archive object which collects the raster images after slicing
     std::unique_ptr<SLAArchiveWriter>     m_archiver;
+    std::unique_ptr<sla::LayerDocument>    m_layer_document;
+    uint64_t                             m_encoded_revision = 0;
+    bool                                 m_raster_job = false;
+    std::shared_ptr<const sla::ProjectRasterState> m_pending_project_layers;
+    bool                                 m_project_layer_restore_failed = false;
     
     // Estimated print time, material consumed.
     SLAPrintStatistics              m_print_statistics;

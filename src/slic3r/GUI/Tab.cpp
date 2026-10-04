@@ -26,6 +26,7 @@
 #include "libslic3r/Model.hpp"
 #include "libslic3r/SLAPrint.hpp"
 #include "libslic3r/SLA/PrinterGeometry.hpp"
+#include "libslic3r/Format/SLAArchiveFormatRegistry.hpp"
 #include "libslic3r/GCode/GCodeProcessor.hpp"
 #include "libslic3r/GCode/GCodeWriter.hpp"
 #include "libslic3r/GCode/Thumbnails.hpp"
@@ -185,8 +186,10 @@ void Tab::create_preset_tab()
     add_scaled_button(panel, &m_btn_save_preset, "save");
     add_scaled_button(panel, &m_btn_rename_preset, "edit");
     add_scaled_button(panel, &m_btn_delete_preset, "cross");
+#ifndef SLIC3R_OFFLINE_ONLY
     if (m_type == Preset::Type::TYPE_PRINTER)
         add_scaled_button(panel, &m_btn_edit_ph_printer, "cog");
+#endif
 
     m_show_incompatible_presets = false;
 
@@ -331,9 +334,11 @@ void Tab::create_preset_tab()
     m_hsizer->Add(m_page_view, 1, wxEXPAND | wxLEFT, 5);
 
     m_btn_compare_preset->Bind(wxEVT_BUTTON, ([this](wxCommandEvent e) { compare_preset(); }));
-    m_btn_save_preset->Bind(wxEVT_BUTTON, ([this](wxCommandEvent e) { save_preset(); }));
-    m_btn_rename_preset->Bind(wxEVT_BUTTON, ([this](wxCommandEvent e) { rename_preset(); }));
-    m_btn_delete_preset->Bind(wxEVT_BUTTON, ([this](wxCommandEvent e) { delete_preset(); }));
+    // Let GTK finish the activation event before opening a modal dialog;
+    // keyboard/accessibility activation must remain responsive inside it.
+    m_btn_save_preset->Bind(wxEVT_BUTTON, ([this](wxCommandEvent e) { CallAfter([this] { save_preset(); }); }));
+    m_btn_rename_preset->Bind(wxEVT_BUTTON, ([this](wxCommandEvent e) { CallAfter([this] { rename_preset(); }); }));
+    m_btn_delete_preset->Bind(wxEVT_BUTTON, ([this](wxCommandEvent e) { CallAfter([this] { delete_preset(); }); }));
     m_btn_hide_incompatible_presets->Bind(wxEVT_BUTTON, ([this](wxCommandEvent e) {
         toggle_show_hide_incompatible();
     }));
@@ -1080,6 +1085,11 @@ static wxString pad_combo_value_for_config(const DynamicPrintConfig &config)
 
 void Tab::on_value_change(const std::string& opt_key, const boost::any& value)
 {
+    if (m_type == Preset::TYPE_PRINTER && opt_key == "sla_archive_format") {
+        const auto &format = m_config->opt_string("sla_archive_format");
+        if (get_archive_entry(format.c_str()))
+            wxGetApp().app_config->set_sla_export_format(m_presets->get_edited_preset().name, format);
+    }
     if (wxGetApp().plater() == nullptr) {
         return;
     }
@@ -2648,6 +2658,9 @@ void TabPrinter::build()
 
 void TabPrinter::build_print_host_upload_group(Page* page)
 {
+#ifdef SLIC3R_OFFLINE_ONLY
+    (void)page;
+#else
     ConfigOptionsGroupShp optgroup = page->new_optgroup(L("Print Host upload"));
 
     wxString description_line_text = _L(""
@@ -2665,6 +2678,7 @@ void TabPrinter::build_print_host_upload_group(Page* page)
                                        description_line_text);
     };
     optgroup->append_line(line);
+#endif
 }
 
 static wxString get_info_klipper_string()
@@ -3056,7 +3070,26 @@ void TabPrinter::build_sla()
 
 
     optgroup = page->new_optgroup(L("Output"));
-    optgroup->append_single_option_line("sla_archive_format");
+    auto model_option = optgroup->get_option("printer_model");
+    model_option.opt.label = L("Printer model (firmware)");
+    model_option.opt.tooltip = L("Model identifier stored in the printer file. Creality CXDLP v2/v3 requires the actual CL or CT model, for example CL-60. Saved with this printer preset.");
+    model_option.opt.mode = comSimple;
+    optgroup->append_single_option_line(model_option);
+    option = optgroup->get_option("sla_archive_format");
+    // Store stable registry IDs, never translated descriptions or list indexes.
+    // Keep the field editable so an imported, unknown ID remains visible rather
+    // than silently becoming the first supported format when opening the tab.
+    std::vector<std::string> archive_ids;
+    std::vector<std::string> archive_labels;
+    for (const auto &entry : registered_sla_archives()) {
+        archive_ids.emplace_back(entry.id);
+        std::string label = I18N::translate_utf8(entry.desc) + " (." + entry.ext + ")";
+        if (!archive_export_unavailable_reason(entry.id).empty()) label += " — " + I18N::translate_utf8(L("Export unavailable"));
+        archive_labels.push_back(std::move(label));
+    }
+    option.opt.set_enum_values(std::move(archive_ids), std::move(archive_labels));
+    option.opt.gui_type = ConfigOptionDef::GUIType::select_open;
+    optgroup->append_single_option_line(option);
     optgroup->append_single_option_line("sla_output_precision");
 
     build_print_host_upload_group(page.get());
@@ -4035,8 +4068,8 @@ bool Tab::select_preset(std::string preset_name, bool delete_current /*=false*/,
         try {
             // cache previously selected names
             delete_current_preset();
-        } catch (const std::exception & /* e */) {
-            //FIXME add some error reporting!
+        } catch (const std::exception &error) {
+            wxMessageBox(from_u8(error.what()), _L("Delete preset"), wxOK | wxICON_ERROR, this);
             canceled = true;
         }
     }
@@ -4398,7 +4431,17 @@ void Tab::save_preset(std::string name /*= ""*/, bool detach)
     }
 
     // Save the preset into Slic3r::data_dir / presets / section_name / preset_name.ini
-    save_current_preset(name, detach);
+    const auto previous_name = edited_preset.name;
+    const auto previous_export = m_type == Preset::TYPE_PRINTER ?
+        wxGetApp().app_config->sla_export_format(previous_name) : std::string{};
+    try {
+        save_current_preset(name, detach);
+    } catch (const std::exception &error) {
+        wxMessageBox(from_u8(error.what()), _L("Save preset"), wxOK | wxICON_ERROR, this);
+        return;
+    }
+    if (m_type == Preset::TYPE_PRINTER && previous_name != name && !previous_export.empty())
+        wxGetApp().app_config->set_sla_export_format(name, previous_export);
 
     if (detach && m_type == Preset::TYPE_PRINTER)
         wxGetApp().mainframe->on_config_changed(m_config);
@@ -4513,25 +4556,26 @@ void Tab::rename_preset()
     try {
         // rename selected and edited presets
 
-        selected_preset.name = new_name;
-        replace_last(selected_preset.file, old_name, new_name);
-
-        edited_preset.name = new_name;
-        replace_last(edited_preset.file, old_name, new_name);
-
-        // rename file with renamed preset configuration
-
-        filesystem::rename(old_file_name, selected_preset.file);
+        // Keep the in-memory selection intact until the file rename succeeds.
+        // Construct the sibling filename rather than replacing a name in its
+        // parent directory (which can contain the same text).
+        const auto new_file = filesystem::path(m_presets->path_from_name(new_name));
+        if (filesystem::exists(new_file))
+            throw std::runtime_error("A preset file with this name already exists");
+        filesystem::rename(old_file_name, new_file);
+        selected_preset.name = edited_preset.name = new_name;
+        selected_preset.file = edited_preset.file = new_file.string();
 
         // rename selected preset in printers, if it's needed
 
         if (!msg.IsEmpty())
             m_preset_bundle->physical_printers.rename_preset_in_printers(old_name, new_name);
     }
-    catch (const exception& ex) {
-        const std::string exception = diagnostic_information(ex);
-        printf("Can't rename a preset : %s", exception.c_str());
-        was_renamed = false;
+    catch (const std::exception& ex) {
+        wxMessageBox(from_u8(ex.what()), _L("Rename preset"), wxOK | wxICON_ERROR, this);
+        // Physical-printer propagation may fail after the preset file moved;
+        // keep the actual file/name pair rather than claiming it was undone.
+        was_renamed = selected_preset.name == new_name;
     }
 
     // sort presets after renaming
@@ -4543,8 +4587,15 @@ void Tab::rename_preset()
         // and update compatibility for extruders after reset
         m_preset_bundle->update_filaments_compatible(PresetSelectCompatibleType::OnlyIfWasCompatible);
     }
+    if (was_renamed && m_type == Preset::TYPE_PRINTER) {
+        const auto preference = wxGetApp().app_config->sla_export_format(old_name);
+        if (!preference.empty()) {
+            wxGetApp().app_config->set_sla_export_format(new_name, preference);
+            wxGetApp().app_config->set_sla_export_format(old_name, "");
+        }
+    }
     // update selection
-    select_preset_by_name(new_name, true);
+    select_preset_by_name(was_renamed ? new_name : old_name, true);
 
     m_presets_choice->update();
     on_presets_changed();
@@ -4634,7 +4685,8 @@ void Tab::delete_preset()
 
     // Select will handle of the preset dependencies, of saving & closing the depending profiles, and
     // finally of deleting the preset.
-    this->select_preset("", true);
+    if (this->select_preset("", true) && m_type == Preset::TYPE_PRINTER)
+        wxGetApp().app_config->set_sla_export_format(current_preset.name, "");
 }
 
 void Tab::toggle_show_hide_incompatible()
@@ -5500,6 +5552,17 @@ void TabSLAMaterial::build()
     optgroup = page->new_optgroup(L("Exposure"));
     optgroup->append_single_option_line("exposure_time");
     optgroup->append_single_option_line("initial_exposure_time");
+
+    auto lcd_page = add_options_page(L("LCD exposure and motion"), "resin");
+    auto counts = lcd_page->new_optgroup(L("Exposure layers"));
+    counts->append_single_option_line("sla_bottom_layers");
+    counts->append_single_option_line("sla_transition_layers");
+    auto normal = lcd_page->new_optgroup(L("Normal layers"));
+    auto bottom = lcd_page->new_optgroup(L("Bottom layers"));
+    for (const auto &setting : sla::machine_settings) {
+        if (std::string(setting.key) == "sla_bottom_layers" || std::string(setting.key) == "sla_transition_layers") continue;
+        (setting.bottom ? bottom : normal)->append_single_option_line(setting.key);
+    }
 
     optgroup = page->new_optgroup(L("Corrections"));
     auto line = Line{ m_config->def()->get("material_correction")->full_label, "" };

@@ -49,6 +49,33 @@ const std::string AppConfig::SECTION_FILAMENTS = "filaments";
 const std::string AppConfig::SECTION_MATERIALS = "sla_materials";
 const std::string AppConfig::SECTION_EMBOSS_STYLE = "font";
 
+namespace {
+std::string printer_preference_key(const std::string &name)
+{
+    // Hex-encode UTF-8 names to avoid INI delimiters, whitespace and collisions.
+    const char digits[] = "0123456789abcdef";
+    std::string key = "printer_";
+    for (const unsigned char byte : name) {
+        key += digits[byte >> 4];
+        key += digits[byte & 15];
+    }
+    return key;
+}
+}
+
+std::string AppConfig::sla_export_format(const std::string &printer_name) const
+{
+    return get("sla_export_formats", printer_preference_key(printer_name));
+}
+
+void AppConfig::set_sla_export_format(const std::string &printer_name, const std::string &format)
+{
+    if (format.empty())
+        erase("sla_export_formats", printer_preference_key(printer_name));
+    else
+        set("sla_export_formats", printer_preference_key(printer_name), format);
+}
+
 void AppConfig::reset()
 {
     m_storage.clear();

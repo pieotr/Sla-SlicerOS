@@ -44,9 +44,15 @@ static opts_map get_opts_map(const Data& data)
                                                   &data.misc_config     ,
                                                   &data.actions_config     }) 
     {
-        for (const auto& oit : config->def()->options)
+        for (const auto& oit : config->def()->options) {
+#ifdef SLIC3R_SLA_ONLY
+            if (config->type() == Type::Overrides &&
+                (oit.second.printer_technology == ptFFF || oit.first == "thumbnails_format"))
+                continue;
+#endif
             for (const std::string& t : oit.second.cli_args(oit.first))
                 ret[t] = { oit.first , config->type()};
+        }
     }
 
     return ret;

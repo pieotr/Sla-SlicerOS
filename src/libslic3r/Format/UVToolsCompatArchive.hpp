@@ -32,7 +32,15 @@ public:
                       const ThumbnailsList &thumbnails, const std::string &projectname = "") override;
 };
 
-// GenericZIP - ZIP with manifest.uvtools JSON
+// Chitubox ZIP: run.gcode is the container's SLA exposure/motion sequence.
+class UVToolsChituboxZIPArchive : public UVToolsZIPArchiveBase {
+public:
+    explicit UVToolsChituboxZIPArchive(const SLAPrinterConfig &cfg) : UVToolsZIPArchiveBase(cfg) {}
+    void export_print(const std::string fname, const SLAPrint &print,
+                      const ThumbnailsList &thumbnails, const std::string &projectname = "") override;
+};
+
+// GenericZIP - ZIP with manifest.uvtools XML
 class UVToolsGenericZIPArchive : public UVToolsZIPArchiveBase {
 public:
     explicit UVToolsGenericZIPArchive(const SLAPrinterConfig &cfg) : UVToolsZIPArchiveBase(cfg) {}
@@ -95,7 +103,7 @@ public:
                       const ThumbnailsList &thumbnails, const std::string &projectname = "") override;
 };
 
-// VDA (Structo) - ZIP with XML root structure
+// Voxeldance Additive ZIP with UVtools VDARoot XML.
 class UVToolsVDAArchive : public UVToolsZIPArchiveBase {
 public:
     explicit UVToolsVDAArchive(const SLAPrinterConfig &cfg) : UVToolsZIPArchiveBase(cfg) {}
@@ -233,7 +241,7 @@ public:
                       const ThumbnailsList &thumbnails, const std::string &projectname = "") override;
 };
 
-// OSF (Vlare) - Big-endian UInt24 packed pixels
+// OSF (Vlare) v4 - big-endian settings and seven-bit grayscale RLE
 class UVToolsOSFArchive : public UVToolsPackedPixelBase {
 public:
     explicit UVToolsOSFArchive(const SLAPrinterConfig &cfg) : UVToolsPackedPixelBase(cfg) {}

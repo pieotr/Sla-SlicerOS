@@ -14,6 +14,8 @@
 #include <cmath>
 #include <iterator>
 #include <cstdlib>
+#include <png.h>
+#include <limits>
 
 #include "agg/agg_gamma_functions.h"
 
@@ -22,23 +24,38 @@ namespace Slic3r { namespace sla {
 EncodedRaster PNGRasterEncoder::operator()(const void *ptr, size_t w, size_t h,
                                            size_t      num_components)
 {
-    std::vector<uint8_t> buf;
-    size_t s = 0;
-    
-    void *rawdata = tdefl_write_image_to_png_file_in_memory(
-        ptr, int(w), int(h), int(num_components), &s);
-    
-    // On error, data() will return an empty vector. No other info can be
-    // retrieved from miniz anyway...
-    if (rawdata == nullptr) return EncodedRaster({}, "png");
-    
-    auto pptr = static_cast<std::uint8_t*>(rawdata);
-    
-    buf.reserve(s);
-    std::copy(pptr, pptr + s, std::back_inserter(buf));
-    
-    MZ_FREE(rawdata);
-    return EncodedRaster(std::move(buf), "png");
+    if (!ptr || !w || !h || w > 32768 || h > 32768 ||
+        num_components < 1 || num_components > 4 || uint64_t(w)*h*num_components > (uint64_t(512)<<20))
+        return EncodedRaster({}, "png");
+    // SLA masks contain long constant runs. Row filtering adds work without
+    // improving these images; zlib level 3 preserves every 8-bit pixel while
+    // avoiding miniz's expensive match search on the empty screen margins.
+    // Keep the callback's mutable state on the heap across libpng's error jump.
+    auto bytes = std::make_unique<std::vector<uint8_t>>();
+    png_structp png = png_create_write_struct(PNG_LIBPNG_VER_STRING, nullptr, nullptr, nullptr);
+    if (!png) return EncodedRaster({}, "png");
+    png_infop info = png_create_info_struct(png);
+    if (!info) { png_destroy_write_struct(&png, nullptr); return EncodedRaster({}, "png"); }
+    if (setjmp(png_jmpbuf(png))) {
+        png_destroy_write_struct(&png, &info);
+        return EncodedRaster({}, "png");
+    }
+    png_set_write_fn(png, bytes.get(), [](png_structp writer, png_bytep data, png_size_t size) {
+        auto &output = *static_cast<std::vector<uint8_t> *>(png_get_io_ptr(writer));
+        try { output.insert(output.end(), data, data+size); }
+        catch (...) { png_error(writer, "Cannot allocate encoded SLA PNG"); }
+    }, nullptr);
+    static constexpr int colors[]{PNG_COLOR_TYPE_GRAY, PNG_COLOR_TYPE_GRAY_ALPHA, PNG_COLOR_TYPE_RGB, PNG_COLOR_TYPE_RGBA};
+    png_set_compression_level(png, 3);
+    png_set_filter(png, PNG_FILTER_TYPE_BASE, PNG_FILTER_NONE);
+    png_set_IHDR(png, info, png_uint_32(w), png_uint_32(h), 8, colors[num_components-1],
+                 PNG_INTERLACE_NONE, PNG_COMPRESSION_TYPE_BASE, PNG_FILTER_TYPE_BASE);
+    png_write_info(png, info);
+    for (size_t row=0; row<h; ++row)
+        png_write_row(png, const_cast<png_bytep>(static_cast<const uint8_t *>(ptr)+row*w*num_components));
+    png_write_end(png, info);
+    png_destroy_write_struct(&png, &info);
+    return EncodedRaster(std::move(*bytes), "png");
 }
 
 std::ostream &operator<<(std::ostream &stream, const EncodedRaster &bytes)

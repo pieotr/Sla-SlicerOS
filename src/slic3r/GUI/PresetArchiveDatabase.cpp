@@ -20,7 +20,6 @@
 #include <boost/uuid/uuid.hpp>
 #include <boost/uuid/uuid_io.hpp>
 #include <cctype>
-#include <curl/curl.h>
 #include <iostream>
 #include <fstream>
 
@@ -157,17 +156,7 @@ bool extract_local_archive_repository( ArchiveRepository::RepositoryManifest& ma
 
 std::string escape_string(const std::string& unescaped)
 {
-	std::string ret_val;
-	CURL* curl = curl_easy_init();
-	if (curl) {
-		char* decoded = curl_easy_escape(curl, unescaped.c_str(), unescaped.size());
-		if (decoded) {
-			ret_val = std::string(decoded);
-			curl_free(decoded);
-		}
-		curl_easy_cleanup(curl);
-	}
-	return ret_val;
+    return Slic3r::Http::url_encode(unescaped);
 }
 std::string escape_path_by_element(const std::string& path_string)
 {

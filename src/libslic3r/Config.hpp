@@ -2228,6 +2228,10 @@ private:
             m_labels.emplace_back(p);
         assert(m_values.empty() || m_labels.size() == m_values.size());
     }
+    void set_labels(const std::vector<std::string> &labels) {
+        m_labels = labels;
+        assert(m_values.empty() || m_labels.size() == m_values.size());
+    }
     void finalize_closed_enum() {
         assert(this->is_valid_closed_enum());
         // Check whether def.enum_values contains all the values of def.enum_keys_map and

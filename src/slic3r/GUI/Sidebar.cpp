@@ -229,6 +229,10 @@ void SlicedInfo::SetTextAndShow(SlicedInfoIdx idx, const wxString& text, const w
 void Sidebar::show_preset_comboboxes()
 {
 #ifdef SLIC3R_SLA_ONLY
+    // The constructor initially hides technology-specific presets. In the
+    // SLA build every preset row is relevant; material/process must be shown
+    // alongside the printer rather than remaining permanently hidden.
+    m_presets_sizer->ShowItems(true);
     m_frequently_changed_parameters->Show(false);
 #else
     const bool showSLA = wxGetApp().preset_bundle->printers.get_edited_preset().printer_technology() == ptSLA;
@@ -511,7 +515,10 @@ Sidebar::Sidebar(Plater *parent)
         wxGetApp().UpdateDarkUI((*btn), true);
     };
 
-    init_btn(&m_btn_export_gcode, _L("Export G-code") + dots , scaled_height);
+    init_btn(&m_btn_export_gcode, _L("Export") + dots , scaled_height);
+    init_btn(&m_btn_edit_layers, _L("Edit layers"), scaled_height);
+    m_btn_edit_layers->Hide();
+    m_btn_edit_layers->Bind(wxEVT_BUTTON, [this](wxCommandEvent &) { m_plater->edit_sliced_layers(); });
     init_btn(&m_btn_reslice     , _L("Slice now")            , scaled_height);
     init_btn(&m_btn_connect_gcode, _L("Send to Connect"), scaled_height);
 
@@ -527,6 +534,7 @@ Sidebar::Sidebar(Plater *parent)
 
     m_btns_sizer->Add(m_btn_reslice, 0, wxEXPAND | wxTOP, margin_5);
     m_btns_sizer->Add(complect_btns_sizer, 0, wxEXPAND | wxTOP, margin_5);
+    m_btns_sizer->Add(m_btn_edit_layers, 0, wxEXPAND | wxTOP, margin_5);
 
     auto *sizer = new wxBoxSizer(wxVERTICAL);
     sizer->Add(m_scrolled_panel, 1, wxEXPAND);
@@ -557,7 +565,10 @@ Sidebar::Sidebar(Plater *parent)
     SetSizer(sizer);
 
     // Events
-    m_btn_export_gcode->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) { m_plater->export_gcode(false); });
+    m_btn_export_gcode->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) {
+        // Return from the GTK/accessibility action before entering a modal loop.
+        m_plater->CallAfter([plater = m_plater] { plater->export_gcode(false); });
+    });
     m_btn_reslice->Bind(wxEVT_BUTTON, [this](wxCommandEvent&)
     {
         if (m_plater->canvas3D()->get_gizmos_manager().is_in_editing_mode(true))
@@ -817,7 +828,7 @@ void Sidebar::update_reslice_btn_tooltip()
 {
     wxString tooltip = wxString("Slice") + " [" + GUI::shortkey_ctrl_prefix() + "R]";
     if (m_mode != comSimple)
-        tooltip += wxString("\n") + _L("Hold Shift to Slice & Export G-code");
+        tooltip += wxString("\n") + (m_plater->printer_technology() == ptSLA ? _L("Hold Shift to Slice & Export") : _L("Hold Shift to Slice & Export G-code"));
 #ifdef _WIN32
     m_reslice_btn_tooltip = tooltip;
 #else
@@ -1193,6 +1204,7 @@ void Sidebar::enable_buttons(bool enable)
 {
     m_btn_reslice->Enable(enable);
     m_btn_export_gcode->Enable(enable);
+    m_btn_edit_layers->Enable(enable);
     m_btn_send_gcode->Enable(enable);
     m_btn_export_gcode_removable->Enable(enable);
     m_btn_connect_gcode->Enable(enable);
@@ -1215,6 +1227,7 @@ bool Sidebar::show_export(bool show) const {
     if (this->m_autoslicing_mode) {
         return false;
     }
+    m_btn_edit_layers->Show(show && m_plater->printer_technology() == ptSLA);
     return m_btn_export_gcode->Show(show);
 }
 bool Sidebar::show_send(bool show) const {

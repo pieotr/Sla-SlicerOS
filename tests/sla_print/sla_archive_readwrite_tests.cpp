@@ -17,6 +17,11 @@ TEST_CASE("Archive export test", "[sla_archives]") {
 
     for (const char * pname : {"20mm_cube", "extruder_idler"})
     for (const ArchiveEntry &entry : registry) {
+        // Registered placeholders remain visible for profile compatibility, but
+        // must not be treated as implemented codecs. Their rejection (including
+        // absence of output) is covered by the registry tests.
+        if (!archive_export_unavailable_reason(entry.id).empty())
+            continue;
         INFO(std::string("Testing archive type: ") + entry.id + " -- writing...");
         SLAPrint print;
         SLAFullPrintConfig fullcfg;

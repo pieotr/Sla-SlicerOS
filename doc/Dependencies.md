@@ -1,4 +1,14 @@
-# Dependency report for PrusaSlicer
+# Dependency report for the SLA application
+
+Current override (2026-10-03): CURL and OpenSSL are excluded from the dependency
+build and are not directly linked by the application. Network transports and
+printer upload backends are excluded. AVRDUDE is excluded from the SLA target.
+Hidapi remains for the 3D mouse/controller; it is not solely an FFF dependency.
+WebView platform libraries and the remaining FFF core still require separation.
+The original upstream inventory below is historical and does not determine the
+current target graph. See CMakeLists.txt, src/slic3r/CMakeLists.txt and deps/CMakeLists.txt.
+
+## Original upstream inventory
 ## Possible dynamic linking on Linux
 * zlib: Strict dependency required from the system, linked dynamically. Many other libs depend on zlib.
 * wxWidgets >= 3.2
@@ -30,5 +40,4 @@
 * nanosvg
 * agg
 * catch2: Only Arch has packages for catch2, other distros at most catch (v1.x). Being strictly header only, we bundle this in the source tree. Used for the unit-test suites.
-
 

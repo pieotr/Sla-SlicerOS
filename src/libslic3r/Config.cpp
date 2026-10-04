@@ -28,6 +28,7 @@
 #include <boost/nowide/iostream.hpp>
 #include <boost/nowide/fstream.hpp>
 #include <boost/nowide/cstdio.hpp>
+#include <boost/filesystem.hpp>
 #include <boost/property_tree/ini_parser.hpp>
 #include <LibBGCode/binarize/binarize.hpp>
 #include <boost/algorithm/string/join.hpp>
@@ -1035,12 +1036,24 @@ ConfigSubstitutions ConfigBase::load_from_binary_gcode_file(const std::string& f
 
 void ConfigBase::save(const std::string &file) const
 {
-    boost::nowide::ofstream c;
-    c.open(file, std::ios::out | std::ios::trunc);
-    c << "# " << Slic3r::header_slic3r_generated() << std::endl;
-    for (const std::string &opt_key : this->keys())
-        c << opt_key << " = " << this->opt_serialize(opt_key) << std::endl;
-    c.close();
+    // Serialize a sibling first. A full disk, failed serialization or rename
+    // must neither truncate the previous profile nor report a false success.
+    const boost::filesystem::path output(file);
+    const auto temporary = output.parent_path() / boost::filesystem::unique_path(".sla-config-%%%%-%%%%.tmp");
+    try {
+        boost::nowide::ofstream stream;
+        stream.exceptions(std::ios::failbit | std::ios::badbit);
+        stream.open(temporary.string(), std::ios::out | std::ios::trunc);
+        stream << "# " << Slic3r::header_slic3r_generated() << '\n';
+        for (const std::string &key : this->keys()) stream << key << " = " << this->opt_serialize(key) << '\n';
+        stream.close();
+        const auto error = rename_file(temporary.string(), file);
+        if (error) throw FileIOError(error.message());
+    } catch (const std::exception &error) {
+        boost::system::error_code ignored;
+        boost::filesystem::remove(temporary, ignored);
+        throw FileIOError("Cannot save configuration '" + file + "': " + error.what());
+    }
 }
 
 // Set all the nullable values to nils.

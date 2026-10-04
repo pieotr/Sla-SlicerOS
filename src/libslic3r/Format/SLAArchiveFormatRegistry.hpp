@@ -71,6 +71,9 @@ struct ArchiveEntry {
     }
 };
 
+// Replace known compound suffixes (or a custom final suffix) with the chosen format.
+std::string sla_archive_filename(const std::string &filename, const std::string &extension);
+
 std::vector<std::string> get_extensions(const ArchiveEntry &entry);
 
 const std::set<ArchiveEntry>& registered_sla_archives();

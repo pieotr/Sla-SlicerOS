@@ -14,7 +14,6 @@
 #include <boost/nowide/cstdio.hpp>
 #include <boost/nowide/fstream.hpp>
 #include <boost/nowide/convert.hpp>
-#include <curl/curl.h>
 #include <string>
 
 #include <iostream>
@@ -30,6 +29,7 @@
 #include <wx/secretstore.h>
 #endif
 
+#ifndef SLIC3R_OFFLINE_ONLY
 #ifdef WIN32
 #include <wincrypt.h>
 #endif // WIN32
@@ -43,8 +43,12 @@
 #include <openssl/bio.h>
 #include <openssl/buffer.h>
 
-#include <fcntl.h>
 #endif // __linux__
+#endif // SLIC3R_OFFLINE_ONLY
+
+#ifdef __linux__
+#include <fcntl.h>
+#endif
 
 
 
@@ -391,6 +395,9 @@ void UserAccountCommunication::on_uuid_map_success()
 // Generates and stores Code Verifier - second call deletes previous one.
 wxString UserAccountCommunication::generate_login_redirect_url()
 {
+#ifdef SLIC3R_OFFLINE_ONLY
+    return {};
+#else
     auto& sc = Utils::ServiceConfig::instance();
     const std::string AUTH_HOST = sc.account_url();
     const std::string CLIENT_ID = client_id();
@@ -405,9 +412,13 @@ wxString UserAccountCommunication::generate_login_redirect_url()
 
     wxString url = GUI::format_wxstr(L"%1%/o/authorize/?embed=1&client_id=%2%&response_type=code&code_challenge=%3%&code_challenge_method=S256&scope=basic_info&redirect_uri=%4%&language=%5%", AUTH_HOST, CLIENT_ID, code_challenge, REDIRECT_URI, language);
     return url;
+#endif
 }
 wxString UserAccountCommunication::get_login_redirect_url(const std::string& service/* = std::string()*/) const
 {
+#ifdef SLIC3R_OFFLINE_ONLY
+    return {};
+#else
     auto& sc = Utils::ServiceConfig::instance();
     const std::string AUTH_HOST = sc.account_url();
     const std::string CLIENT_ID = client_id();
@@ -421,12 +432,15 @@ wxString UserAccountCommunication::get_login_redirect_url(const std::string& ser
     params = Http::url_encode(params);
     wxString url = GUI::format_wxstr(L"%1%/login/%2%?next=/o/authorize/?%3%", AUTH_HOST, service, params);
     return url;
+#endif
 }
 void UserAccountCommunication::login_redirect()
 {
+#ifndef SLIC3R_OFFLINE_ONLY
     wxString url1 = generate_login_redirect_url();
     wxString url2 = url1 + L"&choose_account=1";
     wxQueueEvent(m_evt_handler,new OpenPrusaAuthEvent(GUI::EVT_OPEN_PRUSAAUTH, {std::move(url1), std::move(url2)}));
+#endif
 }
 
 bool UserAccountCommunication::is_logged() const
@@ -875,6 +889,7 @@ void UserAccountCommunication::on_polling_timer(wxTimerEvent& evt)
     wakeup_session_thread();
 }
 
+#ifndef SLIC3R_OFFLINE_ONLY
 std::string CodeChalengeGenerator::generate_challenge(const std::string& verifier)
 {
     std::string code_challenge;
@@ -990,4 +1005,5 @@ std::string CodeChalengeGenerator::sha256(const std::string& input) {
     return std::string(reinterpret_cast<char*>(digest), digestLen);
 }
 #endif // __linux__
+#endif // SLIC3R_OFFLINE_ONLY
 }} // Slic3r::GUI

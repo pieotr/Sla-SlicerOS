@@ -124,11 +124,13 @@ void CopyrightsDialog::fill_entries()
                                                                             , "https://github.com/richgel999/miniz" },
         { "Expat"           , "1998-2000 Thai Open Source Software Center Ltd and Clark Cooper"
                               "2001-2016 Expat maintainers"                 , "http://www.libexpat.org/" },
+#ifndef SLIC3R_SLA_ONLY
         { "AVRDUDE"         , "2018  Free Software Foundation, Inc."        , "http://savannah.nongnu.org/projects/avrdude" },
+#endif
         { "Real-Time DXT1/DXT5 C compression library"   
                                     , "Based on original by fabian \"ryg\" giesen v1.04. "
                               "Custom version, modified by Yann Collet"     , "https://github.com/Cyan4973/RygsDXTc" },
-        { "Icons for STL and GCODE files."
+        { "Model file icons."
                             , "Akira Yasuda"                                , "http://3dp0.com/icons-for-stl-and-gcode/" },
         { "AppImage packaging for Linux using AppImageKit"
                             , "2004-2019 Simon Peter and contributors"      , "https://appimage.org/" },

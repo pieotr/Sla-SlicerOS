@@ -413,6 +413,7 @@ struct PageProfilePrinters: ConfigWizardPage
     PageProfilePrinters(ConfigWizard *parent);
 
     bool any_selected() const;
+    void use_selected_profile() { wxCommandEvent event; on_use_profile_clicked(event); }
     bool profile_printer_accepted() const { return m_profile_accepted; }
     std::string get_selected_profile_path() const;
     std::string get_selected_profile_name() const;
@@ -430,7 +431,6 @@ private:
     void load_profiles();
     void on_profile_selected(wxCommandEvent &event);
     void on_use_profile_clicked(wxCommandEvent &event);
-    bool copy_profile_to_system();
 };
 
 struct PageCustom: ConfigWizardPage
@@ -467,9 +467,9 @@ private:
     wxCheckBox              *cb_custom {nullptr};
     wxRadioButton           *rb_setup_materials {nullptr};
     wxRadioButton           *rb_custom_sla {nullptr};
-    wxChoice                *sample_sla_choice {nullptr};
+    wxListBox               *sample_sla_choice {nullptr};
     std::vector<std::string> sample_sla_profile_names;
-    wxChoice                *base_sla_material_choice {nullptr};
+    wxListBox               *base_sla_material_choice {nullptr};
     std::vector<std::string> base_sla_material_profile_names;
     wxTextCtrl              *additional_material_names {nullptr};
     wxButton                *go_to_materials_btn {nullptr};
@@ -569,6 +569,7 @@ struct PageBuildVolume : ConfigWizardPage
     wxCheckBox* use_tilt;
 
     PageBuildVolume(ConfigWizard* parent);
+    void load_config(const DynamicPrintConfig &config);
     virtual void apply_custom_config(DynamicPrintConfig& config);
 };
 

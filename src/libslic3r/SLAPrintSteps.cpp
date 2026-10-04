@@ -1457,6 +1457,24 @@ void SLAPrint::Steps::merge_slices_and_eval_stats() {
 void SLAPrint::Steps::rasterize()
 {
     if(canceled() || !m_print->m_archiver) return;
+    if (m_print->m_printer_input.empty()) return;
+    if (m_print->m_layer_document && m_print->m_layer_document->layer_count() == m_print->m_printer_input.size()) {
+        // Metadata-only updates retain manual edits and avoid polygon rasterization.
+        m_print->m_archiver->encode_layers(*m_print->m_layer_document);
+        m_print->m_encoded_revision = m_print->m_layer_document->revision();
+        return;
+    }
+    std::vector<sla::EncodedRaster> masks(m_print->m_printer_input.size());
+    std::vector<size_t> representatives(masks.size()), copies(masks.size(),0);
+    for(size_t i=0;i<masks.size();++i) {
+        if(canceled()) return;
+        // Exact polygon/contour/hole/point equality, with no rounding or
+        // hash-only matches. Straight walls often repeat hundreds of layers.
+        const bool same=i && m_print->m_printer_input[i].transformed_slices()==
+                             m_print->m_printer_input[i-1].transformed_slices();
+        representatives[i]=same?representatives[i-1]:i;
+        ++copies[representatives[i]];
+    }
 
     // coefficient to map the rasterization state (0-99) to the allocated
     // portion (slot) of the process state
@@ -1475,7 +1493,7 @@ void SLAPrint::Steps::rasterize()
 
     // procedure to process one height level. This will run in parallel
     auto lvlfn =
-        [this, &slck, increment, &dstatus, &pst]
+        [this, &slck, increment, &dstatus, &pst, &copies]
         (sla::RasterBase& raster, size_t idx)
     {
         PrintLayer& printlayer = m_print->m_printer_input[idx];
@@ -1487,7 +1505,7 @@ void SLAPrint::Steps::rasterize()
         // Status indication guarded with the spinlock
         {
             std::lock_guard lck(slck);
-            dstatus += increment;
+            dstatus += increment * copies[idx];
             double st = std::round(dstatus);
             if(st > pst) {
                 report_status(st, PRINT_STEP_LABELS(slapsRasterize));
@@ -1500,8 +1518,21 @@ void SLAPrint::Steps::rasterize()
     if(canceled()) return;
 
     // Print all the layers in parallel
-    m_print->m_archiver->draw_layers(m_print->m_printer_input.size(), lvlfn,
-                                    [this]() { return canceled(); }, ex_tbb);
+    const auto pixels = uint64_t(m_print->m_printer_config.display_pixels_x.value) *
+                        uint64_t(m_print->m_printer_config.display_pixels_y.value);
+    const int workers = int(std::clamp<uint64_t>((uint64_t(512) << 20) / std::max<uint64_t>(1, pixels * 4), 1, 8));
+    tbb::task_arena arena(workers);
+    arena.execute([&] {
+        m_print->m_archiver->draw_layers(m_print->m_printer_input.size(), lvlfn,
+                                        [this]() { return canceled(); }, ex_tbb, &masks, &representatives);
+    });
+    if (!canceled()) {
+        // Vector-only rasters do not expose a pixel buffer to an encoder.
+        if (std::all_of(masks.begin(), masks.end(), [](const auto &mask) { return mask.size() > 0; }))
+            m_print->m_layer_document = std::make_unique<sla::LayerDocument>(sla::LayerDocument::from_rasters(std::move(masks)));
+        else m_print->m_layer_document.reset();
+        m_print->m_encoded_revision = 0;
+    }
 }
 
 std::string SLAPrint::Steps::label(SLAPrintObjectStep step)

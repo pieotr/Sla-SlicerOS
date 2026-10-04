@@ -17,10 +17,11 @@ public:
     void update_from_undo_redo_stack(bool dirty);
     void update_from_presets();
     void update_from_preview();
+    void update_from_sla_layers(bool dirty);
     void reset_after_save();
     void reset_initial_presets();
 
-    bool is_dirty() const { return m_plater_dirty || m_project_config_dirty || m_presets_dirty || m_custom_gcode_per_print_z_dirty; }
+    bool is_dirty() const { return m_plater_dirty || m_project_config_dirty || m_presets_dirty || m_custom_gcode_per_print_z_dirty || m_sla_layers_dirty; }
     bool is_presets_dirty() const { return m_presets_dirty; }
 
 #if ENABLE_PROJECT_DIRTY_STATE_DEBUG_WINDOW
@@ -30,6 +31,7 @@ public:
 private:
     // Does the Undo / Redo stack indicate the project is dirty?
     bool                                        m_plater_dirty { false };
+    bool                                        m_sla_layers_dirty { false };
     // Do the presets indicate the project is dirty?
     bool                                        m_presets_dirty { false };
     // Is the project config dirty?

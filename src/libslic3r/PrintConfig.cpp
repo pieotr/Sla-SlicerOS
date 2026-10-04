@@ -414,11 +414,15 @@ void PrintConfigDef::init_common_params()
                    "Thinner layers give better accuracy but take more time to print.");
     def->sidetext = L("mm");
     def->min = 0;
+#ifdef SLIC3R_SLA_ONLY
+    def->set_default_value(new ConfigOptionFloat(0.05));
+#else
     def->set_default_value(new ConfigOptionFloat(0.3));
+#endif
 
     def = this->add("max_print_height", coFloat);
     def->label = L("Max print height");
-    def->tooltip = L("Set this to the maximum height that can be reached by your extruder while printing.");
+    def->tooltip = L("Maximum height available on the printer's Z axis.");
     def->sidetext = L("mm");
     def->min = 0;
     def->max = 1200;
@@ -2483,7 +2487,11 @@ void PrintConfigDef::init_fff_params()
                    "[input_filename_base], [default_output_extension].");
     def->full_width = true;
     def->mode = comExpert;
+#ifdef SLIC3R_SLA_ONLY
+    def->set_default_value(new ConfigOptionString("[input_filename_base][default_output_extension]"));
+#else
     def->set_default_value(new ConfigOptionString("[input_filename_base].gcode"));
+#endif
 
     def = this->add("overhangs", coBool);
     def->label = L("Detect bridging perimeters");
@@ -4453,7 +4461,7 @@ void PrintConfigDef::init_sla_params()
     def->tooltip = L("Initial layer height");
     def->sidetext = L("mm");
     def->min = 0;
-    def->set_default_value(new ConfigOptionFloat(0.3));
+    def->set_default_value(new ConfigOptionFloat(0.05));
 
     def = this->add_nullable("idle_temperature", coInts);
     def->label = L("Idle temperature");
@@ -4832,8 +4840,22 @@ void PrintConfigDef::init_sla_params()
 
     def = this->add("sla_archive_format", coString);
     def->label = L("Format of the output SLA archive");
-    def->mode = comAdvanced;
+    def->tooltip = L("Output format stored in this printer preset. Save the printer preset to keep your selection. "
+                     "Some listed formats are not implemented; selecting an entry does not certify printer compatibility.");
+    def->mode = comSimple;
     def->set_default_value(new ConfigOptionString("SL1"));
+
+    for (const auto &setting : sla::machine_settings) {
+        def = this->add(setting.key, setting.integer ? coInt : coFloat);
+        def->label = setting.label;
+        def->tooltip = "Generic LCD exposure and motion setting. Exporters must explicitly support this parameter.";
+        def->sidetext = setting.unit;
+        def->min = 0;
+        if (std::string(setting.key).find("light_pwm") != std::string::npos) def->max = 255;
+        def->mode = comSimple;
+        if (setting.integer) def->set_default_value(new ConfigOptionInt(int(setting.initial)));
+        else def->set_default_value(new ConfigOptionFloat(setting.initial));
+    }
 
     def = this->add("sla_output_precision", coFloat);
     def->label = L("SLA output precision");
@@ -5777,8 +5799,12 @@ CLIInputConfigDef::CLIInputConfigDef()
 
     def = this->add("material-profile", coStrings);
     def->label = ("Material preset name(s)");
+#ifdef SLIC3R_SLA_ONLY
+    def->tooltip = "Name(s) of the resin material preset(s) used for SLA slicing.";
+#else
     def->tooltip = ("Name(s) of the material preset(s) used for slicing.\n"
         "Could be filaments or sla_material preset name(s) depending on printer tochnology");
+#endif
     def->set_default_value(new ConfigOptionStrings());
 }
 
@@ -5794,11 +5820,13 @@ CLIActionsConfigDef::CLIActionsConfigDef()
     def->cli = "help|h";
     def->set_default_value(new ConfigOptionBool(false));
 
+#ifndef SLIC3R_SLA_ONLY
     def = this->add("help_fff", coBool);
     def->label = L("Help (FFF options)");
     def->tooltip = L("Show the full list of print/G-code configuration options.");
     def->set_default_value(new ConfigOptionBool(false));
 
+#endif
     def = this->add("help_sla", coBool);
     def->label = L("Help (SLA options)");
     def->tooltip = L("Show the full list of SLA print configuration options.");
@@ -5812,6 +5840,10 @@ CLIActionsConfigDef::CLIActionsConfigDef()
         "To print out JSON into file use 'output' option.\n"
         "To specify configuration folder use 'datadir' option.");
 
+#ifdef SLIC3R_SLA_ONLY
+    def->tooltip = "Get installed SLA printer models as JSON. Use --output to save the result and --datadir to select a configuration folder.";
+#endif
+
     // needs a --printer-profile input
 
     def = this->add("query-print-filament-profiles", coBool);
@@ -5821,14 +5853,22 @@ CLIActionsConfigDef::CLIActionsConfigDef()
         "To print out JSON into file use 'output' option.\n"
         "To specify configuration folder use 'datadir' option.");
 
+#ifdef SLIC3R_SLA_ONLY
+    def->cli = "query-print-material-profiles";
+    def->label = "Get print and resin material profiles";
+    def->tooltip = "Get print and resin material profiles for the selected --printer-profile as JSON.";
+#endif
+
     // needs nothing or input just one *.gcode file
 
+#ifndef SLIC3R_SLA_ONLY
     def = this->add("gcodeviewer", coBool);
     def->label = L("G-code viewer");
     def->tooltip = L("Visualize an already sliced and saved G-code");
     def->cli = "gcodeviewer";
     def->set_default_value(new ConfigOptionBool(false));
 
+#endif
     // needs a configuration input
 
     def = this->add("save", coString);
@@ -5866,8 +5906,12 @@ CLIActionsConfigDef::CLIActionsConfigDef()
     def = this->add("slice", coBool);
     def->label = L("Slice");
 //    def->tooltip = L("Slice the model as FFF or SLA based on the printer_technology configuration value.");
+#ifdef SLIC3R_SLA_ONLY
+    def->tooltip = L("Slice the model and export the selected SLA archive format.");
+#else
     def->tooltip = L("Slice the model as FFF or SLA based on the printer_technology configuration value "
                      "and export the result.");
+#endif
     def->cli = "slice|s";
     def->set_default_value(new ConfigOptionBool(false));
 
@@ -5877,11 +5921,13 @@ CLIActionsConfigDef::CLIActionsConfigDef()
     def->cli = "export-sla|sla";
     def->set_default_value(new ConfigOptionBool(false));
 
+#ifndef SLIC3R_SLA_ONLY
     def = this->add("export_gcode", coBool);
     def->label = L("Export G-code");
     def->tooltip = L("Slice the model and export toolpaths as G-code.");
     def->cli = "export-gcode|gcode|g";
     def->set_default_value(new ConfigOptionBool(false));
+#endif
 }
 
 CLITransformConfigDef::CLITransformConfigDef()

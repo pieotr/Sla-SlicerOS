@@ -9,11 +9,14 @@
 #include <boost/filesystem.hpp>
 
 #include <sstream>
+#include <iomanip>
+#include <locale>
 #include <cmath>
 
 #include "libslic3r/Time.hpp"
 #include "libslic3r/Zipper.hpp"
 #include "libslic3r/SLAPrint.hpp"
+#include "libslic3r/SLA/PrintParameters.hpp"
 #include "libslic3r/Exception.hpp"
 #include "libslic3r/MTUtils.hpp"
 #include "libslic3r/PrintConfig.hpp"
@@ -193,8 +196,9 @@ void fill_iniconf(ConfMap &m, const SLAPrint &print)
     double used_material = (stats.objects_used_material +
                             stats.support_used_material) / 1000;
     
-    int num_fade = print.default_object_config().faded_layers.getInt();
-    num_fade = num_fade >= 0 ? num_fade : 0;
+    // UVtools maps NumFade to bottom-layer count. Use the canonical LCD count,
+    // rather than the legacy Prusa fade setting (a different exposure policy).
+    const auto num_fade = sla::bottom_layers(print, print.print_layers().size());
     
     m["usedMaterial"] = std::to_string(used_material);
     m["numFade"]      = std::to_string(num_fade);
@@ -248,6 +252,48 @@ void fill_slicerconf(ConfMap &m, const SLAPrint &print)
         std::swap(m["display_pixels_x"], m["display_pixels_y"]);
     }
 
+    // UVtools' SL1 reader carries LCD parameters in escaped notes. Preserve
+    // unrelated user notes, removing previous values of these exact keywords
+    // before adding one authoritative value per parameter.
+    const std::pair<const char *, const char *> fields[] = {
+        {"WaitTimeBeforeCure", "wait_before_cure"}, {"WaitTimeAfterCure", "wait_after_cure"},
+        {"LiftHeight", "lift_height"}, {"LiftSpeed", "lift_speed"}, {"LiftHeight2", "lift_height2"},
+        {"LiftSpeed2", "lift_speed2"}, {"WaitTimeAfterLift", "wait_after_lift"},
+        {"RetractSpeed", "retract_speed"}, {"RetractHeight2", "retract_height2"},
+        {"RetractSpeed2", "retract_speed2"}, {"LightPWM", "light_pwm"}
+    };
+    std::vector<std::string> keywords{"TransitionLayerCount"};
+    for (const auto &field : fields) {
+        keywords.push_back(field.first); keywords.push_back(std::string("Bottom")+field.first);
+    }
+    for (const char *key : {"material_notes", "printer_notes"}) {
+        auto notes = m[key];
+        boost::replace_all(notes, "\\r\\n", "\\n"); boost::replace_all(notes, "\\r", "\\n");
+        std::string retained;
+        for (size_t start = 0; start < notes.size();) {
+            const auto end = notes.find("\\n", start);
+            const auto line = notes.substr(start, end == std::string::npos ? end : end-start);
+            auto trimmed = boost::trim_copy(line);
+            const bool owned = std::any_of(keywords.begin(), keywords.end(), [&](const auto &keyword) {
+                return boost::istarts_with(trimmed, keyword+"_");
+            });
+            if (!owned) { if (!retained.empty()) retained += "\\n"; retained += line; }
+            if (end == std::string::npos) break;
+            start = end+2;
+        }
+        m[key] = retained;
+    }
+    std::ostringstream notes; notes.imbue(std::locale::classic()); notes << std::fixed << std::setprecision(9);
+    if (!m["printer_notes"].empty()) notes << m["printer_notes"] << "\\n";
+    notes << "TransitionLayerCount_" << print.material_config().sla_transition_layers.value;
+    for (const bool bottom : {false, true}) for (const auto &field : fields) {
+        notes << "\\n" << (bottom ? "Bottom" : "") << field.first << '_';
+        const float value = sla::motion_parameter(print, field.second, bottom);
+        if (std::string(field.second) == "light_pwm") notes << int(value);
+        else notes << value;
+    }
+    m["printer_notes"] = notes.str();
+
 }
 
 } // namespace
@@ -285,6 +331,14 @@ void SL1Archive::export_print(Zipper               &zipper,
                               const ThumbnailsList &thumbnails,
                               const std::string    &prjname)
 {
+    const auto &levels = print.print_layers();
+    if (sla::bottom_layers(print, levels.size()) > UINT16_MAX || print.material_config().sla_transition_layers.value > UINT16_MAX)
+        throw ExportError("SL1 bottom/transition count exceeds its 16-bit metadata fields");
+    for (size_t i = 0; i < levels.size(); ++i) {
+        const double expected = print.material_config().initial_layer_height.value + i * print.default_object_config().layer_height.value;
+        if (std::abs(double(levels[i].level()) * SCALING_FACTOR - expected) > SCALING_FACTOR * 2)
+            throw ExportError("SL1 cannot store variable layer heights after the first layer; choose UVJ or another format with per-layer Z");
+    }
     std::string project =
         prjname.empty() ?
             boost::filesystem::path(zipper.get_filename()).stem().string() :
@@ -316,8 +370,9 @@ void SL1Archive::export_print(Zipper               &zipper,
             zipper.add_entry(imgname.c_str(), rst.data(), rst.size());
         }
 
+        std::set<std::pair<unsigned,unsigned>> thumbnail_sizes;
         for (const ThumbnailData& data : thumbnails)
-            if (data.is_valid())
+            if (data.is_valid() && thumbnail_sizes.emplace(data.width,data.height).second)
                 write_thumbnail(zipper, data);
 
         zipper.finalize();

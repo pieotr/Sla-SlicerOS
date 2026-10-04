@@ -9,8 +9,8 @@ int run(int argc, char** argv)
     if (!setup(cli, argc, argv))
         return 1;
 
-    if (process_profiles_sharing(cli))
-        return 1;
+    if (const auto status = process_profiles_sharing(cli))
+        return *status;
 
     bool                start_gui          = cli.empty() || (cli.actions_config.empty() && !cli.transform_config.has("cut"));
     PrinterTechnology   printer_technology = get_printer_technology(cli.overrides_config);
@@ -28,8 +28,10 @@ int run(int argc, char** argv)
     if (!load_print_data(models, print_config, printer_technology, cli))
         return 1;
 
+#ifndef SLIC3R_SLA_ONLY
     if (!start_gui && is_needed_post_processing(print_config))
         return 0;
+#endif
 
     if (!process_transform(cli, print_config, models))
         return 1;

@@ -12,8 +12,11 @@ add_executable(${_TEST_NAME}_tests ${_TEST_NAME}_tests_main.cpp
     sla_archive_readwrite_tests.cpp
     sla_archive_registry_tests.cpp
     sla_printer_profile_tests.cpp
+    sla_pcb_calibration_tests.cpp
     sla_layer_document_tests.cpp
-    sla_zcorrection_tests.cpp)
+    sla_zcorrection_tests.cpp
+    sla_offline_tests.cpp
+    ../../src/slic3r/Utils/HttpOffline.cpp)
 
 # mold linker for successful linking needs also to link TBB library and link it before libslic3r.
 target_link_libraries(${_TEST_NAME}_tests test_common TBB::tbb TBB::tbbmalloc libslic3r)
@@ -44,3 +47,21 @@ endif()
 
 add_test(NAME sla_layer_document COMMAND ${_TEST_NAME}_tests "[sla_layers]")
 set_tests_properties(sla_layer_document PROPERTIES LABELS "sla;layers;smoke")
+
+add_test(NAME sla_pcb_calibration COMMAND ${_TEST_NAME}_tests "[sla_pcb],[sla_calibration]")
+set_tests_properties(sla_pcb_calibration PROPERTIES LABELS "sla;pcb;calibration;smoke")
+
+add_test(NAME sla_offline_api COMMAND ${_TEST_NAME}_tests "[sla_offline]")
+set_tests_properties(sla_offline_api PROPERTIES LABELS "sla;offline;smoke" TIMEOUT 15)
+
+# The executable must also follow the SLA-only configuration contract. Native
+# writer tests do not exercise command parsing, exit codes or automatic suffixes.
+if(SLIC3R_SLA_ONLY AND TARGET PrusaSlicer)
+    find_package(Python3 COMPONENTS Interpreter QUIET)
+    if(Python3_Interpreter_FOUND)
+        add_test(NAME sla_cli_smoke COMMAND ${Python3_EXECUTABLE}
+            ${CMAKE_CURRENT_SOURCE_DIR}/cli_sla_smoke.py $<TARGET_FILE:PrusaSlicer>
+            --output ${CMAKE_CURRENT_BINARY_DIR}/cli-sla-smoke)
+        set_tests_properties(sla_cli_smoke PROPERTIES LABELS "sla;cli;smoke" TIMEOUT 120)
+    endif()
+endif()

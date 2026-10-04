@@ -153,6 +153,8 @@ set(SLIC3R_SOURCES
     Format/SL1_SVG.cpp
     Format/AnycubicSLA.hpp
     Format/AnycubicSLA.cpp
+    Format/AnycubicZipArchive.hpp
+    Format/AnycubicZipArchive.cpp
     Format/CrealityCXDLPv4.hpp
     Format/CrealityCXDLPv4.cpp
     Format/AnetArchive.hpp
@@ -173,10 +175,9 @@ set(SLIC3R_SOURCES
     Format/NanoDLPArchive.cpp
     Format/OpenStandardsArchive.hpp
     Format/OpenStandardsArchive.cpp
+    Format/OSFArchive.cpp
     Format/PhrozenArchive.hpp
     Format/PhrozenArchive.cpp
-    Format/StructoVlareArchive.hpp
-    Format/StructoVlareArchive.cpp
     Format/UniformationArchive.hpp
     Format/UniformationArchive.cpp
     Format/VoxeldanceArchive.hpp
@@ -185,8 +186,6 @@ set(SLIC3R_SOURCES
     Format/ZCodeArchive.cpp
     Format/UVToolsCompatArchive.hpp
     Format/UVToolsCompatArchive.cpp
-    Format/SLAArchiveWriterFactory.hpp
-    Format/SLAArchiveWriterFactory.cpp
     Format/ZipArchiveBase.hpp
     Format/ZipArchiveBase.cpp
     Format/BinaryRLEEncoderBase.hpp
@@ -471,8 +470,15 @@ set(SLIC3R_SOURCES
     SLA/Rotfinder.cpp
     SLA/SpatIndex.hpp
     SLA/SpatIndex.cpp
+    SLA/PCBExposure.cpp
+    SLA/PCBExposure.hpp
+    SLA/CalibrationRaster.cpp
+    SLA/CalibrationRaster.hpp
     SLA/LayerDocument.cpp
+    SLA/ColorMask.cpp
     SLA/LayerDocument.hpp
+    SLA/ProjectArchive.cpp
+    SLA/ProjectArchive.hpp
     SLA/RasterBase.hpp
     SLA/RasterBase.cpp
     SLA/AGGRaster.hpp

@@ -8,6 +8,8 @@
 #include "AnycubicSLA.hpp"
 
 #include <boost/algorithm/string/replace.hpp>
+#include <boost/algorithm/string/case_conv.hpp>
+#include <boost/filesystem/path.hpp>
 #include <boost/log/trivial.hpp>
 #include <fstream> // IWYU pragma: keep
 #include <algorithm>
@@ -24,6 +26,7 @@
 #include "libslic3r/GCode/ThumbnailData.hpp"
 #include "libslic3r/SLA/RasterBase.hpp"
 #include "libslic3r/SLAPrint.hpp"
+#include "libslic3r/SLA/PrintParameters.hpp"
 #include "LocalesUtils.hpp"
 #include "libslic3r/Config.hpp"
 #include "libslic3r/libslic3r.h"
@@ -50,6 +53,26 @@
 #define LAYER_SIZE_ESTIMATE (32 * 1024)
 
 namespace Slic3r {
+
+const AnycubicLegacyGeometry *anycubic_legacy_geometry(const std::string &extension)
+{
+    // Values mirror AnycubicFile's physical-geometry getters in the vendored
+    // UVtools source; these are millimetres, not raster pixel counts.
+    static const std::map<std::string, AnycubicLegacyGeometry> machines{
+        {"pws", {68.04,120.96,165}}, {"pw0", {55.44,98.637,150}},
+        {"pwx", {192,120,245}}, {"dlp", {102.40,57.60,165}},
+        {"pwmo", {82.62,130.56,165}}, {"pm3n", {143.36,89.60,165}},
+        {"pm4n", {153.408,87.040,165}}, {"pwms", {82.62,130.56,160}},
+        {"pwma", {134.40,84,165}}, {"pwmx", {192,120,245}},
+        {"pmx2", {196.61,122.88,200}}, {"pwmb", {198.15,123.84,245}},
+        {"px6s", {195.84,122.40,200}}, {"pmsq", {120,128,200}},
+        {"pm3", {163.84,102.40,180}}, {"pm3m", {298.08,165.60,300}},
+        {"pm3r", {218.88,123.12,250}}, {"pm5", {218.88,122.88,200}},
+        {"pm5s", {218.88,122.88,200}}, {"m5sp", {223.6416,126.976,200}}
+    };
+    const auto found = machines.find(extension);
+    return found == machines.end() ? nullptr : &found->second;
+}
 
 static void anycubicsla_get_pixel_span(const std::uint8_t* ptr, const std::uint8_t* end,
                                std::uint8_t& pixel, size_t& span_len)
@@ -102,6 +125,25 @@ struct AnycubicSLARasterEncoder
     }
 };
 
+// PWS is a binary plane with 7-bit run lengths. PW0's grayscale nibble
+// encoding is not interchangeable, even though the surrounding tables match.
+struct AnycubicPWSRasterEncoder {
+    sla::EncodedRaster operator()(const void *data, size_t width, size_t height, size_t components) const {
+        if (components != 1 || !width || !height) throw ExportError("PWS requires a grayscale mask");
+        const auto *pixels = static_cast<const uint8_t *>(data);
+        std::vector<uint8_t> encoded;
+        size_t position = 0, count = width * height;
+        while (position < count) {
+            const bool white = pixels[position] >= 128;
+            size_t run = 1;
+            while (run < 127 && position+run < count && (pixels[position+run] >= 128) == white) ++run;
+            encoded.push_back(uint8_t((white ? 128 : 0) | run));
+            position += run;
+        }
+        return sla::EncodedRaster(std::move(encoded), "pwsimg");
+    }
+};
+
 using ConfMap = std::map<std::string, std::string>;
 
 typedef struct anycubicsla_format_intro
@@ -115,7 +157,9 @@ typedef struct anycubicsla_format_intro
     std::uint32_t layer_color_offset; // unused in version 1
     std::uint32_t layer_data_offset;
     std::uint32_t extra_data_offset; // unused here (only used in version 516)
+    std::uint32_t machine_data_offset; // serialized from version 516
     std::uint32_t image_data_offset;
+    std::uint32_t model_data_offset; // serialized from version 517
 } anycubicsla_format_intro;
 
 typedef struct anycubicsla_format_header
@@ -171,8 +215,8 @@ typedef struct anycubicsla_format_layer
     float         lift_speed_mms;
     float         exposure_time_s;
     float         layer_height_mm;
-    float         layer44; // unkown - usually 0
-    float         layer48; // unkown - usually 0
+    std::uint32_t nonzero_pixel_count;
+    std::uint32_t padding;
 } anycubicsla_format_layer;
 
 typedef struct anycubicsla_format_misc
@@ -254,36 +298,26 @@ void fill_preview(anycubicsla_format_preview &p,
     p.payload_size = sizeof(p) - sizeof(p.tag) - sizeof(p.payload_size);
                      
     std::memset(p.pixels, 0 , sizeof(p.pixels));
-    if (!thumbnails.empty()) {
-        std::uint32_t dst_index;
-        std::uint32_t i = 0;
-        size_t len;
-        size_t pixel_x = 0;
-        auto t = thumbnails[0]; //use the first thumbnail
-        len = t.pixels.size();
-        //sanity check        
-        if (len != PREV_W * PREV_H * 4)  {
-            printf("incorrect thumbnail size. expected %ix%i\n", PREV_W, PREV_H);
-            return;
-        }
-        // rearange pixels: they seem to be stored from bottom to top.
-        dst_index = (PREV_W * (PREV_H - 1) * 2);
-        while (i < len) {
-            std::uint32_t pixel;
-            std::uint32_t r = t.pixels[i++];
-            std::uint32_t g = t.pixels[i++];
-            std::uint32_t b = t.pixels[i++];
-            i++; // Alpha
-            // convert to BGRA565
-            pixel = ((b >> 3) << 11) | ((g >>2) << 5) | (r >> 3);
-            p.pixels[dst_index++] = pixel & 0xFF;
-            p.pixels[dst_index++] = (pixel >> 8) & 0xFF;
-            pixel_x++;
-            if (pixel_x == PREV_W) {
-                pixel_x = 0;
-                dst_index -= (PREV_W * 4);
-            }
-        }
+    const auto source = std::find_if(thumbnails.begin(), thumbnails.end(), [](const ThumbnailData &thumbnail) {
+        return thumbnail.is_valid() && thumbnail.width <= 4096 && thumbnail.height <= 4096;
+    });
+    if (source == thumbnails.end()) return;
+    // Aspect-fit the renderer or edited-mask thumbnail instead of silently
+    // writing a black preview whenever its resolution differs from 224x168.
+    const double scale = std::min(double(PREV_W)/source->width, double(PREV_H)/source->height);
+    const size_t width = std::max<size_t>(1, std::lround(source->width*scale));
+    const size_t height = std::max<size_t>(1, std::lround(source->height*scale));
+    const size_t left = (PREV_W-width)/2, top = (PREV_H-height)/2;
+    for (size_t y=0;y<height;++y) for (size_t x=0;x<width;++x) {
+        const size_t sx = std::min<size_t>(source->width-1, x*source->width/width);
+        const size_t sy = source->height-1-std::min<size_t>(source->height-1, y*source->height/height);
+        const auto *rgba = source->pixels.data()+4*(sy*source->width+sx);
+        const unsigned r = (unsigned(rgba[0])*rgba[3]+127)/255;
+        const unsigned g = (unsigned(rgba[1])*rgba[3]+127)/255;
+        const unsigned b = (unsigned(rgba[2])*rgba[3]+127)/255;
+        const uint16_t pixel = uint16_t(((b>>3)<<11)|((g>>2)<<5)|(r>>3));
+        const size_t offset = 2*((top+y)*PREV_W+left+x);
+        p.pixels[offset] = uint8_t(pixel); p.pixels[offset+1] = uint8_t(pixel>>8);
     }
 }
 
@@ -294,7 +328,6 @@ void fill_header(anycubicsla_format_header &h,
 {
     CNumericLocalesSetter locales_setter;
 
-    float        bottle_weight_g;
     float        bottle_volume_ml;
     float        bottle_cost;
     float        material_density;
@@ -312,10 +345,13 @@ void fill_header(anycubicsla_format_header &h,
                                  ForwardCompatibilitySubstitutionRule::Enable);
 
     h.layer_height_mm        = get_cfg_value_f(cfg, "layer_height");
+    sla::require_single_stage_motion(print, "Anycubic", false);
+    if (sla::motion_parameter(print, "wait_before_cure", true) != sla::motion_parameter(print, "wait_before_cure", false))
+        throw ExportError("This Anycubic encoder requires the same normal and bottom wait before exposure");
     m.bottom_layer_height_mm = get_cfg_value_f(cfg, "initial_layer_height");
     h.exposure_time_s        = get_cfg_value_f(cfg, "exposure_time");
     h.bottom_exposure_time_s = get_cfg_value_f(cfg, "initial_exposure_time");
-    h.bottom_layer_count =     get_cfg_value_i(cfg, "faded_layers");
+    h.bottom_layer_count = uint32_t(sla::bottom_layers(print, layer_count));
     if (layer_count < h.bottom_layer_count) {
         h.bottom_layer_count = layer_count;
     }
@@ -332,69 +368,41 @@ void fill_header(anycubicsla_format_header &h,
 
     h.res_x = res_x;
     h.res_y = res_y;
-    bottle_weight_g = get_cfg_value_f(cfg, "bottle_weight") * 1000.0f;
     bottle_volume_ml = get_cfg_value_f(cfg, "bottle_volume");
     bottle_cost = get_cfg_value_f(cfg, "bottle_cost");
-    material_density = bottle_weight_g / bottle_volume_ml;
+    material_density = print.material_config().material_density.value;
 
     h.volume_ml = (stats.objects_used_material + stats.support_used_material) / 1000;
     h.weight_g           = h.volume_ml * material_density;
-    h.price              = (h.volume_ml * bottle_cost) /  bottle_volume_ml;
+    h.price              = bottle_volume_ml > 0 ? (h.volume_ml * bottle_cost) / bottle_volume_ml : 0.f;
     h.price_currency     = '$';
     h.antialiasing       = 1;
-    h.per_layer_override = 0;
+    h.per_layer_override = 1;
 
     // TODO - expose these variables to the UI rather than using material notes
     if (mat_cfg.has(CFG_ANTIALIASING)) {
         h.antialiasing = get_cfg_value_i(mat_cfg, CFG_ANTIALIASING);
-        crop_value(h.antialiasing, (uint32_t) 0, (uint32_t) 1);
+        if (h.antialiasing != 1) throw ExportError("This Anycubic encoder requires antialiasing level 1");
     } else {
         h.antialiasing = 1;
     }
 
-    h.delay_before_exposure_s = get_cfg_value_f(mat_cfg, CFG_DELAY_BEFORE_EXPOSURE, 0.5f);
-    crop_value(h.delay_before_exposure_s, 0.0f, 1000.0f);
-
-    h.lift_distance_mm = get_cfg_value_f(mat_cfg, CFG_LIFT_DISTANCE, 8.0f);
-    crop_value(h.lift_distance_mm, 0.0f, 100.0f);
-
-    if (mat_cfg.has(CFG_BOTTOM_LIFT_DISTANCE)) {
-        m.bottom_lift_distance_mm = get_cfg_value_f(mat_cfg,
-                                                    CFG_BOTTOM_LIFT_DISTANCE,
-                                                    8.0f);
-        crop_value(h.lift_distance_mm, 0.0f, 100.0f);
-    } else {
-        m.bottom_lift_distance_mm = h.lift_distance_mm;
-    }
-
-    h.lift_speed_mms = get_cfg_value_f(mat_cfg, CFG_LIFT_SPEED, 2.0f);
-    crop_value(m.bottom_lift_speed_mms, 0.1f, 20.0f);
-
-    if (mat_cfg.has(CFG_BOTTOM_LIFT_SPEED)) {
-        m.bottom_lift_speed_mms = get_cfg_value_f(mat_cfg, CFG_BOTTOM_LIFT_SPEED, 2.0f);
-        crop_value(m.bottom_lift_speed_mms, 0.1f, 20.0f);
-    } else {
-        m.bottom_lift_speed_mms = h.lift_speed_mms;
-    }
-
-    h.retract_speed_mms = get_cfg_value_f(mat_cfg, CFG_RETRACT_SPEED, 3.0f);
-    crop_value(h.lift_speed_mms, 0.1f, 20.0f);
-
-    h.print_time_s = (h.bottom_layer_count * h.bottom_exposure_time_s) +
-                     ((layer_count - h.bottom_layer_count) *
-                      h.exposure_time_s) +
-                     (layer_count * h.lift_distance_mm / h.retract_speed_mms) +
-                     (layer_count * h.lift_distance_mm / h.lift_speed_mms) +
-                     (layer_count * h.delay_before_exposure_s);
+    // The GUI's canonical speeds are mm/min; this container stores mm/s.
+    h.delay_before_exposure_s = sla::motion_parameter(print, "wait_before_cure", false);
+    h.lift_distance_mm = sla::motion_parameter(print, "lift_height", false);
+    m.bottom_lift_distance_mm = sla::motion_parameter(print, "lift_height", true);
+    h.lift_speed_mms = sla::motion_parameter(print, "lift_speed", false) / 60.f;
+    m.bottom_lift_speed_mms = sla::motion_parameter(print, "lift_speed", true) / 60.f;
+    h.retract_speed_mms = sla::motion_parameter(print, "retract_speed", false) / 60.f;
+    h.print_time_s = float(sla::lcd_print_time(print));
 
 
     h.payload_size  = sizeof(h) - sizeof(h.tag) - sizeof(h.payload_size);
 
-    // Keep header geometry consistent with oriented raster dimensions.
-    // UVtools validates this ratio and warns / stretches when it diverges.
+    // The single-pitch header field describes the X axis. Newer versions store
+    // both independent pitches in MACHINE; averaging would describe neither.
     const double pixel_size_x_um = (h.res_x > 0) ? (display_w_mm / double(h.res_x) * 1000.0) : 50.0;
-    const double pixel_size_y_um = (h.res_y > 0) ? (display_h_mm / double(h.res_y) * 1000.0) : 50.0;
-    h.pixel_size_um = static_cast<float>((pixel_size_x_um + pixel_size_y_um) * 0.5);
+    h.pixel_size_um = static_cast<float>(pixel_size_x_um);
 }
 
 } // namespace
@@ -406,6 +414,7 @@ std::unique_ptr<sla::RasterBase> AnycubicSLAArchive::create_raster() const
 
 sla::RasterEncoder AnycubicSLAArchive::get_encoder() const
 {
+    if (m_pws) return AnycubicPWSRasterEncoder{};
     return AnycubicSLARasterEncoder{};
 }
 
@@ -424,8 +433,10 @@ static void anycubicsla_write_int32(std::ofstream &out, std::uint32_t val)
 }
 static void anycubicsla_write_float(std::ofstream &out, float val)
 {
-    std::uint32_t *f = (std::uint32_t *) &val;
-    anycubicsla_write_int32(out, *f);
+    static_assert(sizeof(float)==sizeof(std::uint32_t));
+    std::uint32_t bits;
+    std::memcpy(&bits,&val,sizeof(bits));
+    anycubicsla_write_int32(out,bits);
 }
 
 static void anycubicsla_write_intro(std::ofstream &out, anycubicsla_format_intro &i)
@@ -439,7 +450,9 @@ static void anycubicsla_write_intro(std::ofstream &out, anycubicsla_format_intro
     anycubicsla_write_int32(out, i.layer_color_offset);
     anycubicsla_write_int32(out, i.layer_data_offset);
     anycubicsla_write_int32(out, i.extra_data_offset);
+    if (i.version >= ANYCUBIC_SLA_FORMAT_VERSION_516) anycubicsla_write_int32(out, i.machine_data_offset);
     anycubicsla_write_int32(out, i.image_data_offset);
+    if (i.version >= ANYCUBIC_SLA_FORMAT_VERSION_517) anycubicsla_write_int32(out, i.model_data_offset);
 }
 
 static void anycubicsla_write_header(std::ofstream &out, anycubicsla_format_header &h)
@@ -493,8 +506,8 @@ static void anycubicsla_write_layer(std::ofstream &out, anycubicsla_format_layer
     anycubicsla_write_float(out, l.lift_speed_mms);
     anycubicsla_write_float(out, l.exposure_time_s);
     anycubicsla_write_float(out, l.layer_height_mm);
-    anycubicsla_write_float(out, l.layer44);
-    anycubicsla_write_float(out, l.layer48);
+    anycubicsla_write_int32(out, l.nonzero_pixel_count);
+    anycubicsla_write_int32(out, l.padding);
 }
 
 void AnycubicSLAArchive::export_print(const std::string     fname,
@@ -512,22 +525,74 @@ void AnycubicSLAArchive::export_print(const std::string     fname,
     std::vector<uint8_t>      layer_images;
     std::uint32_t             image_offset;
 
-        assert(m_version == ANYCUBIC_SLA_FORMAT_VERSION_1 ||
-            m_version == ANYCUBIC_SLA_FORMAT_VERSION_515 ||
-            m_version == ANYCUBIC_SLA_FORMAT_VERSION_516 ||
-            m_version == ANYCUBIC_SLA_FORMAT_VERSION_517);
+    if (m_version != ANYCUBIC_SLA_FORMAT_VERSION_1 &&
+        m_version != ANYCUBIC_SLA_FORMAT_VERSION_515 &&
+        m_version != ANYCUBIC_SLA_FORMAT_VERSION_516 &&
+        m_version != ANYCUBIC_SLA_FORMAT_VERSION_517)
+        throw ExportError("Unsupported Anycubic container version");
 
     intro.version             = m_version;
     intro.area_num            = 4;
-    intro.header_data_offset  = sizeof(intro);
-    intro.preview_data_offset = sizeof(intro) + sizeof(header);
+    const uint32_t intro_size = 48 + (m_version >= ANYCUBIC_SLA_FORMAT_VERSION_516 ? 4 : 0) +
+                                              (m_version >= ANYCUBIC_SLA_FORMAT_VERSION_517 ? 4 : 0);
+    intro.header_data_offset  = intro_size;
+    intro.preview_data_offset = intro_size + sizeof(header);
     intro.layer_data_offset   = intro.preview_data_offset + sizeof(preview);
+    const bool machine_table = m_version >= ANYCUBIC_SLA_FORMAT_VERSION_516;
+    if (machine_table) {
+        intro.machine_data_offset = intro.layer_data_offset;
+        intro.layer_data_offset += 224;
+        ++intro.area_num;
+    }
     intro.image_data_offset = intro.layer_data_offset +
                               sizeof(layers_header) +
                               (sizeof(anycubicsla_format_layer) * layer_count);
 
     fill_header(header, misc, print, layer_count);
+    if (!machine_table) {
+        std::string extension = boost::filesystem::path(fname).extension().string();
+        if (!extension.empty()) extension.erase(0, 1);
+        boost::algorithm::to_lower(extension);
+        const auto *geometry = anycubic_legacy_geometry(extension);
+        double width = m_cfg.display_width.value, height = m_cfg.display_height.value;
+        if (m_cfg.display_orientation.value == sladoPortrait) std::swap(width, height);
+        // Permit floating-point/profile rounding, without hiding size changes.
+        if (!geometry || std::abs(width - geometry->width) > .005 ||
+            std::abs(height - geometry->height) > .005 ||
+            std::abs(m_cfg.max_print_height.value - geometry->machine_z) > .005)
+            throw ExportError("Legacy Anycubic ." + extension +
+                " cannot store custom machine dimensions. Match the oriented screen width, height and Z to its printer, or select a format with a machine table.");
+    }
     fill_preview(preview, misc, thumbnails);
+    std::vector<uint32_t> nonzero(layer_count);
+    double volume_mm3 = 0., previous_z = 0.;
+    const auto &printer = print.printer_config();
+    const double pixel_area = printer.display_width.value * printer.display_height.value /
+                              (double(header.res_x) * header.res_y);
+    for (size_t layer = 0; layer < layer_count; ++layer) {
+        const auto &mask = m_layers[layer];
+        const auto *bytes = static_cast<const uint8_t *>(mask.data());
+        uint64_t decoded = 0;
+        for (size_t offset = 0; offset < mask.size(); ++offset) {
+            const unsigned color = m_pws ? bytes[offset] >> 7 : bytes[offset] >> 4;
+            uint32_t run = bytes[offset] & (m_pws ? 127 : 15);
+            if (!m_pws && (color == 0 || color == 15)) {
+                if (++offset >= mask.size()) throw ExportError("Truncated Anycubic raster run");
+                run = (run << 8) | bytes[offset];
+            }
+            decoded += run;
+            if (color) nonzero[layer] += run;
+        }
+        if (decoded != uint64_t(header.res_x) * header.res_y)
+            throw ExportError("Anycubic raster size differs from the printer resolution");
+        const double z = double(print.print_layers().at(layer).level()) * SCALING_FACTOR;
+        volume_mm3 += nonzero[layer] * pixel_area * (z-previous_z);
+        previous_z = z;
+    }
+    header.volume_ml = float(volume_mm3 / 1000.);
+    header.weight_g = header.volume_ml * print.material_config().material_density.value;
+    header.price = print.material_config().bottle_volume.value > 0 ?
+        header.volume_ml * print.material_config().bottle_cost.value / print.material_config().bottle_volume.value : 0.f;
 
     try {
         // open the file and write the contents
@@ -536,6 +601,31 @@ void AnycubicSLAArchive::export_print(const std::string     fname,
         anycubicsla_write_intro(out, intro);
         anycubicsla_write_header(out, header);
         anycubicsla_write_preview(out, preview);
+        if (machine_table) {
+            // Native MACHINE v224 records both physical axes instead of
+            // relying on UVtools' filename-dependent device defaults.
+            out.write("MACHINE\0\0\0\0\0", 12); anycubicsla_write_int32(out, 224);
+            auto fixed_string = [&](const std::string &value, size_t length) {
+                if (value.size() >= length) throw ExportError("Anycubic machine string is too long");
+                out.write(value.data(), value.size());
+                std::string padding(length-value.size(), '\0'); out.write(padding.data(), padding.size());
+            };
+            fixed_string(m_cfg.printer_model.value.empty() ? "SLA printer" : m_cfg.printer_model.value, 96);
+            fixed_string(m_pws ? "pwsimg" : "pw0img", 16);
+            anycubicsla_write_int32(out, 16); anycubicsla_write_int32(out, 1);
+            double width=m_cfg.display_width.value, height=m_cfg.display_height.value;
+            if (m_cfg.display_orientation.value == sladoPortrait) std::swap(width,height);
+            anycubicsla_write_float(out, float(width)); anycubicsla_write_float(out, float(height));
+            anycubicsla_write_float(out, float(m_cfg.max_print_height.value));
+            anycubicsla_write_int32(out, 518); anycubicsla_write_int32(out, 6506241);
+            anycubicsla_write_float(out, float(width/header.res_x*1000.));
+            anycubicsla_write_float(out, float(height/header.res_y*1000.));
+            for (unsigned i=0;i<8;++i) anycubicsla_write_int32(out, 0);
+            anycubicsla_write_int32(out, 1); anycubicsla_write_int32(out, 0);
+            out.put(char(header.res_x&255)); out.put(char(header.res_x>>8));
+            out.put(char(header.res_y&255)); out.put(char(header.res_y>>8));
+            for (unsigned i=0;i<4;++i) anycubicsla_write_int32(out, 0);
+        }
 
         layers_header.payload_size = intro.image_data_offset - intro.layer_data_offset -
                         sizeof(layers_header.tag)  - sizeof(layers_header.payload_size);
@@ -562,6 +652,9 @@ void AnycubicSLAArchive::export_print(const std::string     fname,
                 l.lift_distance_mm = header.lift_distance_mm;
                 l.lift_speed_mms = header.lift_speed_mms;
             }
+            l.exposure_time_s = sla::layer_exposure(print, i);
+            l.layer_height_mm = float(double(print.print_layers().at(i).level() - (i ? print.print_layers().at(i-1).level() : 0)) * SCALING_FACTOR);
+            l.nonzero_pixel_count = nonzero[i];
             image_offset += l.image_size;
             anycubicsla_write_layer(out, l);
             // add the rle encoded layer image into the buffer
@@ -572,6 +665,8 @@ void AnycubicSLAArchive::export_print(const std::string     fname,
         }
         const char* img_buffer = reinterpret_cast<const char*>(layer_images.data());
         out.write(img_buffer, layer_images.size());
+        out.flush();
+        if (!out) throw RuntimeError("Cannot finish writing Anycubic data");
         out.close();
     } catch(std::exception& e) {
         BOOST_LOG_TRIVIAL(error) << e.what();

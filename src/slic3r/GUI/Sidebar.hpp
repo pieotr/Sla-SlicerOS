@@ -82,6 +82,7 @@ class Sidebar : public wxPanel
     wxBoxSizer*     m_autoslicing_btns_sizer    { nullptr };
 
 
+    wxButton*       m_btn_edit_layers { nullptr };
     wxButton*       m_btn_export_gcode          { nullptr };
     wxButton*       m_btn_reslice               { nullptr };
     wxButton*       m_btn_connect_gcode         { nullptr };

@@ -869,6 +869,10 @@ Bonjour::priv::priv(std::string&& service)
 
 void Bonjour::priv::lookup_perform()
 {
+#ifdef SLIC3R_OFFLINE_ONLY
+    if (completefn) completefn();
+    return;
+#endif
 	service_dn = (boost::format("_%1%._%2%.local") % service % protocol).str();
 
 	std::shared_ptr< boost::asio::io_service > io_service(new boost::asio::io_service);
@@ -956,6 +960,10 @@ void Bonjour::priv::lookup_perform()
 
 void Bonjour::priv::resolve_perform()
 {
+#ifdef SLIC3R_OFFLINE_ONLY
+    if (resolvefn) resolvefn({});
+    return;
+#endif
 	// reply callback is shared to every UDPSession which is called on same thread as io_service->run();
 	// thus no need to mutex replies in reply_callback, same should go with the timer
 	std::vector<BonjourReply> replies;

@@ -22,6 +22,7 @@
 
 #include "libslic3r/PrintConfig.hpp"
 #include "libslic3r/Channel.hpp"
+#ifndef SLIC3R_OFFLINE_ONLY
 #include "OctoPrint.hpp"
 #include "Duet.hpp"
 #include "FlashAir.hpp"
@@ -30,6 +31,7 @@
 #include "MKS.hpp"
 #include "Moonraker.hpp"
 #include "PrusaConnect.hpp"
+#endif
 #include "../GUI/PrintHostDialogs.hpp"
 
 namespace fs = boost::filesystem;
@@ -43,6 +45,10 @@ PrintHost::~PrintHost() {}
 
 PrintHost* PrintHost::get_print_host(DynamicPrintConfig *config)
 {
+#ifdef SLIC3R_OFFLINE_ONLY
+    // Offline profiles describe local SLA exporters, never upload backends.
+    return nullptr;
+#else
     PrinterTechnology tech = ptFFF;
 
     {
@@ -76,6 +82,7 @@ PrintHost* PrintHost::get_print_host(DynamicPrintConfig *config)
         }        
         return new SL1Host(config);
     }
+#endif
 }
 
 wxString PrintHost::format_error(const std::string &body, const std::string &error, unsigned status) const

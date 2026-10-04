@@ -4,14 +4,19 @@ SLA-Slicer — instrukcja wersji rozwojowej
 Stan programu
 -------------
 Projekt jest w trakcie przebudowy. Lista formatów eksportu nie jest listą
-potwierdzonej zgodności z drukarkami. Edytor pikseli, PCB i pełny zestaw
-kalibracji UVtools nadal wymagają wdrożenia. Stan prac: doc/REFACTOR_STATUS.md.
+potwierdzonej zgodności z drukarkami. Edytor warstw po slicingu jest dostępny;
+Dostępne są podstawowe generatory PCB i kalibracji. Pełny zestaw operacji
+oraz wzorców UVtools nadal wymaga wdrożenia.
+Bieżące zmiany i ograniczenia: doc/WDROZENIE_2026-10-04.md.
 
 Budowanie na Linux
 ------------------
 Otwórz terminal w katalogu Sla-SlicerOS. Wymagane są kompilator C/C++, CMake,
 narzędzia budowania oraz biblioteki systemowe opisane w install.md.
-Pierwsze budowanie zależności może wymagać dostępu do sieci.
+Uruchamiana aplikacja działa offline. Pierwsze budowanie zależności wymaga
+lokalnie przygotowanych bibliotek lub archiwów źródłowych; standardowy skrypt
+zależności może je pobierać, jeśli nie ma ich w cache. Nie jest uruchamiany
+przy zwykłym starcie aplikacji. CURL i OpenSSL są pomijane w zależnościach aplikacji.
 
   bash ./build_linux.sh --jobs 4 --tests --run
 
@@ -44,7 +49,11 @@ Przygotowanie wydruku
    odpowiednio do modelu. Zachowaj projekt, aby móc wrócić do sceny 3D.
 5. Wykonaj slicing i sprawdź podgląd warstw.
 6. Wybierz format zgodny z modelem drukarki i firmware. Przy zmianie filtra
-   eksportu sprawdź również rozszerzenie nazwy pliku.
+   eksportu rozszerzenie nazwy zmienia się automatycznie. Po zatwierdzeniu
+   dialogu preferencja formatu zapamiętuje się osobno dla tej drukarki.
+   Nie wymaga zapisywania presetu ani ponownego cięcia. Anulowanie dialogu
+   nie zmienia preferencji. Zmiana formatu w ustawieniach drukarki również
+   aktualizuje jej preferencję eksportu.
 7. Dla niezweryfikowanego formatu sprawdź wynik niezależnym dekoderem UVtools:
    liczbę i obrazy warstw, wymiary, orientację, ekspozycję i ruch osi Z.
 
@@ -54,9 +63,41 @@ nie powinien traktować takiego pliku jako archiwum SL1.
 
 PCB, kalibracje i edycja PNG
 --------------------------
-Pełne narzędzia nie są jeszcze dostępne w tej aplikacji. Plan wdrożenia
-obejmuje dokument warstwowy, edycję z cofaniem, import Gerber/Excellon,
-generatory kalibracyjne i eksport przez wspólny rejestr formatów.
+Window → PCB exposure: wskaż Gerber miedzi i opcjonalny Excellon wierceń.
+Ustaw ekspozycję, margines, przesunięcie i odbicia. Generate PCB layers otwiera
+jedną warstwę w edytorze. Artwork nie jest skalowany; zbyt duża płytka lub
+nieobsługiwane polecenie źródłowe zgłaszają błąd.
+
+Window → Printer calibration: wybierz bloki XYZ, pola szarości albo obszar
+próby lift. Podaj rozmiary, wysokość i margines. Wysokość musi być wielokrotnością
+aktualnej wysokości warstwy. Parametry ekspozycji/ruchu pochodzą z presetów.
+
+W edytorze wybierz format i Export generated layers. Zadanie jest oddzielne
+od sceny 3D. Przed eksportem możesz edytować PNG i używać Undo/Redo. Zamknięcie
+bez eksportu wymaga świadomego odrzucenia zadania.
+
+Eksport OSLA zapisuje maski grayscale i parametry każdego poziomu w natywnym
+kontenerze binarnym. Jest formatem wymiany; sprawdź obsługę w firmware przed
+przesłaniem do drukarki. Nazwa maszyny może mieć do 49 bajtów UTF-8.
+
+N4/N7 wymagają zgodnych wymiarów modelu Anet: N4 1440×2560 px,
+68,04×120,96 mm i Z 135 mm; N7 2560×1600 px, 192×120 mm i Z 300 mm.
+Wymiary podano po zastosowaniu orientacji obrazu. Ekspozycje muszą być w całych
+sekundach, wysokości warstw jednakowe, lift wspólny w całych mm, a szybkość
+lift/retract wspólna w całych mm/s (np. 120 mm/min = 2 mm/s).
+Wyłącz transition, drugi etap, dodatkowe oczekiwania; ustaw PWM 255.
+Format progowo zamienia szarość na czerń/biel. Program zgłosi błąd ustawień,
+których nie można zachować w pliku, i zachowa wcześniejszy plik wynikowy.
+
+Po edycji PNG objętość eksportu jest liczona z nowych masek i wysokości Z,
+także przy eksporcie bez Apply. Apply aktualizuje wynik i statystyki w aplikacji.
+
+Window → Open layer archive otwiera SL1/SL1S/UVJ do edycji pikseli.
+Po slicingu użyj Edit layers w panelu bocznym. Operacje na zakresie obejmują
+m.in. próg, odbicia, negatyw i morfologię; mają jedno cofnięcie i przycisk Cancel.
+
+Zakres, ograniczenia i ustawienia: doc/PCB_CALIBRATION.md i doc/LAYER_EDITOR.md.
+To pierwsza implementacja natywna; pozostałe wzorce UVtools są w trakcie prac.
 
 Zgłaszanie błędów
 ----------------
@@ -75,14 +116,282 @@ są interpretowane według pierwotnej konwencji PrusaSlicer; portretowe pliki
 z poprzednich wersji tego forka mogą wymagać ponownego eksportu z projektu.
 
 Niedostępny eksport:
-Formaty z niedokończoną implementacją oraz PWSZ zgłaszają teraz konkretny błąd
-podczas rasteryzacji lub eksportu. Można nadal otwierać ich profile. Obecność
+Formaty z niedokończoną implementacją zgłaszają konkretny błąd eksportu.
+Można otwierać ich profile, ciąć modele i edytować wynik jako maski rastrowe,
+następnie eksportować go innym dostępnym kodekiem. Dialog eksportu pokazuje
+wyłącznie aktualnie dostępne kodery. Obecność
 rozszerzenia w ustawieniach nie potwierdza obsługi drukarki; nie zmieniaj samego
 rozszerzenia pliku, aby obejść brak kodeka. Ta blokada nie zastępuje implementacji.
 
-Edycja warstw SL1:
-Po eksporcie SL1 otwórz Window → SL1 Layer Editor. Wybierz warstwę i promień
-pędzla, ustaw jasność (0 = gumka, 255 = naświetlenie), kliknij podgląd.
-Dostępne są progowanie, Undo/Redo i Save as SL1. Szczegóły oraz ograniczenia
-są w doc/LAYER_EDITOR.md. Edycje zapisują się w archiwum, nie w modelu 3D.
-Miniatury i statystyki źródłowe nie są przeliczane po edycji.
+Edycja warstw po slicingu:
+Po zakończeniu slicingu użyj Edit layers pod przyciskiem eksportu albo
+Window → Edit sliced layers (Ctrl+Alt+L). Osobny plik SL1 otwórz przez
+Window → SL1 Layer Editor. Wybierz warstwę i promień
+pędzla, ustaw jasność (0 = gumka, 255 = naświetlenie), przeciągnij po podglądzie.
+Jedno pociągnięcie jest jednym krokiem Undo. Apply to sliced result włącza
+edycje do bieżącego wyniku, także dla eksportu z głównego okna. Export edited
+layers zapisuje wybrany dostępny format bez ponownej rasteryzacji modelu.
+Dostępne są progowanie, Invert layer, Undo/Redo. Otwarty osobno plik SL1
+zapisuje się przez Save as SL1. Szczegóły są w doc/LAYER_EDITOR.md.
+Po Apply to sliced result zapisz projekt przez File → Save project / Save project as.
+3MF zachowuje edytowane PNG, wysokości warstw i odcisk geometrii.
+Po otwarciu jako projekt wykonaj Slice now: program przywróci zapisane poprawki,
+jeśli geometria i ustawienia rasteryzacji są zgodne. Historia Undo dotyczy
+bieżącej sesji i nie zapisuje się w 3MF. Edycje nie zmieniają modelu 3D.
+Zmiana ekspozycji i ruchów zachowuje edycje; zmiana modelu, geometrii ekranu,
+orientacji albo gamma wymaga nowych masek i usuwa poprzednie edycje.
+Objętość żywicy i czas wyniku slicingu są przeliczane z aktualnych masek
+oraz parametrów. Eksport edytowanego wyniku pokazuje miniaturę pierwszej maski (podgląd 2D).
+Zapis osobno otwartego SL1 aktualizuje zużycie żywicy w INI i JSON, jeśli
+plik zawiera pełną geometrię ekranu i wysokości warstw. Nieznane metadane
+oraz oryginalne miniatury archiwum są zachowywane.
+
+Edytor: powiększenie i zakresy
+----------------------------
+Zoom: Fit dopasowuje obraz do okna; 25–400% pozwala powiększyć piksele.
+Przewijaj powiększony obraz paskami. Promień pędzla zawsze dotyczy pikseli
+oryginalnego obrazu, niezależnie od zoomu. Zbyt duży podgląd zgłasza limit
+pamięci i wraca do Fit.
+W Range ustaw pierwszą i ostatnią warstwę (obie należą do zakresu), wybierz
+Threshold, Invert, odbicie, obrót 180° albo Fill with grayscale i naciśnij
+Apply to range. Wartość dla progowania/wypełnienia pochodzi z Grayscale /
+threshold. Cały zakres jest jednym krokiem Undo. Cancel nie zmienia masek.
+Ctrl+Z i Ctrl+Y cofają/ponawiają operacje. Duże zakresy przekraczające 128 MiB
+historii trzeba podzielić; program nie usuwa po cichu możliwości cofnięcia.
+
+Profile w GUI
+-------------
+Panel boczny pokazuje Printer, SLA material i SLA print settings. Ikona edycji
+lub Window → odpowiednia zakładka otwiera pełne ustawienia: Ctrl+2 = proces,
+Ctrl+3 = materiał, Ctrl+4 = drukarka. Ikona Save preset tworzy kopię pod nową
+nazwą lub zapisuje zmiany. Rename preset wymaga wolnej nazwy; Delete preset
+pyta o potwierdzenie. Drukarkę z biblioteki dodaj przez Configuration Wizard.
+Preferencja rozszerzenia drukarki przechodzi na kopię, podąża za zmianą nazwy
+i znika po usunięciu tej kopii. Błąd zapisu/usuwania jest pokazywany w GUI.
+W wersji offline nie ma konfiguracji serwera wydruku ani kolejki wysyłania.
+
+Anycubic binarny: PWS / PW0 i warianty
+------------------------------------
+PWS zapisuje maskę binarną (próg 128); pozostałe warianty PW0 zapisują
+16 poziomów szarości. Wersje 1 i 515 nie mają tabeli wymiarów maszyny:
+UVtools odczytuje fizyczny ekran i wysokość Z z rozszerzenia. Profil musi
+odpowiadać tej drukarce, również po zastosowaniu orientacji ekranu.
+Edytor pokazuje wymagane wymiary przy wyborze formatu. Niezgodny eksport
+jest odrzucany i nie nadpisuje istniejącego pliku.
+DL2P (517) oraz Anycubic Custom PWC (516) zapisują osobną tabelę MACHINE
+z obiema osiami, rozdzielczością i Z. Nie uśredniamy wymiarów pikseli.
+Obecny koder wymaga AA=1 i ruchu jednostopniowego; zgodność firmware
+pozostaje do potwierdzenia na rzeczywistych urządzeniach.
+
+Anycubic ZIP: PM4U / PM7 / PM7M / PWSZ
+------------------------------------
+Te rozszerzenia używają nowego natywnego ZIP, manifestów i masek PW0,
+nie starszego binarnego Anycubic. PW0 ma 16 poziomów szarości; eksport
+kwantyzuje wartość v do (v >> 4) * 17, zgodnie z UVtools.
+Obsługiwane są ekspozycje per warstwa, warstwy przejściowe i dwa etapy
+unoszenia. W tej rodzinie wspólne jest oczekiwanie przed ekspozycją;
+osobne dolne oczekiwanie, PWM inne niż 255, oczekiwanie po ekspozycji/
+unoszeniu i niezależna wysokość drugiego powrotu zgłaszają błąd eksportu.
+Objętość i metadane sceny liczą się z eksportowanych masek, uwzględniając
+edycje. Pole powierzchni jest przybliżeniem pikselowym. Eksport zawiera dwie
+miniatury; bez podglądu 3D pokazują pierwszą warstwę. Przed drukowaniem nadal
+wymagany jest pełny odczyt w UVtools i sprawdzenie na konkretnym firmware.
+
+Parametry LCD:
+W ustawieniach materiału otwórz LCD exposure and motion. Prędkości mają
+jednostkę mm/min, czasy sekundy, wysokości mm, moc UV zakres 0..255.
+GOO/PRZ i CXDLPv4 zapisują osobne normalne/dolne parametry oraz dwa etapy
+ruchu. CTB v2 i binarny Anycubic mają ograniczenia swojego obecnego kodera;
+nieobsługiwane parametry zgłaszają błąd zamiast znikać z eksportu.
+Pełna zgodność tych plików z UVtools i firmware wymaga dalszej walidacji.
+
+Wybór formatu drukarki (2026-09-24):
+W Printers → General → Output pole Format of the output SLA archive ma listę
+identyfikatorów rejestru i jest dostępne również w trybie Simple. Wybrany format
+zapisz jako część presetu drukarki. Lista zawiera także formaty zablokowane
+na czas implementacji; ich obecność nie potwierdza zgodności z drukarką.
+Pole pozwala zachować identyfikator z importowanego profilu. Nieznana wartość
+nie staje się automatycznie obsługiwana i zostanie odrzucona przy slicingu.
+
+AKTUALIZACJA 2026-10-03: MORFOLOGIA I EKSPORT
+
+W edytorze warstw wybierz zakres First/Last oraz operację Erode, Dilate, Open,
+Close, Gradient, White top hat lub Black top hat. Radius (pixels) określa promień
+kwadratowego jądra (0 oznacza brak rozszerzenia jądra); nie zmienia fizycznego
+rozmiaru ekranu. Operacje działają na szarościach, a brzegi są odbijane bez
+powielania krańcowego piksela. Apply to range zapisuje zakres jako jeden krok
+Undo. To nie jest jeszcze kompletny zestaw operacji UVtools.
+
+CWS zapisuje teraz rzeczywiste polecenia ekspozycji i ruchu wewnątrz archiwum.
+UVJ zapisuje maski PNG bez kwantyzacji i parametry każdego poziomu. Jest formatem
+wymiany, a nie uniwersalnym formatem bezpośrednio obsługiwanym przez drukarki.
+Nie należy zmieniać rozszerzenia pliku UVJ na format urządzenia.
+Miniatury eksportu bez widoku 3D mogą przedstawiać pierwszą maskę.
+Aktualny stan/testy/braki opisano w doc/WDROZENIE_2026-10-03.md.
+
+OTWIERANIE WARSTW Z PLIKU
+
+Window -> Open layer archive (Ctrl+Shift+L) otwiera SL1, UVJ, CWS z maskami 8-bit w skali szarości, XML.CWS z maskami RGBA oraz pojedyncze PNG bez modelu 3D.
+Save edited archive zachowuje kontener i metadane pliku; wyjściowe rozszerzenie
+musi odpowiadać otwartemu formatowi. Oryginalne miniatury pozostają w archiwum.
+Import UVJ obsługuje 8-bitowe PNG w skali szarości; nie rekonstruuje modelu 3D.
+Operacje zakresu wykonują się w tle, można użyć Cancel. Morfologia reaguje
+między wierszami/kolumnami; zapis/odczyt pojedynczego PNG kończy bieżący etap.
+
+EDYCJA POJEDYNCZEGO PNG
+
+Window -> Open layer archive pozwala wybrać PNG jako jedną maskę.
+PNG 8-bit w skali szarości zachowuje wartości pikseli. Obraz kolorowy jest
+przeliczany na luminancję; przezroczystość jest nakładana na czarne tło.
+Save edited PNG zapisuje pojedynczy PNG w skali szarości, z automatycznym
+rozszerzeniem .png. Program nie nadaje obrazowi wymiarów fizycznych ani
+parametrów drukarki. Undo/Redo i operacje maski działają jak dla warstw.
+
+EKSPORT OSF V4
+
+Format OSF używa 7-bitowej skali szarości. Profil musi mieć kwadratowy piksel
+fizyczny i jednakową wysokość pierwszej oraz pozostałych warstw. Prędkości
+ruchu muszą być całkowite w mm/min. Niezgodny profil zwraca komunikat przed
+zastąpieniem pliku. Dostępne są dwustopniowe ruchy, czasy oczekiwania i PWM.
+
+EDYCJA ARCHIWUM CWS
+
+Kolejność masek jest odczytywana z manifest.xml. Save edited archive zachowuje
+profil .slicing, instrukcje .gcode naświetlania i ruchu oraz nieznane wpisy.
+Obsługiwane są maski PNG 8-bit w skali szarości oraz RGBA dla XML.CWS.
+W wyborze eksportu użyj Creation Workshop XML.CWS (RGBA). Rozszerzenie
+automatycznie zmienia się na .xml.cws; wybór zostaje zapisany dla drukarki.
+Import RGBA zachowuje pełną skalę szarości; alfa jest nakładana na czarne tło.
+Save edited archive zapisuje PNG32 i zachowuje pełny suffix .xml.cws.
+NovaMaker CWS jest osobnym wyborem eksportu (.cws) z plikiem slice.conf
+oraz maskami grayscale. Wybierz go dla schematu NovaMaker; CWS XML (8-bit
+grayscale) zachowuje dotychczasowy schemat XML pod tym samym rozszerzeniem.
+Import rozpoznaje schemat po zawartości i porządkuje maski według indeksów.
+Save edited archive zachowuje slice.conf, instrukcje oraz nieznane wpisy.
+NovaMaker RGB.CWS (packed BGR) zapisuje trzy poziome próbki maski w kanałach
+jednego piksela PNG. Szerokość LCD po zastosowaniu orientacji musi być
+podzielna przez 3; aplikacja zgłasza błąd zamiast zmieniać rozdzielczość.
+PNG ma szerokość LCD/3, ale slice.conf/instrukcje oraz edytor zachowują pełne
+wymiary i całą skalę szarości. Zapis ponownie pakuje obraz i automatycznie
+używa suffixu .rgb.cws. Nie potwierdzono zgodności z firmware. Odczyt odbywa
+się w tle z oknem postępu.
+
+PCB: DODATKOWE MAKRA I SZCZELINY
+
+Gerber obsługuje makra moiré (6) i pól termicznych (7), łącznie z obrotem,
+pierścieniami, krzyżem oraz przerwami. W opcjonalnym pliku wierceń działa
+G85 dla prostych szczelin. Średnicę szczeliny określa wybrane narzędzie.
+Ciągłe frezowanie, step-and-repeat, aperture blocks i single-quadrant G74
+nadal zgłaszają błąd. Nie należy traktować ich jako obsługiwanych.
+
+CREALITY CXDLP V1
+
+Wybierz Creality CXDLP v1, aby zapisać .v1.cxdlp. To inny schemat niż
+.cxdlp (v2/v3) lub .cxdlpv4. Wymaga stałej wysokości wszystkich warstw,
+całkowitych sekund ekspozycji i całkowitych parametrów ruchu. Wspólne
+oczekiwanie przed ekspozycją musi wynosić co najmniej 1 s. Nie przechowuje
+wysokości Z maszyny, ekspozycji przejściowych ani ruchów dwustopniowych.
+Open layer archive otwiera binarne maski w edytorze. Save edited archive
+zapisuje ponownie binarny plik z poprawnymi licznikami pikseli i serii,
+zachowując nagłówek, miniatury, parametry naświetlania oraz stopkę.
+
+CREALITY CXDLP V2 / V3
+
+Wybierz CXDLP v2 dla .v2.cxdlp lub CXDLP v3 dla .cxdlp. W panelu
+Printer Settings → General → Output ustaw rzeczywisty Printer model
+(firmware), np. CL-60; model jest zapisywany z presetem drukarki.
+Lokalne szablony Halot/CT mają poprawione modele i rodziny wyjściowe.
+Formaty wymagają stałej wysokości wszystkich warstw, ekspozycji normalnej
+w krokach 0,1 s, dolnej w całych sekundach i wspólnego oczekiwania ≥1 s.
+Prędkości zapisują jako całkowite mm/s: np. 120 mm/min = 2 mm/s.
+Nie przechowują Z maszyny, ekspozycji przejściowych ani drugiego etapu
+ruchu. Nieprzedstawialne ustawienia powodują błąd, bez nadpisania wyniku.
+Open layer archive otwiera również v2/v3. Save edited archive zachowuje
+nagłówki, miniatury i ustawienia; przelicza powierzchnie konturów i sumę
+kontrolną (XOR dla v2, CRC dla v3). Uszkodzone sumy blokują import.
+
+CHITUBOX ZIP
+
+Wybierz Chitubox ZIP dla masek wraz z parametrami ekspozycji i ruchu.
+To osobna rodzina .zip; nie wybieraj Generic ZIP lub SL1 jako zamiennika.
+Obsługuje inną wysokość pierwszej warstwy, ekspozycje przejściowe,
+dwustopniowe unoszenie/powrót, oczekiwania oraz osobne dolne ustawienia.
+Open layer archive otwiera maski w kolejności indeksów od 1. Po edycji
+Save edited archive zachowuje sekwencję naświetlania. Jeśli plik ma komplet
+komentarzy Z i wymiary LCD, przelicza również objętość żywicy; masę i cenę
+przelicza z istniejących proporcji. Starsze pliki bez tych danych zachowują
+metadane — aplikacja nie zakłada brakującej wysokości ani gęstości żywicy.
+
+GENERIC ZIP
+
+Wybierz Generic ZIP dla kontenera UVtools z maskami oraz geometrią LCD.
+Ten format nie przechowuje czasów ekspozycji ani parametrów ruchu: ustaw je
+w urządzeniu odbierającym plik. Obsługiwane są równe wysokości warstw, w tym
+pierwszej. Nazwa automatycznie otrzymuje .zip; nie jest to archiwum SL1.
+Open layer archive rozpoznaje manifest.uvtools i otwiera maski w kolejności
+numerycznej, zaczynając od 1. Save edited archive zachowuje manifest.
+
+Bieżący raport i dowody testów: doc/WDROZENIE_2026-10-04.md.
+
+VOXELDANCE ADDITIVE ZIP (VDA)
+
+Osobny format Voxeldance Additive ZIP zapisuje maski i manifest XML.
+Wyjściowa nazwa ma .zip, ale zawartość różni się od SL1 i Generic ZIP.
+Ekspozycję i ruch ustaw w urządzeniu odbierającym plik; ten schemat ich
+nie przechowuje. Dla zgodności z odczytem UVtools eksport wymaga równej
+wysokości wszystkich warstw, także pierwszej. Open layer archive rozpoznaje
+manifest VDARoot, kolejność masek i ich Z. Save edited archive zachowuje XML.
+
+CXDLPV4 — KWANTYZACJA I PODGLĄDY
+
+CXDLPv4 przechowuje szarość 7-bitową. Wartości 0 i 1 oznaczają piksel
+wyłączony; pozostałe są kwantyzowane. Eksport przelicza objętość oraz
+kontury po tej zmianie, zachowując rzeczywiste Z warstw i parametry ruchu.
+Naprawiono nagłówki i pakowanie kolorów obu podglądów RGB15, proporcje
+oraz przezroczystość.
+Open layer archive otwiera także samodzielne pliki .cxdlpv4, również
+z zaszyfrowanymi maskami. Edytuj warstwę, użyj Undo/Redo i Save edited archive.
+Zapis wymaga .cxdlpv4 i zachowuje podglądy, ustawienia oraz szyfrowanie
+oryginału. Zmiany w tym formacie od razu przyjmują jego szarość 7-bitową,
+więc widok, Undo i zapisany obraz są zgodne. Przeliczane są powierzchnie
+i objętość; masa i koszt korzystają z proporcji oryginału, jeśli są znane.
+Pliki z błędną sumą, uciętymi seriami lub nakładającymi się tabelami są
+odrzucane. Stare eksporty aplikacji z 16-bajtowym nagłówkiem podglądu są
+niezgodne; wykonaj ponowny eksport z projektu w aktualnej wersji.
+
+WIERSZ POLECEŃ SLA
+
+Domyślna konfiguracja CLI jest SLA. --slice i --export-sla korzystają
+z formatu wybranego w profilu lub przez --sla-archive-format. Domyślna
+nazwa używa [default_output_extension], więc zmiana formatu zmienia suffix.
+Np. build/src/prusa-slicer --load drukarka.ini --sla-archive-format uvj
+    --slice --output wynik.uvj model.stl
+--help-sla pokazuje opcje SLA. --query-printer-models wypisuje zainstalowane
+modele SLA, a --query-print-material-profiles --printer-profile "Nazwa"
+listuje ustawienia druku i żywice. --datadir wskazuje lokalny folder profili.
+
+Konfiguracje FFF, opcje G-code i adresy URL są odrzucane. CLI nie uruchamia
+skryptów post-process odziedziczonych z konfiguracji FFF. Nieudane krojenie,
+brak modeli i błędy zapisu zwracają niezerowy kod zakończenia.
+
+WIELE PLIKÓW PCB
+
+W PCB exposure wybierz kilka Gerberów przez Browse albo wpisz ich ścieżki
+w polu Copper Gerber, po jednej na wiersz. Domyślnie są scalane w jedną maskę.
+Odznacz Merge Gerber files into one exposure, aby otrzymać osobne warstwy
+w kolejności listy. Wszystkie zachowują wspólne współrzędne, centrowanie
+i odbicia. Opcjonalne wiercenia dotyczą wszystkich wybranych plików.
+Sprawdź rejestrację w edytorze przed eksportem. Źródła muszą używać wspólnego
+początku układu; przesuwanie pojedynczych źródeł nie ma jeszcze osobnego GUI.
+
+ROZMYCIE WARSTW
+
+W edytorze ustaw First/Last, wybierz Range operation → Box blur i promień
+Radius (pixels), a następnie Apply to range. Operacja uśrednia szarość;
+nie zmienia ekspozycji ani parametrów drukarki. Radius 0 nie zmienia maski,
+a radius 1 oznacza filtr 3×3. Undo/Redo dotyczą całego wybranego zakresu.
+Anulowanie przetwarzania nie pozostawia częściowo zmienionych warstw.
+Range operation → Median blur używa mediany w tym samym kwadracie i usuwa
+odosobnione jasne/ciemne piksele. Brzegi powiela, zgodnie z UVtools, podczas
+gdy Box blur je odbija. Zachowuje szarość, jedno Undo/Redo zakresu oraz
+atomowe anulowanie. StackBlur, Pyramid, Gaussian i Filter2D są nadal otwarte.

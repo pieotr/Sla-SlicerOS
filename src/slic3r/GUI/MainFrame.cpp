@@ -11,6 +11,7 @@
 ///|/
 #include "MainFrame.hpp"
 #include "LayerEditorDialog.hpp"
+#include "SlaRasterToolsDialog.hpp"
 
 #include <wx/panel.h>
 #include <wx/notebook.h>
@@ -95,8 +96,10 @@ public:
             append_menu_item(menu, wxID_ANY, _L("Open new instance"), _L("Open a new PrusaSlicer instance"),
             [](wxCommandEvent&) { start_new_slicer(); }, "", nullptr);
         }
+#ifndef SLIC3R_SLA_ONLY
         append_menu_item(menu, wxID_ANY, _L("G-code preview") + dots, _L("Open G-code viewer"),
             [](wxCommandEvent&) { start_new_gcodeviewer_open_file(); }, "", nullptr);
+#endif
         return menu;
     }
 };
@@ -1578,14 +1581,14 @@ void MainFrame::init_menubar_as_editor()
         Bind(wxEVT_UPDATE_UI, [this](wxUpdateUIEvent& evt) { evt.Enable(m_recent_projects.GetCount() > 0); }, recent_projects_submenu->GetId());
 
         append_menu_item(fileMenu, wxID_ANY, _L("&Save Project") + "\tCtrl+S", _L("Save current project file"),
-            [this](wxCommandEvent&) { save_project(); }, "save", nullptr,
+            [this](wxCommandEvent&) { CallAfter([this] { save_project(); }); }, "save", nullptr,
             [this](){return m_plater != nullptr && can_save(); }, this);
 #ifdef __APPLE__
         append_menu_item(fileMenu, wxID_ANY, _L("Save Project &as") + dots + "\tCtrl+Shift+S", _L("Save current project file as"),
 #else
         append_menu_item(fileMenu, wxID_ANY, _L("Save Project &as") + dots + "\tCtrl+Alt+S", _L("Save current project file as"),
 #endif // __APPLE__
-            [this](wxCommandEvent&) { save_project_as(); }, "save", nullptr,
+            [this](wxCommandEvent&) { CallAfter([this] { save_project_as(); }); }, "save", nullptr,
             [this](){return m_plater != nullptr && can_save_as(); }, this);
 
         fileMenu->AppendSeparator();
@@ -1621,7 +1624,11 @@ void MainFrame::init_menubar_as_editor()
         append_submenu(fileMenu, import_menu, wxID_ANY, _L("&Import"), "");
 
         wxMenu* export_menu = new wxMenu();
+#ifdef SLIC3R_SLA_ONLY
+        wxMenuItem* item_export_gcode = append_menu_item(export_menu, wxID_ANY, _L("Export sliced layers") + dots + "\tCtrl+G", _L("Export the current SLA result"),
+#else
         wxMenuItem* item_export_gcode = append_menu_item(export_menu, wxID_ANY, _L("Export &G-code") + dots + "\tCtrl+G", _L("Export current plate as G-code"),
+#endif
             [this](wxCommandEvent&) { if (m_plater) m_plater->export_gcode(false); }, "export_gcode", nullptr,
             [this](){return can_export_gcode(); }, this);
         m_changeable_menu_items.push_back(item_export_gcode);
@@ -1631,7 +1638,7 @@ void MainFrame::init_menubar_as_editor()
             [this](){return can_send_gcode(); }, this);
         m_changeable_menu_items.push_back(item_send_gcode);
 #endif
-		append_menu_item(export_menu, wxID_ANY, _L("Export G-code to SD Card / Flash Drive") + dots + "\tCtrl+U", _L("Export current plate as G-code to SD card / Flash drive"),
+		append_menu_item(export_menu, wxID_ANY, _L("Export sliced result to removable drive") + dots + "\tCtrl+U", _L("Save the current sliced result to an SD card or USB drive"),
 			[this](wxCommandEvent&) { if (m_plater) m_plater->export_gcode(true); }, "export_to_sd", nullptr,
 			[this]() {return can_export_gcode_sd(); }, this);
         export_menu->AppendSeparator();
@@ -1642,10 +1649,12 @@ void MainFrame::init_menubar_as_editor()
             [this](wxCommandEvent&) { if (m_plater) m_plater->export_stl_obj(true); }, "export_plater", nullptr,
             [this](){return can_export_supports(); }, this);
         export_menu->AppendSeparator();
+#ifndef SLIC3R_SLA_ONLY
         append_menu_item(export_menu, wxID_ANY, _L("Export &Toolpaths as OBJ") + dots, _L("Export toolpaths as OBJ"),
             [this](wxCommandEvent&) { if (m_plater) m_plater->export_toolpaths_to_obj(); }, "export_plater", nullptr,
             [this]() {return can_export_toolpaths(); }, this);
         export_menu->AppendSeparator();
+#endif
         append_menu_item(export_menu, wxID_ANY, _L("Export &Config") + dots +"\tCtrl+E", _L("Export current configuration to file"),
             [this](wxCommandEvent&) { export_config(); }, "export_config", nullptr,
             []() {return true; }, this);
@@ -1657,6 +1666,7 @@ void MainFrame::init_menubar_as_editor()
             []() {return true; }, this);
         append_submenu(fileMenu, export_menu, wxID_ANY, _L("&Export"), "");
 
+#ifndef SLIC3R_SLA_ONLY
         wxMenu* convert_menu = new wxMenu();
         append_menu_item(convert_menu, wxID_ANY, _L("Convert ASCII G-code to &binary") + dots, _L("Convert a G-code file from ASCII to binary format"),
             [this](wxCommandEvent&) { if (m_plater != nullptr) m_plater->convert_gcode_to_binary(); }, "convert_file", nullptr,
@@ -1665,8 +1675,9 @@ void MainFrame::init_menubar_as_editor()
             [this](wxCommandEvent&) { if (m_plater != nullptr) m_plater->convert_gcode_to_ascii(); }, "convert_file", nullptr,
             []() { return true; }, this);
         append_submenu(fileMenu, convert_menu, wxID_ANY, _L("&Convert"), "");
+#endif
 
-		append_menu_item(fileMenu, wxID_ANY, _L("Ejec&t SD Card / Flash Drive") + dots + "\tCtrl+T", _L("Eject SD card / Flash drive after the G-code was exported to it."),
+		append_menu_item(fileMenu, wxID_ANY, _L("Ejec&t SD Card / Flash Drive") + dots + "\tCtrl+T", _L("Safely eject the SD card or USB drive after exporting."),
 			[this](wxCommandEvent&) { if (m_plater) m_plater->eject_drive(); }, "eject_sd", nullptr,
 			[this]() {return can_eject(); }, this);
 
@@ -1680,8 +1691,10 @@ void MainFrame::init_menubar_as_editor()
             [this](wxCommandEvent&) { repair_stl(); }, "wrench", nullptr,
             []() { return true; }, this);
         fileMenu->AppendSeparator();
+#ifndef SLIC3R_SLA_ONLY
         append_menu_item(fileMenu, wxID_ANY, _L("&G-code Preview") + dots, _L("Open G-code viewer"),
             [this](wxCommandEvent&) { start_new_gcodeviewer_open_file(this); }, "", nullptr);
+#endif
         fileMenu->AppendSeparator();
         #ifdef _WIN32
             append_menu_item(fileMenu, wxID_EXIT, _L("E&xit"), wxString::Format(_L("Exit %s"), SLIC3R_APP_NAME),
@@ -1789,8 +1802,16 @@ void MainFrame::init_menubar_as_editor()
         }
 
         windowMenu->AppendSeparator();
-        append_menu_item(windowMenu, wxID_ANY, _L("SL1 Layer Editor") + "\tCtrl+Shift+L", _L("Edit pixels in an SL1 archive"),
-            [this](wxCommandEvent &) { show_layer_editor(this); });
+        append_menu_item(windowMenu, wxID_ANY, _L("Edit sliced layers") + "\tCtrl+Alt+L", _L("Edit pixels in the current sliced result"),
+            [this](wxCommandEvent &) { m_plater->edit_sliced_layers(); }, "", nullptr,
+            [this]() { return m_plater->printer_technology() == ptSLA && m_plater->active_sla_print().finished(); }, this);
+        append_menu_item(windowMenu, wxID_ANY, _L("Open layer archive") + "\tCtrl+Shift+L", _L("Edit pixels in a supported SLA archive or PNG"),
+            [this](wxCommandEvent &) { CallAfter([this] { show_layer_editor(this); }); });
+
+        append_menu_item(windowMenu, wxID_ANY, _L("PCB exposure"), _L("Generate exposure layers from Gerber and Excellon files"),
+            [this](wxCommandEvent &) { CallAfter([this] { show_pcb_exposure(this); }); });
+        append_menu_item(windowMenu, wxID_ANY, _L("Printer calibration"), _L("Generate XYZ, grayscale and lift-area calibration layers"),
+            [this](wxCommandEvent &) { CallAfter([this] { show_calibration_generator(this); }); });
 
         append_menu_item(windowMenu, wxID_ANY, _L("Shape Gallery"), _L("Open the dialog to modify shape gallery"),
             [this](wxCommandEvent&) {
@@ -1802,9 +1823,11 @@ void MainFrame::init_menubar_as_editor()
                 }
             }, "shape_gallery", nullptr, []() {return true; }, this);
         
+#ifndef SLIC3R_OFFLINE_ONLY
         windowMenu->AppendSeparator();
         append_menu_item(windowMenu, wxID_ANY, _L("Print &Host Upload Queue") + "\tCtrl+J", _L("Display the Print Host Upload Queue window"),
             [this](wxCommandEvent&) { m_printhost_queue_dlg->Show(); }, "upload_queue", nullptr, []() {return true; }, this);
+#endif
         
         windowMenu->AppendSeparator();
         append_menu_item(windowMenu, wxID_ANY, _L("Open New Instance") + "\tCtrl+Shift+I", _L("Open a new PrusaSlicer instance"),
@@ -2077,7 +2100,13 @@ void MainFrame::load_config_file()
         return;
     wxFileDialog dlg(this, _L("Select configuration to load:"),
         !m_last_config.IsEmpty() ? get_dir_name(m_last_config) : wxGetApp().app_config->get_last_dir(),
-        "config.ini", "INI files (*.ini, *.gcode, *.bgcode)|*.ini;*.INI;*.gcode;*.g;*.bgcode;*.bgc", wxFD_OPEN | wxFD_FILE_MUST_EXIST);
+        "config.ini",
+#ifdef SLIC3R_SLA_ONLY
+        file_wildcards(FT_INI),
+#else
+        "INI files (*.ini, *.gcode, *.bgcode)|*.ini;*.INI;*.gcode;*.g;*.bgcode;*.bgc",
+#endif
+        wxFD_OPEN | wxFD_FILE_MUST_EXIST);
     wxString file;
     if (dlg.ShowModal() == wxID_OK)
         file = dlg.GetPath();

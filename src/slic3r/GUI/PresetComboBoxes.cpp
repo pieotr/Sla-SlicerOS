@@ -147,6 +147,10 @@ void PresetComboBox::OnSelect(wxCommandEvent& evt)
     // m_presets_choice->GetSelection() will return first item, because search in PopupListCtrl is case-insensitive.
     // So, use GetSelection() from event parameter 
     auto selected_item = evt.GetSelection();
+    if (selected_item < 0 || size_t(selected_item) >= GetCount()) {
+        evt.StopPropagation();
+        return;
+    }
 
     auto marker = reinterpret_cast<Marker>(this->GetClientData(selected_item));
     if (marker >= LABEL_ITEM_DISABLED && marker < LABEL_ITEM_MAX)
@@ -618,13 +622,14 @@ wxBitmapBundle PresetComboBox::NullBitmapBndl()
 bool PresetComboBox::is_selected_physical_printer()
 {
     auto selected_item = this->GetSelection();
+    if (selected_item < 0 || size_t(selected_item) >= GetCount()) return false;
     auto marker = reinterpret_cast<Marker>(this->GetClientData(selected_item));
     return marker == LABEL_ITEM_PHYSICAL_PRINTER;
 }
 
 bool PresetComboBox::selection_is_changed_according_to_physical_printers()
 {
-    if (m_type != Preset::TYPE_PRINTER)
+    if (m_type != Preset::TYPE_PRINTER || GetSelection() < 0 || size_t(GetSelection()) >= GetCount())
         return false;
 
     const std::string           selected_string     = into_u8(this->GetString(this->GetSelection()));
@@ -783,6 +788,10 @@ static void run_wizard(ConfigWizard::StartPage sp)
 void PlaterPresetComboBox::OnSelect(wxCommandEvent &evt)
 {
     auto selected_item = evt.GetSelection();
+    if (selected_item < 0 || size_t(selected_item) >= GetCount()) {
+        evt.StopPropagation();
+        return;
+    }
 
     auto marker = reinterpret_cast<Marker>(this->GetClientData(selected_item));
     if (marker >= LABEL_ITEM_MARKER && marker < LABEL_ITEM_MAX) {
@@ -879,10 +888,12 @@ void PlaterPresetComboBox::show_add_menu()
             wxTheApp->CallAfter([]() { run_wizard(ConfigWizard::SP_PRINTERS); });
         }, "edit_uni", menu, []() { return true; }, wxGetApp().plater());
 
+#ifndef SLIC3R_OFFLINE_ONLY
     append_menu_item(menu, wxID_ANY, _L("Add physical printer"), "",
         [this](wxCommandEvent&) {
             add_physical_printer();
         }, "edit_uni", menu, []() { return true; }, wxGetApp().plater());
+#endif
 
     wxGetApp().plater()->PopupMenu(menu);
 }
@@ -907,6 +918,7 @@ void PlaterPresetComboBox::show_edit_menu()
         return;
     }
 
+#ifndef SLIC3R_OFFLINE_ONLY
     if (this->is_selected_physical_printer()) {
         append_menu_item(menu, wxID_ANY, _L("Edit physical printer"), "",
             [this](wxCommandEvent&) { this->edit_physical_printer(); }, "cog", menu, []() { return true; }, wxGetApp().plater());
@@ -923,13 +935,16 @@ void PlaterPresetComboBox::show_edit_menu()
             [this](wxCommandEvent&) { this->del_physical_printer(); }, "cross", menu, []() { return true; }, wxGetApp().plater());
     }
     else
+#endif
         append_menu_item(menu, wxID_ANY, _L("Add/Remove presets"), "",
             [](wxCommandEvent&) {
                 wxTheApp->CallAfter([]() { run_wizard(ConfigWizard::SP_PRINTERS); });
             }, "edit_uni", menu, []() { return true; }, wxGetApp().plater());
 
+#ifndef SLIC3R_OFFLINE_ONLY
     append_menu_item(menu, wxID_ANY, _L("Add physical printer"), "",
         [this](wxCommandEvent&) { this->add_physical_printer(); }, "edit_uni", menu, []() { return true; }, wxGetApp().plater());
+#endif
 
     wxGetApp().plater()->PopupMenu(menu);
 }
@@ -1338,6 +1353,10 @@ void TabPresetComboBox::OnSelect(wxCommandEvent &evt)
     // m_presets_choice->GetSelection() will return first item, because search in PopupListCtrl is case-insensitive.
     // So, use GetSelection() from event parameter 
     auto selected_item = evt.GetSelection();
+    if (selected_item < 0 || size_t(selected_item) >= GetCount()) {
+        evt.StopPropagation();
+        return;
+    }
 
     auto marker = reinterpret_cast<Marker>(this->GetClientData(selected_item));
     if (marker >= LABEL_ITEM_DISABLED && marker < LABEL_ITEM_MAX) {

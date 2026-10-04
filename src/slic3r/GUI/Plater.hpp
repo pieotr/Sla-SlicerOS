@@ -85,6 +85,7 @@ public:
     bool is_project_dirty() const;
     bool is_presets_dirty() const;
     void update_project_dirty_from_presets();
+    void on_sla_layer_document_changed();
     int  save_project_if_dirty(const wxString& reason);
     void reset_project_dirty_after_save();
     void reset_project_dirty_initial_presets();
@@ -104,6 +105,7 @@ public:
     
     Print& active_fff_print();
     SLAPrint& active_sla_print();
+    void edit_sliced_layers();
 
     std::vector<std::unique_ptr<Print>>& get_fff_prints();
     const std::vector<GCodeProcessorResult>& get_gcode_results() const;

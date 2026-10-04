@@ -20,11 +20,15 @@
 #endif // !SLIC3R_OPENGL_ES
 #include "libslic3r/Config.hpp"
 #include "libslic3r/Geometry.hpp"
+#ifndef SLIC3R_SLA_ONLY
 #include "libslic3r/GCode/PostProcessor.hpp"
+#endif
 #include "libslic3r/Model.hpp"
 #include "libslic3r/Preset.hpp"
 #include <arrange-wrapper/ModelArrange.hpp>
+#ifndef SLIC3R_SLA_ONLY
 #include "libslic3r/Print.hpp"
+#endif
 #include "libslic3r/SLAPrint.hpp"
 #include "libslic3r/Format/AMF.hpp"
 #include "libslic3r/Format/3mf.hpp"
@@ -39,8 +43,10 @@
 #include "CLI/CLI.hpp"
 #include "CLI/ProfilesSharingUtils.hpp"
 
+#ifndef SLIC3R_SLA_ONLY
 #define STB_IMAGE_RESIZE_IMPLEMENTATION
 #include "stb_image_resize2.h"
+#endif
 
 namespace Slic3r::CLI {
 
@@ -58,15 +64,23 @@ bool has_full_config_from_profiles(const Data& cli)
             (input.has("printer-profile") && !input.opt_string("printer-profile").empty()));
 }
 
-bool process_profiles_sharing(const Data& cli)
+std::optional<int> process_profiles_sharing(const Data& cli)
 {
     if (!has_profile_sharing_action(cli))
-        return false;
+        return std::nullopt;
 
     std::string ret;
 
     if (cli.actions_config.has("query-printer-models")) {
+#ifdef SLIC3R_SLA_ONLY
+        if (get_printer_technology(cli.overrides_config) == ptFFF) {
+            boost::nowide::cerr << "This application supports SLA printer profiles" << std::endl;
+            return 1;
+        }
+        ret = Slic3r::get_json_printer_models(ptSLA);
+#else
         ret = Slic3r::get_json_printer_models(get_printer_technology(cli.overrides_config));
+#endif
     }
     else if (cli.actions_config.has("query-print-filament-profiles")) {
         if (cli.input_config.has("printer-profile") && !cli.input_config.opt_string("printer-profile").empty()) {
@@ -76,18 +90,18 @@ bool process_profiles_sharing(const Data& cli)
                 boost::nowide::cerr << "query-print-filament-profiles error: Printer profile '" << printer_profile <<
                                         "' wasn't found among installed printers." << std::endl <<
                                         "Or the request can be wrong." << std::endl;
-                return true;
+                return 1;
             }
         }
         else {
             boost::nowide::cerr << "query-print-filament-profiles error: This action requires set 'printer-profile' option" << std::endl;
-            return true;
+            return 1;
         }
     }
 
     if (ret.empty()) {
         boost::nowide::cerr << "Wrong request" << std::endl;
-        return true;
+        return 1;
     }
 
     // use --output when available
@@ -109,13 +123,17 @@ bool process_profiles_sharing(const Data& cli)
         c.open(file, std::ios::out | std::ios::trunc);
         c << ret << std::endl;
         c.close();
+        if (!c) {
+            boost::nowide::cerr << "Cannot write profile query output: " << file << std::endl;
+            return 1;
+        }
 
         boost::nowide::cout << "Output for your request is written into " << file << std::endl;
     }
     else 
         printf("%s", ret.c_str());
 
-    return true;
+    return 0;
 }
 
 namespace IO {
@@ -172,6 +190,7 @@ static bool export_models(std::vector<Model>& models, IO::ExportFormat format, c
 }
 
 
+#ifndef SLIC3R_SLA_ONLY
 static ThumbnailData resize_and_crop(const std::vector<unsigned char>& data, int width, int height, int width_new, int height_new) {
     ThumbnailData th;
 
@@ -251,6 +270,8 @@ static std::function<ThumbnailsList(const ThumbnailsParams&)> get_thumbnail_gene
     return [](const ThumbnailsParams&) ->ThumbnailsList { return {}; };
 }
 
+#endif
+
 static void update_instances_outside_state(Model& model, const DynamicPrintConfig& config)
 {
     Pointfs bed_shape = dynamic_cast<const ConfigOptionPoints*>(config.option("bed_shape"))->values;
@@ -281,7 +302,7 @@ bool process_actions(Data& cli, const DynamicPrintConfig& print_config, std::vec
     if (actions.has("info")) {
         if (models.empty()) {
             boost::nowide::cerr << "error: cannot show info for empty models." << std::endl;
-            return 1;
+            return false;
         }
         // --info works on unrepaired model
         for (Model& model : models) {
@@ -298,7 +319,7 @@ bool process_actions(Data& cli, const DynamicPrintConfig& print_config, std::vec
 
     if (models.empty() && (actions.has("export_stl") || actions.has("export_obj") || actions.has("export_3mf"))) {
         boost::nowide::cerr << "error: cannot export empty models." << std::endl;
-        return 1;
+        return false;
     }
 
     const std::string output = cli.misc_config.has("output") ? cli.misc_config.opt_string("output") : "";
@@ -307,39 +328,43 @@ bool process_actions(Data& cli, const DynamicPrintConfig& print_config, std::vec
         for (auto& model : models)
             model.add_default_instances();
         if (!export_models(models, IO::STL, output))
-            return 1;
+            return false;
     }
     if (actions.has("export_obj")) {
         for (auto& model : models)
             model.add_default_instances();
         if (!export_models(models, IO::OBJ, output))
-            return 1;
+            return false;
     }
     if (actions.has("export_3mf")) {
         if (!export_models(models, IO::TMF, output))
-            return 1;
+            return false;
     }
 
     if (actions.has("slice") || actions.has("export_gcode") || actions.has("export_sla")) {
+        if (models.empty()) {
+            boost::nowide::cerr << "error: cannot slice empty models" << std::endl;
+            return false;
+        }
 #ifdef SLIC3R_SLA_ONLY
         if (actions.has("export_gcode")) {
             boost::nowide::cerr << "error: G-code export is disabled in SLA-only builds" << std::endl;
-            return 1;
+            return false;
         }
         if (actions.has("export_sla") == false && actions.has("slice") == false) {
             boost::nowide::cerr << "error: only SLA slicing is available in SLA-only builds" << std::endl;
-            return 1;
+            return false;
         }
-        PrinterTechnology printer_technology = ptSLA;
+        // The SLA-only path uses sla_print directly.
 #else
         PrinterTechnology       printer_technology = Preset::printer_technology(print_config);
         if (actions.has("export_gcode") && printer_technology == ptSLA) {
             boost::nowide::cerr << "error: cannot export G-code for an FFF configuration" << std::endl;
-            return 1;
+            return false;
         }
         else if (actions.has("export_sla") && printer_technology == ptFFF) {
             boost::nowide::cerr << "error: cannot export SLA slices for a SLA configuration" << std::endl;
-            return 1;
+            return false;
         }
 #endif
 
@@ -370,7 +395,9 @@ bool process_actions(Data& cli, const DynamicPrintConfig& print_config, std::vec
                 }
             });
 
+#ifndef SLIC3R_SLA_ONLY
             Print       fff_print;
+#endif
 #ifdef SLIC3R_SLA_ONLY
             PrintBase* print = static_cast<PrintBase*>(&sla_print);
 #else
@@ -382,7 +409,11 @@ bool process_actions(Data& cli, const DynamicPrintConfig& print_config, std::vec
 #endif
 
             update_instances_outside_state(model, print_config);
+#ifdef SLIC3R_SLA_ONLY
+            MultipleBedsUtils::with_single_bed_model_sla(model, 0, [&print, &model, &print_config]()
+#else
             MultipleBedsUtils::with_single_bed_model_fff(model, 0, [&print, &model, &print_config]()
+#endif
             {
                 print->apply(model, print_config);
             });
@@ -390,24 +421,29 @@ bool process_actions(Data& cli, const DynamicPrintConfig& print_config, std::vec
             std::string err = print->validate();
             if (!err.empty()) {
                 boost::nowide::cerr << err << std::endl;
-                return 1;
+                return false;
             }
 
             std::string outfile = output;
 
-            if (print->empty())
-                boost::nowide::cout << "Nothing to print for " << outfile << " . Either the print is empty or no object is fully inside the print volume." << std::endl;
+            if (print->empty()) {
+                boost::nowide::cerr << "Nothing to print for " << outfile << " . Either the print is empty or no object is fully inside the print volume." << std::endl;
+                return false;
+            }
             else
                 try {
                 std::string outfile_final;
                 print->process();
+#ifndef SLIC3R_SLA_ONLY
                 if (printer_technology == ptFFF) {
                     // The outfile is processed by a PlaceholderParser.
                     const std::string input_file = fff_print.model().objects.empty() ? "" : fff_print.model().objects.front()->input_file;
                     outfile = fff_print.export_gcode(outfile, nullptr, get_thumbnail_generator_cli(input_file));
                     outfile_final = fff_print.print_statistics().finalize_output_path(outfile);
                 }
-                else {
+                else
+#endif
+                {
                     outfile = sla_print.output_filepath(outfile);
                     // We need to finalize the filename beforehand because the export function sets the filename inside the zip metadata
                     outfile_final = sla_print.print_statistics().finalize_output_path(outfile);

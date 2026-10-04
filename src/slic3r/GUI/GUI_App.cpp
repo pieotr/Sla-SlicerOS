@@ -576,7 +576,7 @@ wxString file_wildcards(FileType file_type, const std::string &custom_extension)
     return file_wildcards(file_wildcards_by_type[file_type], custom_extension);
 }
 
-wxString sla_wildcards(const char *formatid, const std::string& custom_extension)
+wxString sla_wildcards(const char *formatid, const std::string& custom_extension, bool export_only)
 {
     const bool all_formats = (formatid == nullptr || *formatid == '\0');
     const ArchiveEntry *entry = all_formats ? nullptr : get_archive_entry(formatid);
@@ -597,6 +597,7 @@ wxString sla_wildcards(const char *formatid, const std::string& custom_extension
     if (all_formats) {
         std::unordered_set<std::string> seen_exts;
         for (const ArchiveEntry &arch_entry : registered_sla_archives()) {
+            if (export_only && !archive_export_unavailable_reason(arch_entry.id).empty()) continue;
             std::string tr_title = I18N::translate_utf8(arch_entry.desc);
             tr_title = GUI::format(_u8L("%s files"), tr_title);
 
@@ -876,7 +877,11 @@ void GUI_App::post_init()
     // to popup a modal dialog on start without screwing combo boxes.
     // This is ugly but I honestly found no better way to do it.
     // Neither wxShowEvent nor wxWindowCreateEvent work reliably.
+#ifdef SLIC3R_OFFLINE_ONLY
+    if (is_editor()) {
+#else
     if (this->get_preset_updater_wrapper()) { // G-Code Viewer does not initialize preset_updater.
+#endif
         CallAfter([this] {
             // preset_updater->sync downloads profile updates and than via event checks updates and incompatible presets. We need to run it on startup.
             // start before cw so it is canceled by cw if needed?
@@ -2826,7 +2831,8 @@ wxMenu* GUI_App::get_config_menu(MainFrame* main_frame)
     local_menu->Bind(wxEVT_MENU, [this, config_id_base](wxEvent &event) {
         switch (event.GetId() - config_id_base) {
         case ConfigMenuWizard:
-            run_wizard(ConfigWizard::RR_USER);
+            // Leave the native menu callback before entering a modal GTK loop.
+            CallAfter([this] { if (!m_config_wizard) run_wizard(ConfigWizard::RR_USER); });
             break;
         case ConfigMenuUpdateConf: 
 #ifdef SLIC3R_OFFLINE_ONLY
@@ -3665,6 +3671,11 @@ void GUI_App::window_pos_sanitize(wxTopLevelWindow* window)
 bool GUI_App::config_wizard_startup()
 {
 #ifdef SLIC3R_OFFLINE_ONLY
+    // The local profile library does not require the updater or network access.
+    if (is_editor() && !m_app_conf_exists) {
+        run_wizard(ConfigWizard::RR_DATA_EMPTY);
+        return true;
+    }
     return false;
 #else
     if (!m_app_conf_exists || preset_bundle->printers.only_default_printers()) {

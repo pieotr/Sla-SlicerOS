@@ -9,7 +9,6 @@
 #include <boost/regex.hpp>
 #include <boost/property_tree/ptree.hpp>
 #include <boost/property_tree/json_parser.hpp>
-#include <curl/curl.h>
 #include <string>
 
 namespace fs = boost::filesystem;

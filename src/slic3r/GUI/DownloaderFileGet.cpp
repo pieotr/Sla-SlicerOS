@@ -5,7 +5,9 @@
 #include "DownloaderFileGet.hpp"
 
 #include <thread>
+#ifndef SLIC3R_OFFLINE_ONLY
 #include <curl/curl.h>
+#endif
 #include <boost/nowide/fstream.hpp>
 #include <boost/format.hpp>
 #include <boost/log/trivial.hpp>
@@ -26,6 +28,9 @@ const size_t DOWNLOAD_SIZE_LIMIT		= 1024 * 1024 * 1024;
 
 bool FileGet::is_subdomain(const std::string& url, const std::string& domain)
 {
+#ifdef SLIC3R_OFFLINE_ONLY
+    return false; // No remote source is allowed in the offline application.
+#else
 	// domain should be f.e. printables.com (.com including)
 	char* host;
 	std::string host_string;
@@ -58,6 +63,7 @@ bool FileGet::is_subdomain(const std::string& url, const std::string& domain)
 	}
 	curl_url_cleanup(curl);
 	return false;
+#endif
 }
 
 namespace {

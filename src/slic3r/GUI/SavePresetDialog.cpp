@@ -283,9 +283,13 @@ void SavePresetDialog::Item::update()
                 info_line = from_u8((boost::format(_u8L("Preset with name \"%1%\" already exists.")) % existing->name).str());
             else
                 info_line = from_u8((boost::format(_u8L("Preset with name \"%1%\" already exists and is incompatible with selected printer.")) % existing->name).str());
-            info_line += "\n" + (m_use_text_ctrl ? _L("Note: This preset will be replaced after renaming") :
-                                _L("Note: Preset modifications will be saved exactly into this preset"));
-            m_valid_type = ValidationType::Warning;
+            if (dlg && dlg->is_for_rename()) {
+                info_line += "\n" + _L("Choose an unused name to rename this preset.");
+                m_valid_type = ValidationType::NoValid;
+            } else {
+                info_line += "\n" + _L("Note: Preset modifications will be saved exactly into this preset");
+                m_valid_type = ValidationType::Warning;
+            }
         }
     }
 

@@ -90,8 +90,16 @@ bash ./build_linux.sh --jobs 4 --tests --run
 bash ./run_prusa_slicer.sh
 ```
 
-The launcher auto-detects a valid CA bundle and exports `SSL_CERT_FILE` when needed.
-This avoids startup/runtime TLS issues on distros that do not use the default OpenSSL cert path.
+The launcher starts the offline SLA application without configuring TLS certificates.
+Application transport code and printer upload backends are excluded; CURL and
+OpenSSL are no longer direct application dependencies. The dependency configuration
+also excludes them. Initial dependency builds can still download source archives
+if those archives are missing locally; prepare the dependency cache in advance
+for a fully offline build. Running the application does not run that build script.
+
+WebView and its platform libraries remain build dependencies during the GUI split.
+Their transitive system dependencies differ by platform; this change does not
+remove all networking libraries from the host system.
 
 ## Existing builds after a compiler update
 

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -58,7 +59,7 @@ namespace Slic3r::CLI
     // Implemented in ProcessActions.cpp
 
     bool    has_full_config_from_profiles(const Data& cli);
-    bool    process_profiles_sharing(const Data& cli);
+    std::optional<int> process_profiles_sharing(const Data& cli);
     bool    process_actions(Data& cli, const DynamicPrintConfig& print_config, std::vector<Model>& models);
 
     // Implemented in GuiParams.cpp

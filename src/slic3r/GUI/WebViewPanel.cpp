@@ -18,7 +18,6 @@
 
 #include <wx/webview.h>
 #include <wx/url.h>
-#include <curl/curl.h>
 #include <boost/log/trivial.hpp>
 #include <boost/property_tree/ptree.hpp>
 #include <boost/property_tree/json_parser.hpp>
@@ -1465,17 +1464,7 @@ void PrintablesWebViewPanel::on_reload_event(const std::string& message_data)
 namespace {
 std::string escape_url(const std::string& unescaped)
 {
-	std::string ret_val;
-	CURL* curl = curl_easy_init();
-	if (curl) {
-		char* decoded = curl_easy_escape(curl, unescaped.c_str(), unescaped.size());
-		if (decoded) {
-			ret_val = std::string(decoded);
-			curl_free(decoded);
-		}
-		curl_easy_cleanup(curl);
-	}
-	return ret_val;
+    return Slic3r::Http::url_encode(unescaped);
 }
 }
 

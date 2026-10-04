@@ -127,6 +127,8 @@ set(SLIC3R_GUI_SOURCES
     GUI/I18N.hpp
     GUI/IconManager.cpp
     GUI/IconManager.hpp
+    GUI/SlaRasterToolsDialog.cpp
+    GUI/SlaRasterToolsDialog.hpp
     GUI/LayerEditorDialog.cpp
     GUI/LayerEditorDialog.hpp
     GUI/MainFrame.cpp
@@ -382,10 +384,22 @@ set(SLIC3R_GUI_SOURCES
     Utils/ServiceConfig.cpp
 )
 
+# Legacy callers retain the disabled HTTP API while their GUI is removed.
+# No transport implementation or printer upload backend is compiled.
+list(REMOVE_ITEM SLIC3R_GUI_SOURCES
+    Utils/Http.cpp
+    Utils/Moonraker.cpp
+    Utils/OctoPrint.cpp
+    Utils/Duet.cpp
+    Utils/FlashAir.cpp
+    Utils/AstroBox.cpp
+    Utils/Repetier.cpp
+    Utils/MKS.cpp
+    Utils/PrusaConnect.cpp
+)
+list(APPEND SLIC3R_GUI_SOURCES Utils/HttpOffline.cpp)
+
 find_package(NanoSVG REQUIRED)
-if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
-    find_package(OpenSSL REQUIRED)
-endif()
 
 list(APPEND SLIC3R_GUI_SOURCES
     GUI/WebViewPlatformUtilsLinux.cpp
@@ -415,7 +429,6 @@ target_link_libraries(
     GLEW::GLEW
     OpenGL::GL
     hidapi
-    libcurl
     ${wxWidgets_LIBRARIES}
     NanoSVG::nanosvg
     NanoSVG::nanosvgrast
@@ -428,8 +441,6 @@ if (MSVC)
 elseif (CMAKE_SYSTEM_NAME STREQUAL "Linux")
     target_link_libraries(libslic3r_gui PUBLIC
         ${DBus1_LIBRARIES}
-        OpenSSL::SSL
-        OpenSSL::Crypto
     )
 elseif (APPLE)
     target_link_libraries(libslic3r_gui PUBLIC ${DISKARBITRATION_LIBRARY} ${COREWLAN_LIBRARY})

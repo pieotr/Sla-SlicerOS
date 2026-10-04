@@ -153,6 +153,10 @@ bool TCPConsole::is_deadline_over() const
 
 bool TCPConsole::run_queue()
 {
+#ifdef SLIC3R_OFFLINE_ONLY
+    m_error_code = make_error_code(boost::asio::error::operation_not_supported);
+    return false; // Block before DNS resolution or opening a connection.
+#else
     try {
         // TODO: Add more resets and initializations after previous run (reset() method?..)
         set_deadline_in(m_connect_timeout);
@@ -204,6 +208,7 @@ bool TCPConsole::run_queue()
     }
 
     return true;
+#endif
 }
 
 } // namespace Utils

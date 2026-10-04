@@ -149,6 +149,10 @@ list(REMOVE_DUPLICATES SYSTEM_PROVIDED_PACKAGES)
 
 include(CMakeDependentOption)
 option(${PROJECT_NAME}_SELECT_ALL "Choose all external projects to be built." ON)
+option(SLIC3R_OFFLINE_ONLY "Exclude network transport dependencies from the offline SLA application" ON)
+if (SLIC3R_OFFLINE_ONLY)
+    list(REMOVE_ITEM FOUND_PACKAGES CURL OpenSSL)
+endif()
 
 find_package(Git REQUIRED)
 

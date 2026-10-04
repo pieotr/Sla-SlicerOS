@@ -60,10 +60,17 @@ void ProjectDirtyStateManager::reset_after_save()
 {
     this->reset_initial_presets();
     m_plater_dirty  = false;
+    m_sla_layers_dirty = false;
     m_presets_dirty = false;
     m_project_config_dirty = false;
     m_custom_gcode_per_print_z_dirty = false;
     wxGetApp().mainframe->update_title();
+}
+
+void ProjectDirtyStateManager::update_from_sla_layers(bool dirty)
+{
+    m_sla_layers_dirty = dirty;
+    if (wxGetApp().initialized()) wxGetApp().mainframe->update_title();
 }
 
 void ProjectDirtyStateManager::reset_initial_presets()
@@ -168,4 +175,3 @@ void ProjectDirtyStateManager::render_debug_window() const
 
 } // namespace GUI
 } // namespace Slic3r
-

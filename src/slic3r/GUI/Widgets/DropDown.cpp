@@ -12,7 +12,7 @@
 
 #include <wx/display.h>
 
-#if defined(__WXGTK__) && !defined(SLIC3R_OFFLINE_ONLY)
+#if defined(__WXGTK__)
 #include <gtk/gtk.h>
 #endif
 
@@ -61,7 +61,7 @@ DropDown::DropDown(wxWindow *             parent,
     Create(parent, style);
 }
 
-#if defined(__WXGTK__) && !defined(SLIC3R_OFFLINE_ONLY)
+#if defined(__WXGTK__)
 static gint gtk_popup_key_press (GtkWidget *widget, GdkEvent *gdk_event, wxPopupWindow* win )
 {
     // Ignore events sent out before we connected to the signal
@@ -85,11 +85,14 @@ static gint gtk_popup_key_press (GtkWidget *widget, GdkEvent *gdk_event, wxPopup
     }
 
     gchar* keyval = gdk_keyval_name(((GdkEventKey*)gdk_event)->keyval);
+    if (!keyval) return FALSE;
     const long keyCode = strcmp(keyval, "Up") == 0     ? WXK_UP     :
                          strcmp(keyval, "Down") == 0   ? WXK_DOWN   :
                          strcmp(keyval, "Left") == 0   ? WXK_LEFT   :
                          strcmp(keyval, "Right") == 0  ? WXK_RIGHT  :
-                         strcmp(keyval, "Return") == 0 ? WXK_RETURN : WXK_NONE;
+                         strcmp(keyval, "Return") == 0 ? WXK_RETURN :
+                         strcmp(keyval, "Escape") == 0 ? WXK_ESCAPE :
+                         strcmp(keyval, "Tab") == 0    ? WXK_TAB : WXK_NONE;
 
     if (keyCode != WXK_NONE) {
         wxKeyEvent event( wxEVT_KEY_DOWN, win->GetId());
@@ -106,7 +109,7 @@ void DropDown::Create(wxWindow *     parent,
          long           style)
 {
     wxPopupTransientWindow::Create(parent);
-#if defined(__WXGTK__) && !defined(SLIC3R_OFFLINE_ONLY)
+#if defined(__WXGTK__)
     g_signal_connect (m_widget, "key_press_event", G_CALLBACK (gtk_popup_key_press), this);
 
     Bind(wxEVT_KEY_DOWN, [parent](wxKeyEvent &e) {
@@ -142,7 +145,7 @@ void DropDown::Invalidate(bool clear)
 
 void DropDown::SetSelection(int n)
 {
-    if (n >= (int) texts.size())
+    if (n < 0 || n >= (int) texts.size())
         n = -1;
     if (selection == n) return;
     selection = n;
@@ -153,7 +156,7 @@ void DropDown::SetSelection(int n)
 
 wxString DropDown::GetValue() const
 {
-    return selection >= 0 ? texts[selection] : wxString();
+    return selection >= 0 && size_t(selection) < texts.size() ? texts[selection] : wxString();
 }
 
 void DropDown::SetValue(const wxString &value)
@@ -216,7 +219,7 @@ bool DropDown::HasDismissLongTime()
 {
     auto now = boost::posix_time::microsec_clock::universal_time();
     return !IsShown() &&
-        (now - dismissTime).total_milliseconds() >= 200;
+        (dismissTime.is_not_a_date_time() || (now - dismissTime).total_milliseconds() >= 200);
 }
 
 void DropDown::paintEvent(wxPaintEvent& evt)
@@ -455,7 +458,7 @@ void DropDown::messureSize()
     szContent.y *= std::min((size_t)15, texts.size());
     szContent.y += texts.size() > 15 ? rowSize.y / 2 : 0;
     wxWindow::SetSize(szContent);
-#if defined(__WXGTK__) && !defined(SLIC3R_OFFLINE_ONLY)
+#if defined(__WXGTK__)
     // Gtk has a wrapper window for popup widget
     gtk_window_resize(GTK_WINDOW(m_widget), szContent.x, szContent.y);
 #endif
@@ -501,6 +504,7 @@ void DropDown::mouseDown(wxMouseEvent& event)
     // Receivce unexcepted LEFT_DOWN on Mac after OnDismiss
     if (!IsShown())
         return;
+    if (texts.empty() || rowSize.y <= 0) return;
     // force calc hover item again
     mouseMove(event);
 
@@ -523,7 +527,7 @@ void DropDown::mouseReleased(wxMouseEvent& event)
         slider_grabbed = false;
         if (HasCapture())
             ReleaseMouse();
-        if (hover_item >= 0) { // not moved
+        if (hover_item >= 0 && size_t(hover_item) < texts.size()) { // not moved
 #ifndef _WIN32
             // To avoid cases, when some dialog appears after item selection, but DropDown is still shown
             Hide();
@@ -536,12 +540,17 @@ void DropDown::mouseReleased(wxMouseEvent& event)
 
 void DropDown::mouseCaptureLost(wxMouseCaptureLostEvent &event)
 {
-    wxMouseEvent evt;
-    mouseReleased(evt);
+    // Capture loss is cancellation, not a click on the hovered row. Committing
+    // here can select a preset and close the popup during a focus/grab change.
+    pressedDown = false;
+    slider_grabbed = false;
+    dragStart = wxPoint();
+    Refresh();
 }
 
 void DropDown::mouseMove(wxMouseEvent &event)
 {
+    if (texts.empty() || rowSize.y <= 0 || GetSize().y <= 0) return;
     wxPoint pt  = event.GetPosition();
     int text_size = int(texts.size());
     if (pressedDown) {
@@ -563,7 +572,7 @@ void DropDown::mouseMove(wxMouseEvent &event)
     }
     if (!pressedDown || hover_item >= 0) {
         int hover = (pt.y - offset.y) / rowSize.y;
-        if (hover >= text_size || slider_grabbed) hover = -1;
+        if (pt.y < 0 || hover < 0 || hover >= text_size || slider_grabbed) hover = -1;
         if (hover == hover_item) return;
         hover_item = hover;
         if (hover >= 0)
@@ -574,7 +583,7 @@ void DropDown::mouseMove(wxMouseEvent &event)
 
 void DropDown::mouseWheelMoved(wxMouseEvent &event)
 {
-    if (event.GetWheelRotation() == 0)
+    if (event.GetWheelRotation() == 0 || texts.empty() || rowSize.y <= 0)
         return;
     auto delta = event.GetWheelRotation() > 0 ? rowSize.y : -rowSize.y;
     wxPoint pt2 = offset + wxPoint{0, slider_step * delta};
@@ -589,7 +598,7 @@ void DropDown::mouseWheelMoved(wxMouseEvent &event)
         return;
     }
     int hover = (event.GetPosition().y - offset.y) / rowSize.y;
-    if (hover >= text_size) hover = -1;
+    if (hover < 0 || hover >= text_size) hover = -1;
     if (hover != hover_item) {
         hover_item = hover;
         if (hover >= 0) SetToolTip(texts[hover]);

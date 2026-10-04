@@ -340,6 +340,10 @@ std::string get_json_printer_models(PrinterTechnology printer_technology)
 static std::string get_installed_print_and_filament_profiles(const PresetBundle* preset_bundle, const Preset* printer_preset)
 {
     PrinterTechnology printer_technology = printer_preset->printer_technology();
+#ifdef SLIC3R_SLA_ONLY
+    if (printer_technology != ptSLA)
+        return {};
+#endif
 
     pt::ptree print_profiles;
     pt::ptree user_print_profiles;
