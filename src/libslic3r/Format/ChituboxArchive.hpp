@@ -9,67 +9,52 @@
 #include <string>
 
 #include "SLAArchiveWriter.hpp"
+#include "UVToolsCompatArchive.hpp"
 #include "libslic3r/PrintConfig.hpp"
 
 namespace Slic3r {
 
 class SLAPrint;
 
-// Chitubox CBDDLP v1 format (legacy)
-class ChituboxCBDDLPv1Archive : public SLAArchiveWriter {
-    SLAPrinterConfig m_cfg;
-
-protected:
-    std::unique_ptr<sla::RasterBase> create_raster() const override;
-    sla::RasterEncoder get_encoder() const override;
-
+// CBDDLP/Photon v1 are binary; v2 uses 1–16 RLE exposure planes.
+class ChituboxCBDDLPArchive : public UVToolsChituboxArchive {
 public:
-    explicit ChituboxCBDDLPv1Archive(const SLAPrinterConfig &cfg) : m_cfg(cfg) {}
-    explicit ChituboxCBDDLPv1Archive(SLAPrinterConfig &&cfg) : m_cfg(std::move(cfg)) {}
-
-    void export_print(const std::string     fname,
-                      const SLAPrint       &print,
-                      const ThumbnailsList &thumbnails,
-                      const std::string    &projectname = "") override;
+    explicit ChituboxCBDDLPArchive(const SLAPrinterConfig &cfg, unsigned version=2) : UVToolsChituboxArchive(cfg, 0x12fd0019, version) {}
+    explicit ChituboxCBDDLPArchive(SLAPrinterConfig &&cfg, unsigned version=2) : UVToolsChituboxArchive(std::move(cfg), 0x12fd0019, version) {}
+    static void validate_configuration(const SLAPrint &print, unsigned version=2);
 };
 
-// Chitubox CTB v1 format (legacy)
-class ChituboxCTBv1Archive : public SLAArchiveWriter {
-    SLAPrinterConfig m_cfg;
-
-protected:
-    std::unique_ptr<sla::RasterBase> create_raster() const override;
-    sla::RasterEncoder get_encoder() const override;
-
+// CTB v1 has the grayscale codec but no v2 print-parameters block.
+// Its extension is .ctb, not the historical registry typo .cbt.
+class ChituboxCTBv1Archive : public UVToolsChituboxArchive {
 public:
-    explicit ChituboxCTBv1Archive(const SLAPrinterConfig &cfg) : m_cfg(cfg) {}
-    explicit ChituboxCTBv1Archive(SLAPrinterConfig &&cfg) : m_cfg(std::move(cfg)) {}
-
-    void export_print(const std::string     fname,
-                      const SLAPrint       &print,
-                      const ThumbnailsList &thumbnails,
-                      const std::string    &projectname = "") override;
+    explicit ChituboxCTBv1Archive(const SLAPrinterConfig &cfg) : UVToolsChituboxArchive(cfg, 0x12fd0086, 1) {}
+    explicit ChituboxCTBv1Archive(SLAPrinterConfig &&cfg) : UVToolsChituboxArchive(std::move(cfg), 0x12fd0086, 1) {}
+    static void validate_configuration(const SLAPrint &print);
 };
 
-// Chitubox Photon format (legacy)
-class ChituboxPhotonArchive : public SLAArchiveWriter {
-    SLAPrinterConfig m_cfg;
-
-protected:
-    std::unique_ptr<sla::RasterBase> create_raster() const override;
-    sla::RasterEncoder get_encoder() const override;
-
+// Ordinary CTB v3-v5 use an 84-byte record before each grayscale payload.
+// This schema is distinct from CTBEncryptedFile's AES settings/signature.
+class ChituboxCTBModernArchive : public UVToolsRLEBinaryBase {
+    unsigned m_version;
+    bool m_gktwo;
+    uint32_t m_seed;
 public:
-    explicit ChituboxPhotonArchive(const SLAPrinterConfig &cfg) : m_cfg(cfg) {}
-    explicit ChituboxPhotonArchive(SLAPrinterConfig &&cfg) : m_cfg(std::move(cfg)) {}
-
-    void export_print(const std::string     fname,
-                      const SLAPrint       &print,
-                      const ThumbnailsList &thumbnails,
-                      const std::string    &projectname = "") override;
+    explicit ChituboxCTBModernArchive(const SLAPrinterConfig &cfg, unsigned version,
+                                     bool gktwo = false, uint32_t seed = 0xEFBEADDE)
+        : UVToolsRLEBinaryBase(cfg), m_version(version), m_gktwo(gktwo), m_seed(seed) {}
+    sla::RasterEncoder get_encoder() const override;
+    void export_print(const std::string filename, const SLAPrint &print,
+                      const ThumbnailsList &thumbnails, const std::string &projectname = "") override;
+    static void validate_configuration(const SLAPrint &print, unsigned version);
 };
 
-// Chitubox PhotonS format (legacy)
+class ChituboxPhotonArchive : public ChituboxCBDDLPArchive {
+public:
+    using ChituboxCBDDLPArchive::ChituboxCBDDLPArchive;
+};
+
+// Native AnycubicPhotonSFile schema (binary masks, fixed Photon S geometry).
 class ChituboxPhotonSArchive : public SLAArchiveWriter {
     SLAPrinterConfig m_cfg;
 
@@ -78,6 +63,9 @@ protected:
     sla::RasterEncoder get_encoder() const override;
 
 public:
+    static void validate_configuration(const SLAPrint &print);
+    static sla::EncodedRaster encode_mask(const void *pixels, size_t width, size_t height, size_t components);
+
     explicit ChituboxPhotonSArchive(const SLAPrinterConfig &cfg) : m_cfg(cfg) {}
     explicit ChituboxPhotonSArchive(SLAPrinterConfig &&cfg) : m_cfg(std::move(cfg)) {}
 

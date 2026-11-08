@@ -15,8 +15,17 @@
 
 namespace Slic3r {
 
+namespace sla { struct SL1FreshExportPlan; }
+
 class SL1Archive: public SLAArchiveWriter {
     SLAPrinterConfig m_cfg;
+    friend class SLAPrint;
+    // Only SLAPrint's local frozen job may supply its private owned document.
+    // The caller checks pointer identity and the complete typed SL1 plan;
+    // no public document argument or editor context grants this capability.
+    void export_fresh_document(const std::string &fname, const SLAPrint &print,
+        const ThumbnailsList &thumbnails, const std::string &projectname,
+        const sla::SL1FreshExportPlan &fresh, const sla::LayerDocument &document);
     
 protected:
     std::unique_ptr<sla::RasterBase> create_raster() const override;
@@ -28,9 +37,14 @@ protected:
     void export_print(Zipper &,
                       const SLAPrint       &print,
                       const ThumbnailsList &thumbnails,
-                      const std::string    &projectname);
+                      const std::string    &projectname,
+                      const sla::SL1FreshExportPlan *fresh = nullptr,
+                      const sla::LayerDocument *validated_document = nullptr);
 
 public:
+    void export_fresh_print(const std::string &fname, const SLAPrint &print,
+        const ThumbnailsList &thumbnails, const std::string &projectname,
+        const sla::SL1FreshExportPlan &fresh);
 
     SL1Archive() = default;
     explicit SL1Archive(const SLAPrinterConfig &cfg): m_cfg(cfg) {}

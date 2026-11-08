@@ -114,7 +114,9 @@ class MainFrame : public DPIFrame
 
     bool can_start_new_project() const;
     bool can_export_model() const;
+#ifndef SLIC3R_SLA_ONLY
     bool can_export_toolpaths() const;
+#endif
     bool can_export_supports() const;
     bool can_export_gcode() const;
     bool can_send_gcode() const;
@@ -147,6 +149,9 @@ class MainFrame : public DPIFrame
     std::vector<wxMenuItem*> m_changeable_menu_items;
 
     wxFileHistory m_recent_projects;
+    std::vector<wxWindowIDRef> m_recent_layer_document_ids;
+    wxFileHistory m_recent_layer_documents;
+    void persist_recent_layer_documents();
 
     enum class ESettingsLayout
     {
@@ -221,6 +226,7 @@ public:
     bool save_project_as(const wxString& filename = wxString());
 
     void        add_to_recent_projects(const wxString& filename);
+    void        remember_layer_document(const std::string &path);
     void        technology_changed();
 
     void    on_account_login(const std::string& token);

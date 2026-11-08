@@ -172,7 +172,9 @@ private:
     void load_print_as_sla();
 
     void on_layers_slider_scroll_changed();
+#ifndef SLIC3R_SLA_ONLY
     void on_moves_slider_scroll_changed();
+#endif
 };
 
 } // namespace GUI

@@ -83,6 +83,7 @@ class Sidebar : public wxPanel
 
 
     wxButton*       m_btn_edit_layers { nullptr };
+    wxButton*       m_btn_cancel_slicing { nullptr };
     wxButton*       m_btn_export_gcode          { nullptr };
     wxButton*       m_btn_reslice               { nullptr };
     wxButton*       m_btn_connect_gcode         { nullptr };
@@ -138,6 +139,7 @@ public:
 
     void enable_buttons(bool enable);
     void set_btn_label(const ActionButtonType btn_type, const wxString& label) const;
+    void show_cancel_slicing(bool show);
     bool show_reslice(bool show) const;
     bool show_export(bool show) const;
     bool show_send(bool show) const;

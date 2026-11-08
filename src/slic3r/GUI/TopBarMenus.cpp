@@ -65,6 +65,11 @@ void TopBarMenus::ApplyWorkspacesMenu()
             workspaces.Destroy(items[id]);
     }
 
+#ifdef SLIC3R_OFFLINE_ONLY
+    // GUI_App keeps this build in Expert mode, so these choices cannot act.
+    return;
+#endif
+
     for (const Slic3r::ConfigOptionMode& mode : { Slic3r::ConfigOptionMode::comSimple,
                                                   Slic3r::ConfigOptionMode::comAdvanced,
                                                   Slic3r::ConfigOptionMode::comExpert }) {

@@ -5,7 +5,7 @@
 #include "Thumbnails.hpp"
 
 #include <qoi.h>
-#include <jpeglib.h>
+#include "sla_jpeg/jpeglib.h"
 #include <jmorecfg.h>
 #include <stdlib.h>
 #include <boost/algorithm/string/case_conv.hpp>

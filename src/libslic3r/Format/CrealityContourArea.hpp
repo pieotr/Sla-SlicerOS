@@ -7,13 +7,18 @@
 #include <vector>
 
 namespace Slic3r { namespace sla {
-// CXDLP v2/v3 stores the largest external contour area, measured between
+// CXDLP v2/v3/v4 stores the largest external contour area, measured between
 // pixel centres (as OpenCV RETR_EXTERNAL does), rather than the pixel count.
 // Trace the Moore neighbourhood of each 8-connected component. Row flooding
 // avoids keeping a queue entry for every pixel of a large solid mask.
 inline double creality_largest_contour_area(const uint8_t *pixels, size_t width, size_t height)
 {
-    if (!width || !height || width > 16384 || height > 8192)
+    // This geometry helper serves v4 as well as legacy containers. Keep the
+    // shared SLA 128 Mi-pixel budget; legacy codecs enforce their narrower
+    // wire-coordinate limits before calling it. Products/indices below fit
+    // size_t and uint32_t after this check.
+    if (!width || !height || width > 32768 || height > 32768 ||
+        uint64_t(width) * uint64_t(height) > (uint64_t(128) << 20))
         throw std::invalid_argument("Invalid Creality contour resolution");
     const int dx[]{-1,-1,0,1,1,1,0,-1},dy[]{0,-1,-1,-1,0,1,1,1};
     auto foreground=[&](int x,int y){return x>=0 && y>=0 && x<int(width) && y<int(height) && pixels[size_t(y)*width+x]!=0;};

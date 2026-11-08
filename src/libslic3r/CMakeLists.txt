@@ -149,8 +149,11 @@ set(SLIC3R_SOURCES
     Format/ZipperArchiveImport.cpp
     Format/SL1.hpp
     Format/SL1.cpp
+    Format/KlipperArchive.hpp
+    Format/KlipperArchive.cpp
     Format/SL1_SVG.hpp
     Format/SL1_SVG.cpp
+    Format/AnycubicLayerLayout.hpp
     Format/AnycubicSLA.hpp
     Format/AnycubicSLA.cpp
     Format/AnycubicZipArchive.hpp
@@ -159,8 +162,10 @@ set(SLIC3R_SOURCES
     Format/CrealityCXDLPv4.cpp
     Format/AnetArchive.hpp
     Format/AnetArchive.cpp
+    Format/ChituboxLayerLayout.hpp
     Format/ChituboxArchive.hpp
     Format/ChituboxArchive.cpp
+    Format/PhotonSArchive.cpp
     Format/CrealityCXDLPv1Archive.hpp
     Format/CrealityCXDLPv1Archive.cpp
     Format/Emake3DArchive.hpp
@@ -186,6 +191,7 @@ set(SLIC3R_SOURCES
     Format/ZCodeArchive.cpp
     Format/UVToolsCompatArchive.hpp
     Format/UVToolsCompatArchive.cpp
+    Format/VDTArchive.cpp
     Format/ZipArchiveBase.hpp
     Format/ZipArchiveBase.cpp
     Format/BinaryRLEEncoderBase.hpp
@@ -204,7 +210,6 @@ set(SLIC3R_SOURCES
     GCode/Thumbnails.hpp
     GCode/ConflictChecker.cpp
     GCode/ConflictChecker.hpp
-    GCode/CoolingBuffer.cpp
     GCode/CoolingBuffer.hpp
     GCode/ExtrusionProcessor.cpp
     GCode/ExtrusionProcessor.hpp
@@ -214,15 +219,12 @@ set(SLIC3R_SOURCES
     GCode/LabelObjects.hpp
     GCode/GCodeWriter.cpp
     GCode/GCodeWriter.hpp
-    GCode/PostProcessor.cpp
     GCode/PostProcessor.hpp
-    GCode/PressureEqualizer.cpp
     GCode/PressureEqualizer.hpp
     GCode/PrintExtents.cpp
     GCode/PrintExtents.hpp
     GCode/RetractWhenCrossingPerimeters.cpp
     GCode/RetractWhenCrossingPerimeters.hpp
-    GCode/SpiralVase.cpp
     GCode/SpiralVase.hpp
     GCode/SeamPlacer.cpp
     GCode/SeamPlacer.hpp
@@ -254,7 +256,6 @@ set(SLIC3R_SOURCES
     GCode/Wipe.hpp
     GCode/WipeTower.cpp
     GCode/WipeTower.hpp
-    GCode/WipeTowerIntegration.cpp
     GCode/WipeTowerIntegration.hpp
     GCode/GCodeProcessor.cpp
     GCode/GCodeProcessor.hpp
@@ -262,9 +263,7 @@ set(SLIC3R_SOURCES
     GCode/AvoidCrossingPerimeters.hpp
     GCode/Travels.cpp
     GCode/Travels.hpp
-    GCode/ExtrusionOrder.cpp
     GCode/ExtrusionOrder.hpp
-    GCode.cpp
     GCode.hpp
     GCodeReader.cpp
     GCodeReader.hpp
@@ -472,16 +471,48 @@ set(SLIC3R_SOURCES
     SLA/SpatIndex.cpp
     SLA/PCBExposure.cpp
     SLA/PCBExposure.hpp
+    SLA/ExposureFinderPattern.cpp
+    SLA/ExposureFinderPatternParameters.hpp
+    SLA/ExposureFinderPattern.hpp
+    SLA/ExposureFinderDraft.cpp
+    SLA/ExposureFinderDraft.hpp
+    SLA/ExposureFinderCell.cpp
+    SLA/ExposureFinderCell.hpp
+    SLA/ExposureFinderRaster.cpp
+    SLA/ExposureFinderRaster.hpp
+    SLA/CancellablePNGEncoder.hpp
+    SLA/ExposureFinderTable.cpp
+    SLA/ExposureFinderTable.hpp
     SLA/CalibrationRaster.cpp
     SLA/CalibrationRaster.hpp
+    SLA/FreshLayerJob.cpp
+    SLA/FreshLayerJob.hpp
+    SLA/LayerJobParameters.cpp
+    SLA/ChituboxJobOverlay.cpp
     SLA/LayerDocument.cpp
+    SLA/LayerImageFile.hpp
+    SLA/LayerImageFile.cpp
     SLA/ColorMask.cpp
+    SLA/LayerProgress.hpp
     SLA/LayerDocument.hpp
+    SLA/CrealityCXDLPv4MaskReader.hpp
+    SLA/CrealityCXDLPv4FreshExportPlan.cpp
+    SLA/CrealityCXDLPv4FreshExportPlan.hpp
+    SLA/LayerExportProfile.hpp
     SLA/ProjectArchive.cpp
     SLA/ProjectArchive.hpp
+    SLA/ProjectSettings.cpp
+    SLA/ProjectSettings.hpp
     SLA/RasterBase.hpp
     SLA/RasterBase.cpp
     SLA/AGGRaster.hpp
+    SLA/RasterRounding.hpp
+    SLA/LayerPolygonComposition.hpp
+    SLA/ExportSnapshot.hpp
+    SLA/ExportRequest.hpp
+    SLA/ExportRequest.cpp
+    SLA/SlicedResultSession.hpp
+    SLA/SlicedResultSession.cpp
     SLA/RasterToPolygons.hpp
     SLA/RasterToPolygons.cpp
     SLA/ConcaveHull.hpp
@@ -590,7 +621,31 @@ if (APPLE)
         )
 endif ()
 
+# The SLA application retains the shared scene/model and thumbnail code,
+# but does not compile the FFF emitter or its private per-layer filters.
+# Additional FFF ownership in Print/Plater is removed in a separate migration.
+set(SLIC3R_FFF_EMITTER_SOURCES
+    GCode.cpp
+    GCode/CoolingBuffer.cpp
+    GCode/PressureEqualizer.cpp
+    GCode/SpiralVase.cpp
+    GCode/WipeTowerIntegration.cpp
+    GCode/ExtrusionOrder.cpp
+    GCode/PostProcessor.cpp
+)
+if (NOT SLIC3R_SLA_ONLY)
+    list(APPEND SLIC3R_SOURCES ${SLIC3R_FFF_EMITTER_SOURCES})
+endif()
+
 add_library(libslic3r STATIC ${SLIC3R_SOURCES})
+
+if (CMAKE_SYSTEM_NAME STREQUAL "Linux" AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    # System OpenCV may load its own shared TBB. Keep the bundled static TBB
+    # and allocator implementations out of executable dynamic exports so they
+    # cannot interpose on that DSO's ABI or its shutdown callbacks.
+    target_link_options(libslic3r INTERFACE
+        "LINKER:--exclude-libs,libtbb.a:libtbbmalloc.a")
+endif ()
 
 if (WIN32)
     target_compile_definitions(libslic3r PUBLIC NOMINMAX)
@@ -657,9 +712,32 @@ target_include_directories(libslic3r PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/.. ${CMA
 target_include_directories(libslic3r PUBLIC ${EXPAT_INCLUDE_DIRS})
 
 find_package(JPEG REQUIRED)
+find_package(TIFF REQUIRED MODULE)
+find_package(OpenJPEG REQUIRED)
+# A dependency prefix can contain wxWidgets' bundled JPEG headers while JPEG
+# itself was found in another installation. Keep the header ABI paired with
+# the chosen library, including its companion jconfig/jmorecfg files.
+get_filename_component(_sla_jpeg_libdir "${JPEG_LIBRARY_RELEASE}" DIRECTORY)
+get_filename_component(_sla_jpeg_prefix "${_sla_jpeg_libdir}" DIRECTORY)
+set(_sla_jpeg_headers "${JPEG_INCLUDE_DIR}")
+if(EXISTS "${_sla_jpeg_prefix}/include/jpeglib.h")
+    set(_sla_jpeg_headers "${_sla_jpeg_prefix}/include")
+endif()
+file(COPY "${_sla_jpeg_headers}/jpeglib.h" "${_sla_jpeg_headers}/jconfig.h"
+          "${_sla_jpeg_headers}/jmorecfg.h" DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/sla_jpeg")
 find_package(nlohmann_json REQUIRED)
+# Native calibration drawing only. No UVtools/Emgu runtime or network services.
+find_package(OpenCV REQUIRED COMPONENTS core imgproc)
+set_source_files_properties(SLA/ExposureFinderPattern.cpp PROPERTIES
+    INCLUDE_DIRECTORIES "${OpenCV_INCLUDE_DIRS}" SKIP_PRECOMPILE_HEADERS ON)
+get_target_property(_sla_cv_core opencv_core IMPORTED_LOCATION_RELEASE)
+get_target_property(_sla_cv_imgproc opencv_imgproc IMPORTED_LOCATION_RELEASE)
+if(NOT _sla_cv_core OR NOT _sla_cv_imgproc)
+    message(FATAL_ERROR "OpenCV core/imgproc must provide release libraries")
+endif()
 
 target_link_libraries(libslic3r PRIVATE
+    "${_sla_cv_core}" "${_sla_cv_imgproc}"
     libnest2d
     boost_libs
     clipper
@@ -672,6 +750,8 @@ target_link_libraries(libslic3r PRIVATE
     PNG::PNG
     ZLIB::ZLIB
 	JPEG::JPEG
+    TIFF::TIFF
+    openjp2
     qoi
     fastfloat
     int128

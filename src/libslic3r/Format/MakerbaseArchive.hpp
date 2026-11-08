@@ -1,56 +1,21 @@
-///|/ Copyright (c) Prusa Research 2026
-///|/
-///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
-///|/
+/// Native GR1File/MDLPFile port from local UVtools (AGPLv3).
 #ifndef SLIC3R_FORMAT_MAKERBASE_ARCHIVE_HPP
 #define SLIC3R_FORMAT_MAKERBASE_ARCHIVE_HPP
-
-#include <memory>
-#include <string>
-
 #include "SLAArchiveWriter.hpp"
 #include "libslic3r/PrintConfig.hpp"
-
 namespace Slic3r {
-
 class SLAPrint;
-
-// Makerbase GR1 Workshop format (big-endian RGB565 packed pixels with vector lines)
-class MakerbaseGR1Archive : public SLAArchiveWriter {
+class MakerbaseArchive : public SLAArchiveWriter {
     SLAPrinterConfig m_cfg;
-
+    bool m_mdlp;
 protected:
     std::unique_ptr<sla::RasterBase> create_raster() const override;
     sla::RasterEncoder get_encoder() const override;
-
 public:
-    explicit MakerbaseGR1Archive(const SLAPrinterConfig &cfg) : m_cfg(cfg) {}
-    explicit MakerbaseGR1Archive(SLAPrinterConfig &&cfg) : m_cfg(std::move(cfg)) {}
-
-    void export_print(const std::string     fname,
-                      const SLAPrint       &print,
-                      const ThumbnailsList &thumbnails,
-                      const std::string    &projectname = "") override;
+    MakerbaseArchive(const SLAPrinterConfig &cfg,bool mdlp) : m_cfg(cfg),m_mdlp(mdlp) {}
+    static sla::EncodedRaster encode_mask(const void *,size_t,size_t,size_t);
+    static void validate_configuration(const SLAPrint &,bool mdlp);
+    void export_print(const std::string,const SLAPrint &,const ThumbnailsList &,const std::string & = "") override;
 };
-
-// Makerbase MDLP format (nearly identical to GR1)
-class MakerbaseMDLPArchive : public SLAArchiveWriter {
-    SLAPrinterConfig m_cfg;
-
-protected:
-    std::unique_ptr<sla::RasterBase> create_raster() const override;
-    sla::RasterEncoder get_encoder() const override;
-
-public:
-    explicit MakerbaseMDLPArchive(const SLAPrinterConfig &cfg) : m_cfg(cfg) {}
-    explicit MakerbaseMDLPArchive(SLAPrinterConfig &&cfg) : m_cfg(std::move(cfg)) {}
-
-    void export_print(const std::string     fname,
-                      const SLAPrint       &print,
-                      const ThumbnailsList &thumbnails,
-                      const std::string    &projectname = "") override;
-};
-
-} // namespace Slic3r
-
-#endif // SLIC3R_FORMAT_MAKERBASE_ARCHIVE_HPP
+}
+#endif

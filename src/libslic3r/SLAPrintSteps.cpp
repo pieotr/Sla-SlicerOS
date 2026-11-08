@@ -4,6 +4,9 @@
 ///|/
 #include <libslic3r/Exception.hpp>
 #include <libslic3r/SLAPrintSteps.hpp>
+#include <libslic3r/SLA/GeneratedLayerOwnership.hpp>
+#include <libslic3r/SLA/ProjectedPNGMaskEncoder.hpp>
+#include <libslic3r/SLA/LayerPolygonComposition.hpp>
 #include <libslic3r/MeshBoolean.hpp>
 #include <libslic3r/TriangleMeshSlicer.hpp>
 #include <libslic3r/Execution/ExecutionTBB.hpp>
@@ -20,6 +23,10 @@
 #include <libslic3r/ClipperUtils.hpp>
 #include <libslic3r/KDTreeIndirect.hpp>
 #include <chrono>
+#include <cfenv>
+#include <fstream>
+#include <nlohmann/json.hpp>
+#include <cstdlib>
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -624,7 +631,10 @@ void SLAPrint::Steps::slice_model(SLAPrintObject &po)
     auto  thr        = [this]() { m_print->throw_if_canceled(); };
     auto &slice_grid = po.m_model_height_levels;
 
+    const auto slicing_started = std::chrono::steady_clock::now();
     po.m_model_slices = slice_csgmesh_ex(po.mesh_to_slice(), slice_grid, params, thr);
+    BOOST_LOG_TRIVIAL(info) << "SLA slicing: CSG "
+        << std::chrono::duration<double>(std::chrono::steady_clock::now()-slicing_started).count() << " s";
 
     auto mit = slindex_it;
     for (size_t id = 0;
@@ -634,12 +644,20 @@ void SLAPrint::Steps::slice_model(SLAPrintObject &po)
     }
 
     // We apply the printer correction offset here.
+    const auto corrections_started = std::chrono::steady_clock::now();
     apply_printer_corrections(po, soModel);
+    BOOST_LOG_TRIVIAL(info) << "SLA slicing: printer corrections "
+        << std::chrono::duration<double>(std::chrono::steady_clock::now()-corrections_started).count() << " s";
 
     // Prepare data for the support point generator only when supports are enabled
-    if (po.m_config.supports_enable.getBool())
-        // We need to prepare data in previous step to create interactive support point generation
+    if (po.m_config.supports_enable.getBool()) {
+        // This analysis belongs to support generation, rather than mesh slicing.
+        report_status(current_status(), _u8L("Preparing support analysis"));
+        const auto support_started = std::chrono::steady_clock::now();
         prepare_for_generate_supports(po);
+        BOOST_LOG_TRIVIAL(info) << "SLA slicing: support preparation "
+            << std::chrono::duration<double>(std::chrono::steady_clock::now()-support_started).count() << " s";
+    }
 //    po.m_preview_meshes[slaposObjectSlice] = po.get_mesh_to_print();
 //    report_status(-2, "", SlicingStatus::RELOAD_SLA_PREVIEW);
 }
@@ -789,15 +807,22 @@ void SLAPrint::Steps::support_points(SLAPrintObject &po)
 
     ThrowOnCancel cancel = [this]() { throw_if_canceled(); };
     StatusFunction status = statuscb;
+    const auto points_started = std::chrono::steady_clock::now();
     LayerSupportPoints layer_support_points = generate_support_points(data, config, cancel, status);
+    BOOST_LOG_TRIVIAL(info) << "SLA support points: generation "
+        << std::chrono::duration<double>(std::chrono::steady_clock::now()-points_started).count()
+        << " s; points=" << layer_support_points.size();
 
     // Maximal move of support point to mesh surface,
     // no more than height of layer
     assert(po.m_model_height_levels.size() > 1);
     double allowed_move = (po.m_model_height_levels[1] - po.m_model_height_levels[0]) +
         std::numeric_limits<float>::epsilon();
-    SupportPoints support_points = 
+    const auto projection_started = std::chrono::steady_clock::now();
+    SupportPoints support_points =
         move_on_mesh_surface(layer_support_points, emesh, allowed_move, cancel);
+    BOOST_LOG_TRIVIAL(info) << "SLA support points: surface projection "
+        << std::chrono::duration<double>(std::chrono::steady_clock::now()-projection_started).count() << " s";
 
     // The Generator count with permanent support positions but do not convert to LayerSupportPoints.
     // To preserve permanent 3d position it is necessary to append points after move_on_mesh_surface
@@ -968,6 +993,63 @@ void SLAPrint::Steps::slice_supports(SLAPrintObject &po) {
     // Using RELOAD_SLA_PREVIEW to tell the Plater to pass the update
     // status to the 3D preview to load the SLA slices.
     report_status(-2, "", SlicingStatus::RELOAD_SLA_PREVIEW);
+}
+
+// Optional local diagnostics: fingerprints locate the first divergent stage
+// without saving user meshes or changing the raster/encoding algorithms.
+static uint64_t layer_trace_bytes(const void *data, size_t size)
+{
+    uint64_t hash = 14695981039346656037ULL;
+    const auto *bytes = static_cast<const uint8_t *>(data);
+    for (size_t i = 0; i < size; ++i) hash = (hash ^ bytes[i]) * 1099511628211ULL;
+    return hash;
+}
+static uint64_t layer_trace_polygons(const ExPolygons &polygons)
+{
+    uint64_t hash = 14695981039346656037ULL;
+    auto word = [&](uint64_t value) {
+        for (unsigned byte = 0; byte < 8; ++byte) {
+            hash = (hash ^ uint8_t(value)) * 1099511628211ULL;
+            value >>= 8;
+        }
+    };
+    auto ring = [&](const Polygon &polygon) {
+        word(polygon.size());
+        for (const auto &point : polygon.points) { word(uint64_t(point.x())); word(uint64_t(point.y())); }
+    };
+    word(polygons.size());
+    for (const auto &polygon : polygons) {
+        ring(polygon.contour); word(polygon.holes.size());
+        for (const auto &hole : polygon.holes) ring(hole);
+    }
+    return hash;
+}
+static thread_local size_t layer_trace_index = std::numeric_limits<size_t>::max();
+
+// Opt-in diagnostics for one derived 2D layer, never the source mesh.
+// The caller supplies an output prefix in its private benchmark directory.
+static void dump_layer_trace(size_t index, const char *phase,
+                             const ExPolygons &models, const ExPolygons &supports = {})
+{
+    const char *prefix = std::getenv("SLA_TRACE_LAYER142_OUTPUT");
+    if (!prefix || index != 142) return;
+    const auto encode = [](const ExPolygons &polygons) {
+        auto result = nlohmann::json::array();
+        const auto ring = [](const Polygon &polygon) {
+            auto points = nlohmann::json::array();
+            for (const auto &point : polygon.points) points.push_back({point.x(), point.y()});
+            return points;
+        };
+        for (const auto &polygon : polygons) {
+            auto holes = nlohmann::json::array();
+            for (const auto &hole : polygon.holes) holes.push_back(ring(hole));
+            result.push_back({{"contour", ring(polygon.contour)}, {"holes", std::move(holes)}});
+        }
+        return result;
+    };
+    std::ofstream output(std::string(prefix) + "-" + phase + ".json");
+    output << nlohmann::json{{"models", encode(models)}, {"supports", encode(supports)}};
+    if (!output) throw RuntimeError("Cannot write layer diagnostics");
 }
 
 // get polygons for all instances in the object
@@ -1345,33 +1427,22 @@ void SLAPrint::Steps::merge_slices_and_eval_stats() {
 
         }
 
-        model_polygons = union_ex(model_polygons);
-        double layer_model_area = 0;
-        for (const ExPolygon& polygon : model_polygons)
-            layer_model_area += area(polygon);
-
+        if (std::getenv("SLA_TRACE_LAYER_FINGERPRINTS"))
+            BOOST_LOG_TRIVIAL(debug) << "SLA layer trace input " << sliced_layer_cnt
+                << " rounding=" << std::fegetround() << " model=" << layer_trace_polygons(model_polygons)
+                << " support=" << layer_trace_polygons(supports_polygons);
+        dump_layer_trace(sliced_layer_cnt, "input", model_polygons, supports_polygons);
+        auto composition = sla::compose_layer_polygons(std::move(model_polygons), std::move(supports_polygons));
+        dump_layer_trace(sliced_layer_cnt, "composed", composition.polygons);
+        if (std::getenv("SLA_TRACE_LAYER_FINGERPRINTS"))
+            BOOST_LOG_TRIVIAL(debug) << "SLA layer trace composed " << sliced_layer_cnt
+                << " rounding=" << std::fegetround() << " polygons=" << layer_trace_polygons(composition.polygons);
+        const double layer_model_area = composition.model_area;
+        const double layer_support_area = composition.support_area;
         const double models_volume = (layer_model_area < 0 || layer_model_area > 0) ? layer_model_area * l_height : 0.;
-
-        if(!supports_polygons.empty()) {
-            if(model_polygons.empty()) supports_polygons = union_ex(supports_polygons);
-            else supports_polygons = diff_ex(supports_polygons, model_polygons);
-            // allegedly, union of subject is done withing the diff according to the pftPositive polyFillType
-        }
-
-        double layer_support_area = 0;
-        for (const ExPolygon& polygon : supports_polygons)
-            layer_support_area += area(polygon);
-
         const double supports_volume = (layer_support_area < 0 || layer_support_area > 0) ? layer_support_area * l_height : 0.;
         const double layer_area = layer_model_area + layer_support_area;
-
-        // Here we can save the expensively calculated polygons for printing
-        ExPolygons trslices;
-        trslices.reserve(model_polygons.size() + supports_polygons.size());
-        for(ExPolygon& poly : model_polygons) trslices.emplace_back(std::move(poly));
-        for(ExPolygon& poly : supports_polygons) trslices.emplace_back(std::move(poly));
-
-        layer.transformed_slices(union_ex(trslices));
+        layer.transformed_slices(std::move(composition.polygons));
 
         // Calculation of the printing time
         // + Calculation of the slow and fast layers to the future controlling those values on FW
@@ -1456,13 +1527,61 @@ void SLAPrint::Steps::merge_slices_and_eval_stats() {
 // Rasterizing the model objects, and their supports
 void SLAPrint::Steps::rasterize()
 {
+    // Retire the old receipt BEFORE draw/encode can replace native buffers.
+    // Canonical validation may still fail after that replacement succeeds.
+    m_print->reset_completed_cxdlpv4_encoding();
     if(canceled() || !m_print->m_archiver) return;
     if (m_print->m_printer_input.empty()) return;
     if (m_print->m_layer_document && m_print->m_layer_document->layer_count() == m_print->m_printer_input.size()) {
         // Metadata-only updates retain manual edits and avoid polygon rasterization.
-        m_print->m_archiver->encode_layers(*m_print->m_layer_document);
+        const auto &owned=m_print->m_layer_document->fresh_job();
+        if (owned && owned->parameter_origin==sla::FreshLayerParameterOrigin::AutomaticModel) {
+            auto job=m_print->make_fresh_layer_job(sla::FreshLayerProducer::ModelSlice);
+            job.parameter_origin=sla::FreshLayerParameterOrigin::AutomaticModel;
+            m_print->advance_export_generation(false);
+            m_print->m_layer_document->refresh_automatic_model_parameters(std::move(job));
+        }
+        // Re-encoding retained masks is part of the cancellable slicing job.
+        // Keep the encoder's coordinator checkpoints connected to its owner.
+        m_print->m_archiver->encode_layers(*m_print->m_layer_document,
+            [this] { m_print->throw_if_canceled(); });
         m_print->m_encoded_revision = m_print->m_layer_document->revision();
         return;
+    }
+    const auto producer=sla::generated_layer_ownership(m_print->m_printer_config.sla_archive_format.value,
+        sla::FreshLayerProducer::ModelSlice,m_print->m_printer_config.sla_anycubic_version.value);
+    std::optional<sla::FreshLayerJob> owned_job;
+    // Pixel preservation is independent of complete parameter ownership.
+    // Only proven legacy alphabets opt in here; source editing/provenance
+    // remains a separate contract from this initial raster projection.
+    const auto independent_precision=sla::independent_generated_mask_precision(
+        m_print->m_printer_config.sla_archive_format.value,
+        m_print->m_printer_config.sla_anycubic_version.value);
+    sla::RasterEncoder canonical_encoder=sla::PNGRasterEncoder{};
+    if (producer) {
+        owned_job=m_print->make_fresh_layer_job(*producer);
+        owned_job->parameter_origin=sla::FreshLayerParameterOrigin::AutomaticModel;
+        owned_job->mask_precision=sla::generated_mask_precision(m_print->m_printer_config.sla_archive_format.value,
+            m_print->m_printer_config.sla_cbddlp_aa.value,m_print->m_printer_config.sla_anycubic_version.value);
+        if (owned_job->mask_precision != sla::LayerMaskPrecision::Gray8)
+            canonical_encoder=sla::ProjectedPNGMaskEncoder{owned_job->mask_precision,[this] {m_print->throw_if_canceled();}};
+    } else if (independent_precision) {
+        canonical_encoder=sla::ProjectedPNGMaskEncoder{*independent_precision,[this] {m_print->throw_if_canceled();}};
+    }
+    const bool trace_layers = std::getenv("SLA_TRACE_LAYER_FINGERPRINTS") != nullptr;
+    if (trace_layers) {
+        const auto encoder = canonical_encoder;
+        canonical_encoder = [encoder](const void *data, size_t width, size_t height, size_t components) {
+            BOOST_LOG_TRIVIAL(debug) << "SLA layer trace raster " << layer_trace_index
+                << " rounding=" << std::fegetround() << " raw=" << layer_trace_bytes(data, width * height * components);
+            if (const char *prefix = std::getenv("SLA_TRACE_LAYER142_OUTPUT"); prefix && layer_trace_index == 142) {
+                const auto png = sla::PNGRasterEncoder{}(data, width, height, components);
+                std::ofstream output(std::string(prefix) + "-raw.png", std::ios::binary);
+                output.write(static_cast<const char *>(png.data()), std::streamsize(png.size()));
+                if (!output) throw RuntimeError("Cannot write layer diagnostic raster");
+            }
+            return encoder(data, width, height, components);
+        };
     }
     std::vector<sla::EncodedRaster> masks(m_print->m_printer_input.size());
     std::vector<size_t> representatives(masks.size()), copies(masks.size(),0);
@@ -1493,11 +1612,12 @@ void SLAPrint::Steps::rasterize()
 
     // procedure to process one height level. This will run in parallel
     auto lvlfn =
-        [this, &slck, increment, &dstatus, &pst, &copies]
+        [this, &slck, increment, &dstatus, &pst, &copies, trace_layers]
         (sla::RasterBase& raster, size_t idx)
     {
         PrintLayer& printlayer = m_print->m_printer_input[idx];
         if(canceled()) return;
+        if (trace_layers) layer_trace_index = idx;
 
         for (const ExPolygon& poly : printlayer.transformed_slices())
             raster.draw(poly);
@@ -1506,7 +1626,9 @@ void SLAPrint::Steps::rasterize()
         {
             std::lock_guard lck(slck);
             dstatus += increment * copies[idx];
-            double st = std::round(dstatus);
+            // Encoding, source validation and statistics still follow drawing.
+            // Only process() may announce completion after that work succeeds.
+            double st = std::min(99., std::round(dstatus));
             if(st > pst) {
                 report_status(st, PRINT_STEP_LABELS(slapsRasterize));
                 pst = st;
@@ -1520,18 +1642,39 @@ void SLAPrint::Steps::rasterize()
     // Print all the layers in parallel
     const auto pixels = uint64_t(m_print->m_printer_config.display_pixels_x.value) *
                         uint64_t(m_print->m_printer_config.display_pixels_y.value);
-    const int workers = int(std::clamp<uint64_t>((uint64_t(512) << 20) / std::max<uint64_t>(1, pixels * 4), 1, 8));
+    const int workers = int(std::clamp<uint64_t>((uint64_t(512) << 20) / std::max<uint64_t>(1, pixels * ((owned_job && owned_job->mask_precision != sla::LayerMaskPrecision::Gray8) || independent_precision ? 5 : 4)), 1, 8));
     tbb::task_arena arena(workers);
     arena.execute([&] {
         m_print->m_archiver->draw_layers(m_print->m_printer_input.size(), lvlfn,
-                                        [this]() { return canceled(); }, ex_tbb, &masks, &representatives);
+                                        [this]() { return canceled(); }, ex_tbb, &masks, &representatives, canonical_encoder);
     });
     if (!canceled()) {
+        report_status(99, _u8L("Finalizing layers"));
+        std::unique_ptr<sla::LayerDocument> document;
         // Vector-only rasters do not expose a pixel buffer to an encoder.
-        if (std::all_of(masks.begin(), masks.end(), [](const auto &mask) { return mask.size() > 0; }))
-            m_print->m_layer_document = std::make_unique<sla::LayerDocument>(sla::LayerDocument::from_rasters(std::move(masks)));
-        else m_print->m_layer_document.reset();
+        if (std::all_of(masks.begin(), masks.end(), [](const auto &mask) { return mask.size() > 0; })) {
+            if (owned_job) {
+                // Already projected before PNG encoding. Retain full owning
+                // validation without decoding/projecting/re-encoding again.
+                document = std::make_unique<sla::LayerDocument>(
+                    sla::LayerDocument::from_fresh_rasters(std::move(masks), std::move(*owned_job),
+                        [this](size_t, size_t) { m_print->throw_if_canceled(); return true; }));
+            } else if (independent_precision) {
+                document = std::make_unique<sla::LayerDocument>(
+                    sla::LayerDocument::from_precision_rasters(std::move(masks),*independent_precision,
+                        [this](size_t, size_t) { m_print->throw_if_canceled(); return true; }));
+            } else {
+                document = std::make_unique<sla::LayerDocument>(
+                    sla::LayerDocument::from_rasters(std::move(masks),
+                        [this](size_t, size_t) { m_print->throw_if_canceled(); return true; }));
+            }
+        }
+        m_print->throw_if_canceled();
+        // Retire requests before replacing the storage they describe.
+        m_print->advance_export_generation(false);
+        m_print->m_layer_document = std::move(document);
         m_print->m_encoded_revision = 0;
+        m_print->remember_completed_cxdlpv4_encoding();
     }
 }
 

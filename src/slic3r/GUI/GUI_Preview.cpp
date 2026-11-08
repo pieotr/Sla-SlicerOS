@@ -440,9 +440,11 @@ void Preview::create_sliders()
             return wxGetApp().plater()->get_extruder_color_strings_from_plater_config();
         });
 
+#ifndef SLIC3R_SLA_ONLY
         m_layers_slider->set_callback_on_get_print([]()                         -> const Print& {
             return GUI::wxGetApp().plater()->active_fff_print();
         });
+#endif
 
         m_layers_slider->set_callback_on_get_custom_code([](const std::string& code_in, double height) -> std::string 
         {
@@ -534,7 +536,9 @@ void Preview::create_sliders()
     m_moves_slider = std::make_unique<DoubleSlider::DSForGcode>(0, 0, 0, 100);
     m_moves_slider->SetEmUnit(wxGetApp().em_unit());
 
+#ifndef SLIC3R_SLA_ONLY
     m_moves_slider->set_callback_on_thumb_move([this]() ->void { on_moves_slider_scroll_changed(); });
+#endif
 
     // m_canvas_widget
     m_canvas_widget->Bind(wxEVT_KEY_DOWN,                    &Preview::update_sliders_from_canvas, this);
@@ -648,12 +652,14 @@ void Preview::update_layers_slider(const std::vector<double>& layers_z, bool kee
     bool sequential_print = wxGetApp().preset_bundle->prints.get_edited_preset().config.opt_bool("complete_objects");
     m_layers_slider->SetDrawMode(sla_print_technology, sequential_print);
     if (sla_print_technology)
-        m_layers_slider->SetLayersTimes(plater->active_sla_print().print_statistics().layers_times_running_total);
+        m_layers_slider->SetLayersTimes(plater->active_sla_print().print_statistics().layers_times_running_total,
+            plater->active_sla_print().print_statistics().time_basis == SLAPrintStatistics::TimeBasis::OwnedNeutralSchedule);
     else
         m_layers_slider->SetLayersTimes(m_canvas->get_gcode_layers_times_cache(), active_gcode_result()->print_statistics.modes.front().time);
 
     m_layers_slider->Thaw();
 
+#ifndef SLIC3R_SLA_ONLY
     // check if ticks_info_from_model contains ColorChange g-code
     bool color_change_already_exists = false;
     for (const CustomGCode::Item& gcode: ticks_info_from_model.gcodes)
@@ -730,6 +736,7 @@ void Preview::update_layers_slider(const std::vector<double>& layers_z, bool kee
                 break;
         }
     }
+#endif
     m_layers_slider->Show();
 }
 
@@ -842,6 +849,9 @@ void Preview::update_sliders_from_canvas(wxKeyEvent& event)
 
 void Preview::update_moves_slider(std::optional<int> visible_range_min, std::optional<int> visible_range_max)
 {
+#ifdef SLIC3R_SLA_ONLY
+    throw ExportError("FFF moves are unavailable in the SLA-only application");
+#else
     if (active_gcode_result()->moves.empty())
         return;
 
@@ -898,18 +908,27 @@ void Preview::update_moves_slider(std::optional<int> visible_range_min, std::opt
     m_moves_slider->Thaw();
 
     m_moves_slider->ShowLowerThumb(get_app_config()->get("seq_top_layer_only") == "0");
+#endif
 }
 
 void Preview::enable_moves_slider(bool enable)
 {
+#ifdef SLIC3R_SLA_ONLY
+    throw ExportError("FFF moves are unavailable in the SLA-only application");
+#else
     bool render_as_disabled = !enable;
     if (m_moves_slider != nullptr && m_moves_slider->is_rendering_as_disabled() != render_as_disabled) {
         m_moves_slider->set_render_as_disabled(render_as_disabled);
     }
+#endif
 }
 
 void Preview::load_print_as_fff(bool keep_z_range)
 {
+#ifdef SLIC3R_SLA_ONLY
+    throw ExportError("FFF preview is unavailable in the SLA-only application");
+#else
+
     if (wxGetApp().mainframe == nullptr || wxGetApp().is_recreating_gui())
         // avoid processing while mainframe is being constructed
         return;
@@ -1012,10 +1031,18 @@ void Preview::load_print_as_fff(bool keep_z_range)
         else
             update_layers_slider(zs, keep_z_range);
     }
+
+#endif
 }
 
 void Preview::load_print_as_sla()
 {
+    // The bound SLAPrint exists during construction, but notification helpers
+    // also need the completed MainFrame/Plater published by GUI_App.
+    if (wxGetApp().mainframe == nullptr || wxGetApp().is_recreating_gui() ||
+        wxGetApp().plater() != GetParent())
+        return;
+
     if (m_loaded || (m_process->current_printer_technology() != ptSLA))
         return;
 
@@ -1054,28 +1081,33 @@ void Preview::load_print_as_sla()
 
 void Preview::on_layers_slider_scroll_changed()
 {
-    if (IsShown()) {
-        PrinterTechnology tech = m_process->current_printer_technology();
-        if (tech == ptFFF) {
-            m_canvas->set_volumes_z_range({ m_layers_slider->GetLowerValue(), m_layers_slider->GetHigherValue() });
-            m_canvas->set_toolpaths_z_range({ static_cast<unsigned int>(m_layers_slider->GetLowerPos()), static_cast<unsigned int>(m_layers_slider->GetHigherPos()) });
-            m_canvas->set_as_dirty();
-        }
-        else if (tech == ptSLA) {
-            m_canvas->set_clipping_plane(0, ClippingPlane(Vec3d::UnitZ(), -m_layers_slider->GetLowerValue()));
-            m_canvas->set_clipping_plane(1, ClippingPlane(-Vec3d::UnitZ(), m_layers_slider->GetHigherValue()));
-            m_canvas->set_layer_slider_index(m_layers_slider->GetHigherPos());
-            m_canvas->render();
-        }
+    if (!IsShown())
+        return;
+
+    const PrinterTechnology tech = m_process->current_printer_technology();
+    if (tech == ptSLA) {
+        m_canvas->set_clipping_plane(0, ClippingPlane(Vec3d::UnitZ(), -m_layers_slider->GetLowerValue()));
+        m_canvas->set_clipping_plane(1, ClippingPlane(-Vec3d::UnitZ(), m_layers_slider->GetHigherValue()));
+        m_canvas->set_layer_slider_index(m_layers_slider->GetHigherPos());
+        m_canvas->render();
     }
+#ifndef SLIC3R_SLA_ONLY
+    else if (tech == ptFFF) {
+        m_canvas->set_volumes_z_range({ m_layers_slider->GetLowerValue(), m_layers_slider->GetHigherValue() });
+        m_canvas->set_toolpaths_z_range({ static_cast<unsigned int>(m_layers_slider->GetLowerPos()), static_cast<unsigned int>(m_layers_slider->GetHigherPos()) });
+        m_canvas->set_as_dirty();
+    }
+#endif
 }
 
+#ifndef SLIC3R_SLA_ONLY
 void Preview::on_moves_slider_scroll_changed()
 {
     m_canvas->update_gcode_sequential_view_current(static_cast<unsigned int>(m_moves_slider->GetLowerValue() - 1), static_cast<unsigned int>(m_moves_slider->GetHigherValue() - 1));
     m_canvas->set_as_dirty();
     m_canvas->request_extra_frame();
 }
+#endif
 
 } // namespace GUI
 } // namespace Slic3r

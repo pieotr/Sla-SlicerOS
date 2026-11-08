@@ -15,7 +15,7 @@ namespace Slic3r {
 
 class SLAPrint;
 
-// Voxeldance Tango VDT format (ZIP-based with multi-manifest JSON system)
+// Voxeldance Tango VDT v1: manifest.json and zero-based grayscale PNGs.
 class VoxeldanceTangoArchive : public SLAArchiveWriter {
     SLAPrinterConfig m_cfg;
 
@@ -26,6 +26,8 @@ protected:
 public:
     explicit VoxeldanceTangoArchive(const SLAPrinterConfig &cfg) : m_cfg(cfg) {}
     explicit VoxeldanceTangoArchive(SLAPrinterConfig &&cfg) : m_cfg(std::move(cfg)) {}
+
+    static void validate_configuration(const SLAPrint &print);
 
     void export_print(const std::string     fname,
                       const SLAPrint       &print,

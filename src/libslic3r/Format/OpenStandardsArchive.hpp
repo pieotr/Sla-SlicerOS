@@ -11,6 +11,8 @@
 #include "SLAArchiveWriter.hpp"
 #include "libslic3r/PrintConfig.hpp"
 
+namespace Slic3r::sla { struct UVJFreshExportPlan; }
+
 namespace Slic3r {
 
 class SLAPrint;
@@ -36,6 +38,8 @@ public:
 // UVJ Format - ZIP with config.json + /slice images
 class UVJArchive : public SLAArchiveWriter {
     SLAPrinterConfig m_cfg;
+    void export_print_impl(const std::string &fname,const SLAPrint &print,
+        const ThumbnailsList &thumbnails,const sla::UVJFreshExportPlan *fresh);
 
 protected:
     std::unique_ptr<sla::RasterBase> create_raster() const override;
@@ -44,6 +48,8 @@ protected:
 public:
     explicit UVJArchive(const SLAPrinterConfig &cfg) : m_cfg(cfg) {}
     explicit UVJArchive(SLAPrinterConfig &&cfg) : m_cfg(std::move(cfg)) {}
+    void export_fresh_print(const std::string &fname,const SLAPrint &print,
+        const ThumbnailsList &thumbnails,const sla::UVJFreshExportPlan &fresh);
 
     void export_print(const std::string     fname,
                       const SLAPrint       &print,

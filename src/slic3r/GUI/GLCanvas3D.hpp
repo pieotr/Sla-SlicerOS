@@ -19,7 +19,11 @@
 #include "GLSelectionRectangle.hpp"
 #include "MeshUtils.hpp"
 #include "libslic3r/GCode/GCodeProcessor.hpp"
+#include "3DScene.hpp"
+#include "GLModel.hpp"
+#ifndef SLIC3R_SLA_ONLY
 #include "GCodeViewer.hpp"
+#endif
 #include "Camera.hpp"
 #include "SceneRaycaster.hpp"
 #include "GUI_Utils.hpp"
@@ -368,13 +372,17 @@ class GLCanvas3D
     };
 
     enum class EWarning {
-        ObjectOutside,
-        ToolpathOutside,
-        SlaSupportsOutside,
-        SomethingNotShown,
-        ObjectClashed,
-        GCodeConflict,
-        SequentialCollision
+        ObjectOutside = 0,
+#ifndef SLIC3R_SLA_ONLY
+        ToolpathOutside = 1,
+#endif
+        SlaSupportsOutside = 2,
+        SomethingNotShown = 3,
+        ObjectClashed = 4,
+#ifndef SLIC3R_SLA_ONLY
+        GCodeConflict = 5,
+        SequentialCollision = 6
+#endif
     };
 
     class RenderStats
@@ -521,7 +529,12 @@ private:
 #endif // SLIC3R_OPENGL_ES
     std::array<std::optional<BoundingBoxf>, MAX_NUMBER_OF_BEDS> m_wipe_tower_bounding_boxes;
 
+#ifdef SLIC3R_SLA_ONLY
+    // Shared SLA preview UI state, independent of the FFF toolpath renderer.
+    bool m_sla_legend_shown = true;
+#else
     GCodeViewer m_gcode_viewer;
+#endif
 
     RenderTimer m_render_timer;
 
@@ -720,6 +733,7 @@ private:
     bool check_volumes_outside_state(GLVolumeCollection& volumes, ModelInstanceEPrintVolumeState* out_state, bool selection_only = true) const;
 
 public:
+#ifndef SLIC3R_SLA_ONLY
     void init_gcode_viewer() { m_gcode_viewer.init(); }
     void reset_gcode_toolpaths() { m_gcode_viewer.reset(); }
     const GCodeViewer::SequentialView& get_gcode_sequential_view() const { return m_gcode_viewer.get_sequential_view(); }
@@ -728,6 +742,7 @@ public:
     const libvgcode::Interval& get_gcode_view_enabled_range() const { return m_gcode_viewer.get_gcode_view_enabled_range(); }
     const libvgcode::Interval& get_gcode_view_visible_range() const { return m_gcode_viewer.get_gcode_view_visible_range(); }
     const libvgcode::PathVertex& get_gcode_vertex_at(size_t id) const { return m_gcode_viewer.get_gcode_vertex_at(id); }
+#endif
 
     std::pair<std::optional<std::unique_ptr<GLModel>>, bool> get_current_marker_model() const;
 
@@ -799,7 +814,9 @@ public:
     void zoom_to_bed();
     void zoom_to_volumes();
     void zoom_to_selection();
+#ifndef SLIC3R_SLA_ONLY
     void zoom_to_gcode();
+#endif
     void select_view(const std::string& direction);
 
     PrinterTechnology current_printer_technology() const;
@@ -819,13 +836,19 @@ public:
     void delete_selected() { m_selection.erase(); }
     void ensure_on_bed(unsigned int object_idx, bool allow_negative_z);
 
+#ifndef SLIC3R_SLA_ONLY
     std::vector<double> get_gcode_layers_zs() const { return m_gcode_viewer.get_layers_zs(); }
     std::vector<float> get_gcode_layers_times() const { return m_gcode_viewer.get_layers_times(); }
+#endif
     const std::vector<float>& get_gcode_layers_times_cache() const { return m_gcode_layers_times_cache; }
     void reset_gcode_layers_times_cache() { m_gcode_layers_times_cache.clear(); }
     void set_volumes_z_range(const std::array<double, 2>& range) { m_volumes.set_range(range[0] - 1e-6, range[1] + 1e-6); }
+#ifndef SLIC3R_SLA_ONLY
     void set_toolpaths_z_range(const std::array<unsigned int, 2>& range);
+#endif
+#ifndef SLIC3R_SLA_ONLY
     size_t get_gcode_extruders_count() { return m_gcode_viewer.get_extruders_count(); }
+#endif
 
     std::vector<int> load_object(const ModelObject& model_object, int obj_idx, std::vector<int> instance_idxs);
     std::vector<int> load_object(const Model& model, int obj_idx);
@@ -837,12 +860,14 @@ public:
     void load_gcode_shells();
     void load_gcode_preview(const GCodeProcessorResult& gcode_result, const std::vector<std::string>& str_tool_colors,
         const std::vector<std::string>& str_color_print_colors);
+#ifndef SLIC3R_SLA_ONLY
     void set_gcode_view_type(libvgcode::EViewType type) { return m_gcode_viewer.set_view_type(type); }
     libvgcode::EViewType get_gcode_view_type() const { return m_gcode_viewer.get_view_type(); }
     void enable_gcode_view_type_cache_load(bool enable) { m_gcode_viewer.enable_view_type_cache_load(enable); }
     void enable_gcode_view_type_cache_write(bool enable) { m_gcode_viewer.enable_view_type_cache_write(enable); }
     bool is_gcode_view_type_cache_load_enabled() const { return m_gcode_viewer.is_view_type_cache_load_enabled(); }
     bool is_gcode_view_type_cache_write_enabled() const { return m_gcode_viewer.is_view_type_cache_write_enabled(); }
+#endif
 
     void load_preview(const std::vector<std::string>& str_tool_colors, const std::vector<std::string>& str_color_print_colors,
         const std::vector<CustomGCode::Item>& color_print_values);
@@ -923,7 +948,7 @@ public:
     double get_size_proportional_to_max_bed_size(double factor) const;
 
     void set_cursor(ECursorType type);
-    void msw_rescale() { m_gcode_viewer.invalidate_legend(); }
+    void msw_rescale();
 
     void request_extra_frame() { m_extra_frame_requested = true; }
     
@@ -935,16 +960,18 @@ public:
     void force_main_toolbar_right_action(int item_id) { m_main_toolbar.force_right_action(item_id, *this); }
     void update_tooltip_for_settings_item_in_main_toolbar();
 
+#ifndef SLIC3R_SLA_ONLY
     bool has_toolpaths_to_export() const { return m_gcode_viewer.can_export_toolpaths(); }
     void export_toolpaths_to_obj(const char* filename) const { m_gcode_viewer.export_toolpaths_to_obj(filename); }
+#endif
 
     void mouse_up_cleanup();
 
     bool are_labels_shown() const { return m_labels.is_shown(); }
     void show_labels(bool show) { m_labels.show(show); }
 
-    bool is_legend_shown() const { return m_gcode_viewer.is_legend_shown(); }
-    void show_legend(bool show) { m_gcode_viewer.show_legend(show); m_dirty = true; }
+    bool is_legend_shown() const;
+    void show_legend(bool show);
 
     bool is_using_slope() const { return m_slope.is_used(); }
     void use_slope(bool use) { m_slope.use(use); }
@@ -964,7 +991,9 @@ public:
 #endif
     }
 
+#ifndef SLIC3R_SLA_ONLY
     const Print* fff_print() const;
+#endif
     const SLAPrint* sla_print() const;
 
     void reset_old_size() { m_old_size = { 0, 0 }; }
@@ -1006,8 +1035,10 @@ private:
     void _render_bed_axes();
     void _render_bed_for_picking(const Transform3d& view_matrix, const Transform3d& projection_matrix, bool bottom);
     void _render_objects(GLVolumeCollection::ERenderType type);
+#ifndef SLIC3R_SLA_ONLY
     void _render_gcode() { m_gcode_viewer.render(); }
     void _render_gcode_cog() { m_gcode_viewer.render_cog(); }
+#endif
     void _render_selection();
     bool check_toolbar_icon_size(float init_scale, float& new_scale_to_save, bool is_custom, int counter = 3);
 #if ENABLE_RENDER_SELECTION_CENTER

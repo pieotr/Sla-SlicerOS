@@ -129,6 +129,9 @@ set(SLIC3R_GUI_SOURCES
     GUI/IconManager.hpp
     GUI/SlaRasterToolsDialog.cpp
     GUI/SlaRasterToolsDialog.hpp
+    GUI/RasterGeneratorTask.hpp
+    GUI/ExposureFinderDialog.cpp
+    GUI/ExposureFinderDialog.hpp
     GUI/LayerEditorDialog.cpp
     GUI/LayerEditorDialog.hpp
     GUI/MainFrame.cpp
@@ -409,6 +412,16 @@ if (NOT SLIC3R_SLA_ONLY)
     message(FATAL_ERROR "This branch is SLA-only. Build with SLIC3R_SLA_ONLY=ON.")
 endif ()
 
+# SLA has no FFF viewer or libvgcode conversion owner. Keep the shared
+# OpenGL/GLModel renderer and shared slider dependencies separate.
+if (SLIC3R_SLA_ONLY)
+    list(REMOVE_ITEM SLIC3R_GUI_SOURCES
+        GUI/GCodeViewer.cpp
+        GUI/LibVGCode/LibVGCodeWrapper.cpp
+        GUI/LibVGCode/LibVGCodeWrapper.hpp
+    )
+endif ()
+
 add_library(libslic3r_gui STATIC ${SLIC3R_GUI_SOURCES})
 
 foreach(_source IN ITEMS ${SLIC3R_GUI_SOURCES})
@@ -425,7 +438,6 @@ target_link_libraries(
     libslic3r
     slic3r-arrange-wrapper
     imgui
-    libvgcode
     GLEW::GLEW
     OpenGL::GL
     hidapi
@@ -435,6 +447,10 @@ target_link_libraries(
     stb_dxt
     fastfloat
 )
+
+if (NOT SLIC3R_SLA_ONLY)
+    target_link_libraries(libslic3r_gui PUBLIC libvgcode)
+endif ()
 
 if (MSVC)
     target_link_libraries(libslic3r_gui PUBLIC Setupapi.lib)

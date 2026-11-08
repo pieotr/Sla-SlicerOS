@@ -89,7 +89,8 @@ enum FileType
 
 extern wxString file_wildcards(FileType file_type, const std::string &custom_extension = {});
 
-wxString sla_wildcards(const char *formatid, const std::string& custom_extension, bool export_only = false);
+wxString sla_wildcards(const char *formatid, const std::string& custom_extension, bool export_only = false,
+                      std::vector<std::string> *format_ids = nullptr);
 
 enum ConfigMenuIDs {
     ConfigMenuWizard,

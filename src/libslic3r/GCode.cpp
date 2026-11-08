@@ -176,7 +176,6 @@ namespace Slic3r {
             : gcodegen.config().temperature.get_at(gcodegen.writer().extruder()->id());
     }
 
-    const std::vector<std::string> ColorPrintColors::Colors = { "#C0392B", "#E67E22", "#F1C40F", "#27AE60", "#1ABC9C", "#2980B9", "#9B59B6" };
 
 #define EXTRUDER_CONFIG(OPT) m_config.OPT.get_at(m_writer.extruder()->id())
 

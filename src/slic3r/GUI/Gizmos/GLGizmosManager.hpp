@@ -13,6 +13,8 @@
 #include "libslic3r/ObjectID.hpp"
 
 #include <map>
+#include <array>
+#include <stdexcept>
 
 namespace Slic3r {
 
@@ -70,23 +72,23 @@ public:
 
     enum EType : unsigned char
     {
-        // Order must match index in m_gizmos!
-        Move,
-        Scale,
-        Rotate,
-        Flatten,
-        Cut,
-        Hollow,
-        SlaSupports,
-        FdmSupports,
-        Seam,
-        FuzzySkin,
-        MmSegmentation,
-        Measure,
-        Emboss,
-        Svg,
-        Simplify,
-        Undefined
+        // Stable serialized IDs; unavailable tools keep empty registry slots.
+        Move = 0,
+        Scale = 1,
+        Rotate = 2,
+        Flatten = 3,
+        Cut = 4,
+        Hollow = 5,
+        SlaSupports = 6,
+        FdmSupports = 7,
+        Seam = 8,
+        FuzzySkin = 9,
+        MmSegmentation = 10,
+        Measure = 11,
+        Emboss = 12,
+        Svg = 13,
+        Simplify = 14,
+        Undefined = 15
     };
 
 private:
@@ -110,6 +112,9 @@ private:
     GLCanvas3D& m_parent;
     bool m_enabled;
     std::vector<std::unique_ptr<GLGizmoBase>> m_gizmos;
+    // Dense texture rows are independent of sparse, stable tool IDs.
+    std::array<size_t, Undefined> m_icon_rows{};
+    size_t m_icon_row_count = 0;
     GLTexture m_icons_texture;
     bool m_icons_texture_dirty;
     BackgroundTexture m_background_texture;
@@ -149,21 +154,25 @@ public:
         if (!m_enabled)
             return;
 
+        EType new_current = Undefined;
+        ar(new_current);
+        // Validate before changing current state or consuming tool-specific data.
+        if (new_current != Undefined && get_gizmo(new_current) == nullptr)
+            throw std::runtime_error("Saved gizmo is unavailable in this application");
+        const bool previous_serializing = m_serializing;
         m_serializing = true;
-
-        // Following is needed to know which to be turn on, but not actually modify
-        // m_current prematurely, so activate_gizmo is not confused.
-        EType old_current = m_current;
-        ar(m_current);
-        EType new_current = m_current;
-        m_current = old_current;
-
-        // activate_gizmo call sets m_current and calls set_state for the gizmo
-        // it does nothing in case the gizmo is already activated
-        // it can safely be called for Undefined gizmo
-        activate_gizmo(new_current);
-        if (m_current != Undefined)
-            m_gizmos[m_current]->load(ar);
+        try {
+            if (!activate_gizmo(new_current))
+                throw std::runtime_error("Saved gizmo could not be activated");
+            if (m_current != Undefined)
+                get_current()->load(ar);
+        } catch (...) {
+            // Restore the flag on failure, without pretending to roll back a
+            // tool payload that may already have changed. Success stays true
+            // until update_after_undo_redo finishes the normal lifecycle.
+            m_serializing = previous_serializing;
+            throw;
+        }
     }
 
     template<class Archive>
@@ -172,10 +181,11 @@ public:
         if (!m_enabled)
             return;
 
+        if (m_current != Undefined && get_current() == nullptr)
+            throw std::runtime_error("Current gizmo is unavailable");
         ar(m_current);
-
-        if (m_current != Undefined && !m_gizmos.empty())
-            m_gizmos[m_current]->save(ar);
+        if (m_current != Undefined)
+            get_current()->save(ar);
     }
 
     bool is_enabled() const { return m_enabled; }

@@ -3,6 +3,7 @@
 ///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
 ///|/
 #include "GUI_Utils.hpp"
+#include "WindowGeometry.hpp"
 #include "GUI_App.hpp"
 #include "format.hpp"
 
@@ -267,14 +268,13 @@ boost::optional<WindowMetrics> WindowMetrics::deserialize(const std::string &str
     return res;
 }
 
-void WindowMetrics::sanitize_for_display(const wxRect &screen_rect)
+void WindowMetrics::sanitize_for_display(const wxRect &screen_rect, const wxSize &minimum_size)
 {
-    rect = rect.Intersect(screen_rect);
-
-    // Prevent the window from going too far towards the right and/or bottom edge
-    // It's hardcoded here that the threshold is 80% of the screen size
-    rect.x = std::min(rect.x, screen_rect.x + 4*screen_rect.width/5);
-    rect.y = std::min(rect.y, screen_rect.y + 4*screen_rect.height/5);
+    const auto visible = clamp_window_to_workarea(
+        {rect.x, rect.y, rect.width, rect.height},
+        {screen_rect.x, screen_rect.y, screen_rect.width, screen_rect.height},
+        {minimum_size.x, minimum_size.y});
+    rect = wxRect(visible.x, visible.y, visible.width, visible.height);
 }
 
 std::string WindowMetrics::serialize() const

@@ -450,6 +450,11 @@ TopBarItemsCtrl::TopBarItemsCtrl(wxWindow *parent, TopBarMenus* menus/* = nullpt
     wxBoxSizer* right_sizer = new wxBoxSizer(wxHORIZONTAL);
 
     m_workspace_btn = new ButtonWithPopup(this, "Workspace", "mode_simple");
+#ifdef SLIC3R_OFFLINE_ONLY
+    // This build exposes every setting in Expert mode; there is no mode
+    // transition to offer. Keep the shared update object out of the user flow.
+    m_workspace_btn->Hide();
+#endif
     right_sizer->AddStretchSpacer(20);
     right_sizer->Add(m_workspace_btn, 0, wxALIGN_CENTER_VERTICAL | wxALIGN_RIGHT | wxALL, m_btn_margin);
     

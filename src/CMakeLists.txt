@@ -24,7 +24,9 @@ add_subdirectory(libseqarrange)
 
 
 if (SLIC3R_GUI)
-    add_subdirectory(libvgcode)
+    if (NOT SLIC3R_SLA_ONLY)
+        add_subdirectory(libvgcode)
+    endif ()
 
     if(WIN32)
         message(STATUS "WXWIN environment set to: $ENV{WXWIN}")

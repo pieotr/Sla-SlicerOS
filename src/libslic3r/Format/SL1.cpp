@@ -4,6 +4,8 @@
 ///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
 ///|/
 #include "SL1.hpp"
+#include "libslic3r/SLA/SL1FreshExportPlan.hpp"
+#include "libslic3r/SLA/SL1FreshMaterialProfile.hpp"
 
 #include <boost/log/trivial.hpp>
 #include <boost/filesystem.hpp>
@@ -19,6 +21,7 @@
 #include "libslic3r/SLA/PrintParameters.hpp"
 #include "libslic3r/Exception.hpp"
 #include "libslic3r/MTUtils.hpp"
+#include "libslic3r/Utils.hpp"
 #include "libslic3r/PrintConfig.hpp"
 
 #include "libslic3r/miniz_extension.hpp" // IWYU pragma: keep
@@ -173,7 +176,7 @@ std::string get_cfg_value(const DynamicPrintConfig &cfg, const std::string &key)
     return ret;    
 }
 
-void fill_iniconf(ConfMap &m, const SLAPrint &print)
+void fill_iniconf(ConfMap &m, const SLAPrint &print, const sla::SL1FreshExportPlan *fresh)
 {
     CNumericLocalesSetter locales_setter; // for to_string
     auto &cfg = print.full_print_config();
@@ -190,21 +193,21 @@ void fill_iniconf(ConfMap &m, const SLAPrint &print)
     m["fileCreationTimestamp"] = Utils::utc_timestamp();
     m["prusaSlicerVersion"]    = SLIC3R_BUILD_ID;
     
-    SLAPrintStatistics stats = print.print_statistics();
-    // Set statistics values to the printer
-    
-    double used_material = (stats.objects_used_material +
-                            stats.support_used_material) / 1000;
-    
     // UVtools maps NumFade to bottom-layer count. Use the canonical LCD count,
     // rather than the legacy Prusa fade setting (a different exposure policy).
     const auto num_fade = sla::bottom_layers(print, print.print_layers().size());
     
-    m["usedMaterial"] = std::to_string(used_material);
-    m["numFade"]      = std::to_string(num_fade);
-    m["numSlow"]      = std::to_string(stats.slow_layers_count);
-    m["numFast"]      = std::to_string(stats.fast_layers_count);
-    m["printTime"]    = std::to_string(stats.estimated_print_time);
+    m["numFade"] = std::to_string(num_fade);
+    if (!fresh) {
+        const auto &stats = print.print_statistics();
+        const double used_material = (stats.objects_used_material + stats.support_used_material) / 1000.;
+        m["usedMaterial"] = std::to_string(used_material);
+        m["numSlow"] = std::to_string(stats.slow_layers_count);
+        m["numFast"] = std::to_string(stats.fast_layers_count);
+        m["printTime"] = std::to_string(stats.estimated_print_time);
+    }
+    // Fresh exports below use complete format-owned metrics and therefore do
+    // not ask the internal encoding context for unrelated job statistics.
 
     bool hollow_en = false;
     auto it = print.objects().begin();
@@ -214,9 +217,25 @@ void fill_iniconf(ConfMap &m, const SLAPrint &print)
     m["hollow"] = hollow_en ? "1" : "0";
     
     m["action"] = "print";
+    if (fresh) {
+        auto decimal = [](double value) {
+            std::ostringstream text; text.imbue(std::locale::classic());
+            text << std::setprecision(17) << value; return text.str();
+        };
+        using F = sla::LayerParameter;
+        m["layerHeight"] = decimal(std::round(fresh->globals.layer_height * 1000.) / 1000.);
+        m["expTime"] = decimal(fresh->globals.normal.at(F::Exposure));
+        m["expTimeFirst"] = decimal(fresh->globals.bottom.at(F::Exposure));
+        m["numFade"] = std::to_string(fresh->globals.bottom_layers);
+        m["numSlow"] = std::to_string(fresh->globals.bottom_layers);
+        m["numFast"] = std::to_string(fresh->rows.size() - fresh->globals.bottom_layers);
+        m["usedMaterial"] = decimal(fresh->material_ml);
+        m["printTime"] = decimal(fresh->expected_print_time);
+    }
+
 }
 
-void fill_slicerconf(ConfMap &m, const SLAPrint &print)
+void fill_slicerconf(ConfMap &m, const SLAPrint &print, const sla::SL1FreshExportPlan *fresh)
 {
     using namespace std::literals::string_view_literals;
     
@@ -263,6 +282,7 @@ void fill_slicerconf(ConfMap &m, const SLAPrint &print)
         {"RetractSpeed2", "retract_speed2"}, {"LightPWM", "light_pwm"}
     };
     std::vector<std::string> keywords{"TransitionLayerCount"};
+    if (fresh) { keywords.push_back("LightOffDelay"); keywords.push_back("BottomLightOffDelay"); }
     for (const auto &field : fields) {
         keywords.push_back(field.first); keywords.push_back(std::string("Bottom")+field.first);
     }
@@ -285,12 +305,42 @@ void fill_slicerconf(ConfMap &m, const SLAPrint &print)
     }
     std::ostringstream notes; notes.imbue(std::locale::classic()); notes << std::fixed << std::setprecision(9);
     if (!m["printer_notes"].empty()) notes << m["printer_notes"] << "\\n";
-    notes << "TransitionLayerCount_" << print.material_config().sla_transition_layers.value;
+    notes << "TransitionLayerCount_" << (fresh ? fresh->globals.transition_layers : print.material_config().sla_transition_layers.value);
     for (const bool bottom : {false, true}) for (const auto &field : fields) {
         notes << "\\n" << (bottom ? "Bottom" : "") << field.first << '_';
-        const float value = sla::motion_parameter(print, field.second, bottom);
+        static const std::map<std::string, sla::LayerParameter> mapping{
+            {"wait_before_cure",sla::LayerParameter::WaitBefore},{"wait_after_cure",sla::LayerParameter::WaitAfter},
+            {"wait_after_lift",sla::LayerParameter::WaitAfterLift},{"lift_height",sla::LayerParameter::LiftDistance},
+            {"lift_height2",sla::LayerParameter::LiftDistance2},{"lift_speed",sla::LayerParameter::LiftSpeed},
+            {"lift_speed2",sla::LayerParameter::LiftSpeed2},{"retract_speed",sla::LayerParameter::RetractSpeed},
+            {"retract_height2",sla::LayerParameter::RetractDistance2},{"retract_speed2",sla::LayerParameter::RetractSpeed2},
+            {"light_pwm",sla::LayerParameter::LightPWM}};
+        const float value = fresh ? float((bottom ? fresh->globals.bottom : fresh->globals.normal).at(mapping.at(field.second))) :
+            sla::motion_parameter(print, field.second, bottom);
         if (std::string(field.second) == "light_pwm") notes << int(value);
         else notes << value;
+    }
+    if (fresh) {
+        notes << "\\nBottomLightOffDelay_" << fresh->globals.bottom.at(sla::LayerParameter::LightOff);
+        notes << "\\nLightOffDelay_" << fresh->globals.normal.at(sla::LayerParameter::LightOff);
+        std::ostringstream height; height.imbue(std::locale::classic());
+        height << std::setprecision(17) << std::round(fresh->initial_layer_height * 1000.) / 1000.;
+        m["initial_layer_height"] = height.str();
+        auto decimal = [](double value) {
+            std::ostringstream text; text.imbue(std::locale::classic());
+            text << std::setprecision(17) << value; return text.str();
+        };
+        m["layer_height"] = decimal(std::round(fresh->globals.layer_height * 1000.) / 1000.);
+        m["exposure_time"] = decimal(fresh->globals.normal.at(sla::LayerParameter::Exposure));
+        m["initial_exposure_time"] = decimal(fresh->globals.bottom.at(sla::LayerParameter::Exposure));
+        m["display_width"] = decimal(fresh->geometry.width_mm);
+        m["display_height"] = decimal(fresh->geometry.height_mm);
+        m["display_pixels_x"] = std::to_string(fresh->geometry.columns);
+        m["display_pixels_y"] = std::to_string(fresh->geometry.rows);
+        const auto material = sla::sl1_fresh_material_profile(*fresh,print.material_config());
+        const char *keys[]={"material_density","bottle_cost","bottle_volume","bottle_weight"};
+        for (size_t i=0;i<material.size();++i) m[keys[i]]=decimal(material[i]);
+
     }
     m["printer_notes"] = notes.str();
 
@@ -329,12 +379,15 @@ static void write_thumbnail(Zipper &zipper, const ThumbnailData &data)
 void SL1Archive::export_print(Zipper               &zipper,
                               const SLAPrint       &print,
                               const ThumbnailsList &thumbnails,
-                              const std::string    &prjname)
+                              const std::string    &prjname,
+                              const sla::SL1FreshExportPlan *fresh,
+                              const sla::LayerDocument *validated_document)
 {
+    print.throw_if_canceled();
     const auto &levels = print.print_layers();
     if (sla::bottom_layers(print, levels.size()) > UINT16_MAX || print.material_config().sla_transition_layers.value > UINT16_MAX)
         throw ExportError("SL1 bottom/transition count exceeds its 16-bit metadata fields");
-    for (size_t i = 0; i < levels.size(); ++i) {
+    for (size_t i = 0; !fresh && i < levels.size(); ++i) {
         const double expected = print.material_config().initial_layer_height.value + i * print.default_object_config().layer_height.value;
         if (std::abs(double(levels[i].level()) * SCALING_FACTOR - expected) > SCALING_FACTOR * 2)
             throw ExportError("SL1 cannot store variable layer heights after the first layer; choose UVJ or another format with per-layer Z");
@@ -345,12 +398,12 @@ void SL1Archive::export_print(Zipper               &zipper,
             prjname;
 
     ConfMap iniconf, slicerconf;
-    fill_iniconf(iniconf, print);
+    fill_iniconf(iniconf, print, fresh);
 
     iniconf["jobDir"] = project;
     iniconf["slaSlicerProfileGeometry"] = "raster-v1";
 
-    fill_slicerconf(slicerconf, print);
+    fill_slicerconf(slicerconf, print, fresh);
 
     try {
         zipper.add_entry("config.ini");
@@ -361,20 +414,33 @@ void SL1Archive::export_print(Zipper               &zipper,
         zipper.add_entry("config.json");
         zipper << to_json(print, iniconf);
 
-        size_t i = 0;
-        for (const sla::EncodedRaster &rst : m_layers) {
-
-            std::string imgname = project + string_printf("%.5d", i++) + "." +
-                                  rst.extension();
-
-            zipper.add_entry(imgname.c_str(), rst.data(), rst.size());
+        if (validated_document) {
+            // PNG bytes belong to the exact planned document. The synchronous
+            // ZIP call consumes each borrowed view before the next checkpoint;
+            // neither the writer nor a global cache retains that view.
+            for (size_t i = 0; i < validated_document->layer_count(); ++i) {
+                print.throw_if_canceled();
+                const auto png = validated_document->encoded_layer(i);
+                const auto imgname = project + string_printf("%.5d", int(i)) + ".png";
+                zipper.add_entry(imgname.c_str(), png.buf, png.sz);
+            }
+        } else {
+            size_t i = 0;
+            for (const sla::EncodedRaster &rst : m_layers) {
+                // A frozen export context checks its request-owned Cancel flag.
+                print.throw_if_canceled();
+                std::string imgname = project + string_printf("%.5d", i++) + "." + rst.extension();
+                zipper.add_entry(imgname.c_str(), rst.data(), rst.size());
+            }
         }
 
         std::set<std::pair<unsigned,unsigned>> thumbnail_sizes;
-        for (const ThumbnailData& data : thumbnails)
+        for (const ThumbnailData& data : thumbnails) {
+            print.throw_if_canceled();
             if (data.is_valid() && thumbnail_sizes.emplace(data.width,data.height).second)
                 write_thumbnail(zipper, data);
-
+        }
+        print.throw_if_canceled();
         zipper.finalize();
     } catch(std::exception& e) {
         BOOST_LOG_TRIVIAL(error) << e.what();
@@ -383,14 +449,66 @@ void SL1Archive::export_print(Zipper               &zipper,
     }
 }
 
+void SL1Archive::export_fresh_document(const std::string &fname, const SLAPrint &print,
+    const ThumbnailsList &thumbnails, const std::string &projectname,
+    const sla::SL1FreshExportPlan &fresh, const sla::LayerDocument &document)
+{
+    print.throw_if_canceled();
+    if (fresh.rows.empty() || fresh.rows.size() != print.print_layers().size() ||
+        fresh.rows.size() != document.layer_count() || document.mask_plane_count() != 1)
+        throw ExportError("SL1 fresh plan does not match its immutable PNG document");
+    sla::sl1_fresh_material_profile(fresh, print.material_config());
+    // Keep the existing aggregate encoder limit, although this branch allocates
+    // no second complete set of PNG buffers. Do not rely on archive type or
+    // mere IHDR validity: the caller has completed sl1_fresh_export_plan.
+    constexpr uint64_t encoded_budget = uint64_t(1) << 30;
+    uint64_t total = 0;
+    for (size_t i = 0; i < document.layer_count(); ++i) {
+        print.throw_if_canceled();
+        const auto png = document.encoded_layer(i);
+        if (!png.sz || png.sz > encoded_budget - total)
+            throw ExportError("Encoded layers exceed the 1 GiB memory budget");
+        total += png.sz;
+    }
+    print.throw_if_canceled();
+    Zipper zipper(fname, Zipper::FAST_COMPRESSION);
+    export_print(zipper, print, thumbnails, projectname, &fresh, &document);
+}
+
+void SL1Archive::export_fresh_print(const std::string &fname, const SLAPrint &print,
+    const ThumbnailsList &thumbnails, const std::string &projectname, const sla::SL1FreshExportPlan &fresh)
+{
+    if (fresh.rows.size() != print.print_layers().size() || fresh.rows.size() != m_layers.size())
+        throw ExportError("SL1 fresh plan does not match encoded layers");
+    sla::sl1_fresh_material_profile(fresh,print.material_config());
+    Zipper zipper(fname, Zipper::FAST_COMPRESSION);
+    export_print(zipper, print, thumbnails, projectname, &fresh);
+}
+
 void SL1Archive::export_print(const std::string     fname,
                               const SLAPrint       &print,
                               const ThumbnailsList &thumbnails,
                               const std::string    &prjname)
 {
-    Zipper zipper{fname, Zipper::FAST_COMPRESSION};
-
-    export_print(zipper, print, thumbnails, prjname);
+    // Keep the previous export intact if validation or ZIP writing fails.
+    // A short adjacent name also supports long destination filenames.
+    struct StagingFile {
+        boost::filesystem::path path;
+        ~StagingFile() {
+            boost::system::error_code error;
+            if (!path.empty()) boost::filesystem::remove(path, error);
+        }
+    } staging{boost::filesystem::path(fname).parent_path() /
+              boost::filesystem::unique_path(".sl1-%%%%-%%%%-%%%%-%%%%.tmp")};
+    {
+        Zipper zipper{staging.path.string(), Zipper::FAST_COMPRESSION};
+        // JobDir and image names must use the real filename, never staging.
+        const std::string project = prjname.empty() ? boost::filesystem::path(fname).stem().string() : prjname;
+        export_print(zipper, print, thumbnails, project);
+    }
+    if (const auto error = rename_file(staging.path.string(), fname))
+        throw ExportError("Cannot replace SL1/SL1S output: " + error.message());
+    staging.path.clear();
 }
 
 } // namespace Slic3r

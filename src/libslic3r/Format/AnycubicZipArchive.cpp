@@ -2,6 +2,8 @@
 // manifest/scene definitions and AnycubicFile.EncodePW0. No external process.
 #include "AnycubicZipArchive.hpp"
 #include "libslic3r/SLA/PrintParameters.hpp"
+#include "libslic3r/SLA/RasterRounding.hpp"
+#include <cmath>
 #include "libslic3r/PNGReadWrite.hpp"
 #include "libslic3r/Zipper.hpp"
 #include "libslic3r/miniz_extension.hpp"
@@ -41,6 +43,88 @@ std::vector<uint8_t> pw0(const png::ImageGreyscale &image) {
         first = end;
     }
     return out;
+}
+// The file's public reader derives time from native float32 parameters, not
+// from the unrounded process preset or a generic integer LCD estimate. Keep
+// this projection local: setup policy and JSON aliases are format contracts.
+float zip_time_number(const Json &value, const char *field) {
+    const float native=value.get<float>();
+    if(!std::isfinite(native) || native<0)
+        throw ExportError(std::string("Anycubic ZIP time requires a finite nonnegative ")+field);
+    return native;
+}
+float zip_round2(float value, bool away=false) {
+    if(!std::isfinite(value))throw ExportError("Anycubic ZIP native print time exceeds the finite float range");
+    // MathF.Round leaves large floats unchanged. Multiplication must remain
+    // float32: promoting3.135f to double changes the two-decimal boundary.
+    if(std::abs(value)>=1e8f)return value;
+    const float scaled=value*100.f;
+    return (away?std::round(scaled):std::nearbyint(scaled))/100.f;
+}
+float zip_core_speed(const Json &native_speed) {
+    const float speed=zip_time_number(native_speed,"speed")*60.f;
+    return zip_round2(speed,true); // native mm/s -> public mm/min, Away2
+}
+struct AnycubicZipParameterPlan {
+    Json layers=Json::array();
+    std::vector<double> positions;
+    float print_time=0;
+};
+AnycubicZipParameterPlan plan_zip_parameters(const SLAPrint &print,size_t count,const Json &resin) {
+    const sla::ScopedNearestRounding rounding;
+    AnycubicZipParameterPlan plan;plan.positions.reserve(count);
+    const size_t bottom_count=sla::bottom_layers(print,count);
+    double previous_z=0;
+    float complete_time=300.f; // FileFormat.ExtraPrintTime, local reference policy
+    const float wait=zip_time_number(resin.at("slicepara").at("off_time"),"common pre-cure wait");
+    for(size_t i=0;i<count;++i) {
+        const bool bottom=i<bottom_count;
+        const auto &first=resin.at("slice_extpara").at("multi_state_paras").at(bottom?"bott_0":"normal_0");
+        const auto &second=resin.at("slice_extpara").at("multi_state_paras").at(bottom?"bott_1":"normal_1");
+        const double z=sla::layer_z(print,i),thickness=z-previous_z;
+        if(!std::isfinite(z) || !std::isfinite(thickness) || thickness<=0)
+            throw ExportError("Anycubic ZIP layer Z positions must increase finitely");
+        Json row={{"exposure_time",sla::layer_exposure(print,i)},{"layer_index",i},
+            {"layer_minheight",previous_z},{"layer_thickness",thickness},
+            {"zup_height",first.at("height")},{"zup_speed",first.at("up_speed")}};
+        // Decode applies Away2 to these explicit row fields before assigning
+        // Layer properties. Inherited second lift/wait values retain native
+        // float precision; they do not pass through those Layer setters.
+        const float exposure=zip_round2(zip_time_number(row.at("exposure_time"),"exposure"),true);
+        if(exposure<=0)throw ExportError("Anycubic ZIP positive exposure collapses in native precision");
+        const float lift=zip_round2(zip_time_number(row.at("zup_height"),"first lift"),true);
+        const float lift2=zip_time_number(second.at("height"),"second lift");
+        const float speed=zip_core_speed(row.at("zup_speed"));
+        const float speed2=zip_core_speed(second.at("up_speed"));
+        const float retract=zip_core_speed(first.at("down_speed"));
+        // The independent secondary retract speed is stored but this schema
+        // has no secondary retract height. Validate its native number without
+        // inventing a return distance paired with the second lift.
+        (void)zip_core_speed(second.at("down_speed"));
+        float motor=0;
+        const auto phase=[&](float distance,float velocity) {
+            if(!std::isfinite(distance) || distance<0)
+                throw ExportError("Anycubic ZIP native lift/retract distance exceeds the finite float range");
+            if(distance==0)return; // zero speed is valid for an inactive phase
+            if(velocity<=0)throw ExportError("Anycubic ZIP active motion speed rounds to zero in native precision");
+            const float seconds=distance/(velocity/60.f);
+            motor+=seconds;
+            if(!std::isfinite(seconds) || !std::isfinite(motor))
+                throw ExportError("Anycubic ZIP native motion time exceeds the finite float range");
+        };
+        phase(lift,speed);phase(lift2,speed2);phase(lift+lift2,retract);
+        motor=zip_round2(motor);
+        // Non-GCode Layer.CalculatePrintTime uses max(motor,LightOff).
+        // Anycubic ZIP's LightOffDelay getter aliases the common pre-cure wait.
+        const float rests=wait+exposure;
+        const float seconds=rests+std::max(motor,wait);
+        complete_time+=seconds;
+        if(!std::isfinite(rests) || !std::isfinite(seconds) || !std::isfinite(complete_time))
+            throw ExportError("Anycubic ZIP native print time exceeds the finite float range");
+        plan.layers.push_back(std::move(row));plan.positions.push_back(z);previous_z=z;
+    }
+    plan.print_time=zip_round2(complete_time);
+    return plan;
 }
 struct MaskStats {
     size_t x0, y0, x1 = 0, y1 = 0, pixels = 0, largest = 0;
@@ -184,6 +268,8 @@ void AnycubicZipArchive::export_print(const std::string filename, const SLAPrint
             {"zthick", print.default_object_config().layer_height.value},
             {"zup_height", param("lift_height") + param("lift_height2")},
             {"zup_speed", param("lift_speed") / 60.f}, {"zdown_speed", param("retract_speed") / 60.f}}}};
+    // Complete native row/time validation before creating the ZIP or previews.
+    const auto parameter_plan=plan_zip_parameters(print,m_layers.size(),resin);
     Json settings = {{"version", "3"}, {"machine_type", {{"version", "3"}, {"name", machine},
         {"key_suffix", m_extension}, {"key_image_format", "pw0Img"}, {"res_x", cols}, {"res_y", rows},
         {"xy_pixel", pitch_x * 1000}, {"xy_pixel_y", pitch_y * 1000},
@@ -202,7 +288,6 @@ void AnycubicZipArchive::export_print(const std::string filename, const SLAPrint
     auto add_json = [&](const char *name, const Json &json) { zip.add_entry(name); zip << json.dump(2); };
     add_json("anycubic_photon_resins.pwsp", settings);
     add_json("software_info.conf", {{"mark", "SLA-Slicer"}, {"Version", "1.0"}, {"opengl", "3.3-CoreProfile"}, {"os", "native"}});
-    Json layers = Json::array();
     std::vector<uint8_t> definitions;
     MaskStats total{cols, rows};
     double volume_mm3 = 0, previous_z = 0;
@@ -216,12 +301,8 @@ void AnycubicZipArchive::export_print(const std::string filename, const SLAPrint
             add_preview(zip, 0, 224, 168, image, preview);
             add_preview(zip, 1, 336, 252, image, preview);
         }
-        const double z = sla::layer_z(print, i), thickness = z - previous_z;
-        if (thickness <= 0) throw ExportError("Anycubic ZIP layer Z positions must increase");
-        const bool bottom = i < bottom_count;
-        layers.push_back({{"exposure_time", sla::layer_exposure(print, i)}, {"layer_index", i},
-            {"layer_minheight", previous_z}, {"layer_thickness", thickness},
-            {"zup_height", param("lift_height", bottom)}, {"zup_speed", param("lift_speed", bottom) / 60.f}});
+        const double z=parameter_plan.positions[i];
+        const double thickness=parameter_plan.layers.at(i).at("layer_thickness").get<double>();
         const auto encoded = pw0(image);
         zip.add_entry("layer_images/layer_" + std::to_string(i) + ".pw0Img", encoded.data(), encoded.size());
         const auto stats = measure(image);
@@ -240,10 +321,10 @@ void AnycubicZipArchive::export_print(const std::string filename, const SLAPrint
         definitions.resize(definitions.size() + 32); // Eight reserved uint32s.
         previous_z = z;
     }
-    add_json("layers_controller.conf", {{"count", m_layers.size()}, {"paras", layers}});
+    add_json("layers_controller.conf", {{"count", m_layers.size()}, {"paras", parameter_plan.layers}});
     const double milliliters = volume_mm3 / 1000.;
     add_json("print_info.json", {{"cost", material.bottle_volume.value > 0 ? milliliters * material.bottle_cost.value / material.bottle_volume.value : 0.},
-        {"currency", "EUR"}, {"print_time", sla::lcd_print_time(print)}, {"volume", milliliters}});
+        {"currency", "EUR"}, {"print_time", parameter_plan.print_time}, {"volume", milliliters}});
     std::vector<uint8_t> scene;
     text(scene, "ANYCUBIC-PWSZ", 16); text(scene, "SLA-Slicer 1.0", 64);
     u32(scene, 3); u32(scene, 1); u32(scene, 0); u32(scene, 0); f32(scene, 1.f); u32(scene, uint32_t(m_layers.size()));

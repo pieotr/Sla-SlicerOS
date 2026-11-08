@@ -16,6 +16,7 @@
 #include <cstdio>
 
 #include "libslic3r/Utils.hpp"  // -> get_time_dhms()
+#include "libslic3r/SLA/StatisticsPresentation.hpp"
 #include "libslic3r/format.hpp" // -> format()
 #include "I18N.hpp"
 #include "ImGuiWrapper.hpp"
@@ -101,6 +102,7 @@ void DSForLayers::SetTicksValues(const Info& custom_gcode_per_print_z)
 
 void DSForLayers::SetLayersTimes(const std::vector<float>& layers_times, float total_time)
 { 
+    m_time_excludes_printer_setup = false;
     m_layers_times.clear();
     if (layers_times.empty())
         return;
@@ -125,11 +127,11 @@ void DSForLayers::SetLayersTimes(const std::vector<float>& layers_times, float t
     }
 }
 
-void DSForLayers::SetLayersTimes(const std::vector<double>& layers_times)
+void DSForLayers::SetLayersTimes(const std::vector<double>& layers_times, bool excludes_printer_setup)
 { 
     m_ticks.is_wipe_tower = false;
+    m_time_excludes_printer_setup = excludes_printer_setup;
     m_layers_times = layers_times;
-    std::copy(layers_times.begin(), layers_times.end(), m_layers_times.begin());
 }
 
 void DSForLayers::SetDrawMode(bool is_sla_print, bool is_sequential_print)
@@ -974,7 +976,16 @@ void DSForLayers::Render(const int canvas_width, const int canvas_height, float 
 
     ImVec2 pos;
 
-    const float VERTICAL_SLIDER_WIDTH = m_show_ruler ? 125.f : 105.0f;
+    float VERTICAL_SLIDER_WIDTH = m_show_ruler ? 125.f : 105.0f;
+    // Hover labels share the slider's clipped ImGui window. Reserve space for
+    // the complete SLA elapsed time, including scientific notation, before
+    // placing that window; widening only the painted label still clips it.
+    if (m_show_estimated_times && m_draw_mode == dmSlaPrint &&
+        !m_layers_times.empty() && m_scale > 0.f) {
+        const std::string elapsed = sla::statistics_time(m_layers_times.back());
+        VERTICAL_SLIDER_WIDTH = std::max(VERTICAL_SLIDER_WIDTH,
+            ImGui::CalcTextSize(elapsed.c_str()).x / m_scale + 80.f);
+    }
 
     pos.x = canvas_width - VERTICAL_SLIDER_WIDTH * m_scale - tick_icon_side;
     pos.y = 1.5f * action_btn_sz + offset;
@@ -1124,6 +1135,12 @@ std::string DSForLayers::get_label(int pos, LabelType label_type, const std::str
     };
 
     if (label_type == ltEstimatedTime) {
+        if (m_draw_mode == dmSlaPrint) {
+            if (value >= m_layers_times.size()) return "";
+            const double seconds = m_layers_times[value];
+            const auto text = sla::statistics_time(seconds);
+            return sla::statistics_time_is_dhms(seconds) ? short_and_splitted_time(text) : text;
+        }
         if (m_ticks.is_wipe_tower) {
             size_t layer_number = get_layer_number(value, label_type);
             return (layer_number == size_t(-1) || layer_number == m_layers_times.size()) ? "" : short_and_splitted_time(get_time_dhms(m_layers_times[layer_number]));
@@ -1170,7 +1187,9 @@ std::string DSForLayers::get_tooltip(int tick/*=-1*/)
     if (m_focus == fiSmartWipeTower)
         return _u8L("This is wipe tower layer");
     if (m_draw_mode == dmSlaPrint)
-        return ""; // no drawn ticks and no tooltips for them in SlaPrinting mode
+        return m_time_excludes_printer_setup ?
+            _u8L("Elapsed layer schedule time; printer setup is excluded.") :
+            _u8L("Estimated elapsed printing time at this layer.");
 
     std::string tooltip;
     const auto tick_code_it = m_ticks.ticks.find(TickCode{tick});

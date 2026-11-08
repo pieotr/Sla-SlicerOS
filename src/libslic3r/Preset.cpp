@@ -11,6 +11,7 @@
 #include "Exception.hpp"
 #include "Preset.hpp"
 #include "AppConfig.hpp"
+#include "SLA/ProjectSettings.hpp"
 #include "I18N.hpp"
 
 #ifdef _MSC_VER
@@ -370,60 +371,89 @@ std::string Preset::label() const
     return this->name + (this->is_dirty ? g_suffix_modified : "");
 }
 
-bool is_compatible_with_print(const PresetWithVendorProfile &preset, const PresetWithVendorProfile &active_print, const PresetWithVendorProfile &active_printer)
+namespace {
+const std::string &compatibility_identity(const Preset &preset)
+{
+    const char *key=nullptr;
+    if(preset.is_external) {
+        if(preset.type==Preset::TYPE_SLA_PRINT) key="sla_print_settings_id";
+        else if(preset.type==Preset::TYPE_PRINTER && preset.printer_technology()==ptSLA) key="printer_settings_id";
+    }
+    if(key) {
+        const auto *identity=preset.config.option<ConfigOptionString>(key);
+        if(identity && !identity->value.empty()) return identity->value;
+    }
+    return preset.name;
+}
+}
+
+PresetCompatibilityResult evaluate_compatibility_with_print(const PresetWithVendorProfile &preset, const PresetWithVendorProfile &active_print, const PresetWithVendorProfile &active_printer)
 {
     // templates_profile vendor profiles should be decided as same vendor profiles
 	if (preset.vendor != nullptr && preset.vendor != active_printer.vendor && !preset.vendor->templates_profile)
 		// The current profile has a vendor assigned and it is different from the active print's vendor.
-		return false;
+		return {false, {}};
     auto &condition             = preset.preset.compatible_prints_condition();
     auto *compatible_prints     = dynamic_cast<const ConfigOptionStrings*>(preset.preset.config.option("compatible_prints"));
     bool  has_compatible_prints = compatible_prints != nullptr && ! compatible_prints->values.empty();
     if (! has_compatible_prints && ! condition.empty()) {
         try {
-            return PlaceholderParser::evaluate_boolean_expression(condition, active_print.preset.config);
+            DynamicPrintConfig context;
+            context.set_key_value("print_preset", new ConfigOptionString(compatibility_identity(active_print.preset)));
+            return {PlaceholderParser::evaluate_boolean_expression(condition, active_print.preset.config, &context), {}};
         } catch (const std::runtime_error &err) {
-            //FIXME in case of an error, return "compatible with everything".
-            printf("Preset::is_compatible_with_print - parsing error of compatible_prints_condition %s:\n%s\n", active_print.preset.name.c_str(), err.what());
-            return true;
+            return {false, err.what()};
         }
     }
-    return preset.preset.is_default || active_print.preset.name.empty() || ! has_compatible_prints ||
-        std::find(compatible_prints->values.begin(), compatible_prints->values.end(), active_print.preset.name) !=
-            compatible_prints->values.end();
+    return {preset.preset.is_default || compatibility_identity(active_print.preset).empty() || ! has_compatible_prints ||
+        std::find(compatible_prints->values.begin(), compatible_prints->values.end(), compatibility_identity(active_print.preset)) !=
+            compatible_prints->values.end(), {}};
 }
 
-bool is_compatible_with_printer(const PresetWithVendorProfile &preset, const PresetWithVendorProfile &active_printer, const DynamicPrintConfig *extra_config)
+PresetCompatibilityResult evaluate_compatibility_with_printer(const PresetWithVendorProfile &preset, const PresetWithVendorProfile &active_printer, const DynamicPrintConfig *extra_config)
 {
     // templates_profile vendor profiles should be decided as same vendor profiles
 	if (preset.vendor != nullptr && preset.vendor != active_printer.vendor && !preset.vendor->templates_profile)
 		// The current profile has a vendor assigned and it is different from the active print's vendor.
-		return false;
+		return {false, {}};
     auto &condition               = preset.preset.compatible_printers_condition();
     auto *compatible_printers     = dynamic_cast<const ConfigOptionStrings*>(preset.preset.config.option("compatible_printers"));
     bool  has_compatible_printers = compatible_printers != nullptr && ! compatible_printers->values.empty();
     if (! has_compatible_printers && ! condition.empty()) {
         try {
-            return PlaceholderParser::evaluate_boolean_expression(condition, active_printer.preset.config, extra_config);
+            return {PlaceholderParser::evaluate_boolean_expression(condition, active_printer.preset.config, extra_config), {}};
         } catch (const std::runtime_error &err) {
-            //FIXME in case of an error, return "compatible with everything".
-            printf("Preset::is_compatible_with_printer - parsing error of compatible_printers_condition %s:\n%s\n", active_printer.preset.name.c_str(), err.what());
-            return true;
+            return {false, err.what()};
         }
     }
-    return preset.preset.is_default || active_printer.preset.name.empty() || ! has_compatible_printers ||
-        std::find(compatible_printers->values.begin(), compatible_printers->values.end(), active_printer.preset.name) !=
-            compatible_printers->values.end();
+    return {preset.preset.is_default || compatibility_identity(active_printer.preset).empty() || ! has_compatible_printers ||
+        std::find(compatible_printers->values.begin(), compatible_printers->values.end(), compatibility_identity(active_printer.preset)) !=
+            compatible_printers->values.end(), {}};
+}
+
+PresetCompatibilityResult evaluate_compatibility_with_printer(const PresetWithVendorProfile &preset, const PresetWithVendorProfile &active_printer)
+{
+    DynamicPrintConfig config;
+    config.set_key_value("printer_preset", new ConfigOptionString(compatibility_identity(active_printer.preset)));
+    const ConfigOption *opt = active_printer.preset.config.option("nozzle_diameter");
+    if (opt)
+        config.set_key_value("num_extruders", new ConfigOptionInt((int)static_cast<const ConfigOptionFloats*>(opt)->values.size()));
+    return evaluate_compatibility_with_printer(preset, active_printer, &config);
+}
+
+bool is_compatible_with_print(const PresetWithVendorProfile &preset, const PresetWithVendorProfile &active_print, const PresetWithVendorProfile &active_printer)
+{
+    return evaluate_compatibility_with_print(preset, active_print, active_printer).compatible;
+}
+
+bool is_compatible_with_printer(const PresetWithVendorProfile &preset, const PresetWithVendorProfile &active_printer, const DynamicPrintConfig *extra_config)
+{
+    return evaluate_compatibility_with_printer(preset, active_printer, extra_config).compatible;
 }
 
 bool is_compatible_with_printer(const PresetWithVendorProfile &preset, const PresetWithVendorProfile &active_printer)
 {
-    DynamicPrintConfig config;
-    config.set_key_value("printer_preset", new ConfigOptionString(active_printer.preset.name));
-    const ConfigOption *opt = active_printer.preset.config.option("nozzle_diameter");
-    if (opt)
-        config.set_key_value("num_extruders", new ConfigOptionInt((int)static_cast<const ConfigOptionFloats*>(opt)->values.size()));
-    return is_compatible_with_printer(preset, active_printer, &config);
+    return evaluate_compatibility_with_printer(preset, active_printer).compatible;
 }
 
 void Preset::set_visible_from_appconfig(const AppConfig &app_config)
@@ -721,7 +751,7 @@ static std::vector<std::string> s_Preset_sla_printer_options {
     "elefant_foot_min_width",
     "gamma_correction",
     "min_exposure_time", "max_exposure_time",
-    "min_initial_exposure_time", "max_initial_exposure_time", "sla_archive_format", "sla_output_precision",
+    "min_initial_exposure_time", "max_initial_exposure_time", "sla_archive_format", "sla_anycubic_version", "sla_cbddlp_aa", "sla_phz_encryption_key", "nanodlp_device_profile", "sla_output_precision",
     //FIXME the print host keys are left here just for conversion from the Printer preset to Physical Printer preset.
     "print_host", "printhost_apikey", "printhost_cafile",
     "printer_notes",
@@ -859,19 +889,25 @@ Preset& PresetCollection::load_preset(const std::string &path, const std::string
     return this->load_preset(path, name, std::move(cfg), select);
 }
 
-static bool profile_print_params_same(const DynamicPrintConfig &cfg_old, const DynamicPrintConfig &cfg_new)
+static bool sla_preset_import(Preset::Type type, const DynamicPrintConfig &configuration)
+{
+    return type==Preset::TYPE_SLA_PRINT || type==Preset::TYPE_SLA_MATERIAL ||
+        (type==Preset::TYPE_PRINTER && Preset::printer_technology(configuration)==ptSLA);
+}
+
+static bool profile_import_matches(const DynamicPrintConfig &cfg_old, const DynamicPrintConfig &cfg_new, Preset::Type type)
 {
     t_config_option_keys diff = cfg_old.diff(cfg_new);
-    // Following keys are used by the UI, not by the slicing core, therefore they are not important
-    // when comparing profiles for equality. Ignore them.
+    // SLA project metadata belongs to the imported preset contract even when
+    // raster settings match. Preserve the legacy FFF comparison policy.
+    const bool sla_import=sla_preset_import(type,cfg_new);
     for (const char *key : { "compatible_prints", "compatible_prints_condition",
                              "compatible_printers", "compatible_printers_condition", "inherits",
                              "print_settings_id", "filament_settings_id", "sla_print_settings_id", "sla_material_settings_id", "printer_settings_id", "filament_vendor",
                              "printer_model", "printer_variant", "default_print_profile", "default_filament_profile", "default_sla_print_profile", "default_sla_material_profile",
-                             //FIXME remove the print host keys?
                              "print_host", "printhost_apikey", "printhost_cafile" })
-        diff.erase(std::remove(diff.begin(), diff.end(), key), diff.end());
-    // Preset with the same name as stored inside the config exists.
+        if(!sla_import || (!sla::is_sla_preset_metadata_key(key) && std::string(key)!="printer_model"))
+            diff.erase(std::remove(diff.begin(), diff.end(), key), diff.end());
     return diff.empty();
 }
 
@@ -879,6 +915,17 @@ static bool profile_print_params_same(const DynamicPrintConfig &cfg_old, const D
 // and select it, losing previous modifications.
 // Only a single profile could be edited at at the same time, which introduces complexity when loading
 // filament profiles for multi-extruder printers.
+std::string PresetCollection::get_selected_preset_source_name(const char *settings_id) const
+{
+    if (m_idx_selected == size_t(-1)) return {};
+    const auto &preset = get_edited_preset();
+    if (preset.is_external) {
+        const auto *source = preset.config.option<ConfigOptionString>(settings_id);
+        if (source && !source->value.empty()) return source->value;
+    }
+    return get_selected_preset_name();
+}
+
 ExternalPreset PresetCollection::load_external_preset(
     // Path to the profile source file (a G-code, an AMF or 3MF file, a config file)
     const std::string           &path,
@@ -896,11 +943,12 @@ ExternalPreset PresetCollection::load_external_preset(
     t_config_option_keys keys = cfg.keys();
     cfg.apply_only(combined_config, keys, true);
     std::string                 &inherits = Preset::inherits(cfg);
+    const bool sla_import=sla_preset_import(m_type,cfg);
     if (select == LoadAndSelect::Never) {
         // Some filament profile has been selected and modified already.
         // Check whether this profile is equal to the modified edited profile.
         const Preset &edited = this->get_edited_preset();
-        if ((edited.name == original_name || edited.name == inherits) && profile_print_params_same(edited.config, cfg))
+        if ((edited.name == original_name || edited.name == inherits) && profile_import_matches(edited.config, cfg,m_type))
             // Just point to that already selected and edited profile.
             return ExternalPreset(&(*this->find_preset_internal(edited.name)), false);
     }
@@ -912,7 +960,11 @@ ExternalPreset PresetCollection::load_external_preset(
 		it = this->find_preset_renamed(original_name);
 		found = it != m_presets.end();
     }
-    if (found && profile_print_params_same(it->config, cfg) && it->is_visible) {
+    // A same-name nozzle profile cannot provide an SLA import baseline.
+    if(found && sla_import && m_type==Preset::TYPE_PRINTER && it->printer_technology()!=ptSLA) {
+        it=m_presets.end(); found=false;
+    }
+    if (found && profile_import_matches(it->config, cfg,m_type) && it->is_visible) {
         // The preset exists and is visible and it matches the values stored inside config.
         if (select == LoadAndSelect::Always)
             this->select_preset(it - m_presets.begin());
@@ -924,7 +976,13 @@ ExternalPreset PresetCollection::load_external_preset(
         assert(it == m_presets.end());
         it    = this->find_preset_internal(inherits);
         found = it != m_presets.end() && it->name == inherits;
-        if (found && profile_print_params_same(it->config, cfg)) {
+        // A resolved child remains a project child when its installed parent
+        // has equal print values. Selecting the parent replaces the source ID
+        // and changes compatibility and export preferences.
+        if(found && sla_import && it->name!=original_name) {
+            it=m_presets.end(); found=false;
+        }
+        if (found && profile_import_matches(it->config, cfg,m_type)) {
             // The system preset exists and it matches the values stored inside config.
             if (select == LoadAndSelect::Always)
                 this->select_preset(it - m_presets.begin());
@@ -942,14 +1000,15 @@ ExternalPreset PresetCollection::load_external_preset(
             this->select_preset(idx);
 
             // update dirty state only if it's needed
-            if (!profile_print_params_same(it->config, cfg)) {
+            if (!profile_import_matches(it->config, cfg,m_type)) {
                 // The source config may contain keys from many possible preset types. Just copy those that relate to this preset.
 
                 // Following keys are not used neither by the UI nor by the slicing core, therefore they are not important 
                 // Erase them from config apply to avoid redundant "dirty" parameter in loaded preset.
                 for (const char* key : { "print_settings_id", "filament_settings_id", "sla_print_settings_id", "sla_material_settings_id", "printer_settings_id", "filament_vendor", 
                                          "printer_model", "printer_variant", "default_print_profile", "default_filament_profile", "default_sla_print_profile", "default_sla_material_profile" })
-                    keys.erase(std::remove(keys.begin(), keys.end(), key), keys.end());
+                    if(!sla_import || (!sla::is_sla_preset_metadata_key(key) && std::string(key)!="printer_model"))
+                        keys.erase(std::remove(keys.begin(), keys.end(), key), keys.end());
 
                 this->get_edited_preset().config.apply_only(combined_config, keys, true);
                 this->update_dirty();
@@ -984,7 +1043,7 @@ ExternalPreset PresetCollection::load_external_preset(
         if (it == m_presets.end() || it->name != new_name)
             // Unique profile name. Insert a new profile.
             break;
-        if (profile_print_params_same(it->config, cfg)) {
+        if (profile_import_matches(it->config, cfg,m_type)) {
             // The preset exists and it matches the values stored inside config.
             if (select == LoadAndSelect::Always)
                 this->select_preset(it - m_presets.begin());
@@ -1053,6 +1112,44 @@ bool PresetCollection::save_current_preset(const std::string &new_name, bool det
     else *existing = std::move(candidate);
     this->select_preset_by_name(new_name, true);
     return created;
+}
+
+bool PresetCollection::rename_current_preset(const std::string &new_name)
+{
+    Preset &selected = this->get_selected_preset();
+    if (selected.is_default || selected.is_system || selected.is_external)
+        throw std::runtime_error("Only a saved user preset can be renamed");
+    if (new_name == selected.name)
+        return false;
+    if (new_name.empty() || new_name.find_first_of("/\\") != std::string::npos)
+        throw std::runtime_error("Invalid preset name");
+    const auto existing = this->find_preset_internal(new_name);
+    const auto destination = boost::filesystem::path(this->path_from_name(new_name));
+    if ((existing != m_presets.end() && existing->name == new_name) ||
+        boost::filesystem::exists(destination) || boost::filesystem::is_symlink(destination))
+        throw std::runtime_error("A preset file with this name already exists");
+    if (!boost::filesystem::is_regular_file(selected.file))
+        throw std::runtime_error("The selected preset file is missing or is not a regular file");
+
+    // Prepare allocations before touching the file. Renaming changes identity,
+    // not configuration: selected is the saved baseline, edited is the draft.
+    std::string saved_name = new_name, edited_name = new_name;
+    std::string saved_file = destination.string(), edited_file = saved_file;
+    const bool rename_snapshot = m_saved_preset.name == selected.name;
+    std::string snapshot_name = new_name, snapshot_file = saved_file;
+    boost::filesystem::rename(selected.file, destination);
+    selected.name.swap(saved_name);
+    selected.file.swap(saved_file);
+    m_edited_preset.name.swap(edited_name);
+    m_edited_preset.file.swap(edited_file);
+    if (rename_snapshot) {
+        m_saved_preset.name.swap(snapshot_name);
+        m_saved_preset.file.swap(snapshot_file);
+    }
+    std::sort(m_presets.begin() + m_num_default_presets, m_presets.end());
+    m_idx_selected = this->find_preset_internal(new_name) - m_presets.begin();
+    // select_preset() would overwrite the draft and clear every dirty flag.
+    return true;
 }
 
 Preset& PresetCollection::get_preset_with_name(const std::string& new_name, const Preset* initial_preset)
@@ -1321,7 +1418,7 @@ void PresetCollection::set_default_suppressed(bool default_suppressed)
 size_t PresetCollection::update_compatible_internal(const PresetWithVendorProfile &active_printer, const PresetWithVendorProfile *active_print, PresetSelectCompatibleType unselect_if_incompatible)
 {
     DynamicPrintConfig config;
-    config.set_key_value("printer_preset", new ConfigOptionString(active_printer.preset.name));
+    config.set_key_value("printer_preset", new ConfigOptionString(compatibility_identity(active_printer.preset)));
     const ConfigOption *opt = active_printer.preset.config.option("nozzle_diameter");
     if (opt)
         config.set_key_value("num_extruders", new ConfigOptionInt((int)static_cast<const ConfigOptionFloats*>(opt)->values.size()));
@@ -2375,7 +2472,7 @@ size_t ExtruderFilaments::update_compatible_internal(const PresetWithVendorProfi
                                                      PresetSelectCompatibleType      unselect_if_incompatible)
 {
     DynamicPrintConfig config;
-    config.set_key_value("printer_preset", new ConfigOptionString(active_printer.preset.name));
+    config.set_key_value("printer_preset", new ConfigOptionString(compatibility_identity(active_printer.preset)));
     const ConfigOption* opt = active_printer.preset.config.option("nozzle_diameter");
     if (opt)
         config.set_key_value("num_extruders", new ConfigOptionInt((int)static_cast<const ConfigOptionFloats*>(opt)->values.size()));

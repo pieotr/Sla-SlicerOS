@@ -38,6 +38,8 @@
 #include <wx/bmpbuttn.h>
 #include <wx/treectrl.h>
 #include <wx/imaglist.h>
+#include <wx/choice.h>
+#include <wx/stattext.h>
 
 #include <map>
 #include <vector>
@@ -201,7 +203,8 @@ protected:
 
    	struct PresetDependencies {
 		Preset::Type type	  = Preset::TYPE_INVALID;
-		wxWindow 	*checkbox = nullptr;
+		wxChoice    *mode = nullptr;
+		wxStaticText *status = nullptr;
 		ScalableButton 	*btn  = nullptr;
 		std::string  key_list; // "compatible_printers"
 		std::string  key_condition;

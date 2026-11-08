@@ -12,6 +12,9 @@
 
 namespace Slic3r {
 
+// Shared legacy project metadata; independent of the FFF emitter object.
+const std::vector<std::string> ColorPrintColors::Colors = { "#C0392B", "#E67E22", "#F1C40F", "#27AE60", "#1ABC9C", "#2980B9", "#9B59B6" };
+
 namespace CustomGCode {
 
 // If loaded configuration has a "colorprint_heights" option (if it was imported from older Slicer), 

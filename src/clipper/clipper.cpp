@@ -39,6 +39,7 @@
 *******************************************************************************/
 
 #include "clipper.hpp"
+#include "ClipperIntegerRounding.hpp"
 #include <cmath>
 #include <vector>
 #include <algorithm>
@@ -95,14 +96,18 @@ inline double FRound(double a)
 template<typename IType>
 inline IType Round(double val)
 {
-    double v = FRound(val);
 #if defined(CLIPPERLIB_INT32) && ! defined(NDEBUG)
+    double v = FRound(val);
     static_assert(sizeof(IType) == 4 || sizeof(IType) == 8, "IType must be int32 or int64");
     static constexpr const double hi = 65536. * 16383. * (sizeof(IType) == 4 ? 1 : 65536. * 65536.);
     if (v > hi || -v > hi)
         throw clipperException("Coordinate outside allowed range");
-#endif
     return static_cast<IType>(v);
+#else
+    // Avoid a floating floor followed by a second conversion to integer.
+    // The shared kernel preserves the original upward half-tie rule.
+    return ClipperIntegerRounding::round_up<IType>(val);
+#endif
 }
 
 // Overriding the Eigen operators because we don't want to compare Z coordinate if IntPoint is 3 dimensional.
@@ -2472,6 +2477,7 @@ void Clipper::BuildIntersectList(const cInt topY)
 
   //bubblesort ...
   bool isModified;
+  TEdge *last_swap = nullptr;
   do
   {
     isModified = false;
@@ -2488,10 +2494,15 @@ void Clipper::BuildIntersectList(const cInt topY)
         m_IntersectList.emplace_back(IntersectNode(e, eNext, Pt));
         SwapPositionsInSEL(e, eNext);
         isModified = true;
+        last_swap = e;
       }
       else
         e = eNext;
     }
+    // Everything after the last swapped edge is already ordered. Its
+    // comparisons cannot emit intersections, including equal-X ties. Preserve
+    // the original swap/event sequence while excluding that tail next pass.
+    if (isModified) e = last_swap;
     if( e->PrevInSEL ) e->PrevInSEL->NextInSEL = 0;
     else break;
   }
@@ -2619,7 +2630,9 @@ void Clipper::ProcessEdgesAtTopOfScanbeam(const cInt topY)
       } 
       else
       {
-        e->Curr.x() = TopX( *e, topY );
+        // BuildIntersectList projected every surviving active edge to topY.
+        // Intersections/maxima only reorder or remove these edges. Horizontal
+        // promotion above initializes its own Curr and does not enter here.
         e->Curr.y() = topY;
 #ifdef CLIPPERLIB_USE_XYZ
         e->Curr.z() = topY == e->Top.y() ? e->Top.z() : (topY == e->Bot.y() ? e->Bot.z() : 0);

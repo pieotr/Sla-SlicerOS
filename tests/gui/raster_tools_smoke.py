@@ -59,9 +59,9 @@ def main():
         click(wait_for(lambda: find_visible(app, 'Yes'), 'discard generated layers confirmation'))
     def export_generated(dialog, name):
         choices = collect(dialog, 'combo box')
-        assert len(choices) == 3, 'Missing generated export formats'
-        formats = choices[2].get_selection_iface()
-        option = find(choices[2], lambda n: n.get_role_name() in ('menu item', 'list item') and
+        assert len(choices) >= 4, 'Missing brush, zoom, operation or generated export formats'
+        formats = choices[-1].get_selection_iface()
+        option = find(choices[-1], lambda n: n.get_role_name() in ('menu item', 'list item') and
             n.get_name().endswith('(.uvj)'))
         assert option is not None, 'Missing UVJ export option'
         assert formats.select_child(option.get_index_in_parent()), 'UVJ selection rejected'
@@ -156,7 +156,7 @@ def main():
         choices = collect(options, 'combo box')
         assert choices[0].get_selection_iface().select_child(1), 'Missing grayscale pattern'
         spins = collect(options, 'spin button')
-        assert len(spins) == 7, 'Missing calibration numeric controls'
+        assert len(spins) == 9, 'Missing calibration numeric controls'
         spin = spins[4]
         assert spin.get_state_set().contains(Atspi.StateType.SENSITIVE), 'Grayscale controls stay disabled'
         assert spin.get_value_iface().set_current_value(4), 'Grayscale steps rejected value'

@@ -6,6 +6,7 @@
 
 #include "HintNotification.hpp"
 #include "GUI.hpp"
+#include "GUI_Preview.hpp"
 #include "ImGuiPureWrap.hpp"
 #include "PrintHostDialogs.hpp"
 #include "wxExtensions.hpp"

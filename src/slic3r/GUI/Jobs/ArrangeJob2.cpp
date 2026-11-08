@@ -271,10 +271,16 @@ arr2::SceneBuilder build_scene(Plater &plater, ArrangeSelectionMode mode)
 
     builder.set_model(plater.model());
 
+#ifdef SLIC3R_SLA_ONLY
+    if(plater.printer_technology() != ptSLA)
+        throw std::logic_error("SLA arrangement requires an SLA session");
+    builder.set_sla_print(&plater.active_sla_print());
+#else
     if (plater.printer_technology() == ptSLA)
         builder.set_sla_print(&plater.active_sla_print());
     else
         builder.set_fff_print(&plater.active_fff_print());
+#endif
 
     return builder;
 }

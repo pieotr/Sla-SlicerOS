@@ -3,12 +3,16 @@
 #define SLIC3R_SLA_PRINTER_RASTER_HPP
 #include <cmath>
 #include "RasterBase.hpp"
+#include "RasterRounding.hpp"
 #include "libslic3r/PrintConfig.hpp"
 #include "libslic3r/Exception.hpp"
 
 namespace Slic3r::sla {
 inline std::unique_ptr<RasterBase> create_printer_raster(const SLAPrinterConfig &cfg)
 {
+    // Pixel pitch division precedes AGGRaster construction; it needs the same
+    // rounding contract as coordinate conversion and antialiasing.
+    const ScopedNearestRounding rounding;
     const double width = cfg.display_width.value, height = cfg.display_height.value;
     const int cols = cfg.display_pixels_x.value, rows = cfg.display_pixels_y.value;
     if (!std::isfinite(width) || !std::isfinite(height) || width <= 0. || height <= 0. ||

@@ -4,9 +4,8 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"Plural-Forms: nplurals=4; plural=(n == 1) ? 0 : ((n%10 >= 2 && n%10 <=4 && (n"
-"%100 < 12 || n%100 > 14)) ? 1 : ((n%10 == 0 || n%10 == 1 || (n%10 >= 5 && n"
-"%10 <=9)) || (n%100 >= 12 && n%100 <= 14)) ? 2 : 3);\n"
+"Plural-Forms: nplurals=3; plural=n==1 ? 0 : n%10>=2 && n%10<=4 && (n%100<10 "
+"|| n%100>=20) ? 1 : 2;\n"
 "X-Generator: Prusalator\n"
 
 #: src/libslic3r/ExtrusionRole.cpp:44 src/libslic3r/ExtrusionRole.cpp:66
@@ -7672,14 +7671,6 @@ msgstr[2] ""
 "systemowe.\n"
 "\n"
 "Czy nadal chcesz dodać ustawienia wstępne od dostawcy '%1%'?"
-msgstr[3] ""
-"Istniejące ustawienia użytkownika (%2%) mają taką samą nazwę jak jedno z "
-"nowych ustawień systemowych od dostawcy '%1%'.\n"
-"Pamiętaj, że to ustawienie użytkownika zostanie nadpisane przez ustawienie "
-"systemowe.\n"
-"\n"
-"Czy nadal chcesz dodać ustawienia wstępne od dostawcy '%1%'?"
-msgstr[4] ""
 
 #: src/slic3r/GUI/ConfigWizard.cpp:1967
 msgid "Firmware Type"
@@ -7871,9 +7862,6 @@ msgstr[1] ""
 "Nowi producenci drukarek zostali dodani i jedna z ich drukarek zostanie "
 "aktywowana."
 msgstr[2] ""
-"Nowi producenci drukarek zostali dodani i jedna z ich drukarek zostanie "
-"aktywowana."
-msgstr[3] ""
 "Nowi producenci drukarek zostali dodani i jedna z ich drukarek zostanie "
 "aktywowana."
 
@@ -9501,8 +9489,6 @@ msgid_plural "%1$d connectors are out of cut contour"
 msgstr[0] "%1$d łącznik poza konturem"
 msgstr[1] "%1$d łączniki poza konturem"
 msgstr[2] "%1$d łączników poza konturem"
-msgstr[3] "%1$d łączników poza konturem"
-msgstr[4] "%1$d łączników poza konturem"
 
 #: src/slic3r/GUI/Gizmos/GLGizmoCut.cpp:2924
 #, c-format, boost-format
@@ -9511,8 +9497,6 @@ msgid_plural "%1$d connectors are out of object"
 msgstr[0] "%1$d łącznik poza obiektem"
 msgstr[1] "%1$d łączniki poza obiektem"
 msgstr[2] "%1$d łączników poza obiektem"
-msgstr[3] "%1$d łączników poza obiektem"
-msgstr[4] "%1$d łączników poza obiektem"
 
 #: src/slic3r/GUI/Gizmos/GLGizmoCut.cpp:2927
 msgid "Some connectors are overlapped"
@@ -12208,7 +12192,6 @@ msgid_plural "Undo %1$d Actions"
 msgstr[0] "Cofnij %1$d akcję"
 msgstr[1] "Cofnij %1$d akcję"
 msgstr[2] "Cofnij %1$d akcji"
-msgstr[3] "Cofnij %1$d akcji"
 
 #: src/slic3r/GUI/GLCanvas3D.cpp:4885
 #, c-format, boost-format
@@ -12217,7 +12200,6 @@ msgid_plural "Redo %1$d Actions"
 msgstr[0] "Powtórz %1$d akcję"
 msgstr[1] "Powtórz %1$d akcje"
 msgstr[2] "Powtórz %1$d akcji"
-msgstr[3] "Powtórz %1$d akcji"
 
 #: src/slic3r/GUI/GLCanvas3D.cpp:5308
 msgid "Add..."
@@ -13522,7 +13504,6 @@ msgid_plural "The following models were repaired successfully"
 msgstr[0] "Następujący model został pomyślnie naprawiony"
 msgstr[1] "Następujące modele zostały pomyślnie naprawione"
 msgstr[2] "Następujące modele zostały pomyślnie naprawione"
-msgstr[3] "Następujące modele zostały pomyślnie naprawione"
 
 #: src/slic3r/GUI/GUI_Factories.cpp:520
 msgid "Folowing model repair failed"
@@ -13530,7 +13511,6 @@ msgid_plural "Folowing models repair failed"
 msgstr[0] "Nie powiodła się naprawa następującego modelu"
 msgstr[1] "Nie powiodła się naprawa następujących modeli"
 msgstr[2] "Nie powiodła się naprawa następujących modeli"
-msgstr[3] "Nie powiodła się naprawa następujących modeli"
 
 #: src/slic3r/GUI/GUI_Factories.cpp:525
 msgid "Repairing was canceled"
@@ -13834,7 +13814,6 @@ msgid_plural "Auto-repaired %1$d errors"
 msgstr[0] "Automatycznie naprawiono %1$d błąd"
 msgstr[1] "Automatycznie naprawiono %1$d błędy"
 msgstr[2] "Automatycznie naprawiono %1$d błędów"
-msgstr[3] "Automatycznie naprawiono %1$d błędów"
 
 #: src/slic3r/GUI/GUI_ObjectList.cpp:480
 #, c-format, boost-format
@@ -13843,7 +13822,6 @@ msgid_plural "%1$d degenerate facets"
 msgstr[0] "‪%1$d‬ uszkodzona płaszczyzna"
 msgstr[1] "‪%1$d‬ uszkodzone płaszczyzny"
 msgstr[2] "‪%1$d‬ uszkodzonych płaszczyzn"
-msgstr[3] "‪%1$d‬ uszkodzonych płaszczyzn"
 
 #: src/slic3r/GUI/GUI_ObjectList.cpp:484
 #, c-format, boost-format
@@ -13852,7 +13830,6 @@ msgid_plural "%1$d facets removed"
 msgstr[0] "Usunięto %1$d płaszczyznę"
 msgstr[1] "Usunięto %1$d płaszczyzny"
 msgstr[2] "Usunięto %1$d płaszczyzn"
-msgstr[3] "Usunięto %1$d płaszczyzn"
 
 #: src/slic3r/GUI/GUI_ObjectList.cpp:486
 #, c-format, boost-format
@@ -13861,7 +13838,6 @@ msgid_plural "%1$d facets reversed"
 msgstr[0] "Odwrócono ‪%1$d‬ płaszczyznę"
 msgstr[1] "Odwrócono ‪%1$d‬ płaszczyzny"
 msgstr[2] "Odwrócono ‪%1$d‬ płaszczyzn"
-msgstr[3] "Odwrócono ‪%1$d‬ płaszczyzn"
 
 #: src/slic3r/GUI/GUI_ObjectList.cpp:488
 #, c-format, boost-format
@@ -13870,7 +13846,6 @@ msgid_plural "%1$d backward edges"
 msgstr[0] "‪%1$d‬ odwrócona krawędź"
 msgstr[1] "‪%1$d‬ odwrócone krawędzie"
 msgstr[2] "‪%1$d‬ odwróconych krawędzi"
-msgstr[3] "‪%1$d‬ odwróconych krawędzi"
 
 #: src/slic3r/GUI/GUI_ObjectList.cpp:491 src/slic3r/GUI/GUI_ObjectList.cpp:494
 #, c-format, boost-format
@@ -13879,7 +13854,6 @@ msgid_plural "%1$d open edges"
 msgstr[0] "‪%1$d‬ otwarta krawędź"
 msgstr[1] "‪%1$d‬ otwarte krawędzie"
 msgstr[2] "‪%1$d‬ otwartych krawędzi"
-msgstr[3] "‪%1$d‬ otwartych krawędzi"
 
 #: src/slic3r/GUI/GUI_ObjectList.cpp:501
 msgid "Right button click the icon to fix STL by Windows repair algorithm"
@@ -17002,7 +16976,6 @@ msgid_plural "%1$d objects were loaded with custom supports."
 msgstr[0] "%1$d obiekt załadowano z niestandardowymi podporami."
 msgstr[1] "%1$d obiekty załadowano z niestandardowymi podporami."
 msgstr[2] "%1$d obiektów załadowano z niestandardowymi podporami."
-msgstr[3] "%1$d obiektów załadowano z niestandardowymi podporami."
 
 #: src/slic3r/GUI/NotificationManager.cpp:1730
 #, c-format, boost-format
@@ -17011,7 +16984,6 @@ msgid_plural "%1$d objects were loaded with custom seam."
 msgstr[0] "Załadowano %1$d‬ model z niestandardowym szwem."
 msgstr[1] "Załadowano %1$d‬ modele z niestandardowym szwem."
 msgstr[2] "Załadowano %1$d‬ modeli z niestandardowym szwem."
-msgstr[3] "Załadowano %1$d‬ modeli z niestandardowym szwem."
 
 #: src/slic3r/GUI/NotificationManager.cpp:1731
 #, c-format, boost-format
@@ -17020,7 +16992,6 @@ msgid_plural "%1$d objects were loaded with multimaterial painting."
 msgstr[0] "%1$d obiekt załadowano z malowaniem multimaterial."
 msgstr[1] "%1$d obiekty załadowano z malowaniem multimaterial."
 msgstr[2] "%1$d obiektów załadowano z malowaniem multimaterial."
-msgstr[3] "%1$d obiektów załadowano z malowaniem multimaterial."
 
 #: src/slic3r/GUI/NotificationManager.cpp:1732
 #, c-format, boost-format
@@ -17029,7 +17000,6 @@ msgid_plural "%1$d objects were loaded with variable layer height."
 msgstr[0] "%1$d obiekt załadowano ze zmienną wysokością warstwy"
 msgstr[1] "%1$d obiekty załadowano ze zmienną wysokością warstwy"
 msgstr[2] "%1$d obiektów załadowano ze zmienną wysokością warstwy"
-msgstr[3] "%1$d obiektów załadowano ze zmienną wysokością warstwy"
 
 #: src/slic3r/GUI/NotificationManager.cpp:1733
 #, c-format, boost-format
@@ -17038,7 +17008,6 @@ msgid_plural "%1$d objects were loaded with partial sinking."
 msgstr[0] "%1$d obiekt załadowano z zaniżeniem"
 msgstr[1] "%1$d obiekty załadowano z zaniżeniem"
 msgstr[2] "%1$d obiektów załadowano z zaniżeniem"
-msgstr[3] "%1$d obiektów załadowano z zaniżeniem"
 
 #: src/slic3r/GUI/NotificationManager.cpp:1734
 #, c-format, boost-format
@@ -17047,8 +17016,6 @@ msgid_plural "%1$d objects were loaded as parts of cut object"
 msgstr[0] "%1$d obiekt został załadowany jako część przeciętego obiektu"
 msgstr[1] "%1$d obiekty zostały załadowane jako część przeciętego obiektu"
 msgstr[2] "%1$d obiektów zostało załadowanych jako część przeciętego obiektu"
-msgstr[3] "%1$d obiektów zostały załadowanych jako część przeciętego obiektu"
-msgstr[4] "%1$d obiektów zostały załadowanych jako część przeciętego obiektu"
 
 #: src/slic3r/GUI/NotificationManager.cpp:1735
 #, c-format, boost-format
@@ -17057,8 +17024,6 @@ msgid_plural "%1$d objects were loaded with fuzzy skin painting."
 msgstr[0] "Załadowano %1$d obiekt z malowaniem Fuzzy Skin."
 msgstr[1] "Załadowano %1$d obiekty z malowaniem Fuzzy Skin."
 msgstr[2] "Załadowano %1$d obiektów z malowaniem Fuzzy Skin."
-msgstr[3] "Załadowano %1$d obiektów z malowaniem Fuzzy Skin."
-msgstr[4] "Załadowano %1$d obiektów z malowaniem Fuzzy Skin."
 
 #: src/slic3r/GUI/NotificationManager.cpp:1848
 msgid "Slicing finished."
@@ -17336,9 +17301,6 @@ msgstr[1] ""
 msgstr[2] ""
 "Następujące zestawy ustawień drukarki są zduplikowane: %1% Powyższe zestawy "
 "ustawień dla drukarki \"%2%\" zostaną użyte tylko raz."
-msgstr[3] ""
-"Następujące zestawy ustawień drukarki są zduplikowane: %1% Powyższe zestawy "
-"ustawień dla drukarki \"%2%\" zostaną użyte tylko raz."
 
 #: src/slic3r/GUI/PhysicalPrinterDialog.cpp:1007
 msgid "It's not possible to delete the last related preset for the printer."
@@ -17433,9 +17395,6 @@ msgstr[1] ""
 msgstr[2] ""
 "Poniższe zestawy ustawień zostały tymczasowo zainstalowane w aktywnej "
 "instancji PrusaSlicer."
-msgstr[3] ""
-"Poniższe zestawy ustawień zostały tymczasowo zainstalowane w aktywnej "
-"instancji PrusaSlicer."
 
 #: src/slic3r/GUI/Plater.cpp:1343
 msgid "PrintRequest can only be loaded if an SLA printer is selected."
@@ -17498,9 +17457,6 @@ msgstr[1] ""
 msgstr[2] ""
 "Rozmiary obiektów z pliku ‪%s‬ wydają się mieć wartość zero.\n"
 "Te obiekty zostały usunięte z modelu."
-msgstr[3] ""
-"Rozmiary obiektów z pliku ‪%s‬ wydają się mieć wartość zero.\n"
-"Te obiekty zostały usunięte z modelu."
 
 #: src/slic3r/GUI/Plater.cpp:1478
 msgid "The size of the object is zero"
@@ -17525,10 +17481,6 @@ msgstr[1] ""
 "Wewnętrzną jednostką PrusaSlicer jest milimetr. Czy chcesz ponownie "
 "przeliczyć wymiary tych modeli?"
 msgstr[2] ""
-"Wymiary niektórych modeli z pliku %s wydają się być określone w metrach.\n"
-"Wewnętrzną jednostką PrusaSlicer jest milimetr. Czy chcesz ponownie "
-"przeliczyć wymiary tych modeli?"
-msgstr[3] ""
 "Wymiary niektórych modeli z pliku %s wydają się być określone w metrach.\n"
 "Wewnętrzną jednostką PrusaSlicer jest milimetr. Czy chcesz ponownie "
 "przeliczyć wymiary tych modeli?"
@@ -17560,10 +17512,6 @@ msgstr[1] ""
 "Wewnętrzną jednostką PrusaSlicer jest milimetr. Czy chcesz ponownie "
 "przeliczyć wymiary tych modeli?"
 msgstr[2] ""
-"Wymiary niektórych modeli z pliku %s wydają się być określone w calach.\n"
-"Wewnętrzną jednostką PrusaSlicer jest milimetr. Czy chcesz ponownie "
-"przeliczyć wymiary tych modeli?"
-msgstr[3] ""
 "Wymiary niektórych modeli z pliku %s wydają się być określone w calach.\n"
 "Wewnętrzną jednostką PrusaSlicer jest milimetr. Czy chcesz ponownie "
 "przeliczyć wymiary tych modeli?"
@@ -17829,8 +17777,6 @@ msgid_plural "You are using template filament presets."
 msgstr[0] "Używasz ustawień filamentu typu szablon."
 msgstr[1] ""
 msgstr[2] ""
-msgstr[3] "Używasz ustawień filamentu typu szablon."
-msgstr[4] ""
 
 #: src/slic3r/GUI/Plater.cpp:3229 src/slic3r/GUI/Plater.cpp:3234
 msgid ""
@@ -19651,7 +19597,6 @@ msgid_plural "%1% (%2$d shells)"
 msgstr[0] "%1% (%2$d powłoka)"
 msgstr[1] "%1% (%2$d powłoki)"
 msgstr[2] "%1% (%2$d powłok)"
-msgstr[3] "%1% (%2$d powłok)"
 
 #: src/slic3r/GUI/Sidebar.cpp:969
 msgid "Used Material (ml)"
@@ -19663,7 +19608,6 @@ msgid_plural "objects"
 msgstr[0] "obiekt"
 msgstr[1] "obiekty"
 msgstr[2] "obiektów"
-msgstr[3] "obiektów"
 
 #: src/slic3r/GUI/Sidebar.cpp:972
 msgid "supports and pad"
@@ -20018,10 +19962,6 @@ msgstr[2] ""
 "Następujące %s linii zawiera zarezerwowane słowa kluczowe.\n"
 "Proszę je usunąć, ponieważ mogą powodować problemy w wizualizacji G-code "
 "oraz szacowaniu czasu wydruku."
-msgstr[3] ""
-"Następujące %s linii zawiera zarezerwowane słowa kluczowe.\n"
-"Proszę je usunąć, ponieważ mogą powodować problemy w wizualizacji G-code "
-"oraz szacowaniu czasu wydruku."
 
 #: src/slic3r/GUI/Tab.cpp:1901
 msgid "Found reserved keywords in"
@@ -20315,10 +20255,6 @@ msgstr[0] ""
 "zamierzasz zmienić."
 msgstr[1] ""
 msgstr[2] ""
-msgstr[3] ""
-"Fizyczne drukarki poniżej są oparte na zestawie ustawień, którego nazwę "
-"zamierzasz zmienić."
-msgstr[4] ""
 
 #: src/slic3r/GUI/Tab.cpp:4458
 msgid "Note, that the selected preset will be renamed in this printer too."
@@ -20329,10 +20265,6 @@ msgstr[0] ""
 "wybranego zestawu ustawień."
 msgstr[1] ""
 msgstr[2] ""
-msgstr[3] ""
-"Należy pamiętać, że w tych drukarkach również zostanie zmieniona nazwa "
-"wybranego zestawu ustawień."
-msgstr[4] ""
 
 #: src/slic3r/GUI/Tab.cpp:4535
 msgid "remove"
@@ -20369,9 +20301,6 @@ msgstr[1] ""
 msgstr[2] ""
 "Poniższe drukarki fizyczne bazują na zestawie ustawień, który masz zamiar "
 "usunąć."
-msgstr[3] ""
-"Poniższe drukarki fizyczne bazują na zestawie ustawień, który masz zamiar "
-"usunąć."
 
 #: src/slic3r/GUI/Tab.cpp:4568
 msgid "Note, that the selected preset will be deleted from this printer too."
@@ -20384,9 +20313,6 @@ msgstr[1] ""
 "Pamiętaj, że wybrany zestaw ustawień zostanie usunięty również z tych "
 "drukarek."
 msgstr[2] ""
-"Pamiętaj, że wybrany zestaw ustawień zostanie usunięty również z tych "
-"drukarek."
-msgstr[3] ""
 "Pamiętaj, że wybrany zestaw ustawień zostanie usunięty również z tych "
 "drukarek."
 
@@ -20406,9 +20332,6 @@ msgstr[1] ""
 msgstr[2] ""
 "Poniższe drukarki fizyczne bazują tylko na zestawie ustawień, który masz "
 "zamiar usunąć."
-msgstr[3] ""
-"Poniższe drukarki fizyczne bazują tylko na zestawie ustawień, który masz "
-"zamiar usunąć."
 
 #: src/slic3r/GUI/Tab.cpp:4578
 msgid ""
@@ -20422,9 +20345,6 @@ msgstr[1] ""
 "Weź pod uwagę, że te drukarki zostaną usunięte przy usuwaniu wybranego "
 "zestawu ustawień."
 msgstr[2] ""
-"Weź pod uwagę, że te drukarki zostaną usunięte przy usuwaniu wybranego "
-"zestawu ustawień."
-msgstr[3] ""
 "Weź pod uwagę, że te drukarki zostaną usunięte przy usuwaniu wybranego "
 "zestawu ustawień."
 
@@ -20875,7 +20795,6 @@ msgid_plural "The following presets were modified"
 msgstr[0] "Następujący zestaw ustawień został zmodyfikowany"
 msgstr[1] "Następujące zestawy ustawień zostały zmodyfikowane"
 msgstr[2] "Następujące zestawy ustawień zostały zmodyfikowane"
-msgstr[3] "Następujące zestawy ustawień zostały zmodyfikowane"
 
 #: src/slic3r/GUI/UnsavedChangesDialog.cpp:1277
 #, boost-format
@@ -20911,7 +20830,6 @@ msgid_plural "The presets modifications are successfully saved"
 msgstr[0] "Modyfikacje zestawu ustawień zostały pomyślnie zapisane"
 msgstr[1] "Modyfikacje zestawów ustawień zostały pomyślnie zapisane"
 msgstr[2] "Modyfikacje zestawów ustawień zostały pomyślnie zapisane"
-msgstr[3] "Modyfikacje zestawów ustawień zostały pomyślnie zapisane"
 
 #: src/slic3r/GUI/UnsavedChangesDialog.cpp:1585
 msgid "Select presets to compare"
@@ -21138,8 +21056,6 @@ msgid_plural "New printers"
 msgstr[0] "Nowa drukarka"
 msgstr[1] "Nowe drukarki"
 msgstr[2] "Nowe drukarki"
-msgstr[3] "Nowe drukarki"
-msgstr[4] "Brak nowych drukarek"
 
 #: src/slic3r/GUI/UpdateDialogs.cpp:337
 msgid "Install"
@@ -21682,7 +21598,6 @@ msgid_plural "%1$d edges fixed"
 msgstr[0] "Naprawiono ‪%1$d‬ krawędź"
 msgstr[1] "Naprawiono ‪%1$d‬ krawędzie"
 msgstr[2] "Naprawiono ‪%1$d‬ krawędzi"
-msgstr[3] "Naprawiono ‪%1$d‬ krawędzi"
 
 #: src/slic3r/GUI/GUI_ObjectList.cpp:549
 msgid "Click the icon to change the object settings"
@@ -22032,12 +21947,6 @@ msgstr[2] ""
 "zostaną one zaktualizowane.\n"
 "\n"
 " %1%"
-msgstr[3] ""
-"Nie było możliwe rozpakowanie danych z następujących źródeł lokalnych. Nie "
-"zostaną one zaktualizowane.\n"
-"\n"
-" %1%"
-msgstr[4] ""
 
 #. TRN: Text of progress dialog. %1% is a name of file.
 #: src/slic3r/Utils/PresetUpdaterWrapper.cpp:322
@@ -31086,3 +30995,33 @@ msgstr "błąd biblioteki zlib %d"
 #: ../src/richtext/richtextbulletspage.cpp:288
 msgid "~"
 msgstr "~"
+
+# Offline SLA hint proposals; English UI control names intentionally match current controls.
+
+#: resources/data/sla_hints.ini: [hint:sla_open_layers]
+msgid "Open SLA layers\nUse Window > Open layer archive to open a supported layer file or a saved layer project. A layer project keeps the layer pixels and captured settings."
+msgstr "Otwieranie warstw SLA\nUżyj Okno > Open layer archive, aby otworzyć obsługiwany plik warstw lub zapisany projekt warstw. Projekt warstw zachowuje piksele warstw i przechwycone ustawienia."
+
+#: resources/data/sla_hints.ini: [hint:sla_edit_result]
+msgid "Edit sliced layers\nAfter slicing a model, use Window > Edit sliced layers to open its pixels. Save a layer project to keep the current layer work."
+msgstr "Edycja warstw po cięciu\nPo pocięciu modelu użyj Okno > Edit sliced layers, aby otworzyć jego piksele. Zapisz projekt warstw, aby zachować bieżącą pracę nad warstwami."
+
+#: resources/data/sla_hints.ini: [hint:sla_paint_range]
+msgid "Paint a layer range\nIn the Sliced editor, set First layer and Last layer, then enable Overlay and paint selected range. A brush stroke is applied to that selected range. Undo restores the preceding layer pixels."
+msgstr "Malowanie zakresu warstw\nNa karcie Pocięty w sekcji Range: first / last layer ustaw pierwszy i ostatni numer warstwy, a następnie włącz Overlay and paint selected range. Pociągnięcie pędzla obejmie wybrany zakres. Undo przywraca poprzednie piksele warstw."
+
+#: resources/data/sla_hints.ini: [hint:sla_brush_palette]
+msgid "Check the brush grayscale\nThe Sliced editor shows the requested and effective brush grayscale. The source mask palette determines the effective value. Changing the export target does not redefine the source palette."
+msgstr "Sprawdzanie szarości pędzla\nEdytor warstw na karcie Pocięty pokazuje żądaną i efektywną szarość pędzla. Efektywną wartość określa paleta maski źródłowej. Zmiana formatu eksportu nie zmienia palety źródłowej."
+
+#: resources/data/sla_hints.ini: [hint:sla_layer_statistics]
+msgid "Show layer statistics\nIn Preview, press L to hide or show the layer statistics panel. Moving the layer slider updates the displayed layer information."
+msgstr "Statystyki warstw\nW widoku Podgląd cięcia naciśnij L, aby ukryć lub pokazać panel statystyk warstw. Przesunięcie suwaka warstw aktualizuje informacje o wyświetlanej warstwie."
+
+#: resources/data/sla_hints.ini: [hint:sla_exposure_table]
+msgid "Edit an exposure test table\nWindow > ExposureFinder calibration opens the exposure test form. On Table, use Selected row and Edit selected row to edit values. Normalize rows changes values only after confirmation. Preview plan checks the current draft before Generate."
+msgstr "Edycja tabeli testu naświetlania\nOkno > ExposureFinder calibration otwiera formularz testu naświetlania. Na karcie Table użyj Selected row i Edit selected row..., aby zmienić wartości. Normalize rows zmienia wartości dopiero po potwierdzeniu. Preview plan sprawdza bieżący szkic przed Generate."
+
+#: src/libslic3r/SLAPrintSteps.cpp
+msgid "Finalizing layers"
+msgstr "Kończenie przygotowania warstw"

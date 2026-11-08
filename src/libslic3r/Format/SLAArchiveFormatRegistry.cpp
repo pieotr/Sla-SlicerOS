@@ -8,6 +8,7 @@
 #include <cctype>
 
 #include "SL1.hpp"
+#include "KlipperArchive.hpp"
 #include "SL1_SVG.hpp"
 #include "AnycubicSLA.hpp"
 #include "AnycubicZipArchive.hpp"
@@ -20,12 +21,14 @@
 #include "ZCodeArchive.hpp"
 #include "UniformationArchive.hpp"
 #include "PhrozenArchive.hpp"
+#include "FDGArchive.hpp"
 #include "VoxeldanceArchive.hpp"
 #include "MakerbaseArchive.hpp"
 #include "FlashforgeArchive.hpp"
 #include "Emake3DArchive.hpp"
 #include "OpenStandardsArchive.hpp"
 #include "ChituboxArchive.hpp"
+#include "CTBEncryptedArchive.hpp"
 #include "libslic3r/I18N.hpp"
 #include "SLAArchiveFormatRegistry.hpp"
 #include "libslic3r/Format/SLAArchiveReader.hpp"
@@ -45,12 +48,24 @@ class Registry {
                 "SL1",                      // id
                 L("SL1 archive"),    // description
                 "sl1",                      // main extension
-                {"sl1s", "zip", "rgb.zip"},            // extension aliases
+                {},
 
                 // Writer factory
                 [] (const auto &cfg) { return std::make_unique<SL1Archive>(cfg); },
 
                 // Reader factory
+                [] (const std::string &fname, SLAImportQuality quality, const ProgrFn &progr) {
+                    return std::make_unique<SL1Reader>(fname, quality, progr);
+                }
+            },
+            {
+                "SL1S",
+                L("SL1S Speed archive"),
+                "sl1s",
+                {},
+                // UVtools SL1File uses the same schema for SL1 and SL1S.
+                // A distinct ID exposes the suffix as a printer preference.
+                [] (const auto &cfg) { return std::make_unique<SL1Archive>(cfg); },
                 [] (const std::string &fname, SLAImportQuality quality, const ProgrFn &progr) {
                     return std::make_unique<SL1Reader>(fname, quality, progr);
                 }
@@ -64,6 +79,20 @@ class Registry {
                 [] (const std::string &fname, SLAImportQuality quality, const ProgrFn &progr) {
                     return std::make_unique<SL1_SVGReader>(fname, quality, progr);
                 }
+            },
+            {
+                "klipper",
+                L("Klipper MSLA (Mono)"),
+                "zip", {},
+                [] (const auto &cfg) { return std::make_unique<KlipperArchive>(cfg); },
+                {}
+            },
+            {
+                "klipper_rgb",
+                L("Klipper MSLA (RGB)"),
+                "rgb.zip", {},
+                [] (const auto &cfg) { return std::make_unique<KlipperArchive>(cfg, true); },
+                {}
             },
             // Distinct ZIP families share an extension but not a schema.
             {"chitubox_zip", L("Chitubox ZIP"), "zip", {},
@@ -81,9 +110,9 @@ class Registry {
             anycubic_sla_format_versioned("pwmx", "Photon Mono X", ANYCUBIC_SLA_FORMAT_VERSION_1),
             anycubic_sla_format_versioned("pmx2", "Photon Mono X2", ANYCUBIC_SLA_FORMAT_VERSION_515),
             anycubic_sla_format_versioned("pwmb", "Photon Mono X 6K / M3 Plus", ANYCUBIC_SLA_FORMAT_VERSION_515),
-            anycubic_sla_format_versioned("px6s", "Photon Mono X 6Ks", ANYCUBIC_SLA_FORMAT_VERSION_515),
+            anycubic_sla_format_versioned("px6s", "Photon Mono X 6Ks", ANYCUBIC_SLA_FORMAT_VERSION_517),
             anycubic_sla_format_versioned("pwmo", "Photon Mono", ANYCUBIC_SLA_FORMAT_VERSION_1),
-            anycubic_sla_format_versioned("pm3n", "Photon Mono 2", ANYCUBIC_SLA_FORMAT_VERSION_515),
+            anycubic_sla_format_versioned("pm3n", "Photon Mono 2", ANYCUBIC_SLA_FORMAT_VERSION_517),
             anycubic_sla_format_versioned("pm4n", "Photon Mono 4", ANYCUBIC_SLA_FORMAT_VERSION_515),
             anycubic_sla_format_versioned("pwms", "Photon Mono SE", ANYCUBIC_SLA_FORMAT_VERSION_1),
             anycubic_sla_format_versioned("pwma", "Photon Mono 4K", ANYCUBIC_SLA_FORMAT_VERSION_515),
@@ -91,9 +120,9 @@ class Registry {
             anycubic_sla_format_versioned("pm3", "Photon M3", ANYCUBIC_SLA_FORMAT_VERSION_515),
             anycubic_sla_format_versioned("pm3m", "Photon M3 Max", ANYCUBIC_SLA_FORMAT_VERSION_515),
             anycubic_sla_format_versioned("pm3r", "Photon M3 Premium", ANYCUBIC_SLA_FORMAT_VERSION_515),
-            anycubic_sla_format_versioned("pm5", "Photon Mono M5", ANYCUBIC_SLA_FORMAT_VERSION_515),
-            anycubic_sla_format_versioned("pm5s", "Photon Mono M5s", ANYCUBIC_SLA_FORMAT_VERSION_515),
-            anycubic_sla_format_versioned("m5sp", "Photon Mono M5s Pro", ANYCUBIC_SLA_FORMAT_VERSION_515),
+            anycubic_sla_format_versioned("pm5", "Photon Mono M5", ANYCUBIC_SLA_FORMAT_VERSION_517),
+            anycubic_sla_format_versioned("pm5s", "Photon Mono M5s", ANYCUBIC_SLA_FORMAT_VERSION_518),
+            anycubic_sla_format_versioned("m5sp", "Photon Mono M5s Pro", ANYCUBIC_SLA_FORMAT_VERSION_518),
             anycubic_sla_format_versioned("pwc", "Anycubic Custom (machine table)", ANYCUBIC_SLA_FORMAT_VERSION_516),
             {"pm4u", L("Photon Mono 4 Ultra"), "pm4u", {},
                 [](const auto &cfg) { return std::make_unique<AnycubicZipArchive>(cfg, "pm4u"); }, {}},
@@ -107,23 +136,27 @@ class Registry {
             // Chitubox / Photon variants (CBDDLPv1, CBDDLPv2, CTBv3, CTBv4, encrypted CTB)
             {
                 "cbddlp",
-                L("Chitubox CBDDLP"),
+                L("Chitubox CBDDLP v2 (selectable AA)"),
                 "cbddlp",
                 {},
-                [] (const auto &cfg) { return std::make_unique<ChituboxCBDDLPv1Archive>(cfg); },
+                [] (const auto &cfg) { return std::make_unique<ChituboxCBDDLPArchive>(cfg); },
                 {} // No native reader yet; SL1Reader cannot decode this format.
             },
+            {"cbddlp_v1", L("Chitubox CBDDLP v1 (binary, firmware motion)"), "v1.cbddlp", {},
+                [](const auto &cfg) { return std::make_unique<ChituboxCBDDLPArchive>(cfg,1); }, {}},
+            {"photon_v1", L("Chitubox Photon v1 (binary, firmware motion)"), "v1.photon", {},
+                [](const auto &cfg) { return std::make_unique<ChituboxPhotonArchive>(cfg,1); }, {}},
             {
-                "cbt",
-                L("Chitubox CTB"),
-                "cbt",
+                "ctb_v1",
+                L("Chitubox CTB v1 (firmware motion)"),
+                "v1.ctb",
                 {},
                 [] (const auto &cfg) { return std::make_unique<ChituboxCTBv1Archive>(cfg); },
                 {} // No native reader yet; SL1Reader cannot decode this format.
             },
             {
                 "photon",
-                L("Chitubox Photon"),
+                L("Chitubox Photon v2 (selectable AA)"),
                 "photon",
                 {},
                 [] (const auto &cfg) { return std::make_unique<ChituboxPhotonArchive>(cfg); },
@@ -131,7 +164,7 @@ class Registry {
             },
             {
                 "photons",
-                L("Chitubox PhotonS"),
+                L("Anycubic Photon S (binary masks)"),
                 "photons",
                 {},
                 [] (const auto &cfg) { return std::make_unique<ChituboxPhotonSArchive>(cfg); },
@@ -141,16 +174,30 @@ class Registry {
                 "ctb",
                 L("Chitubox CTB v2"),
                 "ctb",
-                {"encrypted.ctb"},
+                {},
                 [] (const auto &cfg) { return std::make_unique<UVToolsChituboxArchive>(cfg); },
                 {} // No native reader yet; SL1Reader cannot decode this format.
             },
+            {"ctb_v3", L("Chitubox CTB v3"), "v3.ctb", {},
+                [](const auto &cfg) { return std::make_unique<ChituboxCTBModernArchive>(cfg, 3); }, {}},
+            {"ctb_v4", L("Chitubox CTB v4"), "v4.ctb", {},
+                [](const auto &cfg) { return std::make_unique<ChituboxCTBModernArchive>(cfg, 4); }, {}},
+            {"ctb_v5", L("Chitubox CTB v5"), "v5.ctb", {},
+                [](const auto &cfg) { return std::make_unique<ChituboxCTBModernArchive>(cfg, 5); }, {}},
+            {"ctb_gktwo", L("UniFormation GKtwo CTB v4"), "gktwo.ctb", {},
+                [](const auto &cfg) { return std::make_unique<ChituboxCTBModernArchive>(cfg, 4, true); }, {}},
+            // UVtools CTBEncryptedFile is a separate signed/encrypted container,
+            // not a filename alias for the unencrypted Chitubox v2 schema.
+            {"ctb_encrypted", L("Chitubox CTB encrypted v5"), "encrypted.ctb", {},
+                [](const auto &cfg) { return std::make_unique<CTBEncryptedArchive>(cfg); }, {}},
+            {"ctb_encrypted_v4", L("Chitubox CTB encrypted v4"), "v4.encrypted.ctb", {},
+                [](const auto &cfg) { return std::make_unique<CTBEncryptedArchive>(cfg, 4); }, {}},
             {
                 "phz",
-                L("Chitubox PHZ"),
+                L("Phrozen PHZ v2 (grayscale)"),
                 "phz",
                 {},
-                [] (const auto &cfg) { return std::make_unique<PhrozenSonicMiniArchive>(cfg); },
+                [] (const auto &cfg) { return std::make_unique<PhrozenPHZArchive>(cfg); },
                 {} // No native reader yet; SL1Reader cannot decode this format.
             },
 
@@ -191,12 +238,19 @@ class Registry {
             // NanoDLP
             {
                 "nanodlp",
-                L("NanoDLP"),
+                L("NanoDLP Mono v2"),
                 "nanodlp",
                 {},
                 [] (const auto &cfg) { return std::make_unique<NanoDLPArchive>(cfg); },
                 {} // No native reader yet; SL1Reader cannot decode this format.
             },
+
+            {"nanodlp_v1", L("NanoDLP Mono v1"), "v1.nanodlp", {},
+                [](const auto &cfg) { return std::make_unique<NanoDLPArchive>(cfg, false, 1); }, {}},
+            {"nanodlp_rgb", L("NanoDLP RGB v2"), "rgb.nanodlp", {},
+                [](const auto &cfg) { return std::make_unique<NanoDLPArchive>(cfg, true, 2); }, {}},
+            {"nanodlp_rgb_v1", L("NanoDLP RGB v1"), "v1.rgb.nanodlp", {},
+                [](const auto &cfg) { return std::make_unique<NanoDLPArchive>(cfg, true, 1); }, {}},
 
             // Longer Orange (LGS family)
             {
@@ -282,7 +336,7 @@ class Registry {
                 L("Voxelab FDG"),
                 "fdg",
                 {},
-                [] (const auto &cfg) { return std::make_unique<UVToolsFDGArchive>(cfg); },
+                [] (const auto &cfg) { return std::make_unique<FDGArchive>(cfg); },
                 {} // No native reader yet; SL1Reader cannot decode this format.
             },
             {
@@ -330,7 +384,7 @@ class Registry {
                 L("Makerbase MDLP"),
                 "mdlp",
                 {},
-                [] (const auto &cfg) { return std::make_unique<MakerbaseMDLPArchive>(cfg); },
+                [] (const auto &cfg) { return std::make_unique<MakerbaseArchive>(cfg,true); },
                 {} // No native reader yet; SL1Reader cannot decode this format.
             },
             {
@@ -338,7 +392,7 @@ class Registry {
                 L("GR1 Workshop"),
                 "gr1",
                 {},
-                [] (const auto &cfg) { return std::make_unique<MakerbaseGR1Archive>(cfg); },
+                [] (const auto &cfg) { return std::make_unique<MakerbaseArchive>(cfg,false); },
                 {} // No native reader yet; SL1Reader cannot decode this format.
             },
             {
@@ -427,15 +481,7 @@ std::string archive_export_unavailable_reason(const char *formatid)
     const auto *entry = find_archive_entry_by_id(formatid);
     if (!entry)
         return "Unknown SLA archive format";
-    const std::string id = entry->id;
-    if (id == "fdg")
-        return "FDG export is unavailable: UVtools rejected the generated file as truncated";
-    static const std::set<std::string> incomplete = {
-        "cbddlp", "cbt", "photon", "photons", "qdt",
-        "svgx", "lgs", "lgs30", "lgs120", "lgs4k", "gr1", "mdlp", "nanodlp",
-        "phz", "jxs", "vdt", "zcode", "zcodex"
-    };
-    return incomplete.count(id) ? "SLA export is not implemented for format: " + id : "";
+    return "";
 }
 
 std::string sla_archive_filename(const std::string &filename, const std::string &extension)
@@ -521,6 +567,9 @@ const ArchiveEntry *find_archive_entry_by_id(const char *formatid)
         return &(*it);
 
     const std::string needle = to_lower_copy(formatid);
+    // Preserve old printer preset IDs, while never offering the unsupported
+    // .cbt typo as an export extension. The old class identified CTB v1.
+    if(needle=="cbt")return find_archive_entry_by_id("ctb_v1");
     for (const ArchiveEntry &entry : entries)
         if (to_lower_copy(entry.id) == needle)
             return &entry;

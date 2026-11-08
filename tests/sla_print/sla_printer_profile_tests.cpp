@@ -1,4 +1,5 @@
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/generators/catch_generators.hpp>
 #include <boost/filesystem.hpp>
 #include <limits>
 #include <fstream>
@@ -7,6 +8,7 @@
 #include "libslic3r/PresetBundle.hpp"
 #include "libslic3r/SLA/PrinterGeometry.hpp"
 #include "libslic3r/AppConfig.hpp"
+#include "libslic3r/SLA/ProjectSettings.hpp"
 #include "libslic3r/Thread.hpp"
 #include "libslic3r/Utils.hpp"
 #include "libslic3r/Format/AnycubicSLA.hpp"
@@ -165,6 +167,147 @@ TEST_CASE("Preset IO failures preserve edits saved data and selection", "[sla_pr
     REQUIRE(disk.opt_float("display_width") == 220.);
     REQUIRE(collection.delete_current_preset());
     REQUIRE_FALSE(boost::filesystem::exists(original_path));
+}
+
+TEST_CASE("Renaming a user preset preserves its saved baseline and dirty draft", "[sla_profiles][sla_profile_rename]")
+{
+    struct Directory {
+        boost::filesystem::path path = boost::filesystem::absolute(boost::filesystem::unique_path("preset-rename-%%%%"));
+        Directory() { boost::filesystem::create_directory(path); }
+        ~Directory() { boost::system::error_code error; boost::filesystem::remove_all(path, error); }
+    } directory;
+    const auto type = GENERATE(Preset::TYPE_PRINTER, Preset::TYPE_SLA_MATERIAL, Preset::TYPE_SLA_PRINT);
+    PresetBundle bundle;
+    auto &collection = bundle.get_presets(type);
+    const auto folder = collection.section_name();
+    boost::filesystem::create_directory(directory.path / folder);
+    PresetsConfigSubstitutions substitutions;
+    collection.load_presets(directory.path.string(), folder, substitutions, ForwardCompatibilitySubstitutionRule::Enable);
+    const std::string key = type == Preset::TYPE_PRINTER ? "max_print_height" :
+                           type == Preset::TYPE_SLA_MATERIAL ? "exposure_time" : "layer_height";
+    collection.get_edited_preset().config.set(key, 1.);
+    REQUIRE(collection.save_current_preset("Middle"));
+    REQUIRE(collection.save_current_preset("Zebra"));
+    collection.select_preset_by_name("Middle", true);
+    collection.get_edited_preset().config.set(key, 2.);
+    collection.update_dirty();
+    REQUIRE(collection.current_is_dirty());
+    const auto original = directory.path / folder / "Middle.ini";
+    auto bytes = [](const boost::filesystem::path &path) {
+        std::ifstream stream(path.string(), std::ios::binary);
+        return std::string(std::istreambuf_iterator<char>(stream), {});
+    };
+    const auto saved = bytes(original);
+    SECTION("Destination collision and missing source preserve the entire draft") {
+        const auto occupied = directory.path / folder / "Occupied.ini";
+        std::ofstream(occupied.string()) << "keep this unrelated file";
+        REQUIRE_THROWS(collection.rename_current_preset("Occupied"));
+        REQUIRE(bytes(occupied) == "keep this unrelated file");
+        REQUIRE_THROWS(collection.rename_current_preset("Zebra"));
+        REQUIRE_THROWS(collection.rename_current_preset("../outside"));
+        boost::filesystem::rename(original, original.string() + ".retained");
+        REQUIRE_THROWS(collection.rename_current_preset("Absent"));
+        boost::filesystem::rename(original.string() + ".retained", original);
+        REQUIRE(bytes(original) == saved);
+        REQUIRE(collection.get_selected_preset_name() == "Middle");
+        REQUIRE(collection.get_selected_preset().config.opt_float(key) == 1.);
+        REQUIRE(collection.get_edited_preset().config.opt_float(key) == 2.);
+        REQUIRE(collection.current_is_dirty());
+    }
+    SECTION("Sorting and UTF-8 rename do not reload or save the draft") {
+        REQUIRE_FALSE(collection.rename_current_preset("Middle"));
+        for (const std::string name : {"Alpha", "Łódź"}) {
+            REQUIRE(collection.rename_current_preset(name));
+            REQUIRE(collection.get_selected_preset_name() == name);
+            REQUIRE(collection.get_edited_preset().name == name);
+            REQUIRE(collection.get_selected_preset().file == collection.path_from_name(name));
+            REQUIRE(collection.get_edited_preset().file == collection.path_from_name(name));
+            REQUIRE(collection.get_selected_preset().config.opt_float(key) == 1.);
+            REQUIRE(collection.get_edited_preset().config.opt_float(key) == 2.);
+            REQUIRE(collection.current_is_dirty());
+            REQUIRE(bytes(collection.path_from_name(name)) == saved);
+        }
+        REQUIRE_FALSE(boost::filesystem::exists(original));
+        REQUIRE(collection.find_preset("Middle") == nullptr);
+        REQUIRE_FALSE(collection.save_current_preset("Łódź"));
+        REQUIRE_FALSE(collection.current_is_dirty());
+        DynamicPrintConfig disk;
+        disk.load(collection.path_from_name("Łódź"), ForwardCompatibilitySubstitutionRule::Enable);
+        REQUIRE(disk.opt_float(key) == 2.);
+    }
+}
+
+TEST_CASE("Renaming an SLA profile migrates saved and unsaved structured dependencies", "[sla_profiles][sla_profile_dependencies]")
+{
+    struct Directory {
+        boost::filesystem::path path = boost::filesystem::absolute(boost::filesystem::unique_path("preset-dependencies-%%%%"));
+        Directory() { boost::filesystem::create_directory(path); }
+        ~Directory() { boost::system::error_code ec; boost::filesystem::remove_all(path, ec); }
+    } directory;
+    const auto renamed_type = GENERATE(Preset::TYPE_PRINTER, Preset::TYPE_SLA_PRINT, Preset::TYPE_SLA_MATERIAL);
+    PresetBundle bundle;
+    PresetsConfigSubstitutions substitutions;
+    for (const auto type : {Preset::TYPE_PRINTER, Preset::TYPE_SLA_PRINT, Preset::TYPE_SLA_MATERIAL}) {
+        auto &collection = bundle.get_presets(type);
+        const auto folder = collection.section_name();
+        boost::filesystem::create_directory(directory.path / folder);
+        collection.load_presets(directory.path.string(), folder, substitutions, ForwardCompatibilitySubstitutionRule::Enable);
+        auto &config = collection.get_edited_preset().config;
+        if (type == Preset::TYPE_PRINTER) {
+            config.set("default_sla_print_profile", std::string("Base"));
+            config.set("default_sla_material_profile", std::string("Base"));
+        } else {
+            config.set_key_value("compatible_printers", new ConfigOptionStrings({"Base", "Base suffix"}));
+            config.set("compatible_printers_condition", std::string("printer_preset == \"Base\""));
+            if (type == Preset::TYPE_SLA_MATERIAL)
+                config.set_key_value("compatible_prints", new ConfigOptionStrings({"Base", "Base suffix"}));
+        }
+        REQUIRE(collection.save_current_preset("Base"));
+        collection.get_edited_preset().config.set("inherits", std::string("Base"));
+        REQUIRE(collection.save_current_preset("Child"));
+        collection.select_preset_by_name("Base", true);
+        collection.update_saved_preset_from_current_preset();
+        const char *key = type == Preset::TYPE_PRINTER ? "max_print_height" :
+                          type == Preset::TYPE_SLA_PRINT ? "layer_height" : "exposure_time";
+        collection.get_edited_preset().config.set(key, 42.);
+        collection.update_dirty();
+    }
+    // This is the existing GUI entry point; the bundle-level transaction will
+    // replace it once the failure is demonstrated on the current implementation.
+    REQUIRE(bundle.get_presets(renamed_type).rename_current_preset("Łódź"));
+    for (const auto type : {Preset::TYPE_PRINTER, Preset::TYPE_SLA_PRINT, Preset::TYPE_SLA_MATERIAL}) {
+        auto &collection = bundle.get_presets(type);
+        CHECK(collection.get_selected_preset_name() == (type == renamed_type ? "Łódź" : "Base"));
+        CHECK(collection.current_is_dirty());
+        const char *key = type == Preset::TYPE_PRINTER ? "max_print_height" :
+                          type == Preset::TYPE_SLA_PRINT ? "layer_height" : "exposure_time";
+        CHECK(collection.get_edited_preset().config.opt_float(key) == 42.);
+        CHECK(collection.get_selected_preset().config.opt_float(key) != 42.);
+        DynamicPrintConfig disk;
+        disk.load(collection.get_selected_preset().file, ForwardCompatibilitySubstitutionRule::Disable);
+        auto check_references = [&](const DynamicPrintConfig &config) {
+            const std::string expected = "Łódź";
+            if (type == renamed_type) return;
+            if (renamed_type == Preset::TYPE_PRINTER) {
+                CHECK(config.option<ConfigOptionStrings>("compatible_printers")->values == std::vector<std::string>{expected, "Base suffix"});
+                CHECK(config.opt_string("compatible_printers_condition") == "printer_preset == \"Base\"");
+            } else if (type == Preset::TYPE_PRINTER) {
+                CHECK(config.opt_string(renamed_type == Preset::TYPE_SLA_PRINT ? "default_sla_print_profile" : "default_sla_material_profile") == expected);
+            } else if (renamed_type == Preset::TYPE_SLA_PRINT && type == Preset::TYPE_SLA_MATERIAL) {
+                CHECK(config.option<ConfigOptionStrings>("compatible_prints")->values == std::vector<std::string>{expected, "Base suffix"});
+            }
+        };
+        check_references(disk);
+        check_references(collection.get_selected_preset().config);
+        check_references(collection.get_edited_preset().config);
+        const auto *child = collection.find_preset("Child", false, false);
+        REQUIRE(child);
+        CHECK(child->inherits() == (type == renamed_type ? "Łódź" : "Base"));
+        CHECK(collection.get_preset_parent(*child) != nullptr);
+        DynamicPrintConfig child_disk;child_disk.load(child->file, ForwardCompatibilitySubstitutionRule::Disable);
+        CHECK(child_disk.opt_string("inherits") == child->inherits());
+        check_references(child_disk);
+    }
 }
 
 TEST_CASE("Export preferences survive restart independently for UTF-8 printer names", "[sla_profiles]")
@@ -412,4 +555,466 @@ TEST_CASE("New SLA process and material defaults do not inherit FDM layer height
     REQUIRE(presets.sla_materials.default_preset().config.opt_float("initial_layer_height") == .05);
     REQUIRE(presets.sla_prints.default_preset().config.opt_string("output_filename_format") ==
         "[input_filename_base][default_output_extension]");
+}
+
+TEST_CASE("Project-local SLA preset labels do not replace persisted role identities", "[sla_profiles][sla_project_identity]") {
+    DynamicPrintConfig source;source.apply(SLAFullPrintConfig{});source.option("printer_technology")->setInt(ptSLA);
+    source.set_key_value("printer_settings_id",new ConfigOptionString("Drukarka Żółta"));
+    source.set_key_value("sla_material_settings_id",new ConfigOptionString("Żywica testowa"));
+    source.set_key_value("sla_print_settings_id",new ConfigOptionString("Proces dokładny"));
+    PresetBundle first;first.load_config_model("first.3mf",source);
+    REQUIRE(first.printers.get_edited_preset().is_external);
+    REQUIRE(first.sla_materials.get_edited_preset().is_external);
+    REQUIRE(first.sla_prints.get_edited_preset().is_external);
+    CHECK(first.printers.get_selected_preset_name()!=source.opt_string("printer_settings_id"));
+    const auto saved=first.full_config();
+    CHECK(saved.opt_string("printer_settings_id")==source.opt_string("printer_settings_id"));
+    CHECK(saved.opt_string("sla_material_settings_id")==source.opt_string("sla_material_settings_id"));
+    CHECK(saved.opt_string("sla_print_settings_id")==source.opt_string("sla_print_settings_id"));
+    PresetBundle restarted;restarted.load_config_model("second.3mf",saved);
+    const auto resaved=restarted.full_config();
+    CHECK(sla::capture_project_settings(saved)==sla::capture_project_settings(resaved));
+    // A user library preset remains identified by its actual name even when
+    // copied from an imported config containing an older settings_id.
+    restarted.printers.load_preset("","User printer",source,true);
+    CHECK_FALSE(restarted.printers.get_edited_preset().is_external);
+    CHECK(restarted.full_config().opt_string("printer_settings_id")=="User printer");
+    // Legacy unnamed input receives one contextual identity, retained later.
+    source.set("printer_settings_id","");source.set("sla_material_settings_id","");source.set("sla_print_settings_id","");
+    PresetBundle legacy;legacy.load_config_model("unnamed.ini",source);
+    const auto named=legacy.full_config();
+    CHECK_FALSE(named.opt_string("printer_settings_id").empty());
+    PresetBundle again;again.load_config_model("legacy.3mf",named);
+    CHECK(again.full_config().opt_string("printer_settings_id")==named.opt_string("printer_settings_id"));
+}
+
+TEST_CASE("Printer export preference follows source identity across project labels", "[sla_profiles][sla_printer_preference_identity]")
+{
+    AppConfig preferences(AppConfig::EAppMode::Editor);
+    preferences.set_sla_export_format("Drukarka Łódź", "cxdlpv4");
+    preferences.set_sla_export_format("Other printer", "goo");
+    DynamicPrintConfig source;
+    source.apply(SLAFullPrintConfig::defaults());
+    source.set_key_value("printer_settings_id", new ConfigOptionString("Drukarka Łódź"));
+    source.set_key_value("sla_print_settings_id", new ConfigOptionString("Process"));
+    source.set_key_value("sla_material_settings_id", new ConfigOptionString("Material"));
+    for (const auto *filename : {"first.3mf", "saved-again.3mf"}) {
+        PresetBundle bundle;
+        bundle.load_config_model(filename, source);
+        REQUIRE(bundle.printers.get_edited_preset().is_external);
+        REQUIRE(bundle.printers.get_selected_preset_name() != "Drukarka Łódź");
+        const auto identity=bundle.printers.get_selected_preset_source_name("printer_settings_id");
+        REQUIRE(preferences.sla_export_format(identity) == "cxdlpv4");
+        preferences.set_sla_export_format(identity, "prz");
+        REQUIRE(preferences.sla_export_format("Drukarka Łódź") == "prz");
+        REQUIRE(preferences.sla_export_format("Other printer") == "goo");
+        source=bundle.full_config();
+        preferences.set_sla_export_format(identity, "cxdlpv4");
+    }
+    PresetBundle library;
+    library.printers.load_preset("", "New library printer", source, true);
+    REQUIRE_FALSE(library.printers.get_edited_preset().is_external);
+    REQUIRE(library.printers.get_selected_preset_source_name("printer_settings_id") == "New library printer");
+    REQUIRE(preferences.sla_export_format("New library printer").empty());
+    source.set("printer_settings_id", std::string());
+    PresetBundle legacy;
+    legacy.load_config_model("legacy.ini", source);
+    REQUIRE(legacy.printers.get_selected_preset_source_name("printer_settings_id") == legacy.printers.get_selected_preset_name());
+}
+
+TEST_CASE("SLA project presets retain role metadata in a fresh library", "[sla_profiles][sla_project_preset_metadata]")
+{
+    PresetBundle source;
+    auto printer=source.printers.get_edited_preset().config;
+    printer.set("printer_model",std::string("CL-60"));
+    printer.set("printer_vendor",std::string("Offline vendor"));
+    printer.set("printer_variant",std::string("LCD revision B"));
+    printer.set("default_sla_print_profile",std::string("Default process"));
+    printer.set("default_sla_material_profile",std::string("Default resin"));
+    printer.set("inherits",std::string("Missing printer base"));
+    printer.set("display_width",192.);
+    Preset::normalize(printer);
+    source.printers.load_preset("","Drukarka Łódź",printer,true);
+    auto material=source.sla_materials.get_edited_preset().config;
+    material.set_key_value("compatible_printers",new ConfigOptionStrings({"Drukarka Łódź","Printer; \"B\""}));
+    material.set_key_value("compatible_prints",new ConfigOptionStrings({"Process precise","Process; B"}));
+    material.set("compatible_printers_condition",std::string("printer_model == \"CL-60\""));
+    material.set_key_value("compatible_prints_condition",new ConfigOptionString("layer_height <= 0.05"));
+    material.set("inherits",std::string("Missing material base"));
+    material.set("default_sla_material_profile",std::string("Material role default"));
+    material.set("exposure_time",7.25);
+    source.sla_materials.load_preset("","Żywica testowa",material,true);
+    auto process=source.sla_prints.get_edited_preset().config;
+    process.set_key_value("compatible_printers",new ConfigOptionStrings({"Printer; \"B\"","Drukarka Łódź"}));
+    process.set("compatible_printers_condition",std::string("display_pixels_x >= 1920"));
+    process.set("inherits",std::string("Missing process base"));
+    process.set("default_sla_print_profile",std::string("Process role default"));
+    process.set("hollowing_min_thickness",2.7);
+    source.sla_prints.load_preset("","Proces dokładny",process,true);
+    const auto combined=source.full_config();
+    auto verify=[&](const DynamicPrintConfig &configuration) {
+        PresetBundle reopened;reopened.load_config_model("project.3mf",configuration);
+        const auto &p=reopened.printers.get_edited_preset().config;
+        const auto &m=reopened.sla_materials.get_edited_preset().config;
+        const auto &s=reopened.sla_prints.get_edited_preset().config;
+        for(const auto *key:{"printer_model","printer_vendor","printer_variant","default_sla_print_profile","default_sla_material_profile","inherits"}) {
+            CAPTURE(key);CHECK(p.opt_serialize(key)==printer.opt_serialize(key));
+        }
+        for(const auto *key:{"compatible_printers","compatible_prints","compatible_printers_condition","compatible_prints_condition","default_sla_material_profile","inherits"}) {
+            CAPTURE(key);CHECK(m.opt_serialize(key)==material.opt_serialize(key));
+        }
+        for(const auto *key:{"compatible_printers","compatible_printers_condition","default_sla_print_profile","inherits"}) {
+            CAPTURE(key);CHECK(s.opt_serialize(key)==process.opt_serialize(key));
+        }
+        CHECK(p.opt_float("display_width")==192.);
+        CHECK(m.opt_float("exposure_time")==7.25);
+        CHECK(s.opt_float("hollowing_min_thickness")==2.7);
+        // The project is independent of all three absent parent definitions.
+        CHECK(reopened.printers.get_selected_preset_parent()==nullptr);
+        CHECK(reopened.sla_materials.get_selected_preset_parent()==nullptr);
+        CHECK(reopened.sla_prints.get_selected_preset_parent()==nullptr);
+    };
+    SECTION("model configuration") {verify(combined);}
+    SECTION("layer project settings") {verify(sla::restore_project_settings(sla::capture_project_settings(combined)));}
+}
+
+TEST_CASE("SLA preset metadata rejects ambiguous and unsafe role definitions", "[sla_profiles][sla_preset_metadata_validation]")
+{
+    PresetBundle bundle;
+    auto combined=bundle.full_config();
+    auto settings=sla::capture_project_settings(combined);
+    REQUIRE(settings.printer.metadata.has_value());
+    CHECK_FALSE(settings.printer.metadata->count("printer_model"));
+    REQUIRE(settings.material.metadata.has_value());
+    REQUIRE(settings.process.metadata.has_value());
+    SECTION("unknown metadata key") {(*settings.printer.metadata)["future_setting"]="must not disappear";}
+    SECTION("credential replacing a required key") {settings.printer.metadata->erase("inherits");(*settings.printer.metadata)["printhost_apikey"]="test-placeholder";}
+    SECTION("FFF field") {settings.process.metadata->erase("inherits");(*settings.process.metadata)["infill_density"]="20%";}
+    SECTION("wrong role") {settings.material.metadata->erase("inherits");(*settings.material.metadata)["printer_model"]="CL-60";}
+    SECTION("missing field") {settings.material.metadata->erase("compatible_prints");}
+    SECTION("noncanonical list") {(*settings.material.metadata)["compatible_printers"]="\"unterminated";}
+    SECTION("embedded NUL") {(*settings.printer.metadata)["printer_variant"]=std::string("CL\0-60",6);}
+    SECTION("oversized field") {(*settings.process.metadata)["inherits"]=std::string(1024*1024+1,'x');}
+    SECTION("self inheritance") {settings.printer.name="Loop";(*settings.printer.metadata)["inherits"]="Loop";}
+    REQUIRE_THROWS(sla::restore_project_settings(settings));
+}
+
+TEST_CASE("Serialized SLA preset metadata rejects duplicate keys", "[sla_profiles][sla_preset_metadata_validation]")
+{
+    PresetBundle bundle;auto combined=bundle.full_config();
+    auto encoded=combined.opt_string("sla_preset_metadata");
+    encoded.insert(1,"\"version\":1,");combined.set("sla_preset_metadata",encoded);
+    REQUIRE_THROWS(sla::capture_project_settings(combined));
+}
+
+TEST_CASE("SLA compatibility uses source identities of external project presets", "[sla_profiles][sla_project_preset_compatibility]")
+{
+    PresetBundle source;
+    auto printer=source.printers.get_edited_preset().config;
+    source.printers.load_preset("","Drukarka Łódź",printer,true);
+    auto material=source.sla_materials.get_edited_preset().config;
+    material.set_key_value("compatible_printers",new ConfigOptionStrings({"Drukarka Łódź"}));
+    material.set_key_value("compatible_prints",new ConfigOptionStrings({"Proces dokładny"}));
+    source.sla_materials.load_preset("","Żywica testowa",material,true);
+    auto process=source.sla_prints.get_edited_preset().config;
+    process.set_key_value("compatible_printers",new ConfigOptionStrings({"Drukarka Łódź"}));
+    source.sla_prints.load_preset("","Proces dokładny",process,true);
+    PresetBundle reopened;reopened.load_config_model("project.3mf",source.full_config());
+    const auto &p=reopened.printers.get_edited_preset();
+    const auto &s=reopened.sla_prints.get_edited_preset();
+    const auto &m=reopened.sla_materials.get_edited_preset();
+    CHECK(s.is_compatible);CHECK(m.is_compatible);
+    CHECK(is_compatible_with_printer(PresetWithVendorProfile(m,nullptr),PresetWithVendorProfile(p,nullptr)));
+    CHECK(is_compatible_with_print(PresetWithVendorProfile(m,nullptr),PresetWithVendorProfile(s,nullptr),PresetWithVendorProfile(p,nullptr)));
+    auto other=p;other.config.set("printer_settings_id",std::string("Other printer"));
+    CHECK_FALSE(is_compatible_with_printer(PresetWithVendorProfile(m,nullptr),PresetWithVendorProfile(other,nullptr)));
+    other.is_external=false;other.name="New library printer";
+    other.config.set("printer_settings_id",std::string("Drukarka Łódź"));
+    CHECK_FALSE(is_compatible_with_printer(PresetWithVendorProfile(m,nullptr),PresetWithVendorProfile(other,nullptr)));
+    auto conditional=process;conditional.option<ConfigOptionStrings>("compatible_printers")->values.clear();
+    conditional.set("compatible_printers_condition",std::string("printer_preset == \"Drukarka Łódź\""));
+    reopened.sla_prints.load_preset("","Conditional process",conditional,true);
+    reopened.update_compatible(PresetSelectCompatibleType::Never);
+    CHECK(reopened.sla_prints.get_edited_preset().is_compatible);
+}
+
+TEST_CASE("Invalid compatibility conditions never make an SLA preset universal", "[sla_profiles][sla_compatibility_validation]")
+{
+    PresetBundle bundle;
+    auto config = bundle.sla_materials.get_edited_preset().config;
+    config.set_key_value("compatible_printers", new ConfigOptionStrings{});
+    config.set_key_value("compatible_prints", new ConfigOptionStrings{});
+    bundle.sla_materials.load_preset("", "Restricted resin", config, true);
+    auto &material = bundle.sla_materials.get_edited_preset();
+    const auto printer = bundle.printers.get_edited_preset_with_vendor_profile();
+    const auto process = bundle.sla_prints.get_edited_preset_with_vendor_profile();
+    const auto condition = GENERATE(std::string("missing_option == 1"), std::string("layer_height =="), std::string("("));
+    material.config.set("compatible_printers_condition", condition);
+    material.config.set("compatible_prints_condition", condition);
+    CHECK_FALSE(is_compatible_with_printer(PresetWithVendorProfile(material, nullptr), printer));
+    CHECK_FALSE(is_compatible_with_print(PresetWithVendorProfile(material, nullptr), process, printer));
+    CHECK_FALSE(evaluate_compatibility_with_printer(PresetWithVendorProfile(material, nullptr), printer).error.empty());
+    CHECK_FALSE(evaluate_compatibility_with_print(PresetWithVendorProfile(material, nullptr), process, printer).error.empty());
+    for (const auto &value : {std::string("false"), std::string("true"), std::string()}) {
+        material.config.set("compatible_printers_condition", value);
+        material.config.set("compatible_prints_condition", value);
+        CHECK(is_compatible_with_printer(PresetWithVendorProfile(material, nullptr), printer) == (value != "false"));
+        CHECK(is_compatible_with_print(PresetWithVendorProfile(material, nullptr), process, printer) == (value != "false"));
+        CHECK(evaluate_compatibility_with_printer(PresetWithVendorProfile(material, nullptr), printer).error.empty());
+        CHECK(evaluate_compatibility_with_print(PresetWithVendorProfile(material, nullptr), process, printer).error.empty());
+    }
+}
+
+TEST_CASE("Compatibility diagnostics preserve explicit lists and dirty selections", "[sla_profiles][sla_compatibility_validation]")
+{
+    PresetBundle bundle;
+    bundle.sla_prints.load_preset("", "Fine", bundle.sla_prints.get_edited_preset().config, true);
+    auto resin = bundle.sla_materials.get_edited_preset().config;
+    resin.set_key_value("compatible_prints", new ConfigOptionStrings{});
+    resin.set_key_value("compatible_printers", new ConfigOptionStrings{});
+    resin.set("compatible_prints_condition", std::string("print_preset == \"Fine\""));
+    bundle.sla_materials.load_preset("", "Restricted resin", resin, true);
+    auto &material = bundle.sla_materials.get_edited_preset();
+    auto check = [&] { return evaluate_compatibility_with_print(PresetWithVendorProfile(material, nullptr),
+        bundle.sla_prints.get_edited_preset_with_vendor_profile(), bundle.printers.get_edited_preset_with_vendor_profile()); };
+    REQUIRE(check().compatible);
+    REQUIRE(check().error.empty());
+    auto &process = bundle.sla_prints.get_edited_preset();
+    process.is_external = true;
+    process.name = "Project-local label";
+    process.config.set("sla_print_settings_id", std::string("Fine"));
+    REQUIRE(check().compatible);
+    process.config.set("sla_print_settings_id", std::string("Other"));
+    REQUIRE_FALSE(check().compatible);
+    material.config.set("compatible_prints_condition", std::string("broken +"));
+    material.config.option<ConfigOptionStrings>("compatible_prints")->values = {"Other"};
+    REQUIRE(check().compatible); // Explicit list takes precedence over a dormant condition.
+    REQUIRE(check().error.empty());
+    material.config.option<ConfigOptionStrings>("compatible_prints")->values = {"Missing profile"};
+    REQUIRE_FALSE(check().compatible);
+    REQUIRE(check().error.empty());
+    material.config.option<ConfigOptionStrings>("compatible_prints")->values.clear();
+    material.config.set("exposure_time", 4.25);
+    bundle.sla_materials.update_dirty();
+    bundle.update_compatible(PresetSelectCompatibleType::Never);
+    REQUIRE(bundle.sla_materials.get_selected_preset_name() == "Restricted resin");
+    REQUIRE_FALSE(material.is_compatible);
+    REQUIRE(material.config.opt_float("exposure_time") == 4.25);
+    REQUIRE(bundle.sla_materials.current_is_dirty());
+}
+
+TEST_CASE("Legacy resolved configs retain explicit printer model metadata", "[sla_profiles][sla_legacy_preset_metadata]")
+{
+    DynamicPrintConfig configuration;configuration.apply(SLAFullPrintConfig{});
+    configuration.set_key_value("printer_settings_id",new ConfigOptionString("Legacy printer"));
+    configuration.set_key_value("printer_model",new ConfigOptionString("CL-60"));
+    configuration.set_key_value("printer_vendor",new ConfigOptionString("Offline vendor"));
+    configuration.set_key_value("printer_variant",new ConfigOptionString("LCD revision B"));
+    configuration.set_key_value("default_sla_print_profile",new ConfigOptionString("Legacy default process"));
+    configuration.set_key_value("inherits_cummulative",new ConfigOptionStrings({"Process base","Material base","Printer base"}));
+    configuration.set_key_value("printhost_apikey",new ConfigOptionString("test-placeholder"));
+    const auto settings=sla::capture_project_settings(configuration);
+    REQUIRE(settings.printer.metadata.has_value());
+    CHECK_FALSE(settings.material.metadata.has_value());CHECK_FALSE(settings.process.metadata.has_value());
+    const auto restored=sla::restore_project_settings(settings);
+    for(const auto *key:{"printer_model","printer_vendor","printer_variant","default_sla_print_profile"})
+        CHECK(restored.opt_serialize(key)==configuration.opt_serialize(key));
+    CHECK(settings.printer.metadata->at("inherits")=="Printer base");
+    CHECK_FALSE(restored.has("printhost_apikey"));
+    CHECK(sla::capture_project_settings(restored)==settings);
+}
+
+TEST_CASE("Import preserves changed SLA metadata when an installed preset has equal print values", "[sla_profiles][sla_installed_preset_metadata]")
+{
+    PresetBundle source,installed;
+    auto prepare=[&](PresetCollection &from,PresetCollection &to,const char *name) {
+        auto config=from.get_edited_preset().config;
+        config.set("inherits",std::string("Source base"));
+        if(from.type()==Preset::TYPE_PRINTER) {
+            config.set("printer_model",std::string("CL-60"));
+            config.set("default_sla_print_profile",std::string("Source default process"));
+        } else config.set_key_value("compatible_printers",new ConfigOptionStrings({"Source printer"}));
+        from.load_preset("",name,config,true);
+        auto old=config;old.set("inherits",std::string("Installed base"));
+        if(from.type()==Preset::TYPE_PRINTER) {
+            old.set("printer_model",std::string("CL-92"));
+            old.set("default_sla_print_profile",std::string("Installed default process"));
+        } else old.set_key_value("compatible_printers",new ConfigOptionStrings({"Other printer"}));
+        to.load_preset("",name,old,true);
+    };
+    prepare(source.printers,installed.printers,"Source printer");
+    prepare(source.sla_materials,installed.sla_materials,"Source material");
+    prepare(source.sla_prints,installed.sla_prints,"Source process");
+    const auto expected=sla::capture_project_settings(source.full_config());
+    installed.load_config_model("source.3mf",source.full_config());
+    CHECK(sla::capture_project_settings(installed.full_config())==expected);
+    for(const auto *role:std::vector<const PresetCollection*>{&installed.printers,&installed.sla_materials,&installed.sla_prints}) {
+        CHECK(role->current_is_dirty());
+        CHECK(role->get_selected_preset().config.opt_string("inherits")=="Installed base");
+        CHECK(role->get_edited_preset().config.opt_string("inherits")=="Source base");
+    }
+    CHECK(installed.printers.get_selected_preset().config.opt_string("printer_model")=="CL-92");
+    CHECK(installed.printers.get_edited_preset().config.opt_string("printer_model")=="CL-60");
+}
+
+TEST_CASE("A missing SLA child keeps its source identity when its base is installed", "[sla_profiles][sla_installed_preset_metadata]")
+{
+    PresetBundle source,installed;
+    auto prepare=[&](PresetCollection &from,PresetCollection &to,const char *base,const char *child) {
+        auto config=from.get_edited_preset().config;
+        to.load_preset("",base,config,true);
+        config.set("inherits",std::string(base));
+        from.load_preset("",child,config,true);
+    };
+    prepare(source.printers,installed.printers,"Printer base","Child printer");
+    prepare(source.sla_materials,installed.sla_materials,"Material base","Child material");
+    prepare(source.sla_prints,installed.sla_prints,"Process base","Child process");
+    const auto expected=sla::capture_project_settings(source.full_config());
+    installed.load_config_model("child.3mf",source.full_config());
+    CHECK(sla::capture_project_settings(installed.full_config())==expected);
+    for(const auto *role:std::vector<const PresetCollection*>{&installed.printers,&installed.sla_materials,&installed.sla_prints}) {
+        CHECK(role->get_edited_preset().is_external);
+        CHECK(role->get_selected_preset_parent()!=nullptr);
+    }
+    CHECK(installed.printers.find_preset("Printer base")->config.opt_string("inherits").empty());
+    CHECK(installed.sla_materials.find_preset("Material base")->config.opt_string("inherits").empty());
+    CHECK(installed.sla_prints.find_preset("Process base")->config.opt_string("inherits").empty());
+}
+
+TEST_CASE("Unnamed legacy SLA children retain a project context above installed bases", "[sla_profiles][sla_unnamed_preset_metadata]")
+{
+    PresetBundle source,installed;
+    auto prepare=[&](PresetCollection &from,PresetCollection &to,const char *base,const char *child) {
+        auto config=from.get_edited_preset().config;
+        to.load_preset("",base,config,true);
+        config.set("inherits",std::string(base));from.load_preset("",child,config,true);
+    };
+    prepare(source.printers,installed.printers,"Printer base","Child printer");
+    prepare(source.sla_materials,installed.sla_materials,"Material base","Child material");
+    prepare(source.sla_prints,installed.sla_prints,"Process base","Child process");
+    auto config=source.full_config();
+    for(const auto *key:{"printer_settings_id","sla_material_settings_id","sla_print_settings_id"})config.set(key,std::string());
+    installed.load_config_model("legacy.ini",config);
+    for(const auto *role:std::vector<const PresetCollection*>{&installed.printers,&installed.sla_materials,&installed.sla_prints}) {
+        CHECK(role->get_edited_preset().is_external);
+        CHECK(role->get_selected_preset_parent()!=nullptr);
+        CHECK(role->get_edited_preset().inherits()!=role->get_selected_preset_name());
+    }
+    const auto saved=installed.full_config();
+    REQUIRE_NOTHROW(sla::capture_project_settings(saved));
+    for(const auto *key:{"printer_settings_id","sla_material_settings_id","sla_print_settings_id"})CHECK_FALSE(saved.opt_string(key).empty());
+    PresetBundle restarted;restarted.load_config_model("saved.3mf",saved);
+    CHECK(sla::capture_project_settings(restarted.full_config())==sla::capture_project_settings(saved));
+}
+
+TEST_CASE("Invalid complete LCD geometry cannot publish a new physical bed",
+          "[sla_profiles][sla_geometry_validation]")
+{
+    // Runtime RED: the old synchronizer accepts bad pixels/Z/orientation and
+    // publishes changed dimensions. Rejection must preserve both user input
+    // and the last valid bed; a caller can then report the invalid field.
+    const auto key = GENERATE("display_width", "display_height", "max_print_height",
+                             "display_pixels_x", "display_pixels_y", "display_orientation");
+    const auto scenario = GENERATE(0, 1, 2, 3);
+    auto config = printer_config();
+    Preset::normalize(config);
+    const auto original_bed = config.option<ConfigOptionPoints>("bed_shape")->values;
+    config.set("display_width", 192.);
+    config.set("display_height", 120.);
+    if (std::string(key) == "display_pixels_x" || std::string(key) == "display_pixels_y") {
+        const int invalid[] = {0, -1, 32769, std::numeric_limits<int>::max()};
+        config.set(key, invalid[scenario]);
+    } else if (std::string(key) == "display_orientation") {
+        const int invalid[] = {-1, 2, 3, std::numeric_limits<int>::max()};
+        config.set_key_value(key, new ConfigOptionEnum<SLADisplayOrientation>(
+            static_cast<SLADisplayOrientation>(invalid[scenario])));
+    } else {
+        const double invalid[] = {0., -1., std::numeric_limits<double>::infinity(),
+                                  std::numeric_limits<double>::quiet_NaN()};
+        config.set(key, invalid[scenario]);
+    }
+    const bool integer_field = std::string(key) == "display_orientation" ||
+        std::string(key) == "display_pixels_x" || std::string(key) == "display_pixels_y";
+    // Invalid floats/enums must not be serialized merely to compare snapshots:
+    // serialization correctly rejects NaN/inf and unknown enum indices.
+    const int before_integer = integer_field ? config.option(key)->getInt() : 0;
+    const double before_float = integer_field ? 0. : config.option(key)->getFloat();
+    CAPTURE(key, scenario);
+    CHECK_FALSE(sla::synchronize_bed_shape(config));
+    CHECK(config.option<ConfigOptionPoints>("bed_shape")->values == original_bed);
+    if (integer_field)
+        CHECK(config.option(key)->getInt() == before_integer);
+    else if (std::isnan(before_float))
+        CHECK(std::isnan(config.option(key)->getFloat()));
+    else
+        CHECK(config.option(key)->getFloat() == before_float);
+}
+
+TEST_CASE("LCD raster and coordinate limits protect bed synchronization",
+          "[sla_profiles][sla_geometry_validation]")
+{
+    const auto scenario = GENERATE(0, 1, 2, 3);
+    auto config = printer_config();
+    Preset::normalize(config);
+    const auto original_bed = config.option<ConfigOptionPoints>("bed_shape")->values;
+    config.set("display_width", 192.);
+    if (scenario == 0) {
+        // Individual dimensions are legal, but total allocation exceeds the
+        // same 128 Mi-pixel budget used by create_printer_raster.
+        config.set("display_pixels_x", 32768);
+        config.set("display_pixels_y", 4097);
+    } else {
+        config.set(scenario == 1 ? "display_width" : scenario == 2 ?
+                   "display_height" : "max_print_height", 1e100);
+    }
+    CAPTURE(scenario);
+    CHECK_FALSE(sla::synchronize_bed_shape(config));
+    CHECK(config.option<ConfigOptionPoints>("bed_shape")->values == original_bed);
+}
+
+TEST_CASE("Legal anisotropic custom LCD retains physical axes in every orientation",
+          "[sla_profiles][sla_geometry_validation]")
+{
+    const auto orientation = GENERATE(sladoLandscape, sladoPortrait);
+    const auto mirror_x = GENERATE(false, true);
+    const auto mirror_y = GENERATE(false, true);
+    auto config = printer_config();
+    config.set("display_width", 192.);
+    config.set("display_height", 120.);
+    config.set("display_pixels_x", 3840);
+    config.set("display_pixels_y", 1600);
+    config.set("max_print_height", 245.);
+    config.set_key_value("display_orientation", new ConfigOptionEnum<SLADisplayOrientation>(orientation));
+    config.set("display_mirror_x", mirror_x);
+    config.set("display_mirror_y", mirror_y);
+    REQUIRE(sla::synchronize_bed_shape(config));
+    require_bed(config, 192., 120.);
+    REQUIRE(config.opt_int("display_pixels_x") == 3840);
+    REQUIRE(config.opt_int("display_pixels_y") == 1600);
+    REQUIRE(config.opt_float("max_print_height") == 245.);
+    REQUIRE(config.opt_enum<SLADisplayOrientation>("display_orientation") == orientation);
+    REQUIRE(config.opt_bool("display_mirror_x") == mirror_x);
+    REQUIRE(config.opt_bool("display_mirror_y") == mirror_y);
+    REQUIRE_FALSE(sla::synchronize_bed_shape(config));
+}
+
+TEST_CASE("Geometry validation supports small native fixtures and leaves partial roles alone",
+          "[sla_profiles][sla_geometry_validation]")
+{
+    auto config = printer_config();
+    config.set("display_width", 16.);
+    config.set("display_height", 4.);
+    config.set("display_pixels_x", 8);
+    config.set("display_pixels_y", 4);
+    REQUIRE(sla::printer_geometry_error(config).empty());
+    REQUIRE(sla::synchronize_bed_shape(config));
+    require_bed(config, 16., 4.);
+
+    DynamicPrintConfig partial;
+    partial.set_key_value("printer_technology", new ConfigOptionEnum<PrinterTechnology>(ptSLA));
+    partial.set_key_value("display_width", new ConfigOptionFloat(16.));
+    partial.set_key_value("display_height", new ConfigOptionFloat(4.));
+    REQUIRE_FALSE(sla::printer_geometry_error(partial).empty());
+    REQUIRE_FALSE(sla::synchronize_bed_shape(partial));
+    REQUIRE_FALSE(partial.has("bed_shape"));
 }

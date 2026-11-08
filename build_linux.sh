@@ -11,7 +11,7 @@ usage() {
   cat <<'EOF'
 Usage: ./build_linux.sh [--run] [--tests] [--jobs N] [--clean] [--deps]
 
-Builds PrusaSlicer statically with bundled deps on Linux.
+Builds the slicer engine with bundled deps and native OpenCV core/imgproc on Linux.
 Default behavior is optimized for incremental rebuild speed.
 
 Options:

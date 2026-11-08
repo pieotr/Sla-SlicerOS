@@ -122,3 +122,20 @@ its install prefix inside `deps/build/destdir/usr/local`. `TBB_STRICT=OFF` allow
 new compiler warnings in the older bundled TBB source without treating them as
 errors. Then rebuild the application and rerun the tests. Other compiler/ABI
 changes may require rebuilding all dependencies using `--clean --deps`.
+
+
+## Native ExposureFinder drawing dependency
+
+Building the app now also requires local OpenCV core/imgproc development files.
+The verified development version is OpenCV 5.0.0 on Linux. Set `OpenCV_DIR` if
+its CMake configuration is outside the standard search path. Configure/build
+must use locally prepared dependencies for an offline build. No UVtools/Emgu
+or .NET runtime is used by production calibration code.
+
+For Linux packaging, `tools/bundle_native_libraries.py` copies the app ELF's
+resolved native-library closure into a new project-local folder and records
+SHA256 provenance. It retains OpenCV's supplied notices. This component does
+not package resources/launcher or certify relocation, CPU/ABI compatibility,
+or the complete license inventory of every other native dependency. Those
+remain explicit release gates. Do not treat the library folder alone as a
+complete portable application.

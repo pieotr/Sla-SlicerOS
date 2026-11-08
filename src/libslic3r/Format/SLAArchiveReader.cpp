@@ -39,8 +39,6 @@ std::unique_ptr<SLAArchiveReader> SLAArchiveReader::create(
     const ArchiveEntry *match = nullptr;
     size_t longest_suffix = 0;
     for (const ArchiveEntry &entry : registered_sla_archives()) {
-        if (!entry.rdfactoryfn)
-            continue;
         for (const std::string &extension : get_extensions(entry)) {
             const std::string suffix = "." + boost::algorithm::to_lower_copy(extension);
             if (suffix.size() > longest_suffix && boost::algorithm::ends_with(filename, suffix)) {
@@ -49,7 +47,7 @@ std::unique_ptr<SLAArchiveReader> SLAArchiveReader::create(
             }
         }
     }
-    return match ? match->rdfactoryfn(fname, quality, progr) : nullptr;
+    return match && match->rdfactoryfn ? match->rdfactoryfn(fname, quality, progr) : nullptr;
 }
 
 struct SliceParams { double layerh = 0., initial_layerh = 0.; };

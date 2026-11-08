@@ -12,6 +12,7 @@
 #include "MainFrame.hpp"
 #include "LayerEditorDialog.hpp"
 #include "SlaRasterToolsDialog.hpp"
+#include "ExposureFinderDialog.hpp"
 
 #include <wx/panel.h>
 #include <wx/notebook.h>
@@ -147,9 +148,14 @@ MainFrame::MainFrame(const int font_point_size) :
 DPIFrame(NULL, wxID_ANY, "", wxDefaultPosition, wxDefaultSize, wxDEFAULT_FRAME_STYLE, "mainframe", font_point_size),
     m_printhost_queue_dlg(new PrintHostQueueDialog(this))
     , m_recent_projects(9)
+    , m_recent_layer_documents(9, wxWindow::NewControlId(9))
     , m_settings_dialog(this)
     , diff_dialog(this)
 {
+    // Keep the history command IDs distinct from 3D recent projects and scoped
+    // to this frame. wxWindowIDRef also releases the reserved IDs on teardown.
+    for (int i = 0; i < 9; ++i)
+        m_recent_layer_document_ids.emplace_back(m_recent_layer_documents.GetBaseId() + i);
     // Fonts were created by the DPIFrame constructor for the monitor, on which the window opened.
     wxGetApp().update_fonts(this);
 /*
@@ -261,6 +267,10 @@ DPIFrame(NULL, wxID_ANY, "", wxDefaultPosition, wxDefaultSize, wxDEFAULT_FRAME_S
             // check unsaved changes only if project wasn't saved
             else if (plater()->is_project_dirty() && saved_project == wxID_NO && event.CanVeto() &&
                      (plater()->is_presets_dirty() && !wxGetApp().check_and_save_current_preset_changes(_L("PrusaSlicer is closing"), _L("Closing PrusaSlicer while some presets are modified.")))) {
+                event.Veto();
+                return;
+            }
+            if (event.CanVeto() && !m_plater->can_close_sliced_workspace(saved_project == wxID_NO)) {
                 event.Veto();
                 return;
             }
@@ -1168,6 +1178,7 @@ bool MainFrame::can_start_new_project() const
 
 bool MainFrame::can_save() const
 {
+    if (m_plater && m_plater->has_active_layer_document()) return m_plater->can_use_sliced_editor();
     return (m_plater != nullptr) &&
         !m_plater->canvas3D()->get_gizmos_manager().is_in_editing_mode(false) &&
         m_plater->is_project_dirty();
@@ -1175,6 +1186,7 @@ bool MainFrame::can_save() const
 
 bool MainFrame::can_save_as() const
 {
+    if (m_plater && m_plater->has_active_layer_document()) return m_plater->can_use_sliced_editor();
     return (m_plater != nullptr) &&
         !m_plater->canvas3D()->get_gizmos_manager().is_in_editing_mode(false);
 }
@@ -1202,10 +1214,12 @@ bool MainFrame::can_export_model() const
     return (m_plater != nullptr) && !m_plater->model().objects.empty();
 }
 
+#ifndef SLIC3R_SLA_ONLY
 bool MainFrame::can_export_toolpaths() const
 {
     return false;
 }
+#endif
 
 bool MainFrame::can_export_supports() const
 {
@@ -1229,6 +1243,8 @@ bool MainFrame::can_export_gcode() const
 {
     if (m_plater == nullptr)
         return false;
+
+    if (m_plater->has_active_sliced_editor()) return m_plater->can_use_sliced_editor();
 
     if (m_plater->model().objects.empty())
         return false;
@@ -1537,39 +1553,47 @@ void MainFrame::init_menubar_as_editor()
     wxMenu* fileMenu = new wxMenu;
     {
         append_menu_item(fileMenu, wxID_ANY, _L("&New Project") + "\tCtrl+N", _L("Start a new project"),
-            [this](wxCommandEvent&) { if (m_plater) m_plater->new_project(); }, "", nullptr,
+            [this](wxCommandEvent&) { CallAfter([this] { if (m_plater) m_plater->new_project(); }); }, "", nullptr,
             [this](){return m_plater != nullptr && can_start_new_project(); }, this);
         append_menu_item(fileMenu, wxID_ANY, _L("&Open Project") + dots + "\tCtrl+O", _L("Open a project file"),
-            [this](wxCommandEvent&) { if (m_plater) m_plater->load_project(); }, "open", nullptr,
-            [this](){return m_plater != nullptr; }, this);
+            [this](wxCommandEvent&) { CallAfter([this] {
+                if (!m_plater) return;
+                if (m_plater->has_active_layer_document()) m_plater->open_layer_file();
+                else m_plater->load_project();
+            }); }, "open", nullptr,
+            [this](){return m_plater && (!m_plater->has_active_layer_document() || m_plater->can_use_sliced_editor()); }, this);
 
         wxMenu* recent_projects_menu = new wxMenu();
         wxMenuItem* recent_projects_submenu = append_submenu(fileMenu, recent_projects_menu, wxID_ANY, _L("Recent projects"), "");
         m_recent_projects.UseMenu(recent_projects_menu);
-        Bind(wxEVT_MENU, [this](wxCommandEvent& evt) {
-            size_t file_id = evt.GetId() - wxID_FILE1;
-            wxString filename = m_recent_projects.GetHistoryFile(file_id);
-            if (wxFileExists(filename)) {
-                if (wxGetApp().can_load_project())
-                    m_plater->load_project(filename);
-            }
-            else
-            {
-                //wxMessageDialog msg(this, _L("The selected project is no longer available.\nDo you want to remove it from the recent projects list?"), _L("Error"), wxYES_NO | wxYES_DEFAULT);
-                MessageDialog msg(this, _L("The selected project is no longer available.\nDo you want to remove it from the recent projects list?"), _L("Error"), wxYES_NO | wxYES_DEFAULT);
-                if (msg.ShowModal() == wxID_YES)
-                {
-                    m_recent_projects.RemoveFileFromHistory(file_id);
-                        std::vector<std::string> recent_projects;
-                        size_t count = m_recent_projects.GetCount();
-                        for (size_t i = 0; i < count; ++i)
-                        {
-                            recent_projects.push_back(into_u8(m_recent_projects.GetHistoryFile(i)));
-                        }
-                    wxGetApp().app_config->set_recent_projects(recent_projects);
+        Bind(wxEVT_MENU, [this](wxCommandEvent& event) {
+            const size_t index = size_t(event.GetId() - wxID_FILE1);
+            if (index >= m_recent_projects.GetCount()) return;
+            const wxString filename = m_recent_projects.GetHistoryFile(index);
+            // Snapshot the chosen path and leave GTK's native menu callback
+            // before any save/discard dialog or mutation of the recent list.
+            CallAfter([this, filename] {
+                if (wxFileExists(filename)) {
+                    if (m_plater && wxGetApp().can_load_project())
+                        m_plater->load_project(filename);
+                    return;
                 }
-            }
-            }, wxID_FILE1, wxID_FILE9);
+                MessageDialog message(this,
+                    _L("The selected project is no longer available.\nDo you want to remove it from the recent projects list?"),
+                    _L("Error"), wxYES_NO | wxYES_DEFAULT);
+                if (message.ShowModal() != wxID_YES) return;
+                // The list can change before the deferred action runs. Remove
+                // the chosen filename, not whatever now occupies its old slot.
+                for (size_t i = 0; i < m_recent_projects.GetCount(); ++i)
+                    if (m_recent_projects.GetHistoryFile(i) == filename) {
+                        m_recent_projects.RemoveFileFromHistory(i); break;
+                    }
+                std::vector<std::string> projects;
+                for (size_t i = 0; i < m_recent_projects.GetCount(); ++i)
+                    projects.push_back(into_u8(m_recent_projects.GetHistoryFile(i)));
+                wxGetApp().app_config->set_recent_projects(projects);
+            });
+        }, wxID_FILE1, wxID_FILE9);
 
         std::vector<std::string> recent_projects = wxGetApp().app_config->get_recent_projects();
         std::reverse(recent_projects.begin(), recent_projects.end());
@@ -1580,26 +1604,78 @@ void MainFrame::init_menubar_as_editor()
 
         Bind(wxEVT_UPDATE_UI, [this](wxUpdateUIEvent& evt) { evt.Enable(m_recent_projects.GetCount() > 0); }, recent_projects_submenu->GetId());
 
+        auto *recent_layers_menu = new wxMenu();
+        auto *recent_layers_item = append_submenu(fileMenu, recent_layers_menu, wxID_ANY,
+            _L("Recent layer documents"), "");
+        m_recent_layer_documents.UseMenu(recent_layers_menu);
+        std::vector<std::string> recent_layers;
+        if (wxGetApp().app_config->has_section("recent_layer_documents")) {
+            for (const auto &[key, value] : wxGetApp().app_config->get_section("recent_layer_documents")) {
+                std::vector<std::string> decoded;
+                if (unescape_strings_cstyle(value, decoded) && decoded.size() == 1 && !decoded.front().empty())
+                    recent_layers.push_back(decoded.front());
+            }
+        }
+        // wxFileHistory prepends; storage is newest first.
+        for (auto it = recent_layers.rbegin(); it != recent_layers.rend(); ++it)
+            m_recent_layer_documents.AddFileToHistory(from_u8(*it));
+        const auto layer_history_base = m_recent_layer_documents.GetBaseId();
+        Bind(wxEVT_MENU, [this, layer_history_base](wxCommandEvent &event) {
+            const size_t index = size_t(event.GetId() - layer_history_base);
+            if (index >= m_recent_layer_documents.GetCount()) return;
+            const auto path = m_recent_layer_documents.GetHistoryFile(index);
+            // Finish GTK's menu action before prompting or changing its items.
+            CallAfter([this, path] {
+                if (!wxFileExists(path)) {
+                    wxMessageBox("Layer document is no longer available:\n" + path,
+                        "Missing layer document", wxOK | wxICON_INFORMATION, this);
+                    for (size_t i = 0; i < m_recent_layer_documents.GetCount(); ++i)
+                        if (m_recent_layer_documents.GetHistoryFile(i) == path) {
+                            m_recent_layer_documents.RemoveFileFromHistory(i); break;
+                        }
+                    persist_recent_layer_documents();
+                    return;
+                }
+                if (m_plater) m_plater->open_layer_file(into_u8(path));
+            });
+        }, layer_history_base, layer_history_base + 8);
+        Bind(wxEVT_UPDATE_UI, [this](wxUpdateUIEvent &event) {
+            event.Enable(m_plater && m_recent_layer_documents.GetCount() > 0 &&
+                (!m_plater->has_active_sliced_editor() || m_plater->can_use_sliced_editor()));
+        }, recent_layers_item->GetId());
+
         append_menu_item(fileMenu, wxID_ANY, _L("&Save Project") + "\tCtrl+S", _L("Save current project file"),
-            [this](wxCommandEvent&) { CallAfter([this] { save_project(); }); }, "save", nullptr,
+            [this](wxCommandEvent&) { CallAfter([this] {
+                if (m_plater && m_plater->has_active_layer_document()) m_plater->save_layer_document(false);
+                else save_project();
+            }); }, "save", nullptr,
             [this](){return m_plater != nullptr && can_save(); }, this);
 #ifdef __APPLE__
         append_menu_item(fileMenu, wxID_ANY, _L("Save Project &as") + dots + "\tCtrl+Shift+S", _L("Save current project file as"),
 #else
         append_menu_item(fileMenu, wxID_ANY, _L("Save Project &as") + dots + "\tCtrl+Alt+S", _L("Save current project file as"),
 #endif // __APPLE__
-            [this](wxCommandEvent&) { CallAfter([this] { save_project_as(); }); }, "save", nullptr,
+            [this](wxCommandEvent&) { CallAfter([this] {
+                if (m_plater && m_plater->has_active_layer_document()) m_plater->save_layer_document(true);
+                else save_project_as();
+            }); }, "save", nullptr,
             [this](){return m_plater != nullptr && can_save_as(); }, this);
 
         fileMenu->AppendSeparator();
 
         wxMenu* import_menu = new wxMenu();
         append_menu_item(import_menu, wxID_ANY, _L("Import STL/3MF/STEP/OBJ/AM&F") + dots + "\tCtrl+I", _L("Load a model"),
-            [this](wxCommandEvent&) { if (m_plater) m_plater->add_model(); }, "import_plater", nullptr,
+            [this](wxCommandEvent&) {
+                // Return from GTK/accessibility menu dispatch before opening a modal chooser.
+                CallAfter([this] { if (m_plater) m_plater->add_model(); });
+            }, "import_plater", nullptr,
             [this](){return m_plater != nullptr; }, this);
         
         append_menu_item(import_menu, wxID_ANY, _L("Import STL (Imperial Units)"), _L("Load an model saved with imperial units"),
-            [this](wxCommandEvent&) { if (m_plater) m_plater->add_model(true); }, "import_plater", nullptr,
+            [this](wxCommandEvent&) {
+                // Return from GTK/accessibility menu dispatch before opening a modal chooser.
+                CallAfter([this] { if (m_plater) m_plater->add_model(true); });
+            }, "import_plater", nullptr,
             [this](){return m_plater != nullptr; }, this);
         
         append_menu_item(import_menu, wxID_ANY, _L("Import SLA Archive") + dots, _L("Load an SLA archive"),
@@ -1629,7 +1705,16 @@ void MainFrame::init_menubar_as_editor()
 #else
         wxMenuItem* item_export_gcode = append_menu_item(export_menu, wxID_ANY, _L("Export &G-code") + dots + "\tCtrl+G", _L("Export current plate as G-code"),
 #endif
-            [this](wxCommandEvent&) { if (m_plater) m_plater->export_gcode(false); }, "export_gcode", nullptr,
+            [this](wxCommandEvent&) {
+                // Finish the native menu/accessibility action before opening
+                // GTK's modal file chooser. Reentering it here can strand the
+                // accessibility connection while the chooser is visible.
+                CallAfter([this] {
+                    if (!m_plater) return;
+                    if (m_plater->has_active_sliced_editor()) m_plater->export_sliced_document();
+                    else m_plater->export_gcode(false);
+                });
+            }, "export_gcode", nullptr,
             [this](){return can_export_gcode(); }, this);
         m_changeable_menu_items.push_back(item_export_gcode);
 #ifndef SLIC3R_OFFLINE_ONLY
@@ -1701,7 +1786,7 @@ void MainFrame::init_menubar_as_editor()
         #else
             append_menu_item(fileMenu, wxID_EXIT, _L("&Quit"), wxString::Format(_L("Quit %s"), SLIC3R_APP_NAME),
         #endif
-            [this](wxCommandEvent&) { Close(false); }, "exit");
+            [this](wxCommandEvent&) { CallAfter([this] { Close(false); }); }, "exit");
     }
 
     // Edit menu
@@ -1805,13 +1890,15 @@ void MainFrame::init_menubar_as_editor()
         append_menu_item(windowMenu, wxID_ANY, _L("Edit sliced layers") + "\tCtrl+Alt+L", _L("Edit pixels in the current sliced result"),
             [this](wxCommandEvent &) { m_plater->edit_sliced_layers(); }, "", nullptr,
             [this]() { return m_plater->printer_technology() == ptSLA && m_plater->active_sla_print().finished(); }, this);
-        append_menu_item(windowMenu, wxID_ANY, _L("Open layer archive") + "\tCtrl+Shift+L", _L("Edit pixels in a supported SLA archive or PNG"),
-            [this](wxCommandEvent &) { CallAfter([this] { show_layer_editor(this); }); });
+        append_menu_item(windowMenu, wxID_ANY, _L("Open layer archive") + "\tCtrl+Shift+L", _L("Edit pixels in a supported SLA archive or layer image"),
+            [this](wxCommandEvent &) { CallAfter([this] { if (m_plater) m_plater->open_layer_file(); }); });
 
         append_menu_item(windowMenu, wxID_ANY, _L("PCB exposure"), _L("Generate exposure layers from Gerber and Excellon files"),
             [this](wxCommandEvent &) { CallAfter([this] { show_pcb_exposure(this); }); });
         append_menu_item(windowMenu, wxID_ANY, _L("Printer calibration"), _L("Generate XYZ, grayscale and lift-area calibration layers"),
             [this](wxCommandEvent &) { CallAfter([this] { show_calibration_generator(this); }); });
+        append_menu_item(windowMenu, wxID_ANY, _L("ExposureFinder calibration"), _L("Configure an exposure test table, pattern and LCD layout"),
+            [this](wxCommandEvent &) { CallAfter([this] { show_exposure_finder(this); }); });
 
         append_menu_item(windowMenu, wxID_ANY, _L("Shape Gallery"), _L("Open the dialog to modify shape gallery"),
             [this](wxCommandEvent&) {
@@ -1852,7 +1939,8 @@ void MainFrame::init_menubar_as_editor()
             [this]() { return m_plater->is_preview_shown(); }, [this]() { return m_plater->is_legend_shown(); }, this);
         append_menu_check_item(viewMenu, wxID_ANY, _L("&Collapse Sidebar") + sep + "Shift+" + sep_space + "Tab", _L("Collapse sidebar"),
             [this](wxCommandEvent&) { m_plater->collapse_sidebar(!m_plater->is_sidebar_collapsed()); }, this,
-            []() { return true; }, [this]() { return m_plater->is_sidebar_collapsed(); }, this);
+            [this]() { return m_plater->is_view3D_shown() || m_plater->is_preview_shown(); },
+            [this]() { return m_plater->is_sidebar_collapsed(); }, this);
 #ifndef __APPLE__
         // OSX adds its own menu item to toggle fullscreen.
         append_menu_check_item(viewMenu, wxID_ANY, _L("&Fullscreen") + "\t" + "F11", _L("Fullscreen"),
@@ -1967,9 +2055,11 @@ void MainFrame::init_menubar_as_gcodeviewer()
             [this](wxCommandEvent&) { if (m_plater != nullptr) m_plater->convert_gcode_to_ascii(); }, "convert_file", nullptr,
             []() { return true; }, this);
         fileMenu->AppendSeparator();
+#ifndef SLIC3R_SLA_ONLY
         append_menu_item(fileMenu, wxID_ANY, _L("Export &Toolpaths as OBJ") + dots, _L("Export toolpaths as OBJ"),
             [this](wxCommandEvent&) { if (m_plater != nullptr) m_plater->export_toolpaths_to_obj(); }, "export_plater", nullptr,
             [this]() {return can_export_toolpaths(); }, this);
+#endif
         append_menu_item(fileMenu, wxID_ANY, _L("Open &PrusaSlicer") + dots, _L("Open PrusaSlicer"),
             [](wxCommandEvent&) { start_new_slicer(); }, "", nullptr,
             []() { return true; }, this);
@@ -2442,6 +2532,22 @@ void MainFrame::add_to_recent_projects(const wxString& filename)
         }
         wxGetApp().app_config->set_recent_projects(recent_projects);
     }
+}
+
+void MainFrame::persist_recent_layer_documents()
+{
+    std::map<std::string, std::string> values;
+    for (size_t i = 0; i < m_recent_layer_documents.GetCount(); ++i)
+        values[std::to_string(i + 1)] = escape_strings_cstyle({into_u8(m_recent_layer_documents.GetHistoryFile(i))});
+    wxGetApp().app_config->set_section("recent_layer_documents", std::move(values));
+}
+
+void MainFrame::remember_layer_document(const std::string &path)
+{
+    const auto filename = from_u8(path);
+    if (!wxFileExists(filename)) return;
+    m_recent_layer_documents.AddFileToHistory(filename);
+    persist_recent_layer_documents();
 }
 
 void MainFrame::technology_changed()

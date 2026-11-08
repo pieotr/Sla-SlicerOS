@@ -404,7 +404,7 @@ public:
     const wxRect& get_rect() const { return rect; }
     bool get_maximized() const { return maximized; }
 
-    void sanitize_for_display(const wxRect &screen_rect);
+    void sanitize_for_display(const wxRect &screen_rect, const wxSize &minimum_size);
     std::string serialize() const;
 };
 

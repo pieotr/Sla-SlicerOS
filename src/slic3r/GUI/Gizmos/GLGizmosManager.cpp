@@ -55,7 +55,7 @@ std::vector<size_t> GLGizmosManager::get_selectable_idxs() const
     std::vector<size_t> out;
     out.reserve(m_gizmos.size());
     for (size_t i=0; i<m_gizmos.size(); ++i)
-        if (m_gizmos[i]->is_selectable())
+        if (m_gizmos[i] && m_gizmos[i]->is_selectable())
             out.push_back(i);
     return out;
 }
@@ -101,23 +101,27 @@ bool GLGizmosManager::init()
             return false;
     }
 
-    // Order of gizmos in the vector must match order in EType!
-    m_gizmos.emplace_back(new GLGizmoMove3D(m_parent, "move.svg", 0));
-    m_gizmos.emplace_back(new GLGizmoScale3D(m_parent, "scale.svg", 1));
-    m_gizmos.emplace_back(new GLGizmoRotate3D(m_parent, "rotate.svg", 2));
-    m_gizmos.emplace_back(new GLGizmoFlatten(m_parent, "place.svg", 3));
-    m_gizmos.emplace_back(new GLGizmoCut3D(m_parent, "cut.svg", 4));
-    m_gizmos.emplace_back(new GLGizmoHollow(m_parent, "hollow.svg", 5));
-    m_gizmos.emplace_back(new GLGizmoSlaSupports(m_parent, "sla_supports.svg", 6));
-    m_gizmos.emplace_back(new GLGizmoMmuSegmentation(m_parent, "mmu_segmentation.svg", 10));
-    m_gizmos.emplace_back(new GLGizmoMeasure(m_parent, "measure.svg", 11));
-    m_gizmos.emplace_back(new GLGizmoEmboss(m_parent));
-    m_gizmos.emplace_back(new GLGizmoSVG(m_parent));
-    m_gizmos.emplace_back(new GLGizmoSimplify(m_parent));
+    // Index by stable EType rather than insertion order. FFF-only slots stay empty.
+    m_gizmos.clear();
+    m_gizmos.resize(Undefined);
+    m_gizmos[Move].reset(new GLGizmoMove3D(m_parent, "move.svg", 0));
+    m_gizmos[Scale].reset(new GLGizmoScale3D(m_parent, "scale.svg", 1));
+    m_gizmos[Rotate].reset(new GLGizmoRotate3D(m_parent, "rotate.svg", 2));
+    m_gizmos[Flatten].reset(new GLGizmoFlatten(m_parent, "place.svg", 3));
+    m_gizmos[Cut].reset(new GLGizmoCut3D(m_parent, "cut.svg", 4));
+    m_gizmos[Hollow].reset(new GLGizmoHollow(m_parent, "hollow.svg", 5));
+    m_gizmos[SlaSupports].reset(new GLGizmoSlaSupports(m_parent, "sla_supports.svg", 6));
+    m_gizmos[MmSegmentation].reset(new GLGizmoMmuSegmentation(m_parent, "mmu_segmentation.svg", 10));
+    m_gizmos[Measure].reset(new GLGizmoMeasure(m_parent, "measure.svg", 11));
+    m_gizmos[Emboss].reset(new GLGizmoEmboss(m_parent));
+    m_gizmos[Svg].reset(new GLGizmoSVG(m_parent));
+    m_gizmos[Simplify].reset(new GLGizmoSimplify(m_parent));
 
     m_common_gizmos_data.reset(new CommonGizmosDataPool(&m_parent));
 
     for (auto& gizmo : m_gizmos) {
+        if (!gizmo)
+            continue;
         if (! gizmo->init()) {
             m_gizmos.clear();
             return false;
@@ -185,12 +189,14 @@ void GLGizmosManager::reset_all_states()
 
 bool GLGizmosManager::open_gizmo(EType type)
 {
-    int idx = static_cast<int>(type);
+    GLGizmoBase *gizmo = get_gizmo(type);
+    if (gizmo == nullptr)
+        return false;
 
     // re-open same type cause closing
     if (m_current == type) type = Undefined;
 
-    if (m_gizmos[idx]->is_activable() && activate_gizmo(type)) {
+    if (gizmo->is_activable() && activate_gizmo(type)) {
         // remove update data into gizmo itself
         update_data();
         return true;
@@ -247,8 +253,8 @@ bool GLGizmosManager::handle_shortcut(int key)
 
     auto is_key = [pressed_key = key](int gizmo_key) { return (gizmo_key == pressed_key - 64) || (gizmo_key == pressed_key - 96); };
     // allowe open shortcut even when selection is empty    
-    if (GLGizmoBase* gizmo_emboss = m_gizmos[Emboss].get();
-        is_key(gizmo_emboss->get_shortcut_key())) {
+    if (GLGizmoBase* gizmo_emboss = get_gizmo(Emboss);
+        gizmo_emboss && is_key(gizmo_emboss->get_shortcut_key())) {
         dynamic_cast<GLGizmoEmboss *>(gizmo_emboss)->on_shortcut_key();
         return true;
     }
@@ -257,7 +263,7 @@ bool GLGizmosManager::handle_shortcut(int key)
         return false;
 
     auto is_gizmo = [is_key](const std::unique_ptr<GLGizmoBase> &gizmo) {
-        return gizmo->is_activable() && is_key(gizmo->get_shortcut_key());
+        return gizmo && gizmo->is_activable() && is_key(gizmo->get_shortcut_key());
     };
     auto it = std::find_if(m_gizmos.begin(), m_gizmos.end(), is_gizmo);
 
@@ -822,11 +828,11 @@ void GLGizmosManager::do_render_overlay() const
     const int tex_width  = m_icons_texture.get_width();
     const int tex_height = m_icons_texture.get_height();
 
-    if (icons_texture_id == 0 || tex_width <= 1 || tex_height <= 1)
+    if (icons_texture_id == 0 || tex_width <= 1 || tex_height <= 1 || m_icon_row_count == 0)
         return;
 
     const float du = (float)(tex_width - 1) / (6.0f * (float)tex_width); // 6 is the number of possible states if the icons
-    const float dv = (float)(tex_height - 1) / (float)(m_gizmos.size() * tex_height);
+    const float dv = (float)(tex_height - 1) / (float)(m_icon_row_count * tex_height);
 
     // tiles in the texture are spaced by 1 pixel
     const float u_offset = 1.0f / (float)tex_width;
@@ -839,7 +845,9 @@ void GLGizmosManager::do_render_overlay() const
         if (m_current == idx)
             render_background(top_x - margin_w, top_y + border_h, top_x + icons_size_x + margin_w, top_y - icons_size_y - border_h, border_w, border_h);
 
-        const unsigned int sprite_id = gizmo->get_sprite_id();
+        const size_t sprite_id = m_icon_rows[idx];
+        if (sprite_id == size_t(-1))
+            continue;
         // higlighted state needs to be decided first so its highlighting in every other state
         const int icon_idx = (m_highlight.first == idx ? (m_highlight.second ? 4 : 5) : (m_current == idx) ? /*2*/1 : ((m_hover == idx) ? 1 : (gizmo->is_activable() ? 0 : 3)));
 
@@ -873,12 +881,13 @@ float GLGizmosManager::get_scaled_total_width() const
 
 GLGizmoBase* GLGizmosManager::get_current() const
 {
-    return ((m_current == Undefined) || m_gizmos.empty()) ? nullptr : m_gizmos[m_current].get();
+    return get_gizmo(m_current);
 }
 
 GLGizmoBase* GLGizmosManager::get_gizmo(GLGizmosManager::EType type) const
 {
-    return ((type == Undefined) || m_gizmos.empty()) ? nullptr : m_gizmos[type].get();
+    const size_t index = static_cast<size_t>(type);
+    return index < m_gizmos.size() ? m_gizmos[index].get() : nullptr;
 }
 
 GLGizmosManager::EType GLGizmosManager::get_gizmo_from_name(const std::string& gizmo_name) const
@@ -898,14 +907,17 @@ bool GLGizmosManager::generate_icons_texture()
 {
     std::string path = resources_dir() + "/icons/";
     std::vector<std::string> filenames;
+    m_icon_rows.fill(size_t(-1));
     for (size_t idx=0; idx<m_gizmos.size(); ++idx)
     {
         auto &gizmo = m_gizmos[idx];
         if (gizmo != nullptr)
         {
             const std::string& icon_filename = gizmo->get_icon_filename();
-            if (!icon_filename.empty())
+            if (!icon_filename.empty()) {
+                m_icon_rows[idx] = filenames.size();
                 filenames.push_back(path + icon_filename);
+            }
         }
     }
 
@@ -922,6 +934,7 @@ bool GLGizmosManager::generate_icons_texture()
 //    if (sprite_size_px % 2 != 0)
 //        sprite_size_px += 1;
 
+    m_icon_row_count = filenames.size();
     bool res = m_icons_texture.load_from_svg_files_as_sprites_array(filenames, states, sprite_size_px, false);
     if (res)
         m_icons_texture_dirty = false;
@@ -932,7 +945,7 @@ bool GLGizmosManager::generate_icons_texture()
 void GLGizmosManager::update_hover_state(const EType &type)
 {
     assert(m_enabled);
-    if (type == Undefined) { 
+    if (get_gizmo(type) == nullptr) {
         m_hover = Undefined;
         m_tooltip.clear();
         return;
@@ -949,7 +962,8 @@ void GLGizmosManager::update_hover_state(const EType &type)
 // gizmo vetoed its deactivation.
 bool GLGizmosManager::activate_gizmo(EType type)
 {
-    assert(!m_gizmos.empty());
+    if (type != Undefined && get_gizmo(type) == nullptr)
+        return false;
 
     // already activated
     if (m_current == type) return true;

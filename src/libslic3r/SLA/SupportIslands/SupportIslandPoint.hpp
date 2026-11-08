@@ -48,6 +48,11 @@ public:
     /// </summary>
     virtual ~SupportIslandPoint() = default;
 
+    // Preserve both the contact position and movement constraints when an
+    // alignment step is rolled back. Graph/configuration owners outlive it.
+    virtual std::unique_ptr<SupportIslandPoint> clone() const
+    { return std::make_unique<SupportIslandPoint>(*this); }
+
     /// <summary>
     /// static function to decide if type is possible to move or not
     /// </summary>
@@ -90,6 +95,9 @@ public:
     //constructor
     using SupportIslandPoint::SupportIslandPoint;
 
+    std::unique_ptr<SupportIslandPoint> clone() const override
+    { return std::make_unique<SupportIslandNoMovePoint>(*this); }
+
     /// <summary>
     /// Can move?
     /// </summary>
@@ -123,6 +131,9 @@ public:
     SupportCenterIslandPoint(VoronoiGraph::Position position,
                              const SampleConfig *configuration,
                              Type                   type = Type::thin_part);
+
+    std::unique_ptr<SupportIslandPoint> clone() const override
+    { return std::make_unique<SupportCenterIslandPoint>(*this); }
     
     bool can_move() const override{ return true; }
     coord_t move(const Point &destination) override;
@@ -161,6 +172,9 @@ public:
     SupportOutlineIslandPoint(Position                     position,
                               std::shared_ptr<Restriction> restriction,
                               Type type = Type::thick_part_outline);
+
+    std::unique_ptr<SupportIslandPoint> clone() const override
+    { return std::make_unique<SupportOutlineIslandPoint>(*this); }
     // return true
     bool can_move() const override;
 
@@ -294,6 +308,9 @@ public:
     SupportIslandInnerPoint(Point     point,
                             std::shared_ptr<ExPolygons> inner,
                             Type      type = Type::thick_part_inner);
+
+    std::unique_ptr<SupportIslandPoint> clone() const override
+    { return std::make_unique<SupportIslandInnerPoint>(*this); }
     
     bool can_move() const override { return true; };
 

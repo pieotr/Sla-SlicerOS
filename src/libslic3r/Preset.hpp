@@ -260,6 +260,16 @@ protected:
     friend class        PresetBundle;
 };
 
+// Keep a malformed rule distinct from a valid rule that simply does not match.
+// Both are incompatible; the GUI can explain the former without duplicating
+// expression parsing or changing the user's saved rule.
+struct PresetCompatibilityResult {
+    bool compatible;
+    std::string error;
+};
+PresetCompatibilityResult evaluate_compatibility_with_print(const PresetWithVendorProfile &preset, const PresetWithVendorProfile &active_print, const PresetWithVendorProfile &active_printer);
+PresetCompatibilityResult evaluate_compatibility_with_printer(const PresetWithVendorProfile &preset, const PresetWithVendorProfile &active_printer, const DynamicPrintConfig *extra_config);
+PresetCompatibilityResult evaluate_compatibility_with_printer(const PresetWithVendorProfile &preset, const PresetWithVendorProfile &active_printer);
 bool is_compatible_with_print  (const PresetWithVendorProfile &preset, const PresetWithVendorProfile &active_print, const PresetWithVendorProfile &active_printer);
 bool is_compatible_with_printer(const PresetWithVendorProfile &preset, const PresetWithVendorProfile &active_printer, const DynamicPrintConfig *extra_config);
 bool is_compatible_with_printer(const PresetWithVendorProfile &preset, const PresetWithVendorProfile &active_printer);
@@ -376,6 +386,11 @@ public:
     // return true, if new preset is stored
     bool            save_current_preset(const std::string &new_name, bool detach = false);
 
+    // Rename a saved user preset without saving or discarding its edited draft.
+    // I/O/name failures leave the collection and selection unchanged; throws.
+    // Returns false when the name is unchanged. Does not rewrite dependent profiles.
+    bool            rename_current_preset(const std::string &new_name);
+
     // Find the preset with a new_name or create a new one,
     // initialize it with the initial_preset config.
     Preset&         get_preset_with_name(const std::string& new_name, const Preset* initial_preset);
@@ -399,6 +414,8 @@ public:
     size_t          get_selected_idx()    const { return m_idx_selected; }
     // Returns the name of the selected preset, or an empty string if no preset is selected.
     std::string     get_selected_preset_name() const { return (m_idx_selected == size_t(-1)) ? std::string() : this->get_selected_preset().name; }
+    // Source ID of an imported SLA preset; library presets keep their selected name.
+    std::string     get_selected_preset_source_name(const char *settings_id) const;
     // For the current edited preset, return the parent preset if there is one.
     // If there is no parent preset, nullptr is returned.
     // The parent preset may be a system preset or a user preset, which will be

@@ -10,12 +10,35 @@
 #include <cstring>
 #include <chrono>
 #include <iomanip>
+#include <numeric>
 #include <cstdlib>
 #include <nlohmann/json.hpp>
 #include <miniz.h>
+#include "sla_archive_test_config.hpp"
+#include "libslic3r/Preset.hpp"
 
 #include "libslic3r/Format/SLAArchiveFormatRegistry.hpp"
 #include "libslic3r/Format/SL1.hpp"
+#include "libslic3r/Format/ZCodeRSA.hpp"
+#include "libslic3r/Format/NanoDLPEncoder.hpp"
+#include "libslic3r/Format/NanoDLPPacket.hpp"
+#include "libslic3r/Format/NanoDLPContourStats.hpp"
+#include "libslic3r/Format/NanoDLPSchema.hpp"
+#include "libslic3r/Format/NanoDLPArchive.hpp"
+#include "libslic3r/Format/ZCodeArchive.hpp"
+#include <tbb/task_arena.h>
+#include "libslic3r/Format/ChituboxArchive.hpp"
+#include "libslic3r/Format/PhrozenArchive.hpp"
+#include "libslic3r/Format/FDGArchive.hpp"
+#include "libslic3r/Format/FlashforgeArchive.hpp"
+#include "libslic3r/Format/SVGXContourPacket.hpp"
+#include "libslic3r/Format/SVGXFile.hpp"
+#include "libslic3r/Format/CTBEncryptedCrypto.hpp"
+#include "libslic3r/Format/CTBEncryptedArchive.hpp"
+#include "libslic3r/Format/ChituboxRasterEncoder.hpp"
+#include "libslic3r/Format/LongerOrangeArchive.hpp"
+#include "libslic3r/Format/MakerbaseArchive.hpp"
+#include "libslic3r/Format/Emake3DArchive.hpp"
 #include "libslic3r/Format/AnetArchive.hpp"
 #include "libslic3r/Format/UVToolsCompatArchive.hpp"
 #include "libslic3r/Format/OpenStandardsArchive.hpp"
@@ -30,15 +53,19 @@
 #include "libslic3r/Zipper.hpp"
 #include "libslic3r/SLAPrint.hpp"
 #include "libslic3r/SLA/LayerDocument.hpp"
+#include "libslic3r/SLA/PrintParameters.hpp"
 
 using namespace Slic3r;
 
 TEST_CASE("Explicit layer export uses destination despite a legacy source format label", "[sla_reference][sla_export_destination]") {
-    const std::string source_format = GENERATE("SL1 archive (.sl1)", "Creality CXDLPv4 (.cxdlpv4)", "cbddlp");
+    const std::string source_format = GENERATE("SL1 archive (.sl1)", "Creality CXDLPv4 (.cxdlpv4)", "cbddlp", "ctb_encrypted");
     const std::string destination = GENERATE("SL1", "cxdlpv4");
     CAPTURE(source_format, destination);
     SLAFullPrintConfig full;
     full.printer_technology.setInt(ptSLA);
+    // CXDLP requires an explicit device identifier. This small raster tests
+    // software routing only; it is not a certified physical CL-60 profile.
+    full.set("printer_model",std::string("CL-60"));
     full.set("sla_archive_format", source_format);
     full.set("display_width", 4.); full.set("display_height", 3.);
     full.set("display_pixels_x", 8); full.set("display_pixels_y", 6);
@@ -197,12 +224,13 @@ TEST_CASE("Raster reuse draws only representatives and validates copy dependenci
 }
 
 TEST_CASE("Anycubic PWS and PW0 masks use their own RLE and versioned table addresses", "[sla_reference][sla_anycubic_binary]") {
-    const std::string format = GENERATE("pws", "pw0", "pwmb", "dl2p", "pwc");
+    const std::string format = GENERATE("pws", "pw0", "pwmb", "dl2p", "pwc", "pm5", "pm3n", "px6s", "pm5s", "m5sp");
     const bool portrait = GENERATE(false, true);
     CAPTURE(format, portrait);
     DynamicPrintConfig config; config.apply(SLAFullPrintConfig{});
     config.option("printer_technology")->setInt(ptSLA); config.set("sla_archive_format", format);
-    const auto *legacy = anycubic_legacy_geometry(format);
+    const bool machine_table = format == "pwc" || format == "dl2p" || format == "pm5" || format == "pm3n" || format == "px6s" || format == "pm5s" || format == "m5sp";
+    const auto *legacy = machine_table ? nullptr : anycubic_legacy_geometry(format);
     const double width = legacy ? legacy->width : 9., height = legacy ? legacy->height : 2.;
     config.set("display_width", legacy && portrait ? height : width);
     config.set("display_height", legacy && portrait ? width : height);
@@ -212,6 +240,10 @@ TEST_CASE("Anycubic PWS and PW0 masks use their own RLE and versioned table addr
     config.set("display_mirror_x", false); config.set("display_mirror_y", false);
     config.set("layer_height", .05); config.set("initial_layer_height", .1);
     config.set("sla_bottom_layers", 1); config.set("sla_transition_layers", 1);
+    config.set("sla_lift_speed", 90.); config.set("sla_bottom_lift_speed", 60.);
+    config.set("sla_retract_speed", 150.); config.set("sla_bottom_retract_speed", 150.);
+    config.set("sla_retract_speed2", 210.); config.set("sla_bottom_retract_speed2", 270.);
+    config.set("sla_wait_before_cure", 1.5); config.set("sla_bottom_wait_before_cure", 1.5);
     config.set("material_density", 1.2); config.set("bottle_volume", 1000.); config.set("bottle_cost", 60.);
     const std::vector<uint8_t> pixels{0,1,15,16,127,128,254,255,85,170,255,0};
     const auto mask = sla::PNGRasterEncoder{}(pixels.data(), portrait ? 2 : 6, portrait ? 6 : 2, 1);
@@ -237,8 +269,8 @@ TEST_CASE("Anycubic PWS and PW0 masks use their own RLE and versioned table addr
     const std::vector<uint8_t> bytes{std::istreambuf_iterator<char>(input),{}};
     auto le = [&](size_t p) { REQUIRE(p+4<=bytes.size()); return uint32_t(bytes[p])|(uint32_t(bytes[p+1])<<8)|(uint32_t(bytes[p+2])<<16)|(uint32_t(bytes[p+3])<<24); };
     auto f32 = [&](size_t p) { const auto bits=le(p);float value;std::memcpy(&value,&bits,4);return value; };
-    const uint32_t version=format=="dl2p"?517:format=="pwc"?516:format=="pwmb"?515:1;
-    REQUIRE(le(12)==version); REQUIRE(le(20)==(version>=517?56:version>=516?52:48));
+    const uint32_t version=(format=="pm5s" || format=="m5sp")?518:(format=="dl2p" || format=="pm5" || format=="pm3n" || format=="px6s")?517:format=="pwc"?516:format=="pwmb"?515:1;
+    REQUIRE(le(12)==version); REQUIRE(le(20)==(version>=518?64:version>=517?56:version>=516?52:48));
     const auto header=le(20), table=le(36);
     const auto preview=le(28);
     REQUIRE(le(preview+16)==224); REQUIRE(le(preview+24)==168);
@@ -248,14 +280,14 @@ TEST_CASE("Anycubic PWS and PW0 masks use their own RLE and versioned table addr
         return uint16_t(bytes[offset])|(uint16_t(bytes[offset+1])<<8);
     };
     REQUIRE(preview_pixel(112,0)==0); REQUIRE(preview_pixel(112,27)==0);
-    REQUIRE(preview_pixel(112,28)==0x001f); REQUIRE(preview_pixel(112,83)==0x001f);
-    REQUIRE(preview_pixel(112,84)==0xf800); REQUIRE(preview_pixel(112,139)==0xf800);
+    REQUIRE(preview_pixel(112,28)==0xf800); REQUIRE(preview_pixel(112,83)==0xf800);
+    REQUIRE(preview_pixel(112,84)==0x001f); REQUIRE(preview_pixel(112,139)==0x001f);
     REQUIRE(preview_pixel(112,140)==0); REQUIRE(preview_pixel(112,167)==0);
-    REQUIRE(preview_pixel(28,28)==0x0010);
+    REQUIRE(preview_pixel(28,28)==0x8000);
     if (version >= 516) {
         const auto machine = le(44);
         REQUIRE(std::string(bytes.begin()+machine,bytes.begin()+machine+7) == "MACHINE");
-        REQUIRE(le(machine+12)==224);
+        REQUIRE(le(machine+12)==(version>=518?224:156));
         REQUIRE(f32(machine+136)==Catch::Approx(portrait?height:width));
         REQUIRE(f32(machine+140)==Catch::Approx(portrait?width:height));
         REQUIRE(f32(machine+144)==Catch::Approx(200.));
@@ -284,6 +316,50 @@ TEST_CASE("Anycubic PWS and PW0 masks use their own RLE and versioned table addr
             decoded.insert(decoded.end(),run,pws?(code?255:0):uint8_t(code*17));
         }
         REQUIRE(decoded==expected);
+    }
+    if (version == 518) {
+        REQUIRE(le(16)==11);
+        REQUIRE(le(header+12)==96); REQUIRE(le(header+96)==1);
+        REQUIRE(le(header+108)==0); // Explicit exposure, no intelligent override.
+        REQUIRE(le(header+88)==1); // One transition layer.
+        const auto extra=le(40), machine=le(44), software=le(24), model=le(52), sub=le(56), second=le(60);
+        REQUIRE(std::string(bytes.begin()+extra,bytes.begin()+extra+5)=="EXTRA");
+        REQUIRE(le(extra+12)==24); REQUIRE(extra+72==machine);
+        REQUIRE(f32(extra+20)==Catch::Approx(6.));
+        REQUIRE(f32(extra+48)==Catch::Approx(6.));
+        REQUIRE(f32(extra+24)==Catch::Approx(1.)); REQUIRE(f32(extra+28)==Catch::Approx(4.5));
+        REQUIRE(f32(extra+40)==Catch::Approx(2.5));
+        REQUIRE(f32(extra+52)==Catch::Approx(1.5)); REQUIRE(f32(extra+56)==Catch::Approx(3.5));
+        REQUIRE(f32(extra+68)==Catch::Approx(2.5));
+        REQUIRE(le(machine+132)==15); REQUIRE(machine+224==software);
+        REQUIRE(le(software+32)==164); REQUIRE(software+164==model);
+        REQUIRE(std::string(bytes.begin()+model,bytes.begin()+model+5)=="MODEL");
+        REQUIRE(le(model+12)==48); REQUIRE(f32(model+36)==Catch::Approx(.2));
+        REQUIRE(model+48==sub);
+        REQUIRE(std::string(bytes.begin()+sub,bytes.begin()+sub+7)=="SUBIMGS");
+        REQUIRE(le(sub+12)==24+3*44); REQUIRE(le(sub+16)==3); REQUIRE(le(sub+20)==1);
+        for(size_t i=0;i<3;++i) {
+            REQUIRE(le(sub+24+i*44)==le(table+20+i*32));
+            REQUIRE(le(sub+28+i*44)==le(table+24+i*32));
+            REQUIRE(le(sub+32+i*44)==8);
+        }
+        REQUIRE(sub+24+3*44==second);
+        REQUIRE(std::string(bytes.begin()+second,bytes.begin()+second+8)=="PREVIEW2");
+        REQUIRE(le(second+12)==28+330*190*2);
+        REQUIRE(le(second+16)==330); REQUIRE(le(second+20)==4293); REQUIRE(le(second+24)==190);
+        REQUIRE(second+28+330*190*2==le(48));
+        auto second_pixel=[&](size_t x,size_t y) {
+            const size_t p=second+28+2*(y*330+x);return uint16_t(bytes[p])|(uint16_t(bytes[p+1])<<8);
+        };
+        REQUIRE(second_pixel(165,0)==0); REQUIRE(second_pixel(165,12)==0xf800);
+        REQUIRE(second_pixel(165,95)==0x001f); REQUIRE(second_pixel(165,176)==0x001f);
+        REQUIRE(second_pixel(165,177)==0);
+        config.set("sla_light_pwm",128);
+        auto incompatible=SLAPrint::create_raster_job(config,document,{.1,.15,.2});
+        REQUIRE_THROWS_WITH(incompatible->export_print(file.path.string()),Catch::Matchers::ContainsSubstring("custom UV PWM"));
+        std::ifstream unchanged(file.path.string(),std::ios::binary);
+        REQUIRE(std::vector<uint8_t>{std::istreambuf_iterator<char>(unchanged),{}}==bytes);
+        config.set("sla_light_pwm",255);
     }
     if (legacy) {
         config.set("display_width", config.opt_float("display_width")+1.);
@@ -1034,7 +1110,9 @@ TEST_CASE("SLA readers preserve compound suffixes and case", "[sla_registry]")
     auto reader = SLAArchiveReader::create("example.SL1S", "");
     REQUIRE(dynamic_cast<SL1Reader *>(reader.get()) != nullptr);
     reader = SLAArchiveReader::create("example.RGB.ZIP", "");
-    REQUIRE(dynamic_cast<SL1Reader *>(reader.get()) != nullptr);
+    // A known compound suffix with no reader must not fall back to a shorter
+    // ZIP alias and pretend to reconstruct an SL1/SVG archive.
+    REQUIRE(reader == nullptr);
     reader = SLAArchiveReader::create("example.SL1_SVG", "");
     REQUIRE(dynamic_cast<SL1_SVGReader *>(reader.get()) != nullptr);
     REQUIRE(SLAArchiveReader::create("example.sl1.backup", "") == nullptr);
@@ -1054,11 +1132,19 @@ TEST_CASE("Unimplemented binary readers do not masquerade as SL1", "[sla_registr
 
 TEST_CASE("SLA format suffixes are validated without losing punctuation", "[sla_registry]")
 {
-    for (const char *ext : {".CTB", "ctb", "encrypted.ctb"}) {
+    for (const char *ext : {".CTB", "ctb"}) {
         const auto *entry = get_archive_entry_by_extension(ext);
         REQUIRE(entry != nullptr);
         REQUIRE(std::string(entry->id) == "ctb");
     }
+    for (const char *ext : {"encrypted.ctb", ".ENCRYPTED.CTB"}) {
+        const auto *encrypted = get_archive_entry_by_extension(ext);
+        REQUIRE(encrypted != nullptr);
+        REQUIRE(std::string(encrypted->id) == "ctb_encrypted");
+        REQUIRE(std::string(get_default_extension(encrypted->id)) == "encrypted.ctb");
+        REQUIRE(archive_export_unavailable_reason(encrypted->id).empty());
+    }
+    REQUIRE(std::string(get_archive_entry_by_extension(".V4.ENCRYPTED.CTB")->id) == "ctb_encrypted_v4");
     const auto *entry = get_archive_entry_by_extension(".SL1_SVG");
     REQUIRE(entry != nullptr);
     REQUIRE(std::string(entry->id) == "SL1SVG");
@@ -1185,7 +1271,7 @@ TEST_CASE("Archive rasters preserve physical geometry with rectangular pixels", 
         using SL1Archive::SL1Archive;
         using SL1Archive::create_raster;
     };
-    const int writer = GENERATE(0, 1, 2, 3, 4);
+    const int writer = GENERATE(0, 1, 2, 3, 4, 5, 6);
     CAPTURE(writer);
     for (bool portrait : {false, true})
         for (bool mirror_x : {false, true})
@@ -1203,9 +1289,11 @@ TEST_CASE("Archive rasters preserve physical geometry with rectangular pixels", 
                 switch (writer) {
                 case 0: raster = RasterArchive(cfg).create_raster(); break;
                 case 1: raster = ExposedRasterArchive<AnycubicSLAArchive>(cfg).create_raster(); break;
-                case 2: raster = ExposedRasterArchive<UVToolsFDGArchive>(cfg).create_raster(); break;
+                case 2: raster = ExposedRasterArchive<FDGArchive>(cfg).create_raster(); break;
                 case 3: raster = ExposedRasterArchive<UVToolsCWSArchive>(cfg).create_raster(); break;
                 case 4: raster = ExposedRasterArchive<CrealityCXDLPv4Archive>(cfg).create_raster(); break;
+                case 5: raster = ExposedRasterArchive<NanoDLPArchive>(cfg).create_raster(); break;
+                case 6: raster = ExposedRasterArchive<FlashforgeSVGXArchive>(cfg).create_raster(); break;
                 }
                 // An off-centre rectangle catches rotation, scaling and clipping.
                 raster->draw(ExPolygon(Polygon(Points{
@@ -1264,28 +1352,55 @@ TEST_CASE("SL1 rejects invalid display dimensions before reconstruction", "[sla_
     REQUIRE_THROWS(get_raster_params(cfg));
 }
 
-TEST_CASE("Unavailable exports fail before drawing or writing a file", "[sla_registry]")
+TEST_CASE("NanoDLP requires a printer controller profile before slicing or writing", "[sla_registry]")
 {
     SLAPrinterConfig cfg;
     SLAPrint print;
-    for (const char *id : {"cbddlp", "cbt", "photon", "photons",
-                          "qdt", "svgx", "lgs", "lgs30", "lgs120", "lgs4k", "gr1",
-                          "mdlp", "nanodlp", "phz",
-                          "jxs", "vdt", "zcode", "zcodex", "fdg"}) {
+    for (const char *id : {"nanodlp", "nanodlp_v1", "nanodlp_rgb", "nanodlp_rgb_v1"}) {
         CAPTURE(id);
+        REQUIRE(archive_export_unavailable_reason(id).empty());
         auto writer = SLAArchiveWriter::create(id, cfg);
         REQUIRE(writer != nullptr);
-        bool drawn = false;
-        REQUIRE_THROWS_WITH(writer->draw_layers(1, [&](sla::RasterBase &, size_t) { drawn = true; }, [] { return false; }),
-                            archive_export_unavailable_reason(id));
-        REQUIRE_FALSE(drawn);
-        const auto path = boost::filesystem::unique_path("unsupported-%%%%-%%%%.tmp");
-        REQUIRE_THROWS_WITH(writer->export_print(path.string(), print, {}, "test"),
-                            archive_export_unavailable_reason(id));
+        const auto path = boost::filesystem::unique_path("missing-profile-%%%%.nanodlp");
+        REQUIRE_THROWS(writer->export_print(path.string(), print, {}, "test"));
         REQUIRE_FALSE(boost::filesystem::exists(path));
+        SLAFullPrintConfig full; Test::configure_archive_fixture(full,id);
+        full.nanodlp_device_profile.value.clear();
+        DynamicPrintConfig settings;settings.apply(full);
+        SLAPrint missing;missing.apply(Model{},settings);
+        REQUIRE(missing.validate().find("controller profile") != std::string::npos);
     }
-    REQUIRE(archive_export_unavailable_reason("SL1").empty());
-    REQUIRE(archive_export_unavailable_reason("goo").empty());
+    REQUIRE_FALSE(archive_export_unavailable_reason("unknown-format").empty());
+    REQUIRE(archive_export_unavailable_reason("ctb_encrypted").empty());
+    REQUIRE(std::string(get_default_extension("nanodlp_rgb_v1")) == "v1.rgb.nanodlp");
+}
+
+TEST_CASE("Distinct encrypted and unknown containers cannot fall back to ordinary CTB", "[sla_registry]")
+{
+    const uint8_t pixel = 255;
+    auto document = sla::LayerDocument::from_rasters({sla::PNGRasterEncoder{}(&pixel, 1, 1, 1)});
+    SLAPrinterConfig cfg;
+    CTBEncryptedArchive encrypted(cfg);
+    UVToolsChituboxArchive phz(cfg,0x9FDA83AE);
+    REQUIRE_NOTHROW(encrypted.encode_layers(document));
+    REQUIRE_THROWS(phz.encode_layers(document));
+    struct File {
+        boost::filesystem::path path = boost::filesystem::unique_path("preserved-%%%%.ENCRYPTED.CTB");
+        ~File() { boost::system::error_code error; boost::filesystem::remove(path, error); }
+    } file;
+    const std::string original = "existing printer file";
+    { std::ofstream out(file.path.string(), std::ios::binary); out << original; }
+    SLAPrint print;
+    UVToolsChituboxArchive ordinary(cfg);
+    REQUIRE_THROWS_WITH(ordinary.export_print(file.path.string(), print, {}, ""),
+                       "Ordinary Chitubox v2 cannot be exported as encrypted CTB v5");
+    REQUIRE_THROWS(phz.export_print(file.path.string(), print, {}, ""));
+    std::ifstream preserved(file.path.string(), std::ios::binary);
+    REQUIRE(std::string(std::istreambuf_iterator<char>(preserved), {}) == original);
+    REQUIRE(sla_archive_filename("part.encrypted.ctb", "ctb") == "part.ctb");
+    REQUIRE(sla_archive_filename("part.v4.encrypted.ctb", "encrypted.ctb") == "part.encrypted.ctb");
+    REQUIRE(sla_archive_filename("part.encrypted.ctb", "v4.encrypted.ctb") == "part.v4.encrypted.ctb");
+    REQUIRE(sla_archive_filename("part.ctb", "encrypted.ctb") == "part.encrypted.ctb");
 }
 
 TEST_CASE("SLA filenames follow the selected format", "[sla_registry]")
@@ -1325,42 +1440,9 @@ TEST_CASE("Generate SLA exporter audit fixtures", "[.sla_export_audit]")
             auto *object = model.add_object("audit", "", make_cube(4., 3., 0.15));
             object->add_instance()->set_offset(Vec3d(10., 10., 0.));
             SLAFullPrintConfig full;
-            full.printer_technology.setInt(ptSLA);
-            full.display_orientation.value = sladoLandscape;
-            full.set("sla_archive_format", std::string(entry.id));
+            Test::configure_archive_fixture(full, entry.id);
             full.set("supports_enable", false); full.set("pad_enable", false);
             full.set("support_object_elevation", 0.);
-            full.set("display_width", 100.); full.set("display_height", 60.);
-            full.set("display_pixels_x", 200); full.set("display_pixels_y", 120);
-            if(std::string(entry.id)=="cwsrgb")full.set("display_pixels_x",201);
-            if (const auto *machine = anycubic_legacy_geometry(entry.id)) {
-                full.set("display_width", machine->width); full.set("display_height", machine->height);
-                full.set("max_print_height", machine->machine_z);
-            }
-            full.set("layer_height", 0.05); full.set("initial_layer_height", 0.05);
-            full.set("exposure_time", 2.5); full.set("initial_exposure_time", 20.);
-            if(std::string(entry.id)=="cxdlpv1" || std::string(entry.id)=="cxdlp" || std::string(entry.id)=="cxdlpv2") {
-                full.set("exposure_time",3.);
-                if(std::string(entry.id)=="cxdlp" || std::string(entry.id)=="cxdlpv2") {
-                    full.set("printer_model",std::string("CL-60"));
-                    full.set("sla_lift_speed",120.);full.set("sla_bottom_lift_speed",60.);
-                    full.set("sla_retract_speed",180.);full.set("sla_bottom_retract_speed",180.);
-                }
-                full.set("sla_wait_before_cure",1.);full.set("sla_bottom_wait_before_cure",1.);
-            }
-            if (std::string(entry.id) == "n4" || std::string(entry.id) == "n7") {
-                const bool n7 = std::string(entry.id) == "n7";
-                full.set("display_width", n7 ? 192. : 68.04);
-                full.set("display_height", n7 ? 120. : 120.96);
-                full.set("display_pixels_x", n7 ? 2560 : 1440);
-                full.set("display_pixels_y", n7 ? 1600 : 2560);
-                full.set("max_print_height", n7 ? 300. : 135.);
-                full.set("exposure_time", 3.);
-                full.set("sla_transition_layers", 0);
-                for (const char *key : {"sla_lift_speed", "sla_bottom_lift_speed",
-                                        "sla_retract_speed", "sla_bottom_retract_speed"})
-                    full.set(key, 120.);
-            }
             DynamicPrintConfig cfg; cfg.apply(full);
             SLAPrint print; print.set_status_callback([](const PrintBase::SlicingStatus &) {});
             auto start = Clock::now(); print.apply(model, cfg); print.process(); auto sliced = Clock::now();
@@ -1372,6 +1454,137 @@ TEST_CASE("Generate SLA exporter audit fixtures", "[.sla_export_audit]")
         } catch (const std::exception &error) { report << entry.id << "\terror\t0\t0\t" << error.what() << '\n'; }
     }
     REQUIRE(report.good());
+}
+
+TEST_CASE("CTB RLE retains grayscale and all variable length count boundaries", "[sla_reference][sla_ctb]")
+{
+    SLAPrinterConfig config;
+    UVToolsChituboxArchive archive(config);
+    const auto encoder = archive.get_encoder();
+    for (const size_t count : {size_t(1), size_t(2), size_t(127), size_t(128),
+                              size_t(16383), size_t(16384), size_t(2097151), size_t(2097152)}) {
+        CAPTURE(count);
+        // Every run crosses a row boundary. Adjacent input gray levels sharing
+        // a 7-bit value must merge; white must survive as an ordinary color.
+        const size_t width = 256;
+        const size_t height = (count + 5 + width - 1) / width;
+        std::vector<uint8_t> pixels(width * height, 0);
+        std::fill(pixels.begin() + 5, pixels.begin() + 5 + count, 255);
+        pixels[0] = 0; pixels[1] = 1; pixels[2] = 2; pixels[3] = 3; pixels[4] = 128;
+        const auto encoded = encoder(pixels.data(), width, height, 1);
+        const auto *bytes = static_cast<const uint8_t *>(encoded.data());
+        std::vector<uint8_t> decoded;
+        for (size_t offset = 0; offset < encoded.size();) {
+            const uint8_t token = bytes[offset++];
+            uint32_t run = 1;
+            if (token & 0x80) {
+                REQUIRE(offset < encoded.size());
+                const uint8_t first = bytes[offset++];
+                unsigned extra = 0;
+                if (!(first & 0x80)) run = first;
+                else if ((first & 0xc0) == 0x80) { run = first & 0x3f; extra = 1; }
+                else if ((first & 0xe0) == 0xc0) { run = first & 0x1f; extra = 2; }
+                else { REQUIRE((first & 0xf0) == 0xe0); run = first & 0x0f; extra = 3; }
+                REQUIRE(offset + extra <= encoded.size());
+                while (extra--) run = (run << 8) | bytes[offset++];
+                REQUIRE(run > 1);
+            }
+            const uint8_t gray = token & 0x7f;
+            REQUIRE(decoded.size() + run <= pixels.size());
+            decoded.insert(decoded.end(), run, gray ? uint8_t((gray << 1) | 1) : 0);
+        }
+        REQUIRE(decoded.size() == pixels.size());
+        std::transform(pixels.begin(), pixels.end(), pixels.begin(), [](uint8_t gray) {
+            return gray > 1 ? uint8_t(gray | 1) : uint8_t(0);
+        });
+        REQUIRE(decoded == pixels);
+    }
+}
+
+TEST_CASE("CBDDLP eight bitplanes retain every representable gray and split 125-pixel runs", "[sla_reference][sla_cbddlp]")
+{
+    SLAPrinterConfig config;
+    UVToolsChituboxArchive archive(config, 0x12fd0019);
+    const auto encoder = archive.get_encoder();
+    std::vector<uint8_t> pixels(256 * 128);
+    for (size_t i = 0; i < pixels.size(); ++i) pixels[i] = uint8_t(i / 128);
+    const auto encoded = encoder(pixels.data(), 256, 128, 1);
+    const auto *bytes = static_cast<const uint8_t *>(encoded.data());
+    auto u32 = [&](size_t offset) {
+        REQUIRE(offset + 4 <= encoded.size());
+        return uint32_t(bytes[offset]) | (uint32_t(bytes[offset+1]) << 8) |
+               (uint32_t(bytes[offset+2]) << 16) | (uint32_t(bytes[offset+3]) << 24);
+    };
+    REQUIRE((u32(0) | (uint64_t(u32(4)) << 32)) == 225 * 128);
+    std::vector<uint8_t> levels(pixels.size(), 0);
+    size_t offset = 40;
+    for (unsigned plane = 0; plane < 8; ++plane) {
+        const uint32_t size = u32(8 + 4 * plane);
+        REQUIRE(offset + size <= encoded.size());
+        size_t pixel = 0;
+        for (size_t index = 0; index < size; ++index) {
+            const uint8_t token = bytes[offset + index];
+            const unsigned count = token & 0x7f;
+            REQUIRE(count >= 1); REQUIRE(count <= 125);
+            REQUIRE(pixel + count <= pixels.size());
+            if (token & 0x80)
+                for (size_t n = 0; n < count; ++n) ++levels[pixel + n];
+            pixel += count;
+        }
+        REQUIRE(pixel == pixels.size()); offset += size;
+    }
+    REQUIRE(offset == encoded.size());
+    std::transform(levels.begin(), levels.end(), levels.begin(), [](uint8_t count) {
+        return count ? uint8_t(count * 32 - 1) : uint8_t(0);
+    });
+    std::transform(pixels.begin(), pixels.end(), pixels.begin(), [](uint8_t gray) {
+        return gray < 31 ? uint8_t(0) : uint8_t(((unsigned(gray) + 1) / 32) * 32 - 1);
+    });
+    REQUIRE(levels == pixels);
+}
+
+// Opt-in original-UVtools fixture: exercise every RLE count width and the
+// canonical edited-mask export, including nonuniform Z and transition exposure.
+TEST_CASE("Generate Chitubox full decoder grayscale fixtures", "[.sla_ctb_oracle][.sla_chitubox_oracle]")
+{
+    const char *folder = std::getenv("SLA_CTB_ORACLE_OUTPUT");
+    REQUIRE(folder != nullptr);
+    boost::filesystem::create_directories(folder);
+    SLAFullPrintConfig full;
+    full.printer_technology.setInt(ptSLA);
+    full.display_orientation.value = sladoLandscape;
+    full.set("sla_archive_format", std::string("SL1"));
+    full.set("display_width", 100.); full.set("display_height", 60.);
+    full.set("display_pixels_x", 256); full.set("display_pixels_y", 8193);
+    full.set("layer_height", .05); full.set("initial_layer_height", .05);
+    full.set("sla_bottom_layers", 1); full.set("sla_transition_layers", 1);
+    full.set("exposure_time", 2.5); full.set("initial_exposure_time", 20.);
+    full.set("sla_wait_before_cure", 1.25); full.set("sla_bottom_wait_before_cure", 2.5);
+    DynamicPrintConfig config; config.apply(full);
+    std::vector<sla::EncodedRaster> rasters;
+    std::vector<uint8_t> pixels(256 * 8193, 255);
+    rasters.push_back(sla::PNGRasterEncoder{}(pixels.data(), 256, 8193, 1));
+    std::fill(pixels.begin(), pixels.end(), 0);
+    rasters.push_back(sla::PNGRasterEncoder{}(pixels.data(), 256, 8193, 1));
+    size_t offset = 0;
+    const size_t lengths[]{1, 2, 127, 128, 16383, 16384};
+    for (unsigned gray = 0; gray < 256; ++gray) {
+        const size_t count = lengths[gray % 6];
+        std::fill(pixels.begin() + offset, pixels.begin() + offset + count, uint8_t(gray));
+        offset += count;
+    }
+    rasters.push_back(sla::PNGRasterEncoder{}(pixels.data(), 256, 8193, 1));
+    const auto document = sla::LayerDocument::from_rasters(std::move(rasters));
+    const auto job = SLAPrint::create_raster_job(config, document, {.05, .1, .15});
+    for (const std::string format : {"SL1", "ctb", "cbddlp", "photon"}) {
+        const auto path = boost::filesystem::path(folder) / ("grayscale." + std::string(get_default_extension(format.c_str())));
+        job->export_layer_document(document, format, path.string(), {}, "grayscale");
+        REQUIRE(boost::filesystem::file_size(path) > 0);
+    }
+    const auto variable = SLAPrint::create_raster_job(config, document, {.05, .15, .2});
+    for (const std::string format : {"ctb", "cbddlp", "photon"})
+        variable->export_layer_document(document, format,
+            (boost::filesystem::path(folder) / ("variable-z." + format)).string(), {}, "grayscale");
 }
 
 TEST_CASE("CTB v2 metadata follows printer geometry and sliced layer heights", "[sla_reference]")
@@ -1387,6 +1600,7 @@ TEST_CASE("CTB v2 metadata follows printer geometry and sliced layer heights", "
     full.set("support_object_elevation", 0.);
     full.set("display_width", 92.); full.set("display_height", 51.);
     full.set("display_pixels_x", 184); full.set("display_pixels_y", 102);
+    full.set("sla_wait_before_cure", 1.25); full.set("sla_bottom_wait_before_cure", 2.5);
     full.set("layer_height", 0.05); full.set("initial_layer_height", 0.1);
     DynamicPrintConfig cfg; cfg.apply(full);
     SLAPrint print; print.set_status_callback([](const PrintBase::SlicingStatus &) {});
@@ -1414,15 +1628,20 @@ TEST_CASE("CTB v2 metadata follows printer geometry and sliced layer heights", "
     const auto parameters = u32(84);
     REQUIRE(parameters == 112);
     REQUIRE(u32(88) == 60);
+    REQUIRE(u32(80) == 1); // The fixture assumes mirrored projection.
     REQUIRE(f32(parameters) == Catch::Approx(6.));
     REQUIRE(f32(parameters+4) == Catch::Approx(60.));
     REQUIRE(f32(parameters+8) == Catch::Approx(6.));
     REQUIRE(f32(parameters+12) == Catch::Approx(80.));
     REQUIRE(f32(parameters+16) == Catch::Approx(150.));
+    REQUIRE(f32(44) == Catch::Approx(8.15));
+    REQUIRE(f32(parameters+32) == Catch::Approx(10.9));
+    REQUIRE(f32(parameters+36) == Catch::Approx(8.15));
     REQUIRE(f32(28) == Catch::Approx(double(print.print_layers().back().level()) * SCALING_FACTOR));
     const auto table = u32(64);
     for (size_t i = 0; i < print.print_layers().size(); ++i) {
         REQUIRE(f32(table + i*36) == Catch::Approx(double(print.print_layers()[i].level()) * SCALING_FACTOR));
+        REQUIRE(f32(table+i*36+8) == Catch::Approx(i < u32(48) ? 10.9 : 8.15));
         REQUIRE(uint64_t(u32(table+i*36+12)) + u32(table+i*36+16) <= data.size());
     }
 }
@@ -1438,6 +1657,9 @@ TEST_CASE("LCD exports preserve Z exposure and distinct bottom and normal motion
         full.printer_technology.setInt(ptSLA);
         full.display_orientation.value = sladoPortrait;
         full.set("sla_archive_format", format);
+        // Owned exports require an explicit printer identity, independently
+        // of the mask, geometry and motion contracts exercised here.
+        full.set("printer_model", "GENERIC");
         full.set("supports_enable", false); full.set("pad_enable", false);
         full.set("support_object_elevation", 0.);
         full.set("display_width", 100.); full.set("display_height", 60.);
@@ -1510,7 +1732,10 @@ TEST_CASE("LCD exports preserve Z exposure and distinct bottom and normal motion
                 REQUIRE(floating(row, false) == Catch::Approx(double(print.print_layers()[i].level()) * SCALING_FACTOR));
                 REQUIRE(floating(row+4, false) == Catch::Approx(exposure(i)));
                 const auto extended = integer(row+12, false);
-                REQUIRE(floating(extended, false) == Catch::Approx(i == 0 ? 4.5 : 7.5));
+                // The wire stores TOTAL; UVtools subtracts SECOND to read FIRST.
+                REQUIRE(floating(extended, false) == Catch::Approx(i == 0 ? 7. : 9.));
+                REQUIRE(floating(extended, false) - floating(extended+8, false) ==
+                    Catch::Approx(i == 0 ? 4.5 : 7.5));
                 REQUIRE(floating(extended+4, false) == Catch::Approx(i == 0 ? 55. : 90.));
                 REQUIRE(floating(extended+8, false) == Catch::Approx(i == 0 ? 2.5 : 1.5));
                 REQUIRE(floating(extended+12, false) == Catch::Approx(i == 0 ? 65. : 120.));
@@ -1677,7 +1902,11 @@ TEST_CASE("CWS stores real exposure and two-stage motion commands", "[sla_refere
         REQUIRE(std::none_of(zip.entries.begin(),zip.entries.end(),[](const auto &e){return e.fname=="manifest.xml" || e.fname=="sla_job.slicing";}));
     } else {
         const auto profile = contents("sla_job.slicing");
-        REQUIRE(profile.find(portrait ? "<DotsPermmX>1.66666667</DotsPermmX>" : "<DotsPermmX>2</DotsPermmX>") != std::string::npos);
+        const std::string start="<DotsPermmX>",end="</DotsPermmX>";
+        const auto at=profile.find(start);REQUIRE(at!=std::string::npos);
+        const auto finish=profile.find(end,at+start.size());REQUIRE(finish!=std::string::npos);
+        const double dots=std::stod(profile.substr(at+start.size(),finish-at-start.size()));
+        REQUIRE(dots==Catch::Approx(portrait?display_y/60.:display_x/100.).margin(1e-8));
         REQUIRE(contents("manifest.xml").find("unsafe") == std::string::npos);
     }
     std::istringstream stream(contents("sla_job.gcode"));
@@ -2296,4 +2525,1961 @@ TEST_CASE("Shared ZIP aliases preserve the selected SLA container", "[sla_refere
     REQUIRE_FALSE(archive.entries.empty());
     for(const auto &entry:archive.entries)
         REQUIRE(std::string(entry.buf.begin(),entry.buf.end()).find("<svg")!=std::string::npos);
+}
+
+TEST_CASE("Photon S bit-reversed runs retain binary threshold and all counts", "[sla_reference][sla_photons]") {
+    std::vector<uint8_t> pixels;
+    for (unsigned count = 1; count <= 128; ++count) {
+        pixels.insert(pixels.end(), count, 127);
+        pixels.insert(pixels.end(), count, 128);
+    }
+    REQUIRE(pixels.size() == 128*129);
+    const auto mask = ChituboxPhotonSArchive::encode_mask(pixels.data(),128,129,1);
+    const auto *bytes = static_cast<const uint8_t *>(mask.data());
+    std::vector<uint8_t> decoded;
+    REQUIRE(mask.size() == 256);
+    for (size_t i = 0; i < mask.size(); ++i) {
+        unsigned length = 1;
+        for (unsigned bit = 0; bit < 7; ++bit) length += ((bytes[i]>>(7-bit))&1u)<<bit;
+        REQUIRE(length == i/2+1);
+        REQUIRE((bytes[i]&1u) == i%2);
+        decoded.insert(decoded.end(),length,(bytes[i]&1u)?255:0);
+    }
+    for (auto &pixel : pixels) pixel = pixel > 127 ? 255 : 0;
+    REQUIRE(decoded == pixels);
+    REQUIRE_THROWS(ChituboxPhotonSArchive::encode_mask(nullptr,128,129,1));
+    REQUIRE_THROWS(ChituboxPhotonSArchive::encode_mask(pixels.data(),0,129,1));
+    REQUIRE_THROWS(ChituboxPhotonSArchive::encode_mask(pixels.data(),128,129,3));
+}
+
+TEST_CASE("Photon S exports masks and rejects parameters its schema cannot store", "[sla_reference][sla_photons]") {
+    SLAFullPrintConfig full; Test::configure_archive_fixture(full,"photons");
+    full.set("sla_archive_format",std::string("SL1"));
+    full.set("sla_bottom_layers",1);
+    full.set("sla_wait_before_cure",1.25); full.set("sla_bottom_wait_before_cure",1.25);
+    DynamicPrintConfig config; config.apply(full);
+    std::vector<uint8_t> pixels(1440*2560,255);
+    std::vector<sla::EncodedRaster> masks;
+    masks.push_back(sla::PNGRasterEncoder{}(pixels.data(),1440,2560,1));
+    std::fill(pixels.begin(),pixels.end(),0);
+    masks.push_back(sla::PNGRasterEncoder{}(pixels.data(),1440,2560,1));
+    for (size_t i=0;i<pixels.size();++i) pixels[i]=uint8_t(i%256);
+    masks.push_back(sla::PNGRasterEncoder{}(pixels.data(),1440,2560,1));
+    auto document=sla::LayerDocument::from_rasters(std::move(masks));
+    auto job=SLAPrint::create_raster_job(config,document,{.05,.1,.15});
+    auto valid_config=config;valid_config.set("sla_archive_format",std::string("photons"));
+    auto valid=SLAPrint::create_raster_job(valid_config,document,{.05,.1,.15});
+    REQUIRE(valid->validate().empty());
+
+    const char *folder=std::getenv("SLA_PHOTONS_ORACLE_OUTPUT");
+    struct Directory {
+        boost::filesystem::path path;
+        bool keep;
+        ~Directory() { if(!keep) {boost::system::error_code error;boost::filesystem::remove_all(path,error);} }
+    } dir{folder?boost::filesystem::path(folder):boost::filesystem::unique_path("photons-%%%%"),bool(folder)};
+    boost::filesystem::create_directories(dir.path);
+    const auto path=dir.path/"grayscale.photons";
+    ThumbnailData red;red.set(1,1);red.pixels={255,0,0,255};
+    job->export_layer_document(document,"photons",path.string(),{red},"Photon S");
+    REQUIRE(boost::filesystem::file_size(path)>98+224*168*2+4);
+    std::ifstream stream(path.string(),std::ios::binary);
+    const std::vector<uint8_t> bytes{std::istreambuf_iterator<char>(stream),{}};
+    auto u32=[&](size_t at){REQUIRE(at+4<=bytes.size());return uint32_t(bytes[at])<<24|uint32_t(bytes[at+1])<<16|uint32_t(bytes[at+2])<<8|bytes[at+3];};
+    REQUIRE(u32(0)==2);REQUIRE(bytes[4]==0);REQUIRE(bytes[5]==49);
+    const uint64_t pitch_bits=(uint64_t(u32(6))<<32)|u32(10);
+    double pitch=0.;std::memcpy(&pitch,&pitch_bits,sizeof(pitch));
+    REQUIRE(pitch==Catch::Approx(68.04/1440).epsilon(1e-12));
+
+    REQUIRE(u32(82)==224);REQUIRE(u32(90)==168);
+    REQUIRE(u32(98+224*168*2)==3);
+    // Actual caller-supplied preview: red is BGR565 little endian, letterboxed.
+    const size_t center=98+2*(84*224+112);
+    REQUIRE(bytes[center]==31);REQUIRE(bytes[center+1]==0);
+    REQUIRE(bytes[98]==0);REQUIRE(bytes[99]==0);
+    size_t offset=98+224*168*2+4;
+    for(size_t layer=0;layer<3;++layer) {
+        REQUIRE(u32(offset)==44944);REQUIRE(u32(offset+12)==1440);REQUIRE(u32(offset+16)==2560);
+        const size_t count=(u32(offset+20)>>3)-4;
+        REQUIRE(u32(offset+24)==2684702720u);offset+=28;
+        REQUIRE(offset+count<=bytes.size());
+        auto expected=document.image(layer);
+        size_t pixel=0;
+        for(size_t index=0;index<count;++index) {
+            const auto token=bytes[offset+index];unsigned run=1;
+            for(unsigned bit=0;bit<7;++bit)run+=((token>>(7-bit))&1u)<<bit;
+            REQUIRE(pixel+run<=expected.buf.size());
+            for(size_t n=0;n<run;++n) {
+                const uint8_t value=expected.buf[pixel+n]>127?255:0;
+                if(value!=((token&1)?255:0)) FAIL("Photon S mask differs from source threshold");
+            }
+            pixel+=run;
+        }
+        REQUIRE(pixel==expected.buf.size());offset+=count;
+    }
+    REQUIRE(offset==bytes.size());
+    if(folder) job->export_layer_document(document,"SL1",(dir.path/"grayscale.sl1").string(),{},"Photon S source");
+    for(const char *key:{"sla_transition_layers","sla_bottom_lift_speed","sla_bottom_wait_before_cure","sla_light_pwm","sla_lift_height2","display_width","initial_layer_height","sla_retract_speed"}) {
+        CAPTURE(key);auto invalid_config=config;
+        if(std::string(key)=="sla_transition_layers"||std::string(key)=="sla_light_pwm")invalid_config.set(key,1);
+        else invalid_config.set(key,std::string(key)=="sla_retract_speed"?80.:1.);
+        auto invalid=SLAPrint::create_raster_job(invalid_config,document,std::string(key)=="initial_layer_height"?std::vector<double>{1.,1.05,1.1}:std::vector<double>{.05,.1,.15});
+        auto selected_config=invalid_config;selected_config.set("sla_archive_format",std::string("photons"));
+        REQUIRE_THROWS(SLAPrint::create_raster_job(selected_config,document,std::string(key)=="initial_layer_height"?std::vector<double>{1.,1.05,1.1}:std::vector<double>{.05,.1,.15}));
+        REQUIRE_THROWS(invalid->export_layer_document(document,"photons",path.string(),{},"invalid"));
+        std::ifstream unchanged(path.string(),std::ios::binary);
+        REQUIRE(std::vector<uint8_t>{std::istreambuf_iterator<char>(unchanged),{}}==bytes);
+    }
+    auto variable=SLAPrint::create_raster_job(config,document,{.05,.15,.2});
+    REQUIRE_THROWS(variable->export_layer_document(document,"photons",path.string(),{},"variable Z"));
+}
+
+TEST_CASE("PHZ seed parsing and layer cipher match original UVtools", "[sla_reference][sla_phz]") {
+    REQUIRE(PhrozenPHZArchive::parse_encryption_key("0")==0);
+    REQUIRE(PhrozenPHZArchive::parse_encryption_key(" 0xFFFFFFFF ")==UINT32_MAX);
+    REQUIRE(PhrozenPHZArchive::parse_encryption_key("4294967295")==UINT32_MAX);
+    REQUIRE(PhrozenPHZArchive::parse_encryption_key("0X4324")==0x4324);
+    for(const char *invalid:{"","-1","+1","4294967296","0x100000000","0x","12x","1 2"})
+        REQUIRE_THROWS(PhrozenPHZArchive::parse_encryption_key(invalid));
+    std::vector<uint8_t> bytes(32);std::iota(bytes.begin(),bytes.end(),0);
+    const auto original=bytes;
+    PhrozenPHZArchive::crypt_mask(bytes,UINT32_MAX,65535);
+    const std::vector<uint8_t> expected={0x23,0xcc,0xac,0x1b,0xaa,0x9e,0x9d,0x9b,0x31,0x63,0x82,0x2b,0xc8,0x35,0x7b,0xab,0x5f,0x16,0x70,0x3b,0xce,0xc0,0x58,0xbb,0x7d,0xbd,0x21,0x2b,0xec,0x6f,0x36,0xab};
+    REQUIRE(bytes==expected); // Produced by unmodified PHZFile.LayerRleCryptBuffer.
+    PhrozenPHZArchive::crypt_mask(bytes,UINT32_MAX,65535);REQUIRE(bytes==original);
+    PhrozenPHZArchive::crypt_mask(bytes,0,123);REQUIRE(bytes==original);
+    PhrozenPHZArchive::crypt_mask(bytes,0x4324,123);REQUIRE(bytes==original);
+    SLAFullPrintConfig full;full.set("sla_phz_encryption_key",std::string("0xFFFFFFFF"));
+    SLAPrinterConfig printer;printer.apply(full,true);
+    REQUIRE(printer.sla_phz_encryption_key.value=="0xFFFFFFFF");
+}
+
+TEST_CASE("PHZ masks preserve row and half-row runs with grayscale quantization", "[sla_reference][sla_phz]") {
+    for(const size_t w:{size_t(1),size_t(251),size_t(256),size_t(1024)}) {
+        const size_t h=256;std::vector<uint8_t> pixels(w*h);
+        for(size_t y=0;y<h;++y)std::fill(pixels.begin()+y*w,pixels.begin()+(y+1)*w,uint8_t(y));
+        auto encoded=PhrozenPHZArchive::encode_mask(pixels.data(),w,h,1);
+        const auto *data=static_cast<const uint8_t *>(encoded.data());
+        std::vector<uint8_t> decoded;uint8_t color=0;
+        size_t literals=0;
+        for(size_t i=0;i<encoded.size();++i) {
+            const auto code=data[i];
+            if(code&128){++literals;const auto grey=code&127;REQUIRE(grey<=124);color=uint8_t((grey<<1)|(grey&1));decoded.push_back(color);}
+            else {REQUIRE(code>=1);REQUIRE(code<=125);decoded.insert(decoded.end(),code,color);}
+        }
+        REQUIRE(literals==h*(w==1?1:2));
+        for(auto &pixel:pixels){const auto grey=std::min<unsigned>(pixel>>1,124);pixel=uint8_t((grey<<1)|(grey&1));}
+        REQUIRE(decoded==pixels);
+    }
+    uint8_t p=255;
+    REQUIRE_THROWS(PhrozenPHZArchive::encode_mask(nullptr,1,1,1));
+    REQUIRE_THROWS(PhrozenPHZArchive::encode_mask(&p,1,1,3));
+}
+
+TEST_CASE("PHZ exports grayscale Z exposure motion previews and optional encryption", "[sla_reference][sla_phz]") {
+    const bool encrypted=GENERATE(false,true);
+    SLAFullPrintConfig full;Test::configure_archive_fixture(full,"phz");
+    full.set("sla_archive_format",std::string("SL1"));
+    full.set("display_pixels_x",1024);full.set("display_pixels_y",256);
+    full.set("sla_bottom_layers",1);full.set("sla_transition_layers",1);
+    full.set("sla_wait_before_cure",1.25);full.set("sla_bottom_wait_before_cure",2.5);
+    full.set("sla_light_pwm",200);full.set("sla_bottom_light_pwm",160);
+    full.set("sla_phz_encryption_key",std::string(encrypted?"0xFFFFFFFF":"0"));
+    DynamicPrintConfig config;config.apply(full);
+    std::vector<uint8_t> pixels(1024*256,255);std::vector<sla::EncodedRaster> masks;
+    masks.push_back(sla::PNGRasterEncoder{}(pixels.data(),1024,256,1));
+    std::fill(pixels.begin(),pixels.end(),0);masks.push_back(sla::PNGRasterEncoder{}(pixels.data(),1024,256,1));
+    for(size_t y=0;y<256;++y)std::fill(pixels.begin()+y*1024,pixels.begin()+(y+1)*1024,uint8_t(y));
+    const auto grey=sla::PNGRasterEncoder{}(pixels.data(),1024,256,1);masks.push_back(grey);masks.push_back(grey);
+    auto document=sla::LayerDocument::from_rasters(std::move(masks));
+    auto job=SLAPrint::create_raster_job(config,document,{.05,.1,.15,.2});
+    const char *folder=std::getenv("SLA_PHZ_ORACLE_OUTPUT");
+    struct Directory {boost::filesystem::path path;bool keep;~Directory(){if(!keep){boost::system::error_code error;boost::filesystem::remove_all(path,error);}}}
+        dir{folder?boost::filesystem::path(folder):boost::filesystem::unique_path("phz-%%%%"),bool(folder)};
+    boost::filesystem::create_directories(dir.path);
+    const auto path=dir.path/(encrypted?"encrypted.phz":"grayscale.phz");
+    ThumbnailData red;red.set(1,1);red.pixels={255,0,0,255};
+    job->export_layer_document(document,"phz",path.string(),{red},"PHZ");
+    std::ifstream in(path.string(),std::ios::binary);const std::vector<uint8_t> bytes{std::istreambuf_iterator<char>(in),{}};
+    auto u32=[&](size_t at){REQUIRE(at+4<=bytes.size());return uint32_t(bytes[at])|uint32_t(bytes[at+1])<<8|uint32_t(bytes[at+2])<<16|uint32_t(bytes[at+3])<<24;};
+    REQUIRE(u32(0)==0x9FDA83AE);REQUIRE(u32(4)==2);REQUIRE(u32(40)==4);
+    REQUIRE(u32(88)==(encrypted?UINT32_MAX:0));REQUIRE(u32(176)==28);
+    REQUIRE(bytes[60]==200);REQUIRE(bytes[62]==160);
+    for(const auto at:{u32(32),u32(44)}) {
+        REQUIRE((u32(at)==400||u32(at)==200));REQUIRE(u32(at+8)==at+32);REQUIRE(u32(at+12)>0);
+        REQUIRE(u32(at+8)+u32(at+12)<=bytes.size());
+    }
+    const auto table=u32(36);
+    REQUIRE((u32(table+2*36+12)==u32(table+3*36+12))==!encrypted);
+    for(size_t layer=0;layer<4;++layer) {
+        const auto at=table+layer*36;const uint64_t address=(uint64_t(u32(at+20))<<32)|u32(at+12);
+        const auto size=u32(at+16);REQUIRE(address+size<=bytes.size());
+        std::vector<uint8_t> decoded(bytes.begin()+address,bytes.begin()+address+size);
+        PhrozenPHZArchive::crypt_mask(decoded,u32(88),uint32_t(layer));
+        const auto image=document.image(layer);
+        const auto expected=PhrozenPHZArchive::encode_mask(image.buf.data(),image.cols,image.rows,1);
+        REQUIRE(decoded.size()==expected.size());REQUIRE(!std::memcmp(decoded.data(),expected.data(),decoded.size()));
+    }
+    if(folder) {
+        job->export_layer_document(document,"SL1",(dir.path/"grayscale.sl1").string(),{},"PHZ source");
+        auto variable=SLAPrint::create_raster_job(config,document,{.05,.15,.2,.3});
+        variable->export_layer_document(document,"phz",(dir.path/(encrypted?"variable-encrypted.phz":"variable.phz")).string(),{},"variable PHZ");
+    }
+    auto invalid=config;invalid.set("sla_phz_encryption_key",std::string("4294967296"));
+    auto invalid_source=SLAPrint::create_raster_job(invalid,document,{.05,.1,.15,.2});
+    REQUIRE_THROWS(invalid_source->export_layer_document(document,"phz",path.string(),{},"invalid"));
+    invalid.set("sla_archive_format",std::string("phz"));
+    REQUIRE_THROWS(SLAPrint::create_raster_job(invalid,document,{.05,.1,.15,.2}));
+    std::ifstream unchanged(path.string(),std::ios::binary);REQUIRE(std::vector<uint8_t>{std::istreambuf_iterator<char>(unchanged),{}}==bytes);
+}
+
+TEST_CASE("LGS nibble RLE preserves all gray levels long runs and 4K rotation", "[sla_reference][sla_lgs]") {
+    for(const bool rotate:{false,true}) {
+        for(const auto dimensions:std::vector<std::pair<size_t,size_t>>{{1,1},{1,16},{1,256},{256,256},{128,256}}) {
+            const auto [width,height]=dimensions;
+            for(const bool constant:{false,true}) {
+                std::vector<uint8_t> source(width*height,255);
+                if(!constant) for(size_t i=0;i<source.size();++i) source[i]=uint8_t(i);
+                const auto encoded=LongerOrangeArchive::encode_mask(source.data(),width,height,1,rotate);
+                const auto *data=static_cast<const uint8_t *>(encoded.data());
+                std::vector<uint8_t> decoded;
+                for(size_t i=0;i<encoded.size();) {
+                    const uint8_t color=data[i]>>4;size_t run=0;
+                    REQUIRE((data[i]&15)!=0); // Most significant run digit.
+                    do {run=(run<<4)|(data[i++]&15);} while(i<encoded.size() && data[i]>>4==color);
+                    REQUIRE(run>0);REQUIRE(decoded.size()+run<=source.size());
+                    decoded.insert(decoded.end(),run,uint8_t(color*17));
+                }
+                REQUIRE(decoded.size()==source.size());
+                if(rotate) {
+                    auto wire=decoded;
+                    for(size_t y=0;y<height;++y)for(size_t x=0;x<width;++x)
+                        decoded[y*width+x]=wire[x*height+(height-1-y)];
+                }
+                for(auto &pixel:source) pixel=uint8_t((pixel>>4)*17);
+                REQUIRE(decoded==source);
+            }
+        }
+    }
+    REQUIRE_THROWS(LongerOrangeArchive::encode_mask(nullptr,1,1,1,false));
+    uint8_t pixel=255;REQUIRE_THROWS(LongerOrangeArchive::encode_mask(&pixel,1,1,3,false));
+}
+
+TEST_CASE("LGS model exports preserve previews masks exposure and supported motion", "[sla_reference][sla_lgs]") {
+    const std::string format=GENERATE(std::string("lgs"),std::string("lgs30"),std::string("lgs120"),std::string("lgs4k"),std::string("lgs4k-color"));
+    const std::string id=format=="lgs4k-color"?"lgs4k":format;
+    SLAFullPrintConfig full;Test::configure_archive_fixture(full,id);
+    full.set("sla_archive_format",std::string("SL1"));
+    full.set("display_pixels_x",128);full.set("display_pixels_y",256);
+    full.set("display_width",64.);full.set("display_height",128.);
+    full.set("sla_bottom_layers",1);full.set("sla_wait_before_cure",1.25);full.set("sla_bottom_wait_before_cure",2.5);
+    full.set("sla_bottom_lift_height",4.);full.set("sla_bottom_lift_speed",60.);
+    if(format=="lgs4k-color") full.set("printer_model",std::string("4000"));
+    DynamicPrintConfig config;config.apply(full);
+    std::vector<uint8_t> pixels(128*256,255);std::vector<sla::EncodedRaster> masks;
+    masks.push_back(sla::PNGRasterEncoder{}(pixels.data(),128,256,1));
+    std::fill(pixels.begin(),pixels.end(),0);masks.push_back(sla::PNGRasterEncoder{}(pixels.data(),128,256,1));
+    for(size_t i=0;i<pixels.size();++i)pixels[i]=uint8_t(i);
+    masks.push_back(sla::PNGRasterEncoder{}(pixels.data(),128,256,1));
+    auto document=sla::LayerDocument::from_rasters(std::move(masks));
+    auto job=SLAPrint::create_raster_job(config,document,{.05,.1,.15});
+    const char *folder=std::getenv("SLA_LGS_ORACLE_OUTPUT");
+    struct Directory {boost::filesystem::path path;bool keep;~Directory(){if(!keep){boost::system::error_code error;boost::filesystem::remove_all(path,error);}}}
+        dir{folder?boost::filesystem::path(folder):boost::filesystem::unique_path("lgs-%%%%"),bool(folder)};
+    boost::filesystem::create_directories(dir.path);
+    const auto path=dir.path/((format=="lgs4k-color"?"color":"grayscale")+std::string(".")+id);
+    ThumbnailData red;red.set(120,150);
+    for(size_t i=0;i<red.pixels.size();i+=4){red.pixels[i]=255;red.pixels[i+1]=0;red.pixels[i+2]=0;red.pixels[i+3]=255;}
+    job->export_layer_document(document,id,path.string(),{red},"LGS");
+    std::ifstream in(path.string(),std::ios::binary);const std::vector<uint8_t> bytes{std::istreambuf_iterator<char>(in),{}};
+    auto u32=[&](size_t at){REQUIRE(at+4<=bytes.size());return uint32_t(bytes[at])|uint32_t(bytes[at+1])<<8|uint32_t(bytes[at+2])<<16|uint32_t(bytes[at+3])<<24;};
+    REQUIRE(std::string(bytes.begin(),bytes.begin()+8)==std::string("Longer3D\0",8));
+    const uint32_t model=LongerOrangeArchive::model_for_format(id,full.printer_model.value);
+    REQUIRE(u32(16)==model);REQUIRE(u32(164)==3);REQUIRE(u32(172)==120);REQUIRE(u32(176)==150);
+    REQUIRE(bytes[180]==0xf8);REQUIRE(bytes[181]==0); // Big-endian RGB565 red, not BGR565.
+    size_t offset=180+120*150*2;
+    if(id=="lgs120") {
+        const auto size=u32(offset);REQUIRE(size>8);
+        REQUIRE(bytes[offset+4]==137);REQUIRE(bytes[offset+5]=='P');
+        REQUIRE(bytes[offset+4+size]==0);REQUIRE(bytes[offset+5+size]==0);offset+=size+6;
+    }
+    for(size_t layer=0;layer<3;++layer) {
+        const size_t size=u32(offset);offset+=4;REQUIRE(offset+size<=bytes.size());
+        const auto image=document.image(layer);
+        const auto expected=LongerOrangeArchive::encode_mask(image.buf.data(),128,256,1,id=="lgs4k");
+        REQUIRE(expected.size()==size);REQUIRE(!std::memcmp(expected.data(),bytes.data()+offset,size));offset+=size;
+    }
+    REQUIRE(offset==bytes.size());
+    if(folder) job->export_layer_document(document,"SL1",(dir.path/"grayscale.sl1").string(),{},"LGS source");
+    for(const char *key:{"sla_transition_layers","sla_light_pwm","sla_retract_speed","display_pixels_x","display_mirror_x","max_print_height","initial_layer_height"}) {
+        CAPTURE(format,key);auto invalid_config=config;
+        const std::string option=key;
+        if(option=="sla_transition_layers" || option=="sla_light_pwm") invalid_config.set(key,1);
+        else if(option=="display_pixels_x") invalid_config.set(key,512);
+        else if(option=="display_mirror_x") invalid_config.set(key,false);
+        else invalid_config.set(key,option=="sla_retract_speed"?150.:1.);
+        auto selected=invalid_config;selected.set("sla_archive_format",id);
+        REQUIRE_THROWS(SLAPrint::create_raster_job(selected,document,{.05,.1,.15}));
+        if(option=="display_pixels_x") {
+            // Dimension mismatch is rejected before a raster job exists.
+            REQUIRE_THROWS(SLAPrint::create_raster_job(invalid_config,document,{.05,.1,.15}));
+        } else {
+            auto invalid=SLAPrint::create_raster_job(invalid_config,document,option=="initial_layer_height"?std::vector<double>{1.,1.05,1.1}:std::vector<double>{.05,.1,.15});
+            REQUIRE_THROWS(invalid->export_layer_document(document,id,path.string(),{},"invalid"));
+        }
+        std::ifstream unchanged(path.string(),std::ios::binary);
+        REQUIRE(std::vector<uint8_t>{std::istreambuf_iterator<char>(unchanged),{}}==bytes);
+    }
+    auto variable=SLAPrint::create_raster_job(config,document,{.05,.15,.2});
+    REQUIRE_THROWS(variable->export_layer_document(document,id,path.string(),{},"variable"));
+}
+
+TEST_CASE("Makerbase vertical spans reproduce thresholded masks and column order", "[sla_reference][sla_makerbase]") {
+    for(const auto dims:std::vector<std::pair<size_t,size_t>>{{1,1},{65,256},{128,256},{256,256}}) {
+        const auto [width,height]=dims;
+        for(const int pattern:{0,1,2}) {
+            std::vector<uint8_t> pixels(width*height,uint8_t(pattern==1?255:0));
+            if(pattern==2)for(size_t i=0;i<pixels.size();++i)pixels[i]=uint8_t(i);
+            const auto encoded=MakerbaseArchive::encode_mask(pixels.data(),width,height,1);
+            const auto *data=static_cast<const uint8_t *>(encoded.data());
+            const uint32_t count=uint32_t(data[0])<<24|uint32_t(data[1])<<16|uint32_t(data[2])<<8|data[3];
+            REQUIRE(encoded.size()==uint64_t(count)*6+6);REQUIRE(data[encoded.size()-2]==13);REQUIRE(data[encoded.size()-1]==10);
+            auto u16=[&](size_t at){return uint16_t(uint16_t(data[at])<<8|data[at+1]);};
+            std::vector<uint8_t> decoded(pixels.size(),0);
+            size_t previous_x=0;int previous_end=-1;
+            for(size_t at=4;at<encoded.size()-2;at+=6) {
+                const size_t start=u16(at),end=u16(at+2),x=u16(at+4);
+                REQUIRE(start<=end);REQUIRE(end<height);REQUIRE(x<width);REQUIRE(x>=previous_x);
+                if(x==previous_x)REQUIRE(int(start)>previous_end);
+                previous_x=x;previous_end=int(end);
+                for(size_t y=start;y<=end;++y)decoded[y*width+x]=255;
+            }
+            for(auto &pixel:pixels)pixel=pixel>=128?255:0;
+            REQUIRE(decoded==pixels);
+        }
+    }
+    REQUIRE_THROWS(MakerbaseArchive::encode_mask(nullptr,1,1,1));
+    uint8_t p=255;REQUIRE_THROWS(MakerbaseArchive::encode_mask(&p,1,1,3));
+}
+
+TEST_CASE("Makerbase GR1 and MDLP export their own settings and exact binary spans", "[sla_reference][sla_makerbase]") {
+    const bool mdlp=GENERATE(false,true);
+    const bool portrait=GENERATE(false,true);
+    const std::string id=mdlp?"mdlp":"gr1";
+    SLAFullPrintConfig full;Test::configure_archive_fixture(full,id);
+    full.set("sla_archive_format",std::string("SL1"));full.set("sla_bottom_layers",1);
+    full.display_orientation.value=portrait?sladoPortrait:sladoLandscape;
+    full.set("display_pixels_x",portrait?256:128);full.set("display_pixels_y",portrait?128:256);
+    full.set("display_width",portrait?128.:64.);full.set("display_height",portrait?64.:128.);
+    if(!mdlp){full.set("sla_light_pwm",200);full.set("sla_bottom_light_pwm",160);}
+    DynamicPrintConfig config;config.apply(full);
+    std::vector<uint8_t> pixels(128*256,255);std::vector<sla::EncodedRaster> masks;
+    masks.push_back(sla::PNGRasterEncoder{}(pixels.data(),128,256,1));
+    std::fill(pixels.begin(),pixels.end(),0);masks.push_back(sla::PNGRasterEncoder{}(pixels.data(),128,256,1));
+    for(size_t i=0;i<pixels.size();++i)pixels[i]=uint8_t(i);
+    masks.push_back(sla::PNGRasterEncoder{}(pixels.data(),128,256,1));
+    auto document=sla::LayerDocument::from_rasters(std::move(masks));
+    auto job=SLAPrint::create_raster_job(config,document,{.05,.1,.15});
+    const char *folder=std::getenv("SLA_MAKERBASE_ORACLE_OUTPUT");
+    struct Directory {boost::filesystem::path path;bool keep;~Directory(){if(!keep){boost::system::error_code error;boost::filesystem::remove_all(path,error);}}}
+        dir{folder?boost::filesystem::path(folder):boost::filesystem::unique_path("makerbase-%%%%"),bool(folder)};
+    boost::filesystem::create_directories(dir.path);
+    const auto path=dir.path/(std::string(portrait?"portrait":"landscape")+"."+id);
+    ThumbnailData red;red.set(1,1);red.pixels={255,0,0,255};
+    job->export_layer_document(document,id,path.string(),{red},"Makerbase");
+    std::ifstream input(path.string(),std::ios::binary);const std::vector<uint8_t> bytes{std::istreambuf_iterator<char>(input),{}};
+    const std::vector<uint8_t> magic{0,0,0,7,'M','K','S','D','L','P',0};
+    REQUIRE(std::equal(magic.begin(),magic.end(),bytes.begin()));REQUIRE(std::equal(magic.begin(),magic.end(),bytes.end()-11));
+    REQUIRE(bytes[11]==0xf8);REQUIRE(bytes[12]==0);
+    auto u16=[&](size_t at){REQUIRE(at+2<=bytes.size());return uint16_t(uint16_t(bytes[at])<<8|bytes[at+1]);};
+    auto u32=[&](size_t at){REQUIRE(at+4<=bytes.size());return uint32_t(bytes[at])<<24|uint32_t(bytes[at+1])<<16|uint32_t(bytes[at+2])<<8|bytes[at+3];};
+    size_t at=11+116*116*2;REQUIRE(bytes[at]==13);REQUIRE(bytes[at+1]==10);
+    at+=2+290*290*2;REQUIRE(bytes[at]==13);REQUIRE(bytes[at+1]==10);at+=2;
+    REQUIRE(u16(at)==3);REQUIRE(u16(at+2)==128);REQUIRE(u16(at+4)==256);at+=6;
+    for(const std::string wanted:{"64","128","0.05"}) {
+        const auto size=u32(at);at+=4;REQUIRE(size==wanted.size()*2);
+        for(const char c:wanted){REQUIRE(bytes[at++]==0);REQUIRE(bytes[at++]==uint8_t(c));}
+    }
+    const std::vector<uint16_t> common{3,8,20,1};
+    for(const auto value:common){REQUIRE(u16(at)==value);at+=2;}
+    if(!mdlp)for(const auto value:std::vector<uint16_t>{4,60,6,120,120,160,200}){REQUIRE(u16(at)==value);at+=2;}
+    for(size_t layer=0;layer<3;++layer) {
+        const auto image=document.image(layer);
+        const auto expected=MakerbaseArchive::encode_mask(image.buf.data(),128,256,1);
+        REQUIRE(at+expected.size()<=bytes.size());REQUIRE(!std::memcmp(bytes.data()+at,expected.data(),expected.size()));at+=expected.size();
+    }
+    REQUIRE(at+11==bytes.size());
+    if(folder)job->export_layer_document(document,"SL1",(dir.path/(id+"-source.sl1")).string(),{},"Makerbase source");
+    for(const char *key:{"exposure_time","sla_transition_layers","sla_lift_height","sla_wait_before_cure","display_mirror_x","initial_layer_height"}) {
+        CAPTURE(id,portrait,key);auto invalid_config=config;const std::string option=key;
+        if(option=="sla_transition_layers")invalid_config.set(key,1);
+        else if(option=="display_mirror_x")invalid_config.set(key,true);
+        else invalid_config.set(key,option=="exposure_time"?2.5:option=="sla_lift_height"?7.:1.);
+        auto selected=invalid_config;selected.set("sla_archive_format",id);
+        REQUIRE_THROWS(SLAPrint::create_raster_job(selected,document,{.05,.1,.15}));
+        auto invalid=SLAPrint::create_raster_job(invalid_config,document,option=="initial_layer_height"?std::vector<double>{1.,1.05,1.1}:std::vector<double>{.05,.1,.15});
+        REQUIRE_THROWS(invalid->export_layer_document(document,id,path.string(),{},"invalid"));
+        std::ifstream unchanged(path.string(),std::ios::binary);
+        REQUIRE(std::vector<uint8_t>{std::istreambuf_iterator<char>(unchanged),{}}==bytes);
+    }
+    auto variable=SLAPrint::create_raster_job(config,document,{.05,.15,.2});
+    REQUIRE_THROWS(variable->export_layer_document(document,id,path.string(),{},"variable"));
+}
+
+TEST_CASE("QDT exports relative laser paths both parities previews and fixed metadata", "[sla_reference][sla_qdt]") {
+    const bool portrait = GENERATE(false, true);
+    SLAFullPrintConfig full;
+    Test::configure_archive_fixture(full, "qdt");
+    full.set("sla_archive_format", std::string("SL1"));
+    full.display_orientation.value = portrait ? sladoPortrait : sladoLandscape;
+    full.set("display_pixels_x", portrait ? 400 : 800);
+    full.set("display_pixels_y", portrait ? 800 : 400);
+    full.set("display_width", portrait ? 200. : 400.);
+    full.set("display_height", portrait ? 400. : 200.);
+    DynamicPrintConfig config;
+    config.apply(full);
+    std::vector<uint8_t> pixels(800 * 400, 255);
+    std::vector<sla::EncodedRaster> masks;
+    masks.push_back(sla::PNGRasterEncoder{}(pixels.data(), 800, 400, 1));
+    std::fill(pixels.begin(), pixels.end(), 0);
+    masks.push_back(sla::PNGRasterEncoder{}(pixels.data(), 800, 400, 1));
+    for (size_t i = 0; i < pixels.size(); ++i)
+        pixels[i] = uint8_t(i);
+    const auto gradient = sla::PNGRasterEncoder{}(pixels.data(), 800, 400, 1);
+    masks.push_back(gradient);
+    std::fill(pixels.begin(), pixels.end(), 0);
+    pixels[0] = 255;
+    pixels.back() = 255;
+    for (size_t y = 7; y <= 200; ++y)
+        pixels[y * 800 + 3] = 255;
+    pixels[75 * 800 + 3] = 0;
+    pixels[799] = 255;
+    masks.push_back(sla::PNGRasterEncoder{}(pixels.data(), 800, 400, 1));
+    masks.push_back(gradient);
+    masks.push_back(gradient);
+    auto document = sla::LayerDocument::from_rasters(std::move(masks));
+    const std::vector<double> positions{.05, .1, .15, .2, .25, .3};
+    auto job = SLAPrint::create_raster_job(config, document, positions);
+    const char *folder = std::getenv("SLA_QDT_ORACLE_OUTPUT");
+    struct Directory {
+        boost::filesystem::path path;
+        bool keep;
+        ~Directory() {
+            if (!keep) {
+                boost::system::error_code error;
+                boost::filesystem::remove_all(path, error);
+            }
+        }
+    } dir{folder ? boost::filesystem::path(folder) : boost::filesystem::unique_path("qdt-%%%%"), bool(folder)};
+    boost::filesystem::create_directories(dir.path);
+    const auto path = dir.path / (portrait ? "portrait.qdt" : "landscape.qdt");
+    job->export_layer_document(document, "qdt", path.string(), {}, "QDT");
+    std::ifstream input(path.string());
+    const std::string text{std::istreambuf_iterator<char>(input), {}};
+    std::istringstream stream(text);
+    std::string line;
+    REQUIRE(bool(std::getline(stream, line)));
+    REQUIRE(line == "JieHe,50,400,800,2,019,0,FA");
+    using Coordinates = std::array<unsigned, 3>;
+    auto coordinate = [&](const std::string &text) {
+        std::istringstream row(text);
+        Coordinates c{};
+        char comma = 0;
+        REQUIRE(bool(row >> c[0] >> comma));
+        REQUIRE(comma == ',');
+        REQUIRE(bool(row >> c[1] >> comma));
+        REQUIRE(comma == ',');
+        REQUIRE(bool(row >> c[2]));
+        REQUIRE(c[2] <= 1);
+        return c;
+    };
+    auto decode = [&](const std::vector<Coordinates> &coords, size_t width, size_t height, bool mirror) {
+        std::vector<uint8_t> image(width * height, 0);
+        if (coords.empty())
+            return image;
+        REQUIRE(coords[0][2] == 0);
+        unsigned zeros = 1, start_y = coords[0][1], end_y = start_y;
+        for (size_t i = 1; i < coords.size(); ++i) {
+            if (coords[i][2] == 0) {
+                ++zeros;
+                continue;
+            }
+            REQUIRE(zeros >= 1);
+            REQUIRE(zeros <= 2);
+            if (zeros == 1 && i > 1)
+                start_y = end_y + coords[i - 1][1];
+            else if (zeros == 2)
+                start_y = coords[i - 1][1];
+            end_y = start_y + coords[i][1];
+            REQUIRE(end_y < height);
+            const unsigned x = mirror ? unsigned(width + 1) - coords[i][0] : coords[i][0];
+            REQUIRE(x < width);
+            for (size_t y = start_y; y <= end_y; ++y)
+                image[y * width + x] = 255;
+            zeros = 0;
+        }
+        return image;
+    };
+    for (size_t layer = 0; layer < 6; ++layer) {
+        REQUIRE(bool(std::getline(stream, line)));
+        REQUIRE(line == std::to_string(layer + 1));
+        std::vector<Coordinates> preview, main;
+        while (std::getline(stream, line) && line != "FB")
+            preview.push_back(coordinate(line));
+        REQUIRE(line == "FB");
+        while (std::getline(stream, line) && line != "FC")
+            main.push_back(coordinate(line));
+        REQUIRE(line == "FC");
+        const auto actual = decode(main, 800, 400, layer % 2 != 0);
+        auto image = document.image(layer);
+        std::vector<uint8_t> expected = image.buf;
+        for (auto &p : expected)
+            p = p >= 128 ? 255 : 0;
+        REQUIRE(actual == expected);
+        std::vector<uint8_t> small(80 * 40);
+        for (size_t y = 0; y < 40; ++y)
+            for (size_t x = 0; x < 80; ++x) {
+                const auto &p = image.buf;
+                const size_t at = (y * 10 + 4) * 800 + x * 10 + 4;
+                const unsigned sum = p[at] + p[at + 1] + p[at + 800] + p[at + 801];
+                small[y * 80 + x] = (sum + 2) / 4 >= 128 ? 255 : 0;
+            }
+        REQUIRE(decode(preview, 80, 40, false) == small);
+    }
+    REQUIRE(bool(std::getline(stream, line)));
+    REQUIRE(line == "FD");
+    REQUIRE(bool(std::getline(stream, line)));
+    REQUIRE(line == "6");
+    REQUIRE_FALSE(bool(std::getline(stream, line)));
+    if (folder)
+        job->export_layer_document(document, "SL1", (dir.path / "source.sl1").string(), {}, "QDT source");
+    for (const char *key : {"exposure_time", "sla_bottom_layers", "sla_wait_before_cure", "sla_lift_speed",
+                            "sla_light_pwm", "display_width", "max_print_height", "initial_layer_height"}) {
+        CAPTURE(key);
+        auto invalid_config = config;
+        const std::string option = key;
+        if (option == "sla_bottom_layers" || option == "sla_light_pwm")
+            invalid_config.set(key, 1);
+        else
+            invalid_config.set(key, option == "exposure_time" ? 2.5 : option == "sla_lift_speed" ? 120. : 1.);
+        auto selected = invalid_config;
+        selected.set("sla_archive_format", std::string("qdt"));
+        REQUIRE_THROWS(SLAPrint::create_raster_job(selected, document, positions));
+        auto invalid = SLAPrint::create_raster_job(
+            invalid_config, document,
+            option == "initial_layer_height" ? std::vector<double>{1., 1.05, 1.1, 1.15, 1.2, 1.25} : positions);
+        REQUIRE_THROWS(invalid->export_layer_document(document, "qdt", path.string(), {}, "invalid"));
+        std::ifstream unchanged(path.string());
+        REQUIRE(std::string{std::istreambuf_iterator<char>(unchanged), {}} == text);
+    }
+    auto variable = SLAPrint::create_raster_job(config, document, {.05, .15, .2, .25, .3, .35});
+    REQUIRE_THROWS(variable->export_layer_document(document, "qdt", path.string(), {}, "variable"));
+}
+
+TEST_CASE("VDT preserves grayscale variable Z and full two-stage layer settings", "[sla_reference][sla_vdt]") {
+    const bool portrait = GENERATE(false, true);
+    SLAFullPrintConfig full;
+    Test::configure_archive_fixture(full, "vdt");
+    full.set("sla_archive_format", std::string("SL1"));
+    full.set("display_width", portrait ? 128. : 64.);
+    full.set("display_height", portrait ? 64. : 128.);
+    full.set("display_pixels_x", portrait ? 256 : 128);
+    full.set("display_pixels_y", portrait ? 128 : 256);
+    full.display_orientation.value = portrait ? sladoPortrait : sladoLandscape;
+    full.set("display_mirror_x", true);
+    full.set("display_mirror_y", true);
+    full.set("sla_bottom_layers", 1);
+    full.set("sla_transition_layers", 1);
+    full.set("exposure_time", 3.);
+    full.set("initial_exposure_time", 20.);
+    for (const std::string prefix : {"sla_", "sla_bottom_"}) {
+        const bool bottom = prefix == "sla_bottom_";
+        full.set(prefix + "lift_height", bottom ? 4. : 6.);
+        full.set(prefix + "lift_height2", 2.);
+        full.set(prefix + "lift_speed", bottom ? 60. : 120.);
+        full.set(prefix + "lift_speed2", 180.);
+        full.set(prefix + "retract_height2", 1.);
+        full.set(prefix + "retract_speed", bottom ? 80. : 100.);
+        full.set(prefix + "retract_speed2", 140.);
+        full.set(prefix + "wait_before_cure", bottom ? 2.5 : 1.25);
+        full.set(prefix + "wait_after_cure", .5);
+        full.set(prefix + "wait_after_lift", .75);
+        full.set(prefix + "light_pwm", bottom ? 160 : 200);
+    }
+    DynamicPrintConfig config;
+    config.apply(full);
+    std::vector<uint8_t> pixels(128 * 256, 255);
+    std::vector<sla::EncodedRaster> masks;
+    masks.push_back(sla::PNGRasterEncoder{}(pixels.data(), 128, 256, 1));
+    std::fill(pixels.begin(), pixels.end(), 0);
+    masks.push_back(sla::PNGRasterEncoder{}(pixels.data(), 128, 256, 1));
+    for (size_t i = 0; i < pixels.size(); ++i)
+        pixels[i] = uint8_t(i);
+    masks.push_back(sla::PNGRasterEncoder{}(pixels.data(), 128, 256, 1));
+    auto document = sla::LayerDocument::from_rasters(std::move(masks));
+    auto job = SLAPrint::create_raster_job(config, document, {.05, .13, .2});
+    const char *folder = std::getenv("SLA_VDT_ORACLE_OUTPUT");
+    struct Directory {
+        boost::filesystem::path path;
+        bool keep;
+        ~Directory() {
+            if (!keep) {
+                boost::system::error_code error;
+                boost::filesystem::remove_all(path, error);
+            }
+        }
+    } dir{folder ? boost::filesystem::path(folder) : boost::filesystem::unique_path("vdt-%%%%"), bool(folder)};
+    boost::filesystem::create_directories(dir.path);
+    const auto path = dir.path / (portrait ? "portrait.vdt" : "landscape.vdt");
+    ThumbnailData preview;
+    preview.set(2, 1);
+    preview.pixels = {255, 0, 0, 255, 0, 0, 255, 255};
+    job->export_layer_document(document, "vdt", path.string(), {preview}, "VDT test \"żywica\"");
+    auto uniform = SLAPrint::create_raster_job(config, document, {.05, .1, .15});
+    uniform->export_layer_document(document, "vdt",
+                                   (dir.path / (portrait ? "uniform-portrait.vdt" : "uniform-landscape.vdt")).string(),
+                                   {}, "VDT uniform");
+    uniform->export_layer_document(document, "SL1", (dir.path / "source.sl1").string(), {}, "VDT source");
+    const auto zip = read_zipper_archive(path.string(), {""}, {});
+    auto entry = [&](const std::string &name) -> const std::vector<uint8_t> & {
+        auto found =
+            std::find_if(zip.entries.begin(), zip.entries.end(), [&](const auto &e) { return e.fname == name; });
+        REQUIRE(found != zip.entries.end());
+        return found->buf;
+    };
+    const auto manifest = nlohmann::json::parse(entry("manifest.json"));
+    REQUIRE(manifest["project_name"] == "VDT test \"żywica\"");
+    REQUIRE(manifest["machine"]["lcd_width"] == 64);
+    REQUIRE(manifest["machine"]["lcd_height"] == 128);
+    REQUIRE(manifest["machine"]["resolution_x"] == 128);
+    REQUIRE(manifest["machine"]["resolution_y"] == 256);
+    REQUIRE(manifest["machine"]["x_mirror"] == true);
+    REQUIRE(manifest["machine"]["y_mirror"] == true);
+    REQUIRE(manifest["print"]["bottom_layers"] == 1);
+    REQUIRE(manifest["print"]["transition_layer"] == 1);
+    REQUIRE(manifest["layers"].size() == 3);
+    for (size_t i = 0; i < 3; ++i) {
+        const auto &layer = manifest["layers"][i];
+        REQUIRE(layer["height"].get<float>() == sla::layer_z(*job, i));
+        REQUIRE(layer["exposure_time"].get<float>() == sla::layer_exposure(*job, i));
+        REQUIRE(layer["lift_distance"] == (i == 0 ? 4 : 6));
+        REQUIRE(layer["lift_distance2"] == 2);
+        REQUIRE(layer["retract_distance2"] == 1);
+        REQUIRE(layer["retract_speed"] == (i == 0 ? 80 : 100));
+        REQUIRE(layer["light_pwm"] == (i == 0 ? 160 : 200));
+        REQUIRE(layer["wait_time_before_cure"] == (i == 0 ? 2.5 : 1.25));
+        REQUIRE(layer["wait_time_after_cure"] == .5);
+        REQUIRE(layer["wait_time_after_lift"] == .75);
+        png::ImageGreyscale image;
+        const auto &bytes = entry(std::to_string(i) + ".png");
+        REQUIRE(png::decode_png(png::ReadBuf{bytes.data(), bytes.size()}, image));
+        REQUIRE(image.buf == document.image(i).buf);
+    }
+    auto statistics_config = config;
+    statistics_config.set("bottle_cost", 25.);
+    statistics_config.set("bottle_volume", 1000.);
+    statistics_config.set("material_density", 1.24);
+    statistics_config.set("sla_transition_layers", 2);
+    std::vector<uint8_t> white(128*256, 255);
+    const auto white_png = sla::PNGRasterEncoder{}(white.data(),128,256,1);
+    auto repeated = sla::LayerDocument::from_rasters({white_png,white_png,white_png});
+    auto statistics_job = SLAPrint::create_raster_job(statistics_config,repeated,{.05,.13,.2});
+    const auto statistics_path = dir.path/(portrait?"statistics-portrait.vdt":"statistics-landscape.vdt");
+    statistics_job->export_layer_document(repeated,"vdt",statistics_path.string(),{},"statistics");
+    const auto statistics_zip = read_zipper_archive(statistics_path.string(),{""},{});
+    const auto statistics_entry = std::find_if(statistics_zip.entries.begin(),statistics_zip.entries.end(),
+        [](const auto &e){return e.fname=="manifest.json";});
+    REQUIRE(statistics_entry!=statistics_zip.entries.end());
+    const auto statistics = nlohmann::json::parse(statistics_entry->buf);
+    REQUIRE(statistics["print_statistics"]["volume"].get<double>() == Catch::Approx(1.6384).epsilon(1e-6));
+    REQUIRE(statistics["print_statistics"]["weight"].get<double>() == Catch::Approx(2.031616).epsilon(1e-6));
+    REQUIRE(statistics["print_statistics"]["price"].get<double>() == Catch::Approx(.04096).epsilon(1e-6));
+    REQUIRE(statistics["resin"]["cost"] == statistics["print_statistics"]["price"]);
+    REQUIRE(statistics["resin"]["density"].get<double>() == Catch::Approx(1.24).epsilon(1e-6));
+    REQUIRE(statistics["layers"][1]["exposure_time"].get<float>() == 14.33f);
+    REQUIRE(statistics["layers"][2]["exposure_time"].get<float>() == 8.67f);
+    const auto original = entry("manifest.json");
+    auto invalid = config;
+    invalid.set("sla_bottom_retract_height2", 100.);
+    REQUIRE_THROWS(([&] {
+        auto bad = SLAPrint::create_raster_job(invalid, document, {.05, .13, .2});
+        bad->export_layer_document(document, "vdt", path.string(), {}, "invalid");
+    }()));
+    const auto after = read_zipper_archive(path.string(), {""}, {});
+    const auto kept = std::find_if(after.entries.begin(), after.entries.end(),
+                                   [](const auto &e) { return e.fname == "manifest.json"; });
+    REQUIRE(kept != after.entries.end());
+    REQUIRE(kept->buf == original);
+    auto too_precise = SLAPrint::create_raster_job(config, document, {.05, .1305, .2});
+    REQUIRE_THROWS(too_precise->export_layer_document(document, "vdt", path.string(), {}, "Z precision"));
+    auto fine_wait = config;
+    fine_wait.set("sla_wait_before_cure", 1.251);
+    auto fine = SLAPrint::create_raster_job(fine_wait, document, {.05, .13, .2});
+    REQUIRE_THROWS(fine->export_layer_document(document, "vdt", path.string(), {}, "wait precision"));
+}
+
+TEST_CASE("JXS preserves packed RGB masks and actual SLA action sequence", "[sla_reference][sla_jxs]") {
+    const bool portrait = GENERATE(false, true);
+    SLAFullPrintConfig full;
+    Test::configure_archive_fixture(full, "jxs");
+    full.set("sla_archive_format", std::string("SL1"));
+    full.display_orientation.value = portrait ? sladoPortrait : sladoLandscape;
+    full.set("display_pixels_x", portrait ? 2880 : 4920);
+    full.set("display_pixels_y", portrait ? 4920 : 2880);
+    full.set("display_width", portrait ? 129.6 : 221.4);
+    full.set("display_height", portrait ? 221.4 : 129.6);
+    full.set("sla_bottom_layers", 1);
+    full.set("sla_transition_layers", 1);
+    full.set("exposure_time", 3.);
+    full.set("initial_exposure_time", 20.);
+    for (const std::string prefix : {"sla_", "sla_bottom_"}) {
+        const bool bottom = prefix == "sla_bottom_";
+        full.set(prefix + "lift_height", bottom ? 4. : 6.);
+        full.set(prefix + "lift_height2", 2.);
+        full.set(prefix + "lift_speed", bottom ? 60. : 120.);
+        full.set(prefix + "lift_speed2", 180.);
+        full.set(prefix + "retract_height2", 1.);
+        full.set(prefix + "retract_speed", bottom ? 80. : 100.);
+        full.set(prefix + "retract_speed2", 140.);
+        full.set(prefix + "wait_before_cure", bottom ? 2.5 : 1.25);
+        full.set(prefix + "wait_after_cure", .5);
+        full.set(prefix + "wait_after_lift", .75);
+        full.set(prefix + "light_pwm", bottom ? 160 : 200);
+    }
+    DynamicPrintConfig config;
+    config.apply(full);
+    std::vector<uint8_t> pixels(4920 * 2880, 255);
+    std::vector<sla::EncodedRaster> masks;
+    masks.push_back(sla::PNGRasterEncoder{}(pixels.data(), 4920, 2880, 1));
+    std::fill(pixels.begin(), pixels.end(), 0);
+    masks.push_back(sla::PNGRasterEncoder{}(pixels.data(), 4920, 2880, 1));
+    for (size_t i = 0; i < pixels.size(); ++i)
+        pixels[i] = uint8_t(i);
+    masks.push_back(sla::PNGRasterEncoder{}(pixels.data(), 4920, 2880, 1));
+    auto document = sla::LayerDocument::from_rasters(std::move(masks));
+    auto job = SLAPrint::create_raster_job(config, document, {.05, .13, .2});
+    const char *folder = std::getenv("SLA_JXS_ORACLE_OUTPUT");
+    struct Directory {
+        boost::filesystem::path path;
+        bool keep;
+        ~Directory() {
+            if (!keep) {
+                boost::system::error_code error;
+                boost::filesystem::remove_all(path, error);
+            }
+        }
+    } dir{folder ? boost::filesystem::path(folder) : boost::filesystem::unique_path("jxs-%%%%"), bool(folder)};
+    boost::filesystem::create_directories(dir.path);
+    const auto path = dir.path / (portrait ? "portrait.jxs" : "landscape.jxs");
+    job->export_layer_document(document, "jxs", path.string(), {}, "JXS test");
+    auto uniform = SLAPrint::create_raster_job(config, document, {.05, .1, .15});
+    uniform->export_layer_document(document, "jxs",
+                                   (dir.path / (portrait ? "uniform-portrait.jxs" : "uniform-landscape.jxs")).string(),
+                                   {}, "JXS uniform");
+    uniform->export_layer_document(document, "SL1", (dir.path / "source.sl1").string(), {}, "JXS source");
+    auto zero_wait_config = config;
+    zero_wait_config.set("sla_wait_before_cure", 0.);
+    zero_wait_config.set("sla_bottom_wait_before_cure", 0.);
+    auto zero_wait = SLAPrint::create_raster_job(zero_wait_config, document, {.05, .13, .2});
+    zero_wait->export_layer_document(document, "jxs", (dir.path / "zero-wait.jxs").string(), {}, "zero wait");
+    const auto zip = read_zipper_archive(path.string(), {""}, {});
+    auto entry = [&](const std::string &name) -> const std::vector<uint8_t> & {
+        const auto found =
+            std::find_if(zip.entries.begin(), zip.entries.end(), [&](const auto &e) { return e.fname == name; });
+        REQUIRE(found != zip.entries.end());
+        return found->buf;
+    };
+    const auto control = nlohmann::json::parse(entry("control.json"));
+    REQUIRE(control["total_slices"] == 3);
+    REQUIRE(control["action_list"].size() > 30);
+    REQUIRE(zip.config.get<uint32_t>("FirstLayerTime") == 20000);
+    REQUIRE(zip.config.get<uint32_t>("NumLayers") == 3);
+    REQUIRE(zip.config.get<uint32_t>("ZMoveTimeCompensation") == 1250);
+    for (size_t i = 0; i < 3; ++i) {
+        std::ostringstream name;
+        name << std::setw(5) << std::setfill('0') << i << ".png";
+        const auto &png = entry(name.str());
+        REQUIRE(png.size() > 33);
+        REQUIRE(std::memcmp(png.data(), "\x89PNG\r\n\x1a\n", 8) == 0);
+        REQUIRE(png[24] == 8);
+        REQUIRE(png[25] == 2); // packed RGB, not grayscale with a misleading extension.
+        auto be = [&](size_t at) {
+            return uint32_t(png[at]) << 24 | uint32_t(png[at + 1]) << 16 | uint32_t(png[at + 2]) << 8 | png[at + 3];
+        };
+        REQUIRE(be(16) == 1640);
+        REQUIRE(be(20) == 2880);
+    }
+    const auto original = entry("control.json");
+    for (const std::string key : {"display_width", "display_pixels_x", "max_print_height", "display_mirror_y"}) {
+        auto invalid = config;
+        if (key == "display_mirror_y")
+            invalid.set(key, false);
+        else if (key == "display_pixels_x")
+            invalid.set(key, 1);
+        else
+            invalid.set(key, 1.);
+        REQUIRE_THROWS(([&] {
+            auto bad = SLAPrint::create_raster_job(invalid, document, {.05, .13, .2});
+            bad->export_layer_document(document, "jxs", path.string(), {}, "bad");
+        }()));
+    }
+    const auto after = read_zipper_archive(path.string(), {""}, {});
+    const auto kept = std::find_if(after.entries.begin(), after.entries.end(),
+                                   [](const auto &e) { return e.fname == "control.json"; });
+    REQUIRE(kept != after.entries.end());
+    REQUIRE(kept->buf == original);
+}
+
+TEST_CASE("ZCodex preserves grayscale and relative SLA motion without losing settings", "[sla_reference][sla_zcodex]") {
+    const bool portrait = GENERATE(false, true);
+    SLAFullPrintConfig full;
+    Test::configure_archive_fixture(full, "zcodex");
+    full.set("sla_archive_format", std::string("SL1"));
+    if (portrait) {
+        full.set("display_width",132.88); full.set("display_height",74.67);
+        full.set("display_pixels_x",2560); full.set("display_pixels_y",1440);
+        full.display_orientation.value = sladoPortrait;
+    }
+    full.set("sla_bottom_layers",1); full.set("exposure_time",3.); full.set("initial_exposure_time",20.);
+    full.set("sla_wait_before_cure",1.25); full.set("sla_bottom_wait_before_cure",1.25);
+    full.set("material_density",1.24);
+    DynamicPrintConfig cfg; cfg.apply(full);
+    std::vector<uint8_t> pixels(1440*2560,255);
+    std::vector<sla::EncodedRaster> masks;
+    masks.push_back(sla::PNGRasterEncoder{}(pixels.data(),1440,2560,1));
+    std::fill(pixels.begin(),pixels.end(),0);
+    masks.push_back(sla::PNGRasterEncoder{}(pixels.data(),1440,2560,1));
+    for(size_t i=0;i<pixels.size();++i) pixels[i]=uint8_t(i);
+    masks.push_back(sla::PNGRasterEncoder{}(pixels.data(),1440,2560,1));
+    auto doc=sla::LayerDocument::from_rasters(std::move(masks));
+    const char *folder=std::getenv("SLA_ZCODEX_ORACLE_OUTPUT");
+    struct Directory {
+        boost::filesystem::path path; bool keep;
+        ~Directory(){if(!keep){boost::system::error_code e;boost::filesystem::remove_all(path,e);}}
+    } dir{folder?boost::filesystem::path(folder):boost::filesystem::unique_path("zcodex-%%%%"),bool(folder)};
+    boost::filesystem::create_directories(dir.path);
+    ThumbnailData preview; preview.set(2,1); preview.pixels={255,0,0,255,0,0,255,255};
+    auto job=SLAPrint::create_raster_job(cfg,doc,{.05,.13,.2});
+    const auto path=dir.path/(portrait?"portrait.zcodex":"landscape.zcodex");
+    job->export_layer_document(doc,"zcodex",path.string(),{preview},"ZCodex test");
+    auto uniform=SLAPrint::create_raster_job(cfg,doc,{.05,.1,.15});
+    uniform->export_layer_document(doc,"zcodex",(dir.path/(portrait?"uniform-portrait.zcodex":"uniform-landscape.zcodex")).string(),{},"uniform");
+    uniform->export_layer_document(doc,"SL1",(dir.path/"source.sl1").string(),{},"source");
+    const auto zip=read_zipper_archive(path.string(),{""},{});
+    auto entry=[&](const std::string &name)->const std::vector<uint8_t>& {
+        const auto e=std::find_if(zip.entries.begin(),zip.entries.end(),[&](const auto &e){return e.fname==boost::algorithm::to_lower_copy(name);});
+        REQUIRE(e!=zip.entries.end()); return e->buf;
+    };
+    const auto resin=nlohmann::json::parse(entry("ResinMetadata"));
+    REQUIRE(resin["TotalLayersCount"]==3); REQUIRE(resin["BottomLayersNumber"]==1);
+    REQUIRE(resin["BlankingLayerTime"]==1250); REQUIRE(resin["LayerTime"]==3000);
+    const auto &wire=entry("ResinGCodeData");
+    const std::string protocol(wire.begin(),wire.end());
+    REQUIRE(protocol.find("G1 Z-5.92 F100")!=std::string::npos);
+    REQUIRE(protocol.find("G1 Z-5.93 F100")!=std::string::npos);
+    REQUIRE(protocol.find("G1 Z40.0 F120\nM18\n")!=std::string::npos);
+    for(size_t i=0;i<3;++i) {
+        std::ostringstream name; name<<"ResinSlicesData/Slice"<<std::setw(5)<<std::setfill('0')<<i<<".png";
+        const auto &bytes=entry(name.str());png::ImageGreyscale image;
+        REQUIRE(png::decode_png(png::ReadBuf{bytes.data(),bytes.size()},image));
+        REQUIRE(image.cols==1440);REQUIRE(image.rows==2560);REQUIRE(image.buf==doc.image(i).buf);
+    }
+    auto pwm_cfg=cfg;pwm_cfg.set("sla_bottom_light_pwm",160);pwm_cfg.set("sla_light_pwm",200);
+    auto pwm=SLAPrint::create_raster_job(pwm_cfg,doc,{.05,.13,.2});
+    pwm->export_layer_document(doc,"zcodex",(dir.path/(portrait?"pwm-portrait.zcodex":"pwm-landscape.zcodex")).string(),{},"PWM");
+    for(const auto &bad: {std::pair{"display_width",75.}, {"sla_transition_layers",1.},
+        {"sla_bottom_wait_before_cure",2.}, {"sla_lift_speed",120.5}, {"sla_lift_height2",2.},
+        {"sla_wait_after_cure",.5}, {"sla_wait_before_cure",1.251}}) {
+        auto invalid=cfg;
+        if(std::string(bad.first)=="sla_transition_layers")invalid.set(bad.first,int(bad.second));
+        else invalid.set(bad.first,bad.second);
+        REQUIRE_THROWS(([&]{auto j=SLAPrint::create_raster_job(invalid,doc,{.05,.13,.2});
+            j->export_layer_document(doc,"zcodex",path.string(),{},"invalid");}()));
+    }
+    auto fine=SLAPrint::create_raster_job(cfg,doc,{.05,.1305,.2});
+    REQUIRE_THROWS(fine->export_layer_document(doc,"zcodex",path.string(),{},"fine Z"));
+    auto high=SLAPrint::create_raster_job(cfg,doc,{130.,133.,136.});
+    REQUIRE_THROWS(high->export_layer_document(doc,"zcodex",path.string(),{},"unsafe park"));
+    const auto after=read_zipper_archive(path.string(),{""},{});
+    const auto kept=std::find_if(after.entries.begin(),after.entries.end(),[](const auto &e){return e.fname=="resingcodedata";});
+    REQUIRE(kept!=after.entries.end());REQUIRE(kept->buf==wire);
+}
+
+TEST_CASE("ZCode RSA framing matches independent modular exponentiation", "[sla_reference][sla_zcode_rsa]") {
+    using namespace sla::zcode;
+    const std::vector<std::pair<std::string,std::string>> vectors = {
+        {"G21;","oJC+T84AdLSP+3Jaca6Zhh3wT2SRrPyfDTzqyx0GnxlRQHNc2bE58NJW7asZHVKzkUnv3xxo4NmSEizN8b0n+Q=="},
+        {"M6054 \"1.png\";","M2FrZm0r0XeIgx+uRpG7jfCp3C42+8M9QEUm01//Vz64ytVDVLylrd5quslm/M+IRPLtqWEBFeyZNF8AMJtbuQ=="},
+        {"G0 Z6.05 F12;","5bBY6adqZdp1pZkodrBB5RcMSs8gdrQ0FDmY8ruIwpw2Y4UB5Q9I6951MQdW6KqWPYFb/rc1JRsdtV/YjKpL7A=="},
+        {"G4 P02500;","RnONMo+83mSox7xdwLbW0QbhuODT/PxZvEcQmeMsRumqykPN1O6gHMa2PQkDMaRm0R9qzdjGyEdN0+2zwFhmqA=="},
+        {"M106 S300;","LI1qu/TEgZln537v8lbmNKmBK7uTdCwQo3ThwqFw+wDlmXcFDsW5FVMaZd9KTmpaDW2LDrYds18JlhRZXKYf4Q=="},
+        {"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx","zHaUe0SGTVSMumDWv6xhT6TwsP2OYdpz2ShaJn3SVcUCee+EKoU9oKLcCGEn9zMdrb2sGaUuVQ9k4VKauOhWHA=="},
+        {"ąąąąąąąąąąąąąąąąąąąąąąąąąąąąąą","xaLkQ9anRQDGsmrtjF9RcTIILJ2rqfyLfutc3F6m5GI2fLENGMe8V3cHPsC/oaKOHngabRqhsb/4vWqjC+Fnuw=="},
+    };
+    std::vector<std::string> lines;
+    std::string expected;
+    for (const auto &v:vectors) {
+        REQUIRE(base64(encrypt_line(v.first))==v.second);
+        lines.push_back(v.first);expected+=v.second+"\n";
+    }
+    REQUIRE(encrypt_lines(lines)==expected);
+    REQUIRE_THROWS(encrypt_line(""));
+    REQUIRE_THROWS(encrypt_line(std::string(62,'x')));
+    REQUIRE_THROWS(encrypt_line("G21\nG90"));
+    REQUIRE_THROWS(encrypt_line("G21\r"));
+    std::vector<std::string> batch(20000);
+    for(size_t i=0;i<batch.size();++i)batch[i]="G0 Z"+std::to_string(i)+" F12;";
+    tbb::task_arena single(1),parallel(4);
+    const auto start=std::chrono::steady_clock::now();
+    const auto serial=single.execute([&]{return encrypt_lines(batch);});
+    const auto middle=std::chrono::steady_clock::now();
+    const auto concurrent=parallel.execute([&]{return encrypt_lines(batch);});
+    const auto finish=std::chrono::steady_clock::now();
+    REQUIRE(serial==concurrent);
+    REQUIRE(serial.size()==batch.size()*89);
+    if(const char *folder=std::getenv("SLA_ZCODE_RSA_OUTPUT")) {
+        boost::filesystem::create_directories(folder);
+        std::ofstream(std::string(folder)+"/rsa-lines.txt",std::ios::binary)<<serial;
+        std::ofstream(std::string(folder)+"/benchmark.json")<<nlohmann::json{
+            {"lines",batch.size()},
+            {"serial_seconds",std::chrono::duration<double>(middle-start).count()},
+            {"parallel_seconds",std::chrono::duration<double>(finish-middle).count()},
+            {"workers",4},{"identical",serial==concurrent}}.dump(2);
+    }
+}
+
+TEST_CASE("ZCode writes full grayscale XML and encrypted two-stage SLA protocol", "[sla_reference][sla_zcode]") {
+    const bool portrait=GENERATE(false,true);
+    SLAFullPrintConfig full;Test::configure_archive_fixture(full,"zcode");
+    full.set("sla_archive_format",std::string("SL1"));
+    full.display_orientation.value=portrait?sladoPortrait:sladoLandscape;
+    full.set("display_width",portrait?128.:64.);full.set("display_height",portrait?64.:128.);
+    full.set("display_pixels_x",portrait?256:128);full.set("display_pixels_y",portrait?128:256);
+    full.set("max_print_height",220.);full.set("printer_model",std::string("IBEE"));
+    full.set("sla_bottom_layers",1);full.set("exposure_time",3.);full.set("initial_exposure_time",20.);
+    full.set("material_density",1.24);full.set("bottle_cost",25.);full.set("bottle_volume",1000.);
+    for(const std::string prefix:{"sla_","sla_bottom_"}) {
+        const bool bottom=prefix=="sla_bottom_";
+        full.set(prefix+"lift_height",bottom?4.:6.);full.set(prefix+"lift_height2",2.);
+        full.set(prefix+"lift_speed",bottom?60.:120.);full.set(prefix+"lift_speed2",180.);
+        full.set(prefix+"retract_height2",1.);full.set(prefix+"retract_speed",bottom?80.:100.);
+        full.set(prefix+"retract_speed2",140.);full.set(prefix+"wait_before_cure",bottom?2.5:1.25);
+        full.set(prefix+"wait_after_cure",.5);full.set(prefix+"wait_after_lift",.75);
+    }
+    DynamicPrintConfig cfg;cfg.apply(full);
+    auto rounded=cfg;
+    rounded.set("sla_archive_format",std::string("zcode"));
+    rounded.set("display_width",portrait?123.84:198.14);rounded.set("display_height",portrait?198.14:123.84);
+    rounded.set("display_pixels_x",portrait?3600:5760);rounded.set("display_pixels_y",portrait?5760:3600);
+    SLAPrint probe;Model empty;probe.apply(empty,rounded);
+    REQUIRE_NOTHROW(ZCodeArchive::validate_configuration(probe));
+    std::vector<uint8_t> pixels(128*256,255);std::vector<sla::EncodedRaster> masks;
+    masks.push_back(sla::PNGRasterEncoder{}(pixels.data(),128,256,1));
+    std::fill(pixels.begin(),pixels.end(),0);masks.push_back(sla::PNGRasterEncoder{}(pixels.data(),128,256,1));
+    for(size_t i=0;i<pixels.size();++i)pixels[i]=uint8_t(i);
+    masks.push_back(sla::PNGRasterEncoder{}(pixels.data(),128,256,1));
+    auto doc=sla::LayerDocument::from_rasters(std::move(masks));
+    const char *folder=std::getenv("SLA_ZCODE_ORACLE_OUTPUT");
+    struct Directory{boost::filesystem::path path;bool keep;
+        ~Directory(){if(!keep){boost::system::error_code e;boost::filesystem::remove_all(path,e);}}}
+        dir{folder?boost::filesystem::path(folder):boost::filesystem::unique_path("zcode-%%%%"),bool(folder)};
+    boost::filesystem::create_directories(dir.path);
+    const std::string label="ZCode test <żywica> & \"test\"";
+    ThumbnailData preview;preview.set(2,1);preview.pixels={255,0,0,255,0,0,255,255};
+    auto job=SLAPrint::create_raster_job(cfg,doc,{.05,.13,.2});
+    const auto path=dir.path/(portrait?"portrait.zcode":"landscape.zcode");
+    job->export_layer_document(doc,"zcode",path.string(),{preview},label);
+    auto uniform=SLAPrint::create_raster_job(cfg,doc,{.05,.1,.15});
+    uniform->export_layer_document(doc,"zcode",(dir.path/(portrait?"uniform-portrait.zcode":"uniform-landscape.zcode")).string(),{},label);
+    uniform->export_layer_document(doc,"SL1",(dir.path/"source.sl1").string(),{},"source");
+    for(const std::string variant:{"pwm","transition","zero-before"}) {
+        auto modified=cfg;
+        if(variant=="pwm"){modified.set("sla_bottom_light_pwm",160);modified.set("sla_light_pwm",200);}
+        else if(variant=="zero-before"){modified.set("sla_bottom_wait_before_cure",0.);modified.set("sla_wait_before_cure",0.);}
+        else if(variant=="zero-pwm"){modified.set("sla_bottom_light_pwm",0);modified.set("sla_light_pwm",0);}
+        else modified.set("sla_transition_layers",1);
+        auto varied=SLAPrint::create_raster_job(modified,doc,{.05,.13,.2});
+        varied->export_layer_document(doc,"zcode",(dir.path/(variant+(portrait?"-portrait.zcode":"-landscape.zcode"))).string(),{},label);
+    }
+    auto disabled=cfg;disabled.set("sla_light_pwm",0);
+    REQUIRE_THROWS(([&]{auto j=SLAPrint::create_raster_job(disabled,doc,{.05,.13,.2});
+        j->export_layer_document(doc,"zcode",path.string(),{},"zero PWM");}()));
+    const auto zip=read_zipper_archive(path.string(),{""},{});
+    auto entry=[&](const std::string &name)->const std::vector<uint8_t>& {
+        const auto e=std::find_if(zip.entries.begin(),zip.entries.end(),[&](const auto &e){return e.fname==name;});
+        REQUIRE(e!=zip.entries.end());return e->buf;
+    };
+    const auto &xml=entry("task.xml");const std::string manifest(xml.begin(),xml.end());
+    REQUIRE(manifest.find("&lt;żywica&gt; &amp; &quot;test&quot;")!=std::string::npos);
+    REQUIRE(manifest.find("pixel_size=\"500\"")!=std::string::npos);
+    REQUIRE(manifest.find("<layers>3</layers>")!=std::string::npos);
+    const auto &cipher=entry("lcd.gcode");std::istringstream stream(std::string(cipher.begin(),cipher.end()));std::string line;
+    size_t count=0;while(std::getline(stream,line)){REQUIRE(line.size()==88);REQUIRE(line.substr(86)=="==");++count;}
+    REQUIRE(count>30);
+    for(size_t i=0;i<3;++i) {
+        const auto &bytes=entry(std::to_string(i+1)+".png");png::ImageGreyscale image;
+        REQUIRE(png::decode_png(png::ReadBuf{bytes.data(),bytes.size()},image));REQUIRE(image.buf==doc.image(i).buf);
+    }
+    for(const auto &bad:{std::pair{"display_width",65.},{"max_print_height",220.0005},{"sla_lift_speed",120.01},
+        {"sla_wait_before_cure",1.251},{"sla_retract_height2",100.}}) {
+        auto invalid=cfg;invalid.set(bad.first,bad.second);
+        REQUIRE_THROWS(([&]{auto j=SLAPrint::create_raster_job(invalid,doc,{.05,.13,.2});
+            j->export_layer_document(doc,"zcode",path.string(),{},"invalid");}()));
+    }
+    auto fine=SLAPrint::create_raster_job(cfg,doc,{.05,.1305,.2});
+    REQUIRE_THROWS(fine->export_layer_document(doc,"zcode",path.string(),{},"fine"));
+    const auto after=read_zipper_archive(path.string(),{""},{});
+    const auto kept=std::find_if(after.entries.begin(),after.entries.end(),[](const auto &e){return e.fname=="lcd.gcode";});
+    REQUIRE(kept!=after.entries.end());REQUIRE(kept->buf==cipher);
+}
+
+
+TEST_CASE("NanoDLP preserves every grayscale byte in packed, plain and RGB PNGs", "[sla_reference][nanodlp_encoder]") {
+    const size_t width = GENERATE(size_t(200), size_t(201));
+    constexpr size_t height = 7;
+    std::vector<uint8_t> source(width * height);
+    for (size_t i = 0; i < source.size(); ++i) source[i] = uint8_t((i * 73 + i / width * 19) % 256);
+    const auto mono = nanodlp::encode_layer(source.data(), width, height, 1);
+    const auto rgb = nanodlp::encode_layer(source.data(), width, height, 1, nanodlp::ImageMode::RGB);
+    auto be32 = [](const uint8_t *p) { return uint32_t(p[0])<<24 | uint32_t(p[1])<<16 | uint32_t(p[2])<<8 | p[3]; };
+    for (const auto *image : {&mono, &rgb}) {
+        REQUIRE(image->size() > 33);
+        const auto *bytes = static_cast<const uint8_t *>(image->data());
+        REQUIRE(std::memcmp(bytes, "\x89PNG\r\n\x1a\n", 8) == 0);
+        REQUIRE(be32(bytes + 20) == height);
+        REQUIRE(bytes[24] == 8);
+    }
+    const auto *m = static_cast<const uint8_t *>(mono.data());
+    REQUIRE(be32(m + 16) == (width % 3 == 0 ? width / 3 : width));
+    REQUIRE(m[25] == (width % 3 == 0 ? 2 : 0));
+    const auto *r = static_cast<const uint8_t *>(rgb.data());
+    REQUIRE(be32(r + 16) == width); REQUIRE(r[25] == 2);
+    if (width % 3 != 0) {
+        png::ImageGreyscale decoded;
+        REQUIRE(png::decode_png(png::ReadBuf{mono.data(), mono.size()}, decoded));
+        REQUIRE(decoded.buf == source);
+    }
+    REQUIRE_THROWS(nanodlp::encode_layer(nullptr, width, height, 1));
+    REQUIRE_THROWS(nanodlp::encode_layer(source.data(), width, height, 3));
+    REQUIRE_THROWS(nanodlp::encode_layer(source.data(), 0, height, 1));
+    REQUIRE_THROWS(nanodlp::encode_layer(source.data(), 32769, height, 1));
+    REQUIRE_THROWS(nanodlp::encode_layer(source.data(), 32768, 32768, 1));
+    auto schema = nanodlp::schema_defaults();
+    REQUIRE(schema["meta"]["FormatVersion"] == 2);
+    REQUIRE(schema["slicer"]["DisplayController"] == 1);
+    schema["profile"]["Title"] = "changed";
+    REQUIRE(nanodlp::schema_defaults()["profile"]["Title"] == "");
+    if (const char *output = std::getenv("SLA_NANODLP_FIXTURE_DIR")) {
+        const boost::filesystem::path dir(output); boost::filesystem::create_directories(dir);
+        auto write = [&](const std::string &name, const void *data, size_t size) {
+            std::ofstream out((dir / name).string(), std::ios::binary);
+            REQUIRE(bool(out)); out.write(static_cast<const char *>(data), size); REQUIRE(bool(out));
+        };
+        const auto stem = std::to_string(width);
+        write(stem + ".gray", source.data(), source.size());
+        write(stem + "-mono.png", mono.data(), mono.size());
+        write(stem + "-rgb.png", rgb.data(), rgb.size());
+        const auto defaults = nanodlp::schema_defaults().dump(2);
+        write("schema-native.json", defaults.data(), defaults.size());
+    }
+    // A direct call cannot silently succeed, even while registry access is blocked.
+    NanoDLPArchive archive{SLAPrinterConfig{}}; SLAPrint print;
+    REQUIRE_THROWS(archive.export_print("unused.nanodlp", print, {}, "test"));
+}
+
+
+TEST_CASE("NanoDLP contour statistics include holes and nested islands", "[sla_reference][nanodlp_contours][pixel_contours]") {
+    nlohmann::json cases=nlohmann::json::array();
+    const char *path_output=std::getenv("SLA_PIXEL_CONTOUR_FIXTURES");
+    const bool packet_roundtrip=std::getenv("SLA_SVGX_PACKET_ROUNDTRIP")!=nullptr;
+    auto check=[&](const std::string &name, size_t width, size_t height, const std::vector<uint8_t> &pixels, float pixel_area=.0036f) {
+        std::vector<sla::PixelContour> contours;
+        const auto stats=path_output?sla::trace_pixel_contours(pixels.data(),width,height,&contours):nanodlp::contour_statistics(pixels.data(),width,height);
+        if(packet_roundtrip) {
+            auto cached=svgx::decode_contours(svgx::encode_contours(pixels.data(),width,height,1));
+            REQUIRE(cached.occupied_pixels==stats.occupied_pixels);
+            contours=std::move(cached.contours);
+        }
+        REQUIRE(stats.occupied_pixels==size_t(std::count_if(pixels.begin(),pixels.end(),[](uint8_t p){return p!=0;})));
+        REQUIRE(stats.external_count<=stats.occupied_pixels);
+        REQUIRE(stats.largest_area>=stats.smallest_area);
+        if(stats.occupied_pixels) {
+            REQUIRE(stats.min_x<stats.max_x);REQUIRE(stats.min_y<stats.max_y);
+            REQUIRE(stats.max_x<=width);REQUIRE(stats.max_y<=height);
+        } else {
+            REQUIRE(stats.total_area==0);REQUIRE(stats.external_count==0);
+            REQUIRE(stats.min_x==0);REQUIRE(stats.min_y==0);
+        }
+        std::string hex;hex.reserve(pixels.size()*2);const char *digits="0123456789abcdef";
+        for(const auto p:pixels){hex+=digits[p>>4];hex+=digits[p&15];}
+        cases.push_back({{"name",name},{"width",width},{"height",height},{"pixels",hex},
+            {"pixel_area",pixel_area},{"info",nanodlp::layer_info(stats,pixel_area)},
+            {"total_area",stats.total_area},{"smallest_area",stats.smallest_area},
+            {"largest_area",stats.largest_area},{"external_count",stats.external_count},
+            {"occupied_pixels",stats.occupied_pixels},{"bbox",{stats.min_x,stats.min_y,stats.max_x,stats.max_y}}});
+        if(path_output) {
+            nlohmann::json paths=nlohmann::json::array();
+            for(const auto &contour:contours) {
+                bool valid=!contour.points.empty() && contour.root>=0 && size_t(contour.root)<contours.size() &&
+                    contour.parent>=-1 && (contour.parent<0 || size_t(contour.parent)<contours.size());
+                for(const auto &[x,y]:contour.points)
+                    valid=valid && x>=0 && y>=0 && size_t(x)<width && size_t(y)<height && pixels[size_t(y)*width+x]!=0;
+                REQUIRE(valid);
+                paths.push_back({{"points",contour.points},{"parent",contour.parent},{"root",contour.root},
+                    {"hole",contour.hole},{"area",contour.area},{"perimeter",contour.perimeter}});
+            }
+            cases.back()["contours"]=std::move(paths);
+        }
+        return stats;
+    };
+    // Exhaustive 3x3 patterns include single pixels, diagonal branches, closed
+    // holes and boundary contacts. Vary intensity to enforce nonzero semantics.
+    for(unsigned bits=0;bits<512;++bits) {
+        std::vector<uint8_t> pixels(9);
+        for(unsigned i=0;i<9;++i)pixels[i]=(bits&(1u<<i))?uint8_t(i*31+1):0;
+        check("exhaustive-"+std::to_string(bits),3,3,pixels);
+    }
+    // All 4x4 masks exercise multiple disjoint objects/holes and diagonal
+    // hierarchy contacts. Original EmguContours verifies every case separately.
+    for(unsigned bits=0;bits<65536;++bits) {
+        std::vector<uint8_t> pixels(16);
+        for(unsigned i=0;i<16;++i)pixels[i]=(bits&(1u<<i))?uint8_t((i*17)%255+1):0;
+        check("exhaustive4-"+std::to_string(bits),4,4,pixels);
+    }
+    uint32_t state=0x8264129;
+    for(unsigned i=0;i<2000;++i) {
+        const size_t width=4+i%13,height=4+(i/13)%13;std::vector<uint8_t> pixels(width*height);
+        for(auto &pixel:pixels){state=state*1664525u+1013904223u;pixel=(state>>24)>i%256?uint8_t((state>>16)|1):0;}
+        check("random-"+std::to_string(i),width,height,pixels);
+    }
+    std::vector<uint8_t> nested(21*21);
+    auto rectangle=[&](int a,int b,uint8_t value){for(int y=a;y<b;++y)for(int x=a;x<b;++x)nested[y*21+x]=value;};
+    rectangle(1,20,255);rectangle(3,18,0);rectangle(5,16,1);rectangle(7,14,0);rectangle(9,12,128);
+    const auto stats=check("nested-five-borders",21,21,nested);
+    REQUIRE(stats.external_count==1);
+    // Pixel-centre outer squares, minus rounded-corner hole borders:
+    // 18^2 - (16^2-2) + 10^2 - (8^2-2) + 2^2 = 112.
+    REQUIRE(stats.total_area==112);
+    const float areas[]{.00000125f,.00005f,.0001f,.0016f,.04725f*.04725f,1.5f,999.999f};
+    for(size_t i=0;i<sizeof(areas)/sizeof(areas[0]);++i)
+        check("rounding-"+std::to_string(i),21,21,nested,areas[i]);
+    REQUIRE_THROWS(nanodlp::layer_info(stats,0));
+    REQUIRE_THROWS(nanodlp::layer_info(stats,-1));
+    REQUIRE_THROWS(nanodlp::contour_statistics(nullptr,3,3));
+    REQUIRE_THROWS(nanodlp::contour_statistics(nested.data(),0,21));
+    if(const char *output=std::getenv("SLA_NANODLP_CONTOUR_FIXTURES")) {
+        std::ofstream stream(output);REQUIRE(bool(stream));stream<<cases.dump(2);REQUIRE(bool(stream));
+    }
+    if(path_output) {
+        std::ofstream stream(path_output);REQUIRE(bool(stream));stream<<cases.dump();REQUIRE(bool(stream));
+    }
+}
+
+
+TEST_CASE("Pixel contour paths retain a hole and nested isolated island", "[sla_reference][pixel_contours]") {
+    std::vector<uint8_t> pixels(49,255);
+    for(int y=2;y<5;++y)for(int x=2;x<5;++x)pixels[y*7+x]=0;
+    pixels[3*7+3]=1;
+    std::vector<sla::PixelContour> contours;
+    const auto stats=sla::trace_pixel_contours(pixels.data(),7,7,&contours);
+    REQUIRE(stats.occupied_pixels==41);REQUIRE(stats.total_area==22);REQUIRE(contours.size()==3);
+    const auto root=std::find_if(contours.begin(),contours.end(),[](const auto &c){return c.parent==-1;});
+    const auto hole=std::find_if(contours.begin(),contours.end(),[](const auto &c){return c.hole;});
+    const auto island=std::find_if(contours.begin(),contours.end(),[](const auto &c){return c.points.size()==1;});
+    REQUIRE(root!=contours.end());REQUIRE(hole!=contours.end());REQUIRE(island!=contours.end());
+    REQUIRE(root->area==36);REQUIRE(root->perimeter==24);REQUIRE(root->points.size()==4);
+    REQUIRE(hole->area==14);REQUIRE(hole->points.size()==8);
+    REQUIRE(island->area==0);REQUIRE(island->perimeter==0);
+    REQUIRE(island->points.front()==std::make_pair(3,3));
+    REQUIRE(hole->parent==std::distance(contours.begin(),root));
+    REQUIRE(island->parent==std::distance(contours.begin(),hole));
+    REQUIRE(island->root==std::distance(contours.begin(),root));
+    std::fill(pixels.begin(),pixels.end(),0);
+    REQUIRE(sla::trace_pixel_contours(pixels.data(),7,7,&contours).occupied_pixels==0);
+    REQUIRE(contours.empty());
+    FlashforgeSVGXArchive archive{SLAPrinterConfig{}};SLAPrint print;
+    const auto path=boost::filesystem::unique_path("incomplete-svgx-%%%%.svgx");
+    REQUIRE_THROWS(archive.export_print(path.string(),print,{},"unfinished"));
+    REQUIRE_FALSE(boost::filesystem::exists(path));
+}
+
+TEST_CASE("SVGX private packets preserve paths and reject corrupted trees", "[sla_reference][svgx_packet]") {
+    std::vector<uint8_t> pixels(49,255);
+    for(int y=2;y<5;++y)for(int x=2;x<5;++x)pixels[y*7+x]=0;
+    pixels[24]=1;
+    const auto encoded=svgx::encode_contours(pixels.data(),7,7,1);
+    const auto packet=svgx::decode_contours(encoded);
+    REQUIRE(packet.width==7);REQUIRE(packet.height==7);REQUIRE(packet.occupied_pixels==41);
+    REQUIRE(packet.contours.size()==3);
+    REQUIRE(packet.contours[0].area==36);REQUIRE(packet.contours[0].perimeter==24);
+    REQUIRE(packet.contours[1].points==std::vector<std::pair<int,int>>{{3,3}});
+    REQUIRE(packet.contours[1].parent==2);REQUIRE(packet.contours[2].parent==0);
+    const auto *bytes=static_cast<const uint8_t *>(encoded.data());
+    const std::vector<uint8_t> valid(bytes,bytes+encoded.size());
+    auto rejects=[&](std::vector<uint8_t> data){REQUIRE_THROWS(svgx::decode_contours(sla::EncodedRaster(std::move(data),"test")));};
+    auto bad=valid;bad[0]='P';rejects(bad);
+    bad=valid;bad.pop_back();rejects(bad);
+    bad=valid;bad.push_back(0);rejects(bad);
+    bad=valid;bad[24]=0;bad[25]=bad[26]=bad[27]=0;rejects(bad); // Root points to itself.
+    bad=valid;bad[32]=1;rejects(bad); // A root cannot be a hole.
+    bad=valid;bad[56]=7;rejects(bad); // Point outside the raster.
+    REQUIRE_THROWS(svgx::encode_contours(pixels.data(),7,7,3));
+    std::fill(pixels.begin(),pixels.end(),0);
+    const auto black=svgx::decode_contours(svgx::encode_contours(pixels.data(),7,7,1));
+    REQUIRE(black.contours.empty());REQUIRE(black.occupied_pixels==0);
+}
+
+TEST_CASE("SVGX coordinates survive float projection and binary SVG files retain masks", "[sla_reference][svgx_file]") {
+    for(uint32_t resolution:{1u,37u,65u,640u,1440u,5760u,32768u})
+        for(float display:{.001f,7.789f,11.123f,68.04f,120.f,218.88f,1000.f}) {
+            const auto coordinates=svgx::pixel_coordinates(resolution,display);
+            for(uint32_t x=0;x<resolution;++x) {
+                const float projected=std::clamp(display/2+coordinates[x],0.f,display)*(float(resolution)/display);
+                REQUIRE(int(projected)==int(x));
+            }
+        }
+    const bool portrait=GENERATE(false,true),wide=GENERATE(false,true);
+    svgx::FileParameters p;
+    p.width=wide?5760:65;p.height=37;p.display_width=wide?218.88f:11.123f;p.display_height=7.789f;
+    if(portrait){std::swap(p.width,p.height);std::swap(p.display_width,p.display_height);}
+    p.machine_z=210;p.layer_height=.05f;p.bottom_layers=1;p.bottom_exposure=20;p.exposure=3;
+    p.machine="SVGX test <&\" żywica";p.material="Resin & test";
+    std::vector<sla::EncodedRaster> layers,pngs;nlohmann::json masks=nlohmann::json::array();
+    for(unsigned layer=0;layer<6;++layer) {
+        std::vector<uint8_t> pixels(size_t(p.width)*p.height,0);
+        if(layer==1)std::fill(pixels.begin(),pixels.end(),255);
+        if(layer==2) {
+            for(uint32_t y=2;y<p.height-2;++y)for(uint32_t x=2;x<p.width-2;++x)pixels[size_t(y)*p.width+x]=1;
+            for(uint32_t y=5;y<p.height-5;++y)for(uint32_t x=5;x<p.width-5;++x)pixels[size_t(y)*p.width+x]=0;
+            pixels[size_t(p.height/2)*p.width+p.width/2]=127;
+        }
+        if(layer>=3) {
+            for(uint32_t x=0;x<p.width;++x)pixels[size_t((x*7+layer)%p.height)*p.width+x]=uint8_t(1+x%255);
+            pixels.front()=pixels.back()=1;
+        }
+        layers.push_back(svgx::encode_contours(pixels.data(),p.width,p.height,1));
+        pngs.push_back(sla::PNGRasterEncoder{}(pixels.data(),p.width,p.height,1));
+        std::string hex;const char *digits="0123456789abcdef";
+        for(auto value:pixels){hex+=digits[value>>4];hex+=digits[value&15];}
+        masks.push_back(hex);
+    }
+    ThumbnailData thumbnail;thumbnail.set(2,2);
+    thumbnail.pixels={255,0,0,255,0,255,0,255,0,0,255,255,255,255,255,255};
+    ThumbnailsList thumbnails{thumbnail};
+    const char *output=std::getenv("SLA_SVGX_FILE_FIXTURES");
+    const auto directory=output?boost::filesystem::path(output):boost::filesystem::temp_directory_path();
+    boost::filesystem::create_directories(directory);
+    const auto path=directory/(output?std::string(wide?"wide-":"small-")+(portrait?"portrait":"landscape")+".svgx":boost::filesystem::unique_path("svgx-file-%%%%.svgx").string());
+    svgx::write_file(path.string(),p,layers,thumbnails);
+    REQUIRE(boost::filesystem::file_size(path)>28+2*54+128*128*3+200*240*3);
+    std::ifstream first_file(path.string(),std::ios::binary);
+    const std::vector<uint8_t> expected{std::istreambuf_iterator<char>(first_file),{}};first_file.close();
+    SLAFullPrintConfig full;Test::configure_archive_fixture(full,"uvj");
+    full.display_orientation.value=portrait?sladoPortrait:sladoLandscape;
+    full.set("display_pixels_x",int(portrait?p.height:p.width));full.set("display_pixels_y",int(portrait?p.width:p.height));
+    full.set("display_width",double(portrait?p.display_height:p.display_width));full.set("display_height",double(portrait?p.display_width:p.display_height));
+    full.set("display_mirror_x",false);full.set("display_mirror_y",true);
+    full.set("sla_transition_layers",0);full.set("sla_bottom_layers",1);
+    full.set("max_print_height",210.);full.set("printer_model",p.machine);
+    full.set("exposure_time",3.);
+    for(bool bottom:{false,true}) {
+        const std::string prefix=bottom?"sla_bottom_":"sla_";
+        full.set(prefix+"lift_height",6.);full.set(prefix+"lift_speed",100.);full.set(prefix+"retract_speed",100.);
+        full.set(prefix+"wait_before_cure",0.);full.set(prefix+"wait_after_cure",0.);full.set(prefix+"wait_after_lift",0.);
+        full.set(prefix+"lift_height2",0.);full.set(prefix+"retract_height2",0.);full.set(prefix+"light_pwm",255);
+    }
+    DynamicPrintConfig cfg;cfg.apply(full);cfg.set_key_value("material_type",new ConfigOptionString(p.material));
+    const auto document=sla::LayerDocument::from_rasters(std::move(pngs));
+    const auto print=SLAPrint::create_raster_job(cfg,document,{.05,.1,.15,.2,.25,.3});
+    FlashforgeSVGXArchive archive(print->printer_config());archive.encode_layers(document);
+    archive.export_print(path.string(),*print,thumbnails,"SVGX native API");
+    auto bytes=[&](){std::ifstream in(path.string(),std::ios::binary);return std::vector<uint8_t>{std::istreambuf_iterator<char>(in),{}};};
+    REQUIRE(bytes()==expected);
+    for(const auto &[key,value]:std::vector<std::pair<std::string,double>>{
+        {"sla_lift_height",7},{"sla_bottom_lift_speed",120},{"sla_retract_speed",120},
+        {"sla_wait_before_cure",1},{"sla_bottom_wait_after_cure",1},{"sla_lift_height2",1}}) {
+        CAPTURE(key);
+        auto bad=cfg;bad.set(key,value);
+        const auto invalid=SLAPrint::create_raster_job(bad,document,{.05,.1,.15,.2,.25,.3});
+        REQUIRE_THROWS(archive.export_print(path.string(),*invalid,{},"unsupported"));
+        REQUIRE(bytes()==expected);
+    }
+    auto height_cfg=cfg;height_cfg.set("initial_layer_height",.1);
+    SLAPrint height_print;height_print.apply(Model{},height_cfg);
+    REQUIRE_THROWS(FlashforgeSVGXArchive::validate_configuration(height_print));
+    auto named_cfg=cfg;named_cfg.set_key_value("sla_material_settings_id",new ConfigOptionString("Named SLA preset"));
+    const auto named_print=SLAPrint::create_raster_job(named_cfg,document,{.05,.1,.15,.2,.25,.3});
+    const auto named_path=path.string()+".named.svgx";
+    archive.export_print(named_path,*named_print,thumbnails,"Named material");
+    std::ifstream named_file(named_path,std::ios::binary);const std::string named_text{std::istreambuf_iterator<char>(named_file),{}};
+    REQUIRE(named_text.find("materialname=\"Named SLA preset\"")!=std::string::npos);named_file.close();
+    boost::filesystem::remove(named_path);
+    height_cfg.set("initial_layer_height",.025);height_cfg.set("layer_height",.025);
+    height_print.apply(Model{},height_cfg);
+    REQUIRE_NOTHROW(FlashforgeSVGXArchive::validate_configuration(height_print));
+    const auto half_height=SLAPrint::create_raster_job(height_cfg,document,{.025,.05,.075,.1,.125,.15});
+    const auto height_path=path.string()+".025.svgx";
+    archive.export_print(height_path,*half_height,thumbnails,"0.025 mm");
+    REQUIRE(boost::filesystem::file_size(height_path)>194000);
+    if(!output)boost::filesystem::remove(height_path);
+    height_cfg.set("initial_layer_height",.0255);height_cfg.set("layer_height",.0255);
+    height_print.apply(Model{},height_cfg);
+    REQUIRE_THROWS(FlashforgeSVGXArchive::validate_configuration(height_print));
+    auto bad=cfg;bad.set("sla_light_pwm",200);
+    auto invalid=SLAPrint::create_raster_job(bad,document,{.05,.1,.15,.2,.25,.3});
+    REQUIRE_THROWS(FlashforgeSVGXArchive::validate_configuration(*invalid));
+    bad=cfg;bad.set("sla_transition_layers",1);
+    invalid=SLAPrint::create_raster_job(bad,document,{.05,.1,.15,.2,.25,.3});
+    REQUIRE_THROWS(FlashforgeSVGXArchive::validate_configuration(*invalid));
+    bad=cfg;bad.set("display_mirror_y",false);
+    invalid=SLAPrint::create_raster_job(bad,document,{.05,.1,.15,.2,.25,.3});
+    REQUIRE_THROWS(FlashforgeSVGXArchive::validate_configuration(*invalid));
+    invalid=SLAPrint::create_raster_job(cfg,document,{.05,.1,.15,.2,.25,.31});
+    REQUIRE_THROWS(archive.export_print(path.string(),*invalid,{},"variable Z"));
+    REQUIRE(bytes()==expected);
+    if(output) {
+        nlohmann::json fixture={{"filename",path.string()},{"width",p.width},{"height",p.height},
+            {"display_width",p.display_width},{"display_height",p.display_height},{"masks",masks}};
+        std::ofstream manifest(path.string()+".json");manifest<<fixture.dump();REQUIRE(bool(manifest));
+    } else boost::filesystem::remove(path);
+    REQUIRE_THROWS(svgx::pixel_coordinates(0,120));REQUIRE_THROWS(svgx::pixel_coordinates(65,0));
+}
+
+TEST_CASE("NanoDLP staged metadata preserves geometry masks and cached statistics", "[sla_reference][nanodlp_metadata]") {
+    const bool portrait=GENERATE(false,true), rgb=GENERATE(false,true);
+    const int scene_width=GENERATE(200,201);
+    SLAFullPrintConfig full;
+    full.printer_technology.setInt(ptSLA);full.set("sla_archive_format","sl1");
+    full.set("display_pixels_x",scene_width);full.set("display_pixels_y",12);
+    full.set("display_width",scene_width*.1);full.set("display_height",1.2);
+    full.set("display_mirror_x",false);full.set("display_mirror_y",false);
+    full.display_orientation.value=portrait?sladoPortrait:sladoLandscape;
+    full.set("max_print_height",210.);full.set("printer_model","NanoDLP test żywica");
+    full.set("layer_height",.05);full.set("initial_layer_height",.05);
+    full.set("sla_bottom_layers",1);full.set("sla_transition_layers",0);
+    full.set("initial_exposure_time",20.);full.set("exposure_time",3.);
+    for(bool bottom:{false,true}) {
+        const std::string prefix=bottom?"sla_bottom_":"sla_";
+        full.set(prefix+"light_pwm",180);full.set(prefix+"wait_before_cure",bottom?2.5:1.25);
+        full.set(prefix+"wait_after_cure",.5);full.set(prefix+"wait_after_lift",.75);
+        full.set(prefix+"lift_height",bottom?2.:3.);
+    }
+    DynamicPrintConfig config;config.apply(full);
+    const size_t width=portrait?12:scene_width,height=portrait?scene_width:12;
+    std::vector<uint8_t> pixels(width*height,0),black(width*height,0);
+    for(size_t y=2;y<6;++y)for(size_t x=2;x<6;++x)pixels[y*width+x]=uint8_t(1+(x+y)*25);
+    const auto encoded=sla::PNGRasterEncoder{}(pixels.data(),width,height,1);
+    const auto blank=sla::PNGRasterEncoder{}(black.data(),width,height,1);
+    const auto document=sla::LayerDocument::from_rasters({encoded,encoded,blank});
+    auto print=SLAPrint::create_raster_job(config,document,{.05,.1,.15});
+    struct Archive : NanoDLPArchive {
+        using NanoDLPArchive::NanoDLPArchive;
+        using NanoDLPArchive::m_layers;
+    };
+    Archive archive(print->printer_config(),rgb);
+    archive.encode_layers(document);
+    const auto metadata=archive.prepare_metadata(*print,"test <projekt> & żywica");
+    REQUIRE(metadata["meta"]["Program"]=="Sla-SlicerOS");
+    REQUIRE(metadata["profile"]["ShieldBeforeLayer"]=="");
+    REQUIRE(metadata["profile"]["ShieldAfterLayer"]=="");
+    REQUIRE(metadata["slicer"]["PWidth"]==width);REQUIRE(metadata["slicer"]["PHeight"]==height);
+    REQUIRE(metadata["slicer"]["XPixelSize"].get<double>()==Catch::Approx(.1));
+    REQUIRE(metadata["slicer"]["YPixelSize"].get<double>()==Catch::Approx(.1));
+    REQUIRE(metadata["plate"]["LayersCount"]==3);
+    REQUIRE(metadata["profile"]["SupportCureTime"]==20);
+    REQUIRE(metadata["profile"]["CureTime"]==3);
+    REQUIRE(metadata["profile"]["SupportWaitBeforePrint"]==2.5);
+    REQUIRE(metadata["profile"]["WaitBeforePrint"]==1.25);
+    REQUIRE(metadata["profile"]["SupportWaitHeight"]==2);
+    REQUIRE(metadata["profile"]["WaitHeight"]==3);
+    REQUIRE(metadata["info"][0]==metadata["info"][1]);
+    REQUIRE(metadata["info"][0]["TotalSolidArea"]==.09);
+    REQUIRE(metadata["info"][0]["AreaCount"]==1);
+    REQUIRE(metadata["info"][0]["MinX"]==2);REQUIRE(metadata["info"][0]["MaxX"]==6);
+    REQUIRE(metadata["info"][2]["TotalSolidArea"]==0);
+    REQUIRE(metadata["info"][2]["AreaCount"]==0);
+    REQUIRE(metadata["plate"]["TotalSolidArea"].get<double>()==Catch::Approx(.18));
+    REQUIRE(metadata["native_statistics"]["material_milliliters"].get<double>()==Catch::Approx(.000016));
+    REQUIRE(archive.m_layers[0].size()==archive.m_layers[1].size());
+    REQUIRE(std::memcmp(archive.m_layers[0].data(),archive.m_layers[1].data(),archive.m_layers[0].size())==0);
+    REQUIRE(metadata["plate"]["ZMax"].get<double>()==Catch::Approx(.15));
+    REQUIRE(metadata["plate"]["Updated"].get<uint64_t>()>0);
+    for(const auto &packet:archive.m_layers) {
+        const auto view=nanodlp::inspect_packet(packet);
+        REQUIRE(std::memcmp(view.png,"\x89PNG\r\n\x1a\n",8)==0);
+        REQUIRE(view.metadata["rgb"]==rgb);
+    }
+    auto damaged=std::vector<uint8_t>(8,0);
+    REQUIRE_THROWS(nanodlp::inspect_packet(sla::EncodedRaster(std::move(damaged),"nanodlp-internal")));
+    REQUIRE_THROWS(archive.export_print("unused.nanodlp",*print,{},"test"));
+    auto bad_screen=print->printer_config();bad_screen.display_width.value=0;
+    Archive invalid_screen(bad_screen,rgb);invalid_screen.encode_layers(document);
+    REQUIRE_THROWS(invalid_screen.prepare_metadata(*print,"invalid screen"));
+    auto mismatch=print->printer_config();mismatch.display_pixels_x.value=199;
+    Archive invalid_resolution(mismatch,rgb);invalid_resolution.encode_layers(document);
+    REQUIRE_THROWS(invalid_resolution.prepare_metadata(*print,"mismatched resolution"));
+    REQUIRE_THROWS(archive.prepare_metadata(*print,std::string(1,char(0xff))));
+
+    if(const char *output=std::getenv("SLA_NANODLP_METADATA_FIXTURES")) {
+        const boost::filesystem::path dir(output);boost::filesystem::create_directories(dir);
+        const auto stem=std::to_string(scene_width)+(portrait?"-portrait":"-landscape")+(rgb?"-rgb":"-mono");
+        std::ofstream json((dir/(stem+".json")).string());REQUIRE(bool(json));json<<metadata.dump(2);
+        std::ofstream source((dir/(stem+".gray")).string(),std::ios::binary);source.write(reinterpret_cast<const char*>(pixels.data()),pixels.size());
+        // This harness writes a decoder-only archive. Application export_print
+        // remains blocked: empty motion templates cannot drive a printer.
+        Zipper zip((dir/(stem+(rgb?".rgb.nanodlp":".nanodlp"))).string());
+        for(const auto &name:{"meta","slicer","plate","profile","info"}) {
+            zip.add_entry(std::string(name)+".json");zip<<metadata[name].dump(2);
+        }
+        for(size_t i=0;i<archive.m_layers.size();++i) {
+            const auto view=nanodlp::inspect_packet(archive.m_layers[i]);
+            zip.add_entry(std::to_string(i+1)+".png",view.png,view.png_size);
+        }
+        zip.finalize();
+    }
+}
+
+
+TEST_CASE("Native FDG writes full headers previews motion and encrypted grayscale", "[sla_reference][sla_fdg]") {
+    const bool encrypted=GENERATE(false,true),portrait=GENERATE(false,true);
+    SLAFullPrintConfig full;Test::configure_archive_fixture(full,"phz");
+    full.set("sla_archive_format","sl1");full.set("display_pixels_x",1024);full.set("display_pixels_y",256);
+    full.display_orientation.value=portrait?sladoPortrait:sladoLandscape;
+    full.set("printer_model","Voxelab Proxima");full.set("max_print_height",220.);
+    full.set("sla_bottom_layers",1);full.set("sla_transition_layers",1);
+    full.set("sla_wait_before_cure",1.25);full.set("sla_bottom_wait_before_cure",2.5);
+    full.set("sla_light_pwm",255);full.set("sla_bottom_light_pwm",255);
+    full.set("sla_lift_height",6.);full.set("sla_bottom_lift_height",4.);
+    full.set("sla_lift_speed",120.);full.set("sla_bottom_lift_speed",60.);
+    full.set("sla_retract_speed",100.);full.set("sla_bottom_retract_speed",100.);
+    full.set("material_density",1.24);full.set("bottle_cost",25.);full.set("bottle_volume",1000.);
+    DynamicPrintConfig cfg;cfg.apply(full);
+    const size_t width=portrait?256:1024,height=portrait?1024:256;
+    std::vector<uint8_t> pixels(width*height,255);std::vector<sla::EncodedRaster> rasters;
+    rasters.push_back(sla::PNGRasterEncoder{}(pixels.data(),width,height,1));
+    std::fill(pixels.begin(),pixels.end(),0);rasters.push_back(sla::PNGRasterEncoder{}(pixels.data(),width,height,1));
+    for(size_t y=0;y<height;++y)std::fill(pixels.begin()+y*width,pixels.begin()+(y+1)*width,uint8_t(y));
+    const auto gray=sla::PNGRasterEncoder{}(pixels.data(),width,height,1);rasters.push_back(gray);rasters.push_back(gray);
+    const auto document=sla::LayerDocument::from_rasters(std::move(rasters));
+    auto print=SLAPrint::create_raster_job(cfg,document,{.05,.13,.2,.3});
+    const char *output=std::getenv("SLA_FDG_FIXTURES");
+    struct Directory {boost::filesystem::path path;bool keep;~Directory(){if(!keep){boost::system::error_code e;boost::filesystem::remove_all(path,e);}}}
+        dir{output?boost::filesystem::path(output):boost::filesystem::unique_path("fdg-%%%%"),bool(output)};
+    boost::filesystem::create_directories(dir.path);
+    const auto stem=std::string(portrait?"portrait":"landscape")+(encrypted?"-encrypted":"-plain");
+    const auto path=dir.path/(stem+".fdg");
+    ThumbnailData red;red.set(1,1);red.pixels={255,0,0,255};
+    FDGArchive archive(print->printer_config(),encrypted?UINT32_MAX:0);
+    archive.encode_layers(document);archive.export_print(path.string(),*print,{red},"FDG");
+    std::ifstream input(path.string(),std::ios::binary);const std::vector<uint8_t> bytes{std::istreambuf_iterator<char>(input),{}};
+    auto u32=[&](size_t at){REQUIRE(at+4<=bytes.size());return uint32_t(bytes[at])|uint32_t(bytes[at+1])<<8|uint32_t(bytes[at+2])<<16|uint32_t(bytes[at+3])<<24;};
+    auto scalar=[&](size_t at){const uint32_t bits=u32(at);float value;std::memcpy(&value,&bits,4);return value;};
+    REQUIRE(u32(0)==0xBD3C7AC8);REQUIRE(u32(4)==2);REQUIRE(u32(8)==4);
+    REQUIRE(u32(12)==1);REQUIRE(u32(20)==1);REQUIRE(u32(24)==width);REQUIRE(u32(28)==height);
+    REQUIRE(u32(92)==(encrypted?UINT32_MAX:0));REQUIRE(u32(96)==16);REQUIRE(u32(100)==0x4c);
+    REQUIRE(bytes[64]==255);REQUIRE(bytes[66]==255);
+    REQUIRE(scalar(80)==(portrait?60:100));REQUIRE(scalar(84)==(portrait?100:60));REQUIRE(scalar(88)==220);
+    REQUIRE(scalar(136)==4);REQUIRE(scalar(140)==60);REQUIRE(scalar(144)==6);REQUIRE(scalar(148)==120);REQUIRE(scalar(152)==100);
+    REQUIRE(scalar(124)==8.9f);REQUIRE(scalar(128)==7.85f);
+    for(const auto offset:{u32(44),u32(48)}) {
+        REQUIRE(offset>=216);REQUIRE(u32(offset+8)==offset+32);
+        REQUIRE(uint64_t(u32(offset+8))+u32(offset+12)<=bytes.size());
+    }
+    const auto table=u32(52);REQUIRE(table>=216);
+    REQUIRE((u32(table+2*36+12)==u32(table+3*36+12))==!encrypted);
+    for(size_t i=0;i<4;++i) {
+        const auto entry=table+i*36;const uint64_t address=uint64_t(u32(entry+20))*0x100000000ULL+u32(entry+12);
+        REQUIRE(u32(entry+24)==84);REQUIRE(address+u32(entry+16)<=bytes.size());
+        std::vector<uint8_t> decoded(bytes.begin()+address,bytes.begin()+address+u32(entry+16));
+        FDGArchive::crypt_mask(decoded,u32(92),uint32_t(i));
+        const auto image=document.image(i);const auto expected=PhrozenPHZArchive::encode_mask(image.buf.data(),image.cols,image.rows,1);
+        REQUIRE(decoded.size()==expected.size());REQUIRE(std::memcmp(decoded.data(),expected.data(),decoded.size())==0);
+    }
+    // UVJ retains variable Z; SL1 cannot represent this fixture's layer heights.
+    if(output)print->export_layer_document(document,"uvj",(dir.path/(stem+".uvj")).string(),{},"FDG source");
+    auto bad=cfg;bad.set("sla_lift_height2",1.);
+    auto invalid=SLAPrint::create_raster_job(bad,document,{.05,.13,.2,.3});
+    REQUIRE_THROWS(archive.export_print(path.string(),*invalid,{},"invalid"));
+    std::ifstream unchanged(path.string(),std::ios::binary);REQUIRE(std::vector<uint8_t>{std::istreambuf_iterator<char>(unchanged),{}}==bytes);
+    bad=cfg;bad.set("display_mirror_y",true);
+    invalid=SLAPrint::create_raster_job(bad,document,{.05,.13,.2,.3});
+    REQUIRE_THROWS(FDGArchive::validate_configuration(*invalid));
+    bad=cfg;bad.set("material_density",0.);
+    invalid=SLAPrint::create_raster_job(bad,document,{.05,.13,.2,.3});
+    REQUIRE_NOTHROW(FDGArchive::validate_configuration(*invalid));
+}
+
+TEST_CASE("FDG cipher matches a fixed original UVtools overflow vector", "[sla_reference][sla_fdg]") {
+    std::vector<uint8_t> bytes(19);std::iota(bytes.begin(),bytes.end(),uint8_t(0));
+    const std::vector<uint8_t> original={0xc5,0xc7,0x3c,0x11,0xd6,0x76,0x8f,0xde,0xd7,0x29,0xde,0xab,0xe0,0xc0,0x10,0x67,0xe9,0x6b,0x7b};
+    FDGArchive::crypt_mask(bytes,UINT32_MAX,0);REQUIRE(bytes==original);
+}
+
+TEST_CASE("Legacy CBT presets resolve to explicit CTB v1 with grayscale layers", "[sla_reference][sla_ctb_v1]") {
+    const bool portrait=GENERATE(false,true);
+    const auto *entry=get_archive_entry("cbt");REQUIRE(entry!=nullptr);REQUIRE(std::string(entry->id)=="ctb_v1");
+    REQUIRE(std::string(get_default_extension("cbt"))=="v1.ctb");
+    REQUIRE(get_archive_entry_by_extension("cbt")==nullptr);
+    DynamicPrintConfig legacy;legacy.set_deserialize_strict("sla_archive_format","CBT");
+    REQUIRE(legacy.opt_string("sla_archive_format")=="ctb_v1");
+    SLAFullPrintConfig full;Test::configure_archive_fixture(full,"ctb_v1");
+    full.set("display_pixels_x",512);full.set("display_pixels_y",256);
+    full.display_orientation.value=portrait?sladoPortrait:sladoLandscape;
+    full.set("sla_bottom_layers",1);full.set("sla_transition_layers",1);
+    full.set("sla_wait_before_cure",1.25);full.set("sla_bottom_wait_before_cure",2.5);
+    full.set("sla_light_pwm",200);full.set("sla_bottom_light_pwm",160);
+    DynamicPrintConfig cfg;cfg.apply(full);
+    const size_t width=portrait?256:512,height=portrait?512:256;
+    std::vector<uint8_t> pixels(width*height,255);std::vector<sla::EncodedRaster> rasters;
+    rasters.push_back(sla::PNGRasterEncoder{}(pixels.data(),width,height,1));
+    std::fill(pixels.begin(),pixels.end(),0);rasters.push_back(sla::PNGRasterEncoder{}(pixels.data(),width,height,1));
+    for(size_t y=0;y<height;++y)std::fill(pixels.begin()+y*width,pixels.begin()+(y+1)*width,uint8_t(y));
+    const auto gray=sla::PNGRasterEncoder{}(pixels.data(),width,height,1);rasters.push_back(gray);rasters.push_back(gray);
+    const auto document=sla::LayerDocument::from_rasters(std::move(rasters));
+    const auto print=SLAPrint::create_raster_job(cfg,document,{.05,.13,.2,.3});
+    const char *output=std::getenv("SLA_CTB_V1_FIXTURES");
+    struct Directory {boost::filesystem::path path;bool keep;~Directory(){if(!keep){boost::system::error_code e;boost::filesystem::remove_all(path,e);}}}
+        dir{output?boost::filesystem::path(output):boost::filesystem::unique_path("ctb-v1-%%%%"),bool(output)};
+    boost::filesystem::create_directories(dir.path);
+    const auto stem=std::string(portrait?"portrait":"landscape");const auto path=dir.path/(stem+".v1.ctb");
+    print->export_layer_document(document,"ctb_v1",path.string(),{},"CTB v1");
+    std::ifstream input(path.string(),std::ios::binary);const std::vector<uint8_t> bytes{std::istreambuf_iterator<char>(input),{}};
+    auto u32=[&](size_t at){REQUIRE(at+4<=bytes.size());return uint32_t(bytes[at])|uint32_t(bytes[at+1])<<8|uint32_t(bytes[at+2])<<16|uint32_t(bytes[at+3])<<24;};
+    REQUIRE(u32(0)==0x12fd0086);REQUIRE(u32(4)==1);REQUIRE(u32(84)==0);REQUIRE(u32(88)==60);
+    REQUIRE(u32(60)==112);REQUIRE(u32(64)==u32(72)+32+u32(u32(72)+12));
+    REQUIRE(u32(68)==4);REQUIRE(u32(92)==1);
+    REQUIRE(u32(52)==width);REQUIRE(u32(56)==height);
+    REQUIRE(bytes[96]==200);REQUIRE(bytes[98]==160);
+    for(size_t i=0;i<4;++i) {
+        const size_t at=u32(64)+36*i;const uint64_t address=uint64_t(u32(at+20))*0x100000000ULL+u32(at+12);
+        const auto image=document.image(i);const auto expected=UVToolsChituboxArchive(print->printer_config()).get_encoder()(image.buf.data(),image.cols,image.rows,1);
+        REQUIRE(u32(at+16)==expected.size());REQUIRE(address+expected.size()<=bytes.size());
+        REQUIRE(std::memcmp(bytes.data()+address,expected.data(),expected.size())==0);
+    }
+    if(output)print->export_layer_document(document,"uvj",(dir.path/(stem+".uvj")).string(),{},"CTB v1 source");
+    auto bad=cfg;bad.set("sla_lift_height",6.);
+    REQUIRE_THROWS(SLAPrint::create_raster_job(bad,document,{.05,.13,.2,.3}));
+    bad.set("sla_archive_format","uvj");
+    const auto source=SLAPrint::create_raster_job(bad,document,{.05,.13,.2,.3});
+    REQUIRE_THROWS(source->export_layer_document(document,"ctb_v1",path.string(),{},"unsupported motion"));
+    std::ifstream unchanged(path.string(),std::ios::binary);REQUIRE(std::vector<uint8_t>{std::istreambuf_iterator<char>(unchanged),{}}==bytes);
+}
+
+TEST_CASE("Encrypted CTB protocol crypto preserves blocks and checksum framing", "[sla_reference][ctb_encrypted_crypto]") {
+    nlohmann::json vectors=nlohmann::json::array();
+    auto hex=[](const auto &bytes){std::string text;const char *digits="0123456789abcdef";for(uint8_t byte:bytes){text+=digits[byte>>4];text+=digits[byte&15];}return text;};
+    uint64_t random=0x123456789abcdef0ULL;
+    for(unsigned n=0;n<256;++n) {
+        random^=random<<13;random^=random>>7;random^=random<<17;
+        const uint64_t checksum=n==0?0:n==1?1:n==2?0xCAFEBABEULL:n==3?UINT64_MAX:random;
+        const size_t length=n<7?std::array<size_t,7>{0,16,32,48,288,512,1024}[n]:16*(1+n%64);
+        std::vector<uint8_t> plain(length);
+        for(size_t i=0;i<length;++i){random^=random<<13;random^=random>>7;random^=random<<17;plain[i]=uint8_t(random);}
+        if(n==8)std::fill(plain.begin(),plain.end(),0);
+        if(n==9)std::fill(plain.begin(),plain.end(),255);
+        const auto encrypted=ctb_encrypted::aes_cbc(plain,true);
+        const auto decoded=ctb_encrypted::aes_cbc(encrypted,false);
+        REQUIRE(decoded==plain);REQUIRE(encrypted.size()==plain.size());
+        const auto digest=ctb_encrypted::checksum_digest(checksum);
+        const auto signature=ctb_encrypted::signature(checksum);
+        REQUIRE(ctb_encrypted::aes_cbc(signature,false)==std::vector<uint8_t>{digest.begin(),digest.end()});
+        const uint32_t seed=n<4?std::array<uint32_t,4>{0,1,0xEFBEADDE,UINT32_MAX}[n]:uint32_t(random);
+        const uint32_t index=n<4?std::array<uint32_t,4>{0,1,12345,UINT32_MAX}[n]:uint32_t(random>>32);
+        auto xored=plain;ctb_encrypted::xor_layer(xored,index,seed);
+        auto restored=xored;ctb_encrypted::xor_layer(restored,index,seed);REQUIRE(restored==plain);
+        vectors.push_back({{"name",n},{"checksum",checksum},{"seed",seed},{"index",index},{"plaintext",hex(plain)},
+            {"encrypted",hex(encrypted)},{"decrypted",hex(decoded)},{"digest",hex(digest)},{"signature",hex(signature)},{"xor",hex(xored)}});
+    }
+    REQUIRE_THROWS(ctb_encrypted::aes_cbc(std::vector<uint8_t>(15),true));
+    REQUIRE_THROWS(ctb_encrypted::aes_cbc(std::vector<uint8_t>(17),false));
+    if(const char *output=std::getenv("SLA_CTB_ENCRYPTED_CRYPTO_FIXTURES")) {
+        std::ofstream out(output);out<<vectors.dump();REQUIRE(bool(out));
+    }
+}
+
+TEST_CASE("Native encrypted CTB v4 and v5 retain masks and independent two-stage settings", "[sla_reference][ctb_encrypted_file]") {
+    const bool portrait=GENERATE(false,true),unicode=GENERATE(false,true);
+    const uint32_t version=GENERATE(4u,5u);
+    SLAFullPrintConfig full;Test::configure_archive_fixture(full,"uvj");
+    full.set("display_pixels_x",512);full.set("display_pixels_y",256);
+    full.display_orientation.value=portrait?sladoPortrait:sladoLandscape;
+    full.set("display_mirror_x",true);full.set("display_mirror_y",false);
+    full.set("max_print_height",220.);full.set("printer_model",unicode?"Żywica test model":"Voxelab Proxima");
+    full.set("material_density",1.25);full.set("bottle_cost",24.5);full.set("bottle_volume",500.);
+    full.set("sla_bottom_layers",1);full.set("sla_transition_layers",1);
+    full.set("sla_lift_height",3.);full.set("sla_lift_height2",2.);
+    full.set("sla_bottom_lift_height",2.);full.set("sla_bottom_lift_height2",1.);
+    full.set("sla_lift_speed",120.);full.set("sla_lift_speed2",80.);
+    full.set("sla_bottom_lift_speed",60.);full.set("sla_bottom_lift_speed2",90.);
+    full.set("sla_retract_height2",1.);full.set("sla_bottom_retract_height2",.5);
+    full.set("sla_retract_speed",180.);full.set("sla_retract_speed2",65.);
+    full.set("sla_bottom_retract_speed",160.);full.set("sla_bottom_retract_speed2",75.);
+    full.set("sla_wait_before_cure",1.25);full.set("sla_bottom_wait_before_cure",2.5);
+    full.set("sla_wait_after_cure",.5);full.set("sla_bottom_wait_after_cure",1.5);
+    full.set("sla_wait_after_lift",.75);full.set("sla_bottom_wait_after_lift",1.75);
+    full.set("sla_light_pwm",200);full.set("sla_bottom_light_pwm",160);
+    DynamicPrintConfig cfg;cfg.apply(full);
+    cfg.set_key_value("material_type",new ConfigOptionString(unicode?"Żywica & tough":"Tough"));
+    cfg.set_key_value("sla_material_settings_id",new ConfigOptionString(unicode?"Żywica material":"Test material"));
+    const size_t width=portrait?256:512,height=portrait?512:256;
+    std::vector<uint8_t> pixels(width*height,255);std::vector<sla::EncodedRaster> rasters;
+    rasters.push_back(sla::PNGRasterEncoder{}(pixels.data(),width,height,1));
+    std::fill(pixels.begin(),pixels.end(),0);rasters.push_back(sla::PNGRasterEncoder{}(pixels.data(),width,height,1));
+    for(size_t i=0;i<pixels.size();++i)pixels[i]=uint8_t(i%256);
+    const auto gray=sla::PNGRasterEncoder{}(pixels.data(),width,height,1);rasters.push_back(gray);rasters.push_back(gray);
+    const auto document=sla::LayerDocument::from_rasters(std::move(rasters));
+    const auto print=SLAPrint::create_raster_job(cfg,document,{.05,.13,.2,.3});
+    CTBEncryptedArchive archive(print->printer_config(),version);archive.encode_layers(document);
+    const char *output=std::getenv("SLA_CTB_ENCRYPTED_FILE_FIXTURES");
+    struct Directory {boost::filesystem::path path;bool keep;~Directory(){if(!keep){boost::system::error_code e;boost::filesystem::remove_all(path,e);}}}
+        dir{output?boost::filesystem::path(output):boost::filesystem::unique_path("ctb-encrypted-%%%%"),bool(output)};
+    boost::filesystem::create_directories(dir.path);
+    const auto stem=std::string(portrait?"portrait":"landscape")+"-v"+std::to_string(version)+(unicode?"-utf8":"-ascii");
+    const auto path=dir.path/(stem+".encrypted.ctb");archive.export_print(path.string(),*print,{},"native");
+    std::ifstream in(path.string(),std::ios::binary);const std::vector<uint8_t> bytes{std::istreambuf_iterator<char>(in),{}};in.close();
+    auto u32=[&](size_t at){REQUIRE(at+4<=bytes.size());return uint32_t(bytes[at])|uint32_t(bytes[at+1])<<8|uint32_t(bytes[at+2])<<16|uint32_t(bytes[at+3])<<24;};
+    REQUIRE(u32(0)==0x12FD0107);REQUIRE(u32(4)==288);REQUIRE(u32(8)==48);REQUIRE(u32(16)==version);
+    const auto settings=ctb_encrypted::aes_cbc(std::vector<uint8_t>(bytes.begin()+48,bytes.begin()+336),false);
+    auto field=[&](size_t at){return uint32_t(settings[at])|uint32_t(settings[at+1])<<8|uint32_t(settings[at+2])<<16|uint32_t(settings[at+3])<<24;};
+    REQUIRE(field(0)==0xCAFEBABE);REQUIRE(field(4)==0);REQUIRE(field(56)==width);REQUIRE(field(60)==height);REQUIRE(field(64)==4);
+    REQUIRE(settings[171]==0x40);REQUIRE(field(128)==0xEFBEADDE);REQUIRE((field(276)>0)==(version==5));
+    REQUIRE(u32(20)==32);const auto signature=ctb_encrypted::signature(0xCAFEBABE);
+    REQUIRE(u32(24)+32+4==bytes.size());REQUIRE(std::equal(signature.begin(),signature.end(),bytes.begin()+u32(24)));
+    for(size_t i=0;i<4;++i) {
+        const size_t pointer=field(8)+16*i;const uint64_t address=uint64_t(u32(pointer))+uint64_t(u32(pointer+4))*0x100000000ULL;
+        REQUIRE(u32(pointer+8)==88);REQUIRE(u32(address)==88);REQUIRE(u32(address+16)==address+88);
+        REQUIRE(u32(address+32)==0);REQUIRE(u32(address+36)==0);
+        auto encrypted=std::vector<uint8_t>(bytes.begin()+address+88,bytes.begin()+address+88+u32(address+24));
+        ctb_encrypted::xor_layer(encrypted,uint32_t(i));
+        const auto image=document.image(i);const auto expected=chitubox::Gray7RasterEncoder{}(image.buf.data(),width,height,1);
+        REQUIRE(encrypted.size()==expected.size());REQUIRE(std::memcmp(encrypted.data(),expected.data(),expected.size())==0);
+    }
+    if(output)print->export_layer_document(document,"uvj",(dir.path/(stem+".uvj")).string(),{},"source");
+    auto bad=cfg;bad.set("display_mirror_y",true);
+    auto invalid=SLAPrint::create_raster_job(bad,document,{.05,.13,.2,.3});
+    REQUIRE_THROWS(archive.export_print(path.string(),*invalid,{},"invalid"));
+    bad=cfg;bad.set("sla_retract_height2",6.);
+    REQUIRE_THROWS(SLAPrint::create_raster_job(bad,document,{.05,.13,.2,.3}));
+    SLAPrint invalid_motion;invalid_motion.apply(Model{},bad);
+    REQUIRE_THROWS(CTBEncryptedArchive::validate_configuration(invalid_motion));
+    std::ifstream preserved(path.string(),std::ios::binary);REQUIRE(std::vector<uint8_t>{std::istreambuf_iterator<char>(preserved),{}}==bytes);
+}
+
+TEST_CASE("NanoDLP explicit device profile writer preserves all manifest and PNG entries", "[sla_reference][nanodlp_profile_file]")
+{
+    const bool portrait = GENERATE(false, true), rgb = GENERATE(false, true);
+    const unsigned version = GENERATE(1u, 2u);
+    const int columns = GENERATE(156, 157);
+    SLAFullPrintConfig full;
+    Test::configure_archive_fixture(full, "uvj");
+    full.set("display_pixels_x", columns); full.set("display_pixels_y", 24);
+    full.set("display_width", columns * .1); full.set("display_height", 2.4);
+    full.display_orientation.value = portrait ? sladoPortrait : sladoLandscape;
+    full.set("display_mirror_x", true); full.set("display_mirror_y", false);
+    full.set("printer_model", "NanoDLP urządzenie");
+    full.set("sla_bottom_layers", 1); full.set("sla_transition_layers", 0);
+    full.set("exposure_time", 3.);
+    for (const bool bottom : {false, true}) {
+        const std::string prefix = bottom ? "sla_bottom_" : "sla_";
+        full.set(prefix + "light_pwm", 180);
+        full.set(prefix + "wait_before_cure", bottom ? 2.5 : 1.25);
+        full.set(prefix + "wait_after_cure", .5); full.set(prefix + "wait_after_lift", .75);
+        full.set(prefix + "lift_height", bottom ? 2. : 3.);
+    }
+    DynamicPrintConfig config; config.apply(full);
+    const size_t width = portrait ? 24 : columns, height = portrait ? columns : 24;
+    std::vector<uint8_t> pixels(width * height);
+    for (size_t index = 0; index < pixels.size(); ++index)
+        pixels[index] = uint8_t(index % 256);
+    const auto gray = sla::PNGRasterEncoder{}(pixels.data(), width, height, 1);
+    std::fill(pixels.begin(), pixels.end(), 0);
+    const auto black = sla::PNGRasterEncoder{}(pixels.data(), width, height, 1);
+    const auto document = sla::LayerDocument::from_rasters({gray, gray, black});
+    const auto print = SLAPrint::create_raster_job(config, document, {.05, .1, .15});
+    NanoDLPArchive writer(print->printer_config(), rgb); writer.encode_layers(document);
+    auto device = nanodlp::schema_defaults()["profile"];
+    device["CustomValues"]["NativeTestValue"] = "Żywica & <test>";
+    // Deliberately stale global values must yield to the current job; controller
+    // templates and custom values must remain byte-for-byte unchanged.
+    device["CureTime"] = 99; device["WaitHeight"] = 99; device["Title"] = "stale";
+    ThumbnailData thumbnail; thumbnail.width = 2; thumbnail.height = 2;
+    thumbnail.pixels = {0,0,255,255, 255,255,255,128, 255,0,0,255, 0,255,0,255};
+    const char *output = std::getenv("SLA_NANODLP_PROFILE_FIXTURES");
+    struct Directory {
+        boost::filesystem::path path; bool keep;
+        ~Directory() { if (!keep) { boost::system::error_code error; boost::filesystem::remove_all(path,error); } }
+    } dir{output ? boost::filesystem::path(output) : boost::filesystem::unique_path("nano-profile-%%%%"), bool(output)};
+    boost::filesystem::create_directories(dir.path);
+    const auto stem = std::to_string(columns) + (portrait ? "-portrait" : "-landscape") +
+        (rgb ? "-rgb" : "-mono") + "-v" + std::to_string(version);
+    const auto path = dir.path / (stem + (rgb ? ".rgb.nanodlp" : ".nanodlp"));
+    writer.export_with_profile(path.string(), *print, {thumbnail}, device, version, "Żywica <projekt>");
+    REQUIRE(boost::filesystem::is_regular_file(path));
+    const auto read_entries = [](const std::string &filename) {
+        std::map<std::string, std::vector<uint8_t>> result;
+        for (const auto &entry : read_zipper_archive(filename, {""}, {}).entries)
+            result.emplace(entry.fname, entry.buf);
+        return result;
+    };
+    const auto zip = read_entries(path.string());
+    REQUIRE(zip.size() == 9);
+    for (const char *entry : {"meta.json","slicer.json","plate.json","profile.json","info.json","3d.png","1.png","2.png","3.png"})
+        REQUIRE(zip.count(entry) == 1);
+    const auto parse = [&](const char *key) { return nlohmann::json::parse(zip.at(key)); };
+    REQUIRE(parse("meta.json")["FormatVersion"] == version);
+    REQUIRE(parse("meta.json")["Program"] == "Sla-SlicerOS");
+    REQUIRE(parse("profile.json")["ShieldBeforeLayer"] == device["ShieldBeforeLayer"]);
+    REQUIRE(parse("profile.json")["ShieldAfterLayer"] == device["ShieldAfterLayer"]);
+    REQUIRE(parse("profile.json")["CustomValues"]["NativeTestValue"] == "Żywica & <test>");
+    REQUIRE(parse("profile.json")["CureTime"] == 3);
+    REQUIRE(parse("profile.json")["WaitHeight"] == 3);
+    REQUIRE(parse("profile.json")["Title"] == "NanoDLP urządzenie");
+    REQUIRE(parse("slicer.json")["PreviewWidth"] == 607);
+    REQUIRE(parse("slicer.json")["PreviewHeight"] == 487);
+    REQUIRE(zip.at("1.png") == zip.at("2.png"));
+    auto existing = zip;
+    for (const auto &invalid : {nlohmann::json{}, nlohmann::json::object(),
+                               nlohmann::json{{"ShieldBeforeLayer", " "}, {"ShieldAfterLayer", "UVLED_OFF"}}})
+        REQUIRE_THROWS(writer.export_with_profile(path.string(), *print, {}, invalid));
+    auto invalid = device; invalid["NotAProfileField"] = "unknown";
+    REQUIRE_THROWS(writer.export_with_profile(path.string(), *print, {}, invalid));
+    invalid = device; invalid["CustomValues"]["NativeTestValue"] = 5;
+    REQUIRE_THROWS(writer.export_with_profile(path.string(), *print, {}, invalid));
+    invalid = device; invalid["ShieldBeforeLayer"] = std::string(1, char(0xff));
+    REQUIRE_THROWS(writer.export_with_profile(path.string(), *print, {}, invalid));
+    for (const auto &bad : {nlohmann::json(-1), nlohmann::json(1.5), nlohmann::json(1.0), nlohmann::json(uint64_t(UINT32_MAX)+1)}) {
+        invalid = device; invalid["ZStepWait"] = bad;
+        REQUIRE_THROWS(writer.export_with_profile(path.string(), *print, {}, invalid));
+    }
+    invalid = device; invalid["Updated"] = uint64_t(INT64_MAX)+1;
+    REQUIRE_THROWS(writer.export_with_profile(path.string(), *print, {}, invalid));
+    REQUIRE_THROWS(writer.export_with_profile(path.string(), *print, {}, device, 3));
+    REQUIRE(read_entries(path.string()) == existing);
+    auto variable = SLAPrint::create_raster_job(config, document, {.05, .13, .2});
+    REQUIRE_THROWS(writer.export_with_profile(path.string(), *variable, {}, device));
+    for (const auto &bad : {std::pair{"sla_bottom_light_pwm",160.}, {"sla_wait_before_cure",1.251},
+                           {"initial_layer_height",.04}}) {
+        auto changed = config;
+        if (std::string(bad.first) == "sla_bottom_light_pwm") changed.set(bad.first,int(bad.second));
+        else changed.set(bad.first,bad.second);
+        INFO(bad.first);
+        const std::vector<double> levels = std::string(bad.first) == "initial_layer_height" ?
+            std::vector<double>{.04,.09,.14} : std::vector<double>{.05,.1,.15};
+        auto job = SLAPrint::create_raster_job(changed,document,levels);
+        REQUIRE_THROWS(writer.export_with_profile(path.string(), *job, {}, device));
+    }
+    REQUIRE(read_entries(path.string()) == existing);
+    REQUIRE(archive_export_unavailable_reason("nanodlp").empty());
+    if (output) {
+        const auto source = dir.path / (stem + ".uvj");
+        print->export_layer_document(document, "uvj", source.string(), {}, "source");
+        std::ofstream profile((dir.path / (stem + "-device.json")).string());
+        profile << device.dump(2);
+    }
+}
+
+TEST_CASE("NanoDLP printer profile is portable and drives all registered variants", "[sla_reference][nanodlp_printer_profile]")
+{
+    const std::string format = GENERATE("nanodlp", "nanodlp_v1", "nanodlp_rgb", "nanodlp_rgb_v1");
+    SLAFullPrintConfig full; Test::configure_archive_fixture(full,format);
+    full.set("display_pixels_x",128);full.set("display_pixels_y",24);
+    full.set("display_width",12.8);full.set("display_height",2.4);
+    full.set("sla_bottom_layers",1);
+    auto device = NanoDLPArchive::parse_device_profile(full.nanodlp_device_profile.value);
+    device["CustomValues"]["PresetProof"] = "Żywica \"<&>\"";
+    full.nanodlp_device_profile.value = device.dump(2);
+    DynamicPrintConfig cfg;cfg.apply(full);
+    struct Directory {
+        boost::filesystem::path path;
+        ~Directory(){boost::system::error_code e;boost::filesystem::remove_all(path,e);}
+    } dir{boost::filesystem::unique_path("nano-preset-%%%%")};
+    boost::filesystem::create_directories(dir.path);
+    const auto saved = dir.path / "printer.ini";cfg.save(saved.string());
+    DynamicPrintConfig restored;restored.load(saved.string(),ForwardCompatibilitySubstitutionRule::Disable);
+    REQUIRE(restored.opt_string("nanodlp_device_profile") == cfg.opt_string("nanodlp_device_profile"));
+    REQUIRE(restored.opt_string("sla_archive_format") == format);
+    REQUIRE(std::find(Preset::sla_printer_options().begin(),Preset::sla_printer_options().end(),"nanodlp_device_profile") != Preset::sla_printer_options().end());
+    std::vector<uint8_t> pixels(128*24,0);pixels[123]=1;pixels[444]=128;pixels[789]=255;
+    auto raster = sla::PNGRasterEncoder{}(pixels.data(),128,24,1);
+    auto document = sla::LayerDocument::from_rasters({raster,raster,raster});
+    const auto job = SLAPrint::create_raster_job(restored,document,{.05,.1,.15});
+    REQUIRE(job->validate().empty());
+    const auto filename = dir.path / ("result." + std::string(get_default_extension(format.c_str())));
+    REQUIRE_NOTHROW(job->export_layer_document(document,format,filename.string(),{},"preset"));
+    const auto zip = read_zipper_archive(filename.string(),{""},{});
+    auto read = [&](const std::string &name) {
+        const auto entry = std::find_if(zip.entries.begin(),zip.entries.end(),[&](const auto &e){return e.fname==name;});
+        REQUIRE(entry!=zip.entries.end());return nlohmann::json::parse(entry->buf);
+    };
+    REQUIRE(read("meta.json")["FormatVersion"] == (format.find("_v1") != std::string::npos ? 1 : 2));
+    REQUIRE(read("slicer.json")["DisplayController"] == (format.find("_rgb") != std::string::npos ? 0 : 1));
+    const auto profile = read("profile.json");
+    REQUIRE(profile["CustomValues"]["PresetProof"] == device["CustomValues"]["PresetProof"]);
+    REQUIRE(profile["ShieldBeforeLayer"] == device["ShieldBeforeLayer"]);
+    REQUIRE(profile["ShieldAfterLayer"] == device["ShieldAfterLayer"]);
+    const auto compound = dir.path / "explicit.v1.rgb.nanodlp";
+    REQUIRE_NOTHROW(job->export_print(compound.string(),{},"compound"));
+    const auto shared = dir.path / "selected.nanodlp";
+    REQUIRE_NOTHROW(job->export_print(shared.string(),{},"shared"));
+    auto manifest = [](const boost::filesystem::path &path,const std::string &name) {
+        auto archive=read_zipper_archive(path.string(),{""},{});
+        auto entry=std::find_if(archive.entries.begin(),archive.entries.end(),[&](const auto &e){return e.fname==name;});
+        REQUIRE(entry!=archive.entries.end());return nlohmann::json::parse(entry->buf);
+    };
+    REQUIRE(manifest(compound,"meta.json")["FormatVersion"] == 1);
+    REQUIRE(manifest(compound,"slicer.json")["DisplayController"] == 0);
+    REQUIRE(manifest(shared,"meta.json")["FormatVersion"] == (format.find("_v1") != std::string::npos ? 1 : 2));
+    REQUIRE(manifest(shared,"slicer.json")["DisplayController"] == (format.find("_rgb") != std::string::npos ? 0 : 1));
+    REQUIRE_THROWS(NanoDLPArchive::parse_device_profile("{bad json"));
+    REQUIRE_THROWS(NanoDLPArchive::parse_device_profile("{}"));
+    auto second = cfg;auto other = device;other["CustomValues"]["PresetProof"]="second printer";
+    second.set("nanodlp_device_profile",other.dump());
+    const auto second_path=dir.path/"second-printer.ini";second.save(second_path.string());
+    DynamicPrintConfig reloaded;reloaded.load(saved.string(),ForwardCompatibilitySubstitutionRule::Disable);
+    REQUIRE(reloaded.opt_string("nanodlp_device_profile") == cfg.opt_string("nanodlp_device_profile"));
+    for (const std::string value : {"", "{}", "{bad json"}) {
+        auto invalid=cfg;invalid.set("nanodlp_device_profile",value);
+        SLAPrint print;print.apply(Model{},invalid);
+        REQUIRE_FALSE(print.validate().empty());
+        REQUIRE_THROWS(SLAPrint::create_raster_job(invalid,document,{.05,.1,.15}));
+    }
+}
+
+TEST_CASE("Ordinary CTB v3-v5 and GKtwo preserve their own tables and raster payloads", "[sla_reference][ctb_modern_file]") {
+    const bool portrait=GENERATE(false,true),unicode=GENERATE(false,true);
+    const std::string format=GENERATE("ctb_v3","ctb_v4","ctb_v5","ctb_gktwo");
+    const unsigned version=format=="ctb_v3"?3:format=="ctb_v5"?5:4;
+    SLAFullPrintConfig full;Test::configure_archive_fixture(full,"uvj");
+    full.set("display_pixels_x",512);full.set("display_pixels_y",256);
+    full.display_orientation.value=portrait?sladoPortrait:sladoLandscape;
+    full.set("display_mirror_x",true);full.set("display_mirror_y",false);
+    full.set("max_print_height",220.);full.set("printer_model",unicode?"Żywica test model":"Voxelab Proxima");
+    full.set("material_density",1.25);full.set("bottle_cost",24.5);full.set("bottle_volume",500.);
+    full.set("sla_bottom_layers",1);full.set("sla_transition_layers",1);
+    full.set("sla_lift_height",3.);full.set("sla_lift_height2",2.);
+    full.set("sla_bottom_lift_height",2.);full.set("sla_bottom_lift_height2",1.);
+    full.set("sla_lift_speed",120.);full.set("sla_lift_speed2",80.);
+    full.set("sla_bottom_lift_speed",60.);full.set("sla_bottom_lift_speed2",90.);
+    full.set("sla_retract_height2",1.);full.set("sla_bottom_retract_height2",.5);
+    full.set("sla_retract_speed",180.);full.set("sla_retract_speed2",65.);
+    full.set("sla_bottom_retract_speed",160.);full.set("sla_bottom_retract_speed2",75.);
+    full.set("sla_wait_before_cure",1.25);full.set("sla_bottom_wait_before_cure",2.5);
+    full.set("sla_wait_after_cure",.5);full.set("sla_bottom_wait_after_cure",1.5);
+    full.set("sla_wait_after_lift",.75);full.set("sla_bottom_wait_after_lift",1.75);
+    full.set("sla_light_pwm",200);full.set("sla_bottom_light_pwm",160);
+    full.set("sla_archive_format",format);
+    if(version==3) {
+        for(const char *key:{"sla_lift_height2","sla_bottom_lift_height2","sla_retract_height2","sla_bottom_retract_height2",
+            "sla_wait_after_cure","sla_bottom_wait_after_cure","sla_wait_after_lift","sla_bottom_wait_after_lift"})full.set(key,0.);
+    }
+    DynamicPrintConfig cfg;cfg.apply(full);
+    cfg.set_key_value("material_type",new ConfigOptionString(unicode?"Żywica & tough":"Tough"));
+    cfg.set_key_value("sla_material_settings_id",new ConfigOptionString(unicode?"Żywica material":"Test material"));
+    const size_t width=portrait?256:512,height=portrait?512:256;
+    std::vector<uint8_t> pixels(width*height,255);std::vector<sla::EncodedRaster> rasters;
+    rasters.push_back(sla::PNGRasterEncoder{}(pixels.data(),width,height,1));
+    std::fill(pixels.begin(),pixels.end(),0);rasters.push_back(sla::PNGRasterEncoder{}(pixels.data(),width,height,1));
+    for(size_t i=0;i<pixels.size();++i)pixels[i]=uint8_t(i%256);
+    const auto gray=sla::PNGRasterEncoder{}(pixels.data(),width,height,1);rasters.push_back(gray);rasters.push_back(gray);
+    const auto document=sla::LayerDocument::from_rasters(std::move(rasters));
+    const auto print=SLAPrint::create_raster_job(cfg,document,{.05,.13,.2,.3});
+    ChituboxCTBModernArchive archive(print->printer_config(),version,format=="ctb_gktwo");
+    archive.encode_layers(document);
+    const char *output=std::getenv("SLA_CTB_MODERN_FIXTURES");
+    struct Directory {boost::filesystem::path path;bool keep;~Directory(){if(!keep){boost::system::error_code e;boost::filesystem::remove_all(path,e);}}}
+        dir{output?boost::filesystem::path(output):boost::filesystem::unique_path("ctb-modern-%%%%"),bool(output)};
+    boost::filesystem::create_directories(dir.path);
+    const auto stem=std::string(portrait?"portrait":"landscape")+"-"+format+(unicode?"-utf8":"-ascii");
+    const auto *entry=get_archive_entry(format.c_str());REQUIRE(entry!=nullptr);
+    const auto path=dir.path/(stem+"."+entry->ext);
+    archive.export_print(path.string(),*print,{},"native");
+    std::ifstream in(path.string(),std::ios::binary);
+    const std::vector<uint8_t> bytes{std::istreambuf_iterator<char>(in),{}};in.close();
+    auto u32=[&](size_t at){REQUIRE(at+4<=bytes.size());return uint32_t(bytes[at])|uint32_t(bytes[at+1])<<8|uint32_t(bytes[at+2])<<16|uint32_t(bytes[at+3])<<24;};
+    REQUIRE(u32(0)==(format=="ctb_gktwo"?0xFF220810u:version==3?0x12FD0086u:0x12FD0106u));
+    REQUIRE(u32(4)==version);REQUIRE(u32(52)==width);REQUIRE(u32(56)==height);REQUIRE(u32(68)==4);
+    REQUIRE(u32(88)==60);REQUIRE(u32(92)==1);REQUIRE(u32(100)==0xEFBEADDE);REQUIRE(u32(108)==76);
+    const auto slicer=u32(104);REQUIRE(bytes[slicer+39]==version*0x10);
+    const auto params4=u32(slicer+64);REQUIRE((params4>0)==(version>=4));
+    if(version>=4) {
+        REQUIRE(u32(params4+48)==5);REQUIRE(u32(params4+52)==3);
+        REQUIRE(u32(params4+76)==(format=="ctb_gktwo"?323:320));
+        REQUIRE((u32(params4+80)>0)==(version==5));
+    }
+    for(size_t i=0;i<4;++i) {
+        const size_t table=u32(64)+36*i;
+        const auto data=u32(table+12),size=u32(table+16);
+        REQUIRE(u32(table+24)==84);REQUIRE(data>=84);REQUIRE(data+size<=bytes.size());
+        const auto extended=data-84;
+        REQUIRE(u32(extended+12)==data);REQUIRE(u32(extended+16)==size);
+        REQUIRE(u32(extended+36)==84+size);REQUIRE(u32(extended+24)==84);
+        auto encrypted=std::vector<uint8_t>(bytes.begin()+data,bytes.begin()+data+size);
+        ctb_encrypted::xor_layer(encrypted,uint32_t(i));
+        const auto image=document.image(i);const auto expected=chitubox::Gray7RasterEncoder{}(image.buf.data(),width,height,1);
+        REQUIRE(encrypted.size()==expected.size());REQUIRE(std::memcmp(encrypted.data(),expected.data(),expected.size())==0);
+    }
+    if(output)print->export_layer_document(document,"uvj",(dir.path/(stem+".uvj")).string(),{},"source");
+    auto bad=cfg;bad.set("display_mirror_y",true);SLAPrint invalid;invalid.apply(Model{},bad);
+    REQUIRE_THROWS(ChituboxCTBModernArchive::validate_configuration(invalid,version));
+    REQUIRE_THROWS(archive.export_print(path.string(),invalid,{},"invalid"));
+    std::ifstream preserved(path.string(),std::ios::binary);
+    REQUIRE(std::vector<uint8_t>{std::istreambuf_iterator<char>(preserved),{}}==bytes);
+}
+
+TEST_CASE("Canonical raster capture has an independent encoder and preserves native PNGs", "[sla_canonical_encoder]") {
+    struct Archive : SL1Archive {
+        using SL1Archive::SL1Archive;
+        const auto &layers() const {return m_layers;}
+    };
+    SLAPrinterConfig config;config.display_width.value=1.;config.display_height.value=1.;
+    config.display_pixels_x.value=2;config.display_pixels_y.value=2;
+    config.display_orientation.value=sladoLandscape;config.gamma_correction.value=1.;
+    Archive archive(config);std::vector<sla::EncodedRaster> masks;
+    const std::vector<size_t> representatives{0,0,2,2};std::atomic<unsigned> captures{0};
+    const sla::RasterEncoder capture=[&](const void *,size_t w,size_t h,size_t n) {
+        ++captures;if(n!=1)throw std::runtime_error("Expected grayscale");const std::vector<uint8_t> zero(w*h,0);
+        return sla::PNGRasterEncoder{}(zero.data(),w,h,1);
+    };
+    archive.draw_layers(4,[](sla::RasterBase &raster,size_t i) {
+        if(i==0)raster.draw(ExPolygon(Polygon(Points{Point(0,0),Point(scaled(1.),0),
+            Point(scaled(1.),scaled(1.)),Point(0,scaled(1.))})));
+    },[]{return false;},ExecutionTBB{},&masks,&representatives,capture);
+    CHECK(captures==2);
+    const auto document=sla::LayerDocument::from_rasters(masks);
+    for(size_t i=0;i<4;++i)CHECK(document.image(i).buf==std::vector<uint8_t>{0,0,0,0});
+    const auto native=sla::LayerDocument::from_rasters(archive.layers());
+    CHECK(native.image(0).buf==std::vector<uint8_t>{255,255,255,255});
+    CHECK(native.image(1).buf==native.image(0).buf);
+    CHECK(native.image(2).buf==std::vector<uint8_t>{0,0,0,0});
+}
+
+TEST_CASE("Cancelled canonical capture retains the last complete encoding pair", "[sla_canonical_encoder]") {
+    struct Archive : SL1Archive {
+        using SL1Archive::SL1Archive;
+        const auto &layers() const {return m_layers;}
+    };
+    SLAPrinterConfig config;config.display_width.value=1.;config.display_height.value=1.;
+    config.display_pixels_x.value=2;config.display_pixels_y.value=2;
+    config.display_orientation.value=sladoLandscape;
+    Archive archive(config);std::vector<sla::EncodedRaster> masks;
+    archive.draw_layers(4,[](sla::RasterBase &,size_t){},[]{return false;},ExecutionTBB{},&masks);
+    const auto saved_native=archive.layers(),saved_masks=masks;
+    const auto equal=[](const auto &a,const auto &b) {
+        if(a.size()!=b.size())return false;
+        for(size_t i=0;i<a.size();++i)
+            if(a[i].size()!=b[i].size() || std::memcmp(a[i].data(),b[i].data(),a[i].size())!=0)return false;
+        return true;
+    };
+    const auto action=GENERATE("exception","cancel");CAPTURE(action);
+    if(std::string(action)=="exception") {
+        const sla::RasterEncoder capture=[](const void *,size_t,size_t,size_t)->sla::EncodedRaster {
+            throw sla::LayerOperationCancelled{};
+        };
+        CHECK_THROWS_AS(archive.draw_layers(2,[](sla::RasterBase &,size_t){},[]{return false;},
+            ExecutionTBB{},&masks,nullptr,capture),sla::LayerOperationCancelled);
+    } else {
+        std::atomic<bool> cancel{false};
+        archive.draw_layers(2,[&](sla::RasterBase &,size_t){cancel.store(true);},
+            [&]{return cancel.load();},ExecutionTBB{},&masks);
+    }
+    CHECK(equal(archive.layers(),saved_native));CHECK(equal(masks,saved_masks));
 }

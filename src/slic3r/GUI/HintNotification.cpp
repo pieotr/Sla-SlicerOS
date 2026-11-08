@@ -309,7 +309,14 @@ void HintDatabase::uninit()
 }
 void HintDatabase::init()
 {
-	load_hints_from_file(std::move(boost::filesystem::path(resources_dir()) / "data" / "hints.ini"));
+#ifdef SLIC3R_OFFLINE_ONLY
+	// Local SLA workflows only; the existing renderer omits documentation actions
+	// when the selected catalog has no links.
+	const char *catalog = "sla_hints.ini";
+#else
+	const char *catalog = "hints.ini";
+#endif
+	load_hints_from_file(boost::filesystem::path(resources_dir()) / "data" / catalog);
     m_initialized = true;
 }
 void HintDatabase::load_hints_from_file(const boost::filesystem::path& path)

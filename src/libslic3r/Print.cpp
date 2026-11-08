@@ -31,7 +31,9 @@
 #include "I18N.hpp"
 #include "ShortestPath.hpp"
 #include "Thread.hpp"
+#ifndef SLIC3R_SLA_ONLY
 #include "GCode.hpp"
+#endif
 #include "libslic3r/GCode/WipeTower.hpp"
 #include "libslic3r/GCode/ConflictChecker.hpp"
 #include "Utils.hpp"
@@ -998,6 +1000,12 @@ void Print::process()
 // It is up to the caller to show an error message.
 std::string Print::export_gcode(const std::string& path_template, GCodeProcessorResult* result, ThumbnailsGeneratorCallback thumbnail_cb)
 {
+#ifdef SLIC3R_SLA_ONLY
+    (void)path_template;
+    (void)result;
+    (void)thumbnail_cb;
+    throw ExportError("FFF G-code export is unavailable in the SLA-only application");
+#else
     // output everything to a G-code file
     // The following call may die if the output_filename_format template substitution fails.
     std::string path = this->output_filepath(path_template);
@@ -1022,6 +1030,7 @@ std::string Print::export_gcode(const std::string& path_template, GCodeProcessor
         result->sequential_collision_detected = m_sequential_collision_detected;
 
     return path.c_str();
+#endif
 }
 
 void Print::_make_skirt()

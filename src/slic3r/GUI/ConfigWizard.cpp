@@ -40,6 +40,7 @@
 #include <wx/wupdlock.h>
 #include <wx/stdpaths.h>
 #include <wx/debug.h>
+#include <wx/weakref.h>
 
 #ifdef WIN32
 #include <wx/msw/registry.h>
@@ -57,6 +58,8 @@
 #include "libslic3r/libslic3r.h"
 #include "libslic3r/Model.hpp"
 #include "libslic3r/Color.hpp"
+#include "libslic3r/SLA/PrinterGeometry.hpp"
+#include <limits>
 #include "GUI.hpp"
 #include "GUI_App.hpp"
 #include "GUI_Utils.hpp"
@@ -2604,35 +2607,16 @@ PageBuildVolume::PageBuildVolume(ConfigWizard* parent)
     display_orientation->Append(_L("Portrait"));
     load_config(*wizard_p()->custom_config);
 
-    build_volume->Bind(wxEVT_KILL_FOCUS, [this](wxFocusEvent& e) { 
-        double def_value = 200.0;
-        double max_value = 1200.0;
-        e.Skip();
-        wxString str = build_volume->GetValue();
-
-        const char dec_sep = is_decimal_separator_point() ? '.' : ',';
-        const char dec_sep_alt = dec_sep == '.' ? ',' : '.';
-        // Replace the first incorrect separator in decimal number.
-        bool was_replaced = str.Replace(dec_sep_alt, dec_sep, false) != 0;
-
-        double val = 0.0;
-        if (!str.ToDouble(&val)) {
-            val = def_value;
-            build_volume->SetValue(double_to_string(val));
-            show_error(nullptr, _L("Invalid numeric input."));
-            //build_volume->SetFocus();
-        } else if (val < 0.0) {
-            val  = def_value;
-            build_volume->SetValue(double_to_string(val));
-            show_error(nullptr, _L("Invalid numeric input."));
-            //build_volume->SetFocus();
-        } else if (val > max_value) {
-            val = max_value;
-            build_volume->SetValue(double_to_string(val));
-            show_error(nullptr, _L("Invalid numeric input."));
-            //build_volume->SetFocus();
-        } else if (was_replaced)
-            build_volume->SetValue(double_to_string(val));
+    build_volume->Bind(wxEVT_KILL_FOCUS, [this](wxFocusEvent &event) {
+        event.Skip();
+        // Normalize a valid locale decimal separator only. Invalid input stays
+        // visible for correction; Next/Finish must not replace it with defaults.
+        wxString text = build_volume->GetValue();
+        const char separator = is_decimal_separator_point() ? '.' : ',';
+        const bool replaced = text.Replace(separator == '.' ? ',' : '.', separator, false) != 0;
+        double value = 0.;
+        if (replaced && text.ToDouble(&value) && std::isfinite(value) && value > 0. && value <= 1200.)
+            build_volume->ChangeValue(double_to_string(value));
     }, build_volume->GetId());
 
     auto* sizer_volume = new wxFlexGridSizer(3, 5, 5);
@@ -2687,45 +2671,72 @@ void PageBuildVolume::load_config(const DynamicPrintConfig &config)
         use_tilt->SetValue(option->values.front());
 }
 
-void PageBuildVolume::apply_custom_config(DynamicPrintConfig& config)
+void PageBuildVolume::apply_custom_config(DynamicPrintConfig &config)
 {
-    double val = 0.0;
-    build_volume->GetValue().ToDouble(&val);
-    auto* opt_volume = new ConfigOptionFloat(val);
-    config.set_key_value("max_print_height", opt_volume);
+    // Parse and validate an isolated candidate. A bad field cannot partially
+    // change the wizard's printer, bed, or previously saved profile.
+    DynamicPrintConfig candidate = config;
+    auto real = [](wxTextCtrl *field, const char *label, double minimum, double maximum) {
+        wxString text = field->GetValue();
+        const char separator = is_decimal_separator_point() ? '.' : ',';
+        text.Replace(separator == '.' ? ',' : '.', separator, false);
+        double value = 0.;
+        if (!text.ToDouble(&value) || !std::isfinite(value) || value < minimum || value > maximum)
+            throw RuntimeError(std::string(label) + ": enter a finite number within the printer setting limits");
+        return value;
+    };
+    auto pixels = [](wxTextCtrl *field, const char *label) {
+        long value = 0;
+        if (!field->GetValue().ToLong(&value) || value < 100 || value > 32768 ||
+            value > std::numeric_limits<int>::max())
+            throw RuntimeError(std::string(label) + ": enter an integer between 100 and 32768 pixels");
+        return int(value);
+    };
+    const double height = real(build_volume, "Max print height", std::numeric_limits<double>::min(), 1200.);
+    const double width = real(display_width, "Display width", 1., std::numeric_limits<double>::max());
+    const double screen_height = real(display_height, "Display height", 1., std::numeric_limits<double>::max());
+    const int columns = pixels(display_pixels_x, "Display pixels X");
+    const int rows = pixels(display_pixels_y, "Display pixels Y");
+    const int orientation = display_orientation->GetSelection();
+    if (orientation != 0 && orientation != 1)
+        throw RuntimeError("Display orientation: select Landscape or Portrait");
+    candidate.set("max_print_height", height);
+    candidate.set("display_width", width);
+    candidate.set("display_height", screen_height);
+    candidate.set("display_pixels_x", columns);
+    candidate.set("display_pixels_y", rows);
+    candidate.set_key_value("display_orientation", new ConfigOptionEnum<SLADisplayOrientation>(
+        orientation == 0 ? sladoLandscape : sladoPortrait));
+    candidate.set("display_mirror_x", display_mirror_x->GetValue());
+    candidate.set("display_mirror_y", display_mirror_y->GetValue());
+    if (const auto error = sla::printer_geometry_error(candidate); !error.empty())
+        throw RuntimeError(error);
+    sla::synchronize_bed_shape(candidate);
+    const bool tilt = use_tilt->GetValue();
+    candidate.set_key_value("use_tilt", new ConfigOptionBools({tilt, tilt}));
+    if (!tilt)
+        candidate.set_key_value("tower_hop_height", new ConfigOptionFloats({5., 5.}));
+    config = std::move(candidate);
+}
 
-    double display_w = 120.0;
-    double display_h = 68.0;
-    long px_x = 2560;
-    long px_y = 1440;
-    display_width->GetValue().ToDouble(&display_w);
-    display_height->GetValue().ToDouble(&display_h);
-    display_pixels_x->GetValue().ToLong(&px_x);
-    display_pixels_y->GetValue().ToLong(&px_y);
-
-    const double display_w_clamped = std::max(1.0, display_w);
-    const double display_h_clamped = std::max(1.0, display_h);
-
-    config.set_key_value("display_width", new ConfigOptionFloat(display_w_clamped));
-    config.set_key_value("display_height", new ConfigOptionFloat(display_h_clamped));
-    config.set_key_value("display_pixels_x", new ConfigOptionInt(int(std::max(100L, px_x))));
-    config.set_key_value("display_pixels_y", new ConfigOptionInt(int(std::max(100L, px_y))));
-    config.set_key_value("display_orientation", new ConfigOptionEnum<SLADisplayOrientation>(display_orientation->GetSelection() == 0 ? sladoLandscape : sladoPortrait));
-    config.set_key_value("display_mirror_x", new ConfigOptionBool(display_mirror_x->GetValue()));
-    config.set_key_value("display_mirror_y", new ConfigOptionBool(display_mirror_y->GetValue()));
-
-    // Keep SLA bed dimensions in sync with display dimensions.
-    config.set_key_value("bed_shape", new ConfigOptionPoints({
-        Vec2d(0.0, 0.0),
-        Vec2d(display_w_clamped, 0.0),
-        Vec2d(display_w_clamped, display_h_clamped),
-        Vec2d(0.0, display_h_clamped)
-    }));
-
-    const bool use_tilt_enabled = use_tilt->GetValue();
-    config.set_key_value("use_tilt", new ConfigOptionBools({ use_tilt_enabled, use_tilt_enabled }));
-    if (!use_tilt_enabled)
-        config.set_key_value("tower_hop_height", new ConfigOptionFloats({ 5.0, 5.0 }));
+static bool validate_custom_build_volume(PageBuildVolume *page, const DynamicPrintConfig &configuration)
+{
+    try {
+        auto candidate = configuration;
+        page->apply_custom_config(candidate);
+        return true;
+    } catch (const std::exception &error) {
+        // Return from the originating button/AT-SPI handler before entering a
+        // modal event loop. A nested modal here blocks GTK accessibility calls.
+        // Weak ownership and visibility also protect Cancel/close before dispatch.
+        const wxWeakRef<wxWindow> parent(wxGetTopLevelParent(page));
+        const wxString message = wxString::FromUTF8(error.what());
+        wxGetApp().CallAfter([parent, message] {
+            if (parent && parent->IsShownOnScreen())
+                wxMessageBox(message, _L("Invalid printer geometry"), wxOK | wxICON_WARNING, parent.get());
+        });
+        return false;
+    }
 }
 
 wxDECLARE_EVENT(EVT_INDEX_PAGE, wxCommandEvent);
@@ -3626,6 +3637,12 @@ bool ConfigWizard::priv::can_select_all()
 
 bool ConfigWizard::priv::on_bnt_finish()
 {
+    // Validate before material installation or accepting the modal dialog.
+    if (page_custom && page_custom->custom_wanted() &&
+        !validate_custom_build_volume(page_bvolume, *custom_config)) {
+        index->go_to(page_bvolume);
+        return false;
+    }
     wxBusyCursor wait;
 
     if (page_downloader && !page_downloader->on_finish_downloader()) {
@@ -3822,6 +3839,11 @@ static std::string get_first_added_preset(const std::map<std::string, std::strin
 
 bool ConfigWizard::priv::apply_config(AppConfig *app_config, PresetBundle *preset_bundle, const PresetUpdaterWrapper *updater, bool& apply_keeped_changes)
 {
+    // Recheck before any application/preset side effects, including programmatic
+    // wizard application that did not navigate through the Build Volume page.
+    if (page_custom && page_custom->custom_wanted() &&
+        !validate_custom_build_volume(page_bvolume, *custom_config))
+        return false;
     wxString header, caption = _L("Configuration is edited in ConfigWizard");
     const auto enabled_vendors = appconfig_new.vendors();
     const auto enabled_vendors_old = app_config->vendors();
@@ -4665,6 +4687,9 @@ ConfigWizard::ConfigWizard(wxWindow *parent)
     {
         // check, that there is selected at least one filament/material
         ConfigWizardPage* active_page = this->p->index->active_page();
+        if (active_page == p->page_bvolume &&
+            !validate_custom_build_volume(p->page_bvolume, *p->custom_config))
+            return;
         if (// Leaving the filaments or SLA materials page and 
         	(active_page == p->page_filaments || active_page == p->page_sla_materials) && 
         	// some Printer models had no filament or SLA material selected.

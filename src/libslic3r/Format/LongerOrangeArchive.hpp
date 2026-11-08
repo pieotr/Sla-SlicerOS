@@ -1,92 +1,36 @@
-///|/ Copyright (c) Prusa Research 2026
-///|/
-///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
-///|/
+/// Native port of UVtools.Core/FileFormats/LGSFile.cs (AGPLv3).
 #ifndef SLIC3R_FORMAT_LONGER_ORANGE_ARCHIVE_HPP
 #define SLIC3R_FORMAT_LONGER_ORANGE_ARCHIVE_HPP
-
-#include <memory>
-#include <string>
-
 #include "SLAArchiveWriter.hpp"
 #include "libslic3r/PrintConfig.hpp"
 
 namespace Slic3r {
-
 class SLAPrint;
-
-// LGS-10 Longer Orange printer format
-class LongerOrange10Archive : public SLAArchiveWriter {
+// One container/codec, with model-specific headers and preview/rotation rules.
+class LongerOrangeArchive : public SLAArchiveWriter {
     SLAPrinterConfig m_cfg;
-
+    uint32_t m_model;
 protected:
     std::unique_ptr<sla::RasterBase> create_raster() const override;
     sla::RasterEncoder get_encoder() const override;
-
 public:
-    explicit LongerOrange10Archive(const SLAPrinterConfig &cfg) : m_cfg(cfg) {}
-    explicit LongerOrange10Archive(SLAPrinterConfig &&cfg) : m_cfg(std::move(cfg)) {}
-
-    void export_print(const std::string     fname,
-                      const SLAPrint       &print,
-                      const ThumbnailsList &thumbnails,
-                      const std::string    &projectname = "") override;
+    LongerOrangeArchive(const SLAPrinterConfig &cfg, uint32_t model) : m_cfg(cfg), m_model(model) {}
+    static sla::EncodedRaster encode_mask(const void *, size_t, size_t, size_t, bool rotate_clockwise);
+    static void validate_configuration(const SLAPrint &, uint32_t model);
+    static uint32_t model_for_format(const std::string &format, const std::string &printer_model);
+    void export_print(const std::string, const SLAPrint &, const ThumbnailsList &, const std::string & = "") override;
 };
-
-// LGS-30 Longer Orange printer format
-class LongerOrange30Archive : public SLAArchiveWriter {
-    SLAPrinterConfig m_cfg;
-
-protected:
-    std::unique_ptr<sla::RasterBase> create_raster() const override;
-    sla::RasterEncoder get_encoder() const override;
-
-public:
-    explicit LongerOrange30Archive(const SLAPrinterConfig &cfg) : m_cfg(cfg) {}
-    explicit LongerOrange30Archive(SLAPrinterConfig &&cfg) : m_cfg(std::move(cfg)) {}
-
-    void export_print(const std::string     fname,
-                      const SLAPrint       &print,
-                      const ThumbnailsList &thumbnails,
-                      const std::string    &projectname = "") override;
+class LongerOrange10Archive : public LongerOrangeArchive {
+public: explicit LongerOrange10Archive(const SLAPrinterConfig &cfg) : LongerOrangeArchive(cfg,10) {}
 };
-
-// LGS-120 Longer Orange printer format
-class LongerOrange120Archive : public SLAArchiveWriter {
-    SLAPrinterConfig m_cfg;
-
-protected:
-    std::unique_ptr<sla::RasterBase> create_raster() const override;
-    sla::RasterEncoder get_encoder() const override;
-
-public:
-    explicit LongerOrange120Archive(const SLAPrinterConfig &cfg) : m_cfg(cfg) {}
-    explicit LongerOrange120Archive(SLAPrinterConfig &&cfg) : m_cfg(std::move(cfg)) {}
-
-    void export_print(const std::string     fname,
-                      const SLAPrint       &print,
-                      const ThumbnailsList &thumbnails,
-                      const std::string    &projectname = "") override;
+class LongerOrange30Archive : public LongerOrangeArchive {
+public: explicit LongerOrange30Archive(const SLAPrinterConfig &cfg) : LongerOrangeArchive(cfg,30) {}
 };
-
-// LGS-4K Longer Orange printer format
-class LongerOrange4KArchive : public SLAArchiveWriter {
-    SLAPrinterConfig m_cfg;
-
-protected:
-    std::unique_ptr<sla::RasterBase> create_raster() const override;
-    sla::RasterEncoder get_encoder() const override;
-
-public:
-    explicit LongerOrange4KArchive(const SLAPrinterConfig &cfg) : m_cfg(cfg) {}
-    explicit LongerOrange4KArchive(SLAPrinterConfig &&cfg) : m_cfg(std::move(cfg)) {}
-
-    void export_print(const std::string     fname,
-                      const SLAPrint       &print,
-                      const ThumbnailsList &thumbnails,
-                      const std::string    &projectname = "") override;
+class LongerOrange120Archive : public LongerOrangeArchive {
+public: explicit LongerOrange120Archive(const SLAPrinterConfig &cfg) : LongerOrangeArchive(cfg,120) {}
 };
-
-} // namespace Slic3r
-
-#endif // SLIC3R_FORMAT_LONGER_ORANGE_ARCHIVE_HPP
+class LongerOrange4KArchive : public LongerOrangeArchive {
+public: explicit LongerOrange4KArchive(const SLAPrinterConfig &cfg) : LongerOrangeArchive(cfg,cfg.printer_model.value=="4000"?4000:4500) {}
+};
+}
+#endif

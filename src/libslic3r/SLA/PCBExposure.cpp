@@ -1,5 +1,8 @@
 #include "PCBExposure.hpp"
 #include "PrinterRaster.hpp"
+#include "GeneratedLayerOwnership.hpp"
+#include "ProjectedPNGMaskEncoder.hpp"
+#include "libslic3r/SLAPrint.hpp"
 #include "libslic3r/ClipperUtils.hpp"
 #include "libslic3r/Exception.hpp"
 #include "libslic3r/Geometry/ConvexHull.hpp"
@@ -975,7 +978,7 @@ EncodedRaster rasterize_pcb_geometry(ExPolygons geometry,
                                     const BoundingBox &reference_bounds,
                                     const SLAPrinterConfig &printer,
                                     const PCBPlacement &placement,
-                                    const std::function<void()> &check_cancel) {
+                                    const std::function<void()> &check_cancel, bool invert) {
   for (double value :
        {placement.offset_x, placement.offset_y, placement.margin})
     bounded(value);
@@ -1015,19 +1018,21 @@ EncodedRaster rasterize_pcb_geometry(ExPolygons geometry,
       check_cancel();
     raster->draw(polygon);
   }
-  return raster->encode(PNGRasterEncoder{});
+  // Preserve the actual native alphabet before PNG becomes source/editor
+  // data. Pixel support does not enable an owned executable job for a codec
+  // (notably v1 cannot encode the stationary motion intent below).
+  const auto precision=independent_generated_mask_precision(
+      printer.sla_archive_format.value,printer.sla_anycubic_version.value);
+  const RasterEncoder encoder = precision || invert
+      ? RasterEncoder(ProjectedPNGMaskEncoder{
+          precision.value_or(LayerMaskPrecision::Gray8), check_cancel, invert})
+      : RasterEncoder(PNGRasterEncoder{});
+  return raster->encode(encoder);
 }
-} // namespace
-LayerDocument rasterize_pcb(const PCBArtwork &board,
-                            const SLAPrinterConfig &printer,
-                            const PCBPlacement &placement,
-                            const std::function<void()> &check_cancel) {
-  return rasterize_pcb_layers({board}, printer, true, placement, check_cancel);
-}
-LayerDocument rasterize_pcb_layers(const std::vector<PCBArtwork> &boards,
+LayerDocument rasterize_pcb_layers_impl(const std::vector<PCBArtwork> &boards,
                                    const SLAPrinterConfig &printer, bool merge,
                                    const PCBPlacement &placement,
-                                   const std::function<void()> &check_cancel) {
+                                   const std::function<void()> &check_cancel, bool invert) {
   if (boards.empty() || boards.size() > 1000)
     invalid("choose 1–1000 copper files");
   ExPolygons combined;
@@ -1046,18 +1051,91 @@ LayerDocument rasterize_pcb_layers(const std::vector<PCBArtwork> &boards,
   std::vector<EncodedRaster> masks;
   if (merge) {
     if (check_cancel) check_cancel();
-    masks.push_back(rasterize_pcb_geometry(union_ex(combined),bounds,printer,placement,check_cancel));
+    masks.push_back(rasterize_pcb_geometry(union_ex(combined),bounds,printer,placement,check_cancel,invert));
   } else {
     size_t bytes = 0;
     for (const auto &board : boards) {
       if (check_cancel) check_cancel();
-      auto encoded = rasterize_pcb_geometry(board.copper,bounds,printer,placement,check_cancel);
+      auto encoded = rasterize_pcb_geometry(board.copper,bounds,printer,placement,check_cancel,invert);
       bytes += encoded.size();
       if (bytes > 1024ULL * 1024 * 1024) invalid("PCB masks exceed the 1 GiB budget");
       masks.push_back(std::move(encoded));
     }
   }
-  return LayerDocument::from_rasters(std::move(masks));
+  const auto precision=independent_generated_mask_precision(
+      printer.sla_archive_format.value,printer.sla_anycubic_version.value);
+  return precision ? LayerDocument::from_precision_rasters(std::move(masks),*precision,
+      [&](size_t,size_t){if(check_cancel)check_cancel();return true;}) :
+      LayerDocument::from_rasters(std::move(masks));
 }
 
+} // namespace
+
+LayerDocument rasterize_pcb(const PCBArtwork &board,
+                            const SLAPrinterConfig &printer,
+                            const PCBPlacement &placement,
+                            const std::function<void()> &check_cancel) {
+  return rasterize_pcb_layers_impl({board}, printer, true, placement, check_cancel, false);
+}
+
+LayerDocument rasterize_pcb_layers(const std::vector<PCBArtwork> &boards,
+                                   const SLAPrinterConfig &printer, bool merge,
+                                   const PCBPlacement &placement,
+                                   const std::function<void()> &check_cancel) {
+  return rasterize_pcb_layers_impl(boards, printer, merge, placement, check_cancel, false);
+}
+
+std::unique_ptr<SLAPrint> create_pcb_exposure_job(
+    const DynamicPrintConfig &configuration, const std::vector<PCBArtwork> &boards,
+    bool merge_files, const PCBPlacement &placement, double exposure_seconds,
+    bool invert_mask, const std::function<void()> &check_cancel) {
+  if (!std::isfinite(exposure_seconds) || exposure_seconds < .001 || exposure_seconds > 86400.)
+    invalid("exposure must be between 0.001 and 86400 seconds");
+  if (check_cancel) check_cancel();
+  DynamicPrintConfig config; config.apply(SLAFullPrintConfig{}); config.apply(configuration);
+  if (config.option("printer_technology")->getInt() != ptSLA)
+    invalid("exposure requires an SLA printer");
+  SLAPrinterConfig printer; printer.apply(config, true);
+  printer.gamma_correction.value = 1.;
+  // Generator polarity is part of the first canonical source PNG, not an
+  // editor transaction or a second decode/encode pass.
+  auto document = rasterize_pcb_layers_impl(
+      boards, printer, merge_files, placement, check_cancel, invert_mask);
+  config.set("gamma_correction", 1.);
+  config.set("sla_bottom_layers", 0);
+  config.set("sla_transition_layers", 0);
+  config.set("exposure_time", exposure_seconds);
+  config.set("initial_exposure_time", exposure_seconds);
+  // PCB exposure is a separate, stationary job. These overrides do
+  // not change any resin/process/printer preset used by the scene.
+  config.set("max_exposure_time",
+             std::max(config.opt_float("max_exposure_time"),
+                      exposure_seconds));
+  config.set("max_initial_exposure_time",
+             std::max(config.opt_float("max_initial_exposure_time"),
+                      exposure_seconds));
+  for (const char *key :
+       {"sla_lift_height", "sla_lift_height2", "sla_retract_height2",
+        "sla_bottom_lift_height", "sla_bottom_lift_height2",
+        "sla_bottom_retract_height2", "sla_lift_speed", "sla_lift_speed2",
+        "sla_retract_speed", "sla_retract_speed2", "sla_bottom_lift_speed",
+        "sla_bottom_lift_speed2", "sla_bottom_retract_speed",
+        "sla_bottom_retract_speed2", "sla_wait_before_cure",
+        "sla_wait_after_cure", "sla_wait_after_lift",
+        "sla_bottom_wait_before_cure", "sla_bottom_wait_after_cure",
+        "sla_bottom_wait_after_lift"})
+    config.set(key, 0.);
+  config.set("sla_light_pwm", 255);
+  config.set("sla_bottom_light_pwm", 255);
+  if (config.opt_string("sla_archive_format") == "SL1SVG")
+    config.set("sla_archive_format", std::string("uvj"));
+  if (check_cancel) check_cancel();
+  std::vector<double> positions;
+  for (size_t i = 0; i < document.layer_count(); ++i)
+    positions.push_back((i+1) * config.opt_float("layer_height"));
+  return SLAPrint::create_raster_job(config, document, positions,
+      generated_layer_ownership(config.opt_string("sla_archive_format"),
+                                FreshLayerProducer::PCB,
+                                config.option("sla_anycubic_version")?config.opt_string("sla_anycubic_version"):"auto"));
+}
 } // namespace Slic3r::sla

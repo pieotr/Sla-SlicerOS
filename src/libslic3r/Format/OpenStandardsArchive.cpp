@@ -6,6 +6,7 @@
 #include "libslic3r/PNGReadWrite.hpp"
 #include "libslic3r/SLA/PrintParameters.hpp"
 #include "libslic3r/SLA/PrinterRaster.hpp"
+#include "libslic3r/SLA/UVJFreshExportPlan.hpp"
 #include "libslic3r/SLAPrint.hpp"
 #include "libslic3r/Zipper.hpp"
 #include <boost/locale/encoding_utf.hpp>
@@ -354,6 +355,16 @@ sla::RasterEncoder UVJArchive::get_encoder() const {
 void UVJArchive::export_print(const std::string fname, const SLAPrint &print,
                               const ThumbnailsList &thumbnails,
                               const std::string &) {
+  export_print_impl(fname,print,thumbnails,nullptr);
+}
+void UVJArchive::export_fresh_print(const std::string &fname,const SLAPrint &print,
+    const ThumbnailsList &thumbnails,const sla::UVJFreshExportPlan &fresh) {
+  fresh.source.validate(m_layers.size());
+  if(fresh.rows.size()!=m_layers.size())throw ExportError("UVJ plan count differs from masks");
+  export_print_impl(fname,print,thumbnails,&fresh);
+}
+void UVJArchive::export_print_impl(const std::string &fname,const SLAPrint &print,
+    const ThumbnailsList &thumbnails,const sla::UVJFreshExportPlan *fresh) {
   // Native port of UVtools.Core/FileFormats/UVJFile.cs. Its JSON schema uses
   // PascalCase and zero-based 8-digit PNG names, not the generic ZIP schema.
   using Json = nlohmann::json;
@@ -361,31 +372,40 @@ void UVJArchive::export_print(const std::string fname, const SLAPrint &print,
   if (!count || count != print.print_layers().size())
     throw ExportError("UVJ layer count mismatch");
   const bool portrait = m_cfg.display_orientation.value == sladoPortrait;
-  const int width =
+  const int width = fresh ? int(fresh->geometry.columns) :
       portrait ? m_cfg.display_pixels_y.value : m_cfg.display_pixels_x.value;
-  const int height =
+  const int height = fresh ? int(fresh->geometry.rows) :
       portrait ? m_cfg.display_pixels_x.value : m_cfg.display_pixels_y.value;
-  const double width_mm =
+  const double width_mm = fresh ? fresh->geometry.width_mm :
       portrait ? m_cfg.display_height.value : m_cfg.display_width.value;
-  const double height_mm =
+  const double height_mm = fresh ? fresh->geometry.height_mm :
       portrait ? m_cfg.display_width.value : m_cfg.display_height.value;
   if (width <= 0 || height <= 0 || width > UINT16_MAX || height > UINT16_MAX ||
       width_mm <= 0 || height_mm <= 0)
     throw ExportError(
         "UVJ requires positive display dimensions and 16-bit resolution");
-  const auto bottom_count = sla::bottom_layers(print, count);
+  const auto bottom_count = fresh ? fresh->globals.bottom_layers : sla::bottom_layers(print, count);
   if (bottom_count > UINT16_MAX)
     throw ExportError("UVJ bottom layer count exceeds 16 bits");
-  auto exposure = [&](bool bottom, double seconds) {
+  auto exposure = [&](bool bottom, double seconds,const sla::LayerParameters *row=nullptr) {
     auto param = [&](const char *key) {
-      return sla::motion_parameter(print, key, bottom);
+      if(row) {
+        using F=sla::LayerParameter;
+        static const std::map<std::string,F> fields{{"wait_before_cure",F::WaitBefore},{"wait_after_cure",F::WaitAfter},
+          {"wait_after_lift",F::WaitAfterLift},{"light_off",F::LightOff},{"light_pwm",F::LightPWM},
+          {"lift_height",F::LiftDistance},{"lift_height2",F::LiftDistance2},{"lift_speed",F::LiftSpeed},
+          {"lift_speed2",F::LiftSpeed2},{"retract_height2",F::RetractDistance2},
+          {"retract_speed",F::RetractSpeed},{"retract_speed2",F::RetractSpeed2}};
+        return row->at(fields.at(key));
+      }
+      return std::strcmp(key,"light_off")==0 ? 0. : double(sla::motion_parameter(print, key, bottom));
     };
     const double retract =
         param("lift_height") + param("lift_height2") - param("retract_height2");
     if (retract < 0)
       throw ExportError("UVJ retract distance exceeds total lift distance");
     return Json{{"WaitTimeBeforeCure", param("wait_before_cure")},
-                {"LightOffTime", 0},
+                {"LightOffTime", param("light_off")},
                 {"LightOnTime", seconds},
                 {"LightPWM", int(param("light_pwm"))},
                 {"WaitTimeAfterCure", param("wait_after_cure")},
@@ -394,25 +414,27 @@ void UVJArchive::export_print(const std::string fname, const SLAPrint &print,
                 {"LiftHeight2", param("lift_height2")},
                 {"LiftSpeed2", param("lift_speed2")},
                 {"WaitTimeAfterLift", param("wait_after_lift")},
-                {"RetractHeight", retract},
+                {"RetractHeight", fresh ? double(float(retract)) : retract},
                 {"RetractSpeed", param("retract_speed")},
                 {"RetractHeight2", param("retract_height2")},
                 {"RetractSpeed2", param("retract_speed2")}};
   };
   auto bottom =
-      exposure(true, print.material_config().initial_exposure_time.value);
+      exposure(true, fresh ? fresh->globals.bottom.at(sla::LayerParameter::Exposure) : print.material_config().initial_exposure_time.value,
+          fresh ? &fresh->globals.bottom : nullptr);
   bottom["Count"] = bottom_count;
   Json layers = Json::array();
   double previous_z = 0;
   for (size_t i = 0; i < count; ++i) {
-    const double z = sla::layer_z(print, i);
-    if (!std::isfinite(z) || z <= previous_z ||
-        z > m_cfg.max_print_height.value)
+    const double z = fresh ? fresh->rows[i].at(sla::LayerParameter::PositionZ) : sla::layer_z(print, i);
+    if (!std::isfinite(z) || z <= 0 || z < previous_z ||
+        z > (fresh ? double(float(m_cfg.max_print_height.value)) : m_cfg.max_print_height.value))
       throw ExportError(
-          "UVJ requires increasing layer Z within printer height");
+          "UVJ requires positive ordered layer Z within printer height");
     layers.push_back({{"Z", z},
                       {"Exposure", exposure(i < bottom_count,
-                                            sla::layer_exposure(print, i))}});
+                                            fresh ? fresh->rows[i].at(sla::LayerParameter::Exposure) : sla::layer_exposure(print, i),
+                                            fresh ? &fresh->rows[i] : nullptr)}});
     previous_z = z;
   }
   Json settings = {
@@ -422,9 +444,10 @@ void UVJArchive::export_print(const std::string fname, const SLAPrint &print,
           {"Y", height},
           {"Millimeter", {{"X", width_mm}, {"Y", height_mm}}},
           {"Layers", count},
-          {"LayerHeight", print.default_object_config().layer_height.value}}},
+          {"LayerHeight", fresh ? fresh->globals.layer_height : print.default_object_config().layer_height.value}}},
         {"Exposure",
-         exposure(false, print.material_config().exposure_time.value)},
+         exposure(false, fresh ? fresh->globals.normal.at(sla::LayerParameter::Exposure) : print.material_config().exposure_time.value,
+                  fresh ? &fresh->globals.normal : nullptr)},
         {"Bottom", bottom},
         {"AntiAliasLevel", 16},
         {"Vendor",
@@ -432,7 +455,7 @@ void UVJArchive::export_print(const std::string fname, const SLAPrint &print,
            {{"MachineName", m_cfg.printer_model.value},
             {"MachineZ", m_cfg.max_print_height.value},
             {"TransitionLayerCount",
-             print.material_config().sla_transition_layers.value}}}}}}},
+             fresh ? fresh->globals.transition_layers : print.material_config().sla_transition_layers.value}}}}}}},
       {"Layers", layers}};
   Zipper zip(fname, Zipper::FAST_COMPRESSION);
   zip.add_entry("config.json");

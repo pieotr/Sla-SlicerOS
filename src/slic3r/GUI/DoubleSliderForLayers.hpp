@@ -71,7 +71,7 @@ public:
     Info    GetTicksValues() const;
     void    SetTicksValues(const Info& custom_gcode_per_print_z);
     void    SetLayersTimes(const std::vector<float>& layers_times, float total_time);
-    void    SetLayersTimes(const std::vector<double>& layers_times);
+    void    SetLayersTimes(const std::vector<double>& layers_times, bool excludes_printer_setup = false);
 
     void    SetDrawMode(bool is_sla_print, bool is_sequential_print);
 
@@ -164,6 +164,7 @@ private:
     Slic3r::GUI::ImGuiWrapper*  m_imgui { nullptr };
 
     std::vector<double>         m_layers_times;
+    bool                        m_time_excludes_printer_setup { false };
     std::vector<double>         m_layers_values;
 
     bool        is_wipe_tower_layer(int tick) const;

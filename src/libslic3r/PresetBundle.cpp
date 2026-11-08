@@ -12,6 +12,7 @@
 #include "Model.hpp"
 #include "format.hpp"
 #include "CustomParametersHandling.hpp"
+#include "SLA/ProjectSettings.hpp"
 
 #include <algorithm>
 #include <set>
@@ -931,9 +932,13 @@ DynamicPrintConfig PresetBundle::full_sla_config() const
     out.erase("compatible_printers_condition");
     out.erase("inherits");
     
-    out.option<ConfigOptionString >("sla_print_settings_id",    true)->value  = this->sla_prints.get_selected_preset_name();
-    out.option<ConfigOptionString >("sla_material_settings_id", true)->value  = this->sla_materials.get_selected_preset_name();
-    out.option<ConfigOptionString >("printer_settings_id",      true)->value  = this->printers.get_selected_preset_name();
+    // External presets have contextual GUI labels to keep imported projects
+    // distinct. Persist their source identity, so Save As/reopen does not nest
+    // project filenames into printer/material/process IDs. Library presets use
+    // their actual selected name, including after Save As from an import.
+    out.option<ConfigOptionString >("sla_print_settings_id",    true)->value = sla_prints.get_selected_preset_source_name("sla_print_settings_id");
+    out.option<ConfigOptionString >("sla_material_settings_id", true)->value = sla_materials.get_selected_preset_source_name("sla_material_settings_id");
+    out.option<ConfigOptionString >("printer_settings_id",      true)->value = printers.get_selected_preset_source_name("printer_settings_id");
     out.option<ConfigOptionString >("physical_printer_settings_id", true)->value = this->physical_printers.get_selected_printer_name();
 
     // Serialize the collected "compatible_printers_condition" and "inherits" fields.
@@ -953,6 +958,8 @@ DynamicPrintConfig PresetBundle::full_sla_config() const
     add_if_some_non_empty(std::move(compatible_prints_condition),   "compatible_prints_condition_cummulative");
     add_if_some_non_empty(std::move(inherits),                      "inherits_cummulative");
 
+    out.set_key_value("sla_preset_metadata",new ConfigOptionString(sla::serialize_sla_preset_metadata(
+        printers.get_edited_preset().config,sla_materials.get_edited_preset().config,sla_prints.get_edited_preset().config)));
 	out.option<ConfigOptionEnumGeneric>("printer_technology", true)->value = ptSLA;
 	return out;
 }
@@ -1093,6 +1100,10 @@ void PresetBundle::load_config_file_config(const std::string &name_or_path, bool
 		compatible_printers_condition = compatible_printers_condition_values[idx];
         if (idx > 0 && idx - 1 < compatible_prints_condition_values.size())
             compatible_prints_condition = compatible_prints_condition_values[idx - 1];
+        if (Preset::printer_technology(config)==ptSLA) {
+            const char *role=idx==0 ? "process" : idx==1 ? "material" : "printer";
+            sla::apply_sla_preset_metadata(config,config,role);
+        }
 		if (is_external) {
 			ExternalPreset ext_preset = presets.load_external_preset(name_or_path, name, config.opt_string(key, true), config);
 			if (ext_preset.is_installed)

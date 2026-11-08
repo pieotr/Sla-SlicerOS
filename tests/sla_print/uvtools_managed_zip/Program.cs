@@ -20,6 +20,414 @@ AssemblyLoadContext.Default.Resolving += (_, name) => {
     return File.Exists(path) ? AssemblyLoadContext.Default.LoadFromAssemblyPath(path) : null;
 };
 var reports = new List<object>();
+if(args[1]=="--exposure-finder-schedules") {
+    if(args.Length!=3)throw new ArgumentException("--exposure-finder-schedules requires cases.json");
+    using var document=JsonDocument.Parse(File.ReadAllText(args[2]));
+    var output=new List<object>();
+    foreach(var test in document.RootElement.EnumerateArray()) {
+        using var file=new UVJFile();
+        file.ResolutionX=2048;file.ResolutionY=1024;file.DisplayWidth=100;file.DisplayHeight=50;
+        file.LayerHeight=.05f;file.BottomLayerCount=0;file.ExposureTime=2;file.BottomExposureTime=15;
+        file.LiftHeight=file.BottomLiftHeight=5;file.LiftHeight2=file.BottomLiftHeight2=1;
+        file.WaitTimeBeforeCure=file.BottomWaitTimeBeforeCure=1;
+        var operation=new UVtools.Core.Operations.OperationCalibrateExposureFinder(file) {
+            BarsEnabled=true,BarLength=.2m,BarSpacing=.1m,BarThicknessesPx="2",BarFenceThickness=0,
+            HolesEnabled=false,TextEnabled=false,BullsEyeEnabled=false,CounterTrianglesEnabled=false,
+            StaircaseThicknessPx=0,FeaturesMargin=.1m,PartMargin=0,LeftRightMargin=0,TopBottomMargin=0,
+            EnableAntiAliasing=false
+        };
+        foreach(var setting in test.GetProperty("parameters").EnumerateObject()) {
+            var property=operation.GetType().GetProperty(setting.Name)
+                ?? throw new ArgumentException("Unknown ExposureFinder property: "+setting.Name);
+            object value;
+            if(property.PropertyType.IsEnum)value=Enum.ToObject(property.PropertyType,setting.Value.GetInt32());
+            else if(property.PropertyType==typeof(bool))value=setting.Value.GetBoolean();
+            else if(property.PropertyType==typeof(byte))value=setting.Value.GetByte();
+            else if(property.PropertyType==typeof(ushort))value=setting.Value.GetUInt16();
+            else if(property.PropertyType==typeof(string))value=setting.Value.GetString()!;
+            else if(property.PropertyType==typeof(decimal))value=setting.Value.GetDecimal();
+            else throw new ArgumentException("Unsupported ExposureFinder property type: "+property.PropertyType);
+            property.SetValue(operation,value);
+        }
+        operation.ExposureTable.Clear();
+        foreach(var row in test.GetProperty("table").EnumerateArray())
+            operation.ExposureTable.Add(new UVtools.Core.Objects.ExposureItem(
+                row.GetProperty("layer_height").GetDecimal(),row.GetProperty("bottom_exposure").GetDecimal(),
+                row.GetProperty("normal_exposure").GetDecimal(),row.GetProperty("brightness").GetByte()));
+        var patterns=operation.GetLayers(out _,out _);
+        try {
+            var capacity=(file.ResolutionX/(uint)patterns[0].Width)*(file.ResolutionY/(uint)patterns[0].Height);
+            if(capacity<test.GetProperty("part_count").GetUInt32())throw new InvalidOperationException("Reference fixture cannot fit all requested parts");
+        } finally {foreach(var pattern in patterns)pattern.Dispose();}
+        if(!operation.Execute())throw new InvalidOperationException("Reference generation failed");
+        var rows=new List<object>();
+        foreach(var layer in file.Layers) {
+            using var mask=layer.LayerMat;
+            var samples=new byte[mask.Cols];var values=new SortedSet<byte>();
+            for(var y=0;y<mask.Rows;++y) {
+                Marshal.Copy(IntPtr.Add(mask.DataPointer,checked(y*(int)mask.Step)),samples,0,mask.Cols);
+                foreach(var sample in samples)if(sample!=0)values.Add(sample);
+            }
+            rows.Add(new {position_z=layer.PositionZ,exposure=layer.ExposureTime,
+                brightness=values.Select(value=>(int)value).ToArray(),lift_height=layer.LiftHeightTotal,wait_before=layer.WaitTimeBeforeCure});
+        }
+        output.Add(new {name=test.GetProperty("name").GetString(),bottom_records=file.BottomLayerCount,
+            physical_layers=file.Layers.Select(layer=>layer.PositionZ).Distinct().Count(),exposures=rows});
+    }
+    Console.WriteLine(JsonSerializer.Serialize(output));return;
+}
+if(args[1]=="--exposure-finder-tables") {
+    if(args.Length!=3)throw new ArgumentException("--exposure-finder-tables requires cases.json");
+    using var document=JsonDocument.Parse(File.ReadAllText(args[2]));
+    var output=new List<object>();
+    foreach(var test in document.RootElement.EnumerateArray()) {
+        var operation=new UVtools.Core.Operations.OperationCalibrateExposureFinder();
+        IEnumerable<UVtools.Core.Objects.ExposureItem> rows;
+        if(test.TryGetProperty("manual",out var manual)) {
+            foreach(var row in manual.EnumerateArray())
+                operation.ExposureTable.Add(new UVtools.Core.Objects.ExposureItem(
+                    row.GetProperty("layer_height").GetDecimal(),
+                    row.GetProperty("bottom_exposure").GetDecimal(),
+                    row.GetProperty("normal_exposure").GetDecimal(),
+                    row.GetProperty("brightness").GetByte()));
+            rows=operation.GetSanitizedExposureTable();
+        } else {
+            foreach(var setting in test.GetProperty("parameters").EnumerateObject()) {
+                var property=operation.GetType().GetProperty(setting.Name)
+                    ?? throw new ArgumentException("Unknown ExposureFinder property: "+setting.Name);
+                object value;
+                if(property.PropertyType.IsEnum)value=Enum.ToObject(property.PropertyType,setting.Value.GetInt32());
+                else if(property.PropertyType==typeof(bool))value=setting.Value.GetBoolean();
+                else if(property.PropertyType==typeof(byte))value=setting.Value.GetByte();
+                else if(property.PropertyType==typeof(decimal))value=setting.Value.GetDecimal();
+                else throw new ArgumentException("Unsupported ExposureFinder property type: "+property.PropertyType);
+                property.SetValue(operation,value);
+            }
+            operation.GenerateExposureTable();
+            rows=operation.ExposureTable;
+        }
+        output.Add(new {name=test.GetProperty("name").GetString(),rows=rows.Select(row=>new {
+            layer_height=row.LayerHeight,bottom_exposure=row.BottomExposure,
+            normal_exposure=row.Exposure,brightness=row.Brightness,valid=row.IsValid}).ToArray()});
+    }
+    Console.WriteLine(JsonSerializer.Serialize(output));return;
+}
+
+if(args[1]=="--image-pixels") {
+    if(args.Length!=4)throw new ArgumentException("--image-pixels requires input and new raw output");
+    if(File.Exists(args[3]))throw new IOException("Refusing to overwrite pixel oracle output");
+    using var original=FileFormat.Open(args[2],FileFormat.FileDecodeType.Full)
+        ?? throw new InvalidDataException("UVtools could not identify image input");
+    using var mask=(original.FirstLayer ?? throw new InvalidDataException("Image has no layer")).LayerMat;
+    var pixels=new byte[checked(mask.Rows*mask.Cols)];
+    for(var row=0;row<mask.Rows;++row)
+        Marshal.Copy(IntPtr.Add(mask.DataPointer,checked(row*(int)mask.Step)),pixels,row*mask.Cols,mask.Cols);
+    File.WriteAllBytes(args[3],pixels);
+    Console.WriteLine(JsonSerializer.Serialize(new {status="decoded",width=mask.Cols,height=mask.Rows,
+        sha256=Convert.ToHexString(SHA256.HashData(pixels)).ToLowerInvariant()}));return;
+}
+if(args[1]=="--image-encode" || args[1]=="--image-rgb-encode") {
+    if(args.Length!=4)throw new ArgumentException("--image-encode requires an input and a new output");
+    if(File.Exists(args[3]))throw new IOException("Refusing to overwrite image oracle output");
+    using var original=FileFormat.Open(args[2],FileFormat.FileDecodeType.Full)
+        ?? throw new InvalidDataException("UVtools could not identify image source");
+    // This is exactly ImageFile.EncodeInternally's first-mask save operation.
+    using var mask=(original.FirstLayer ?? throw new InvalidDataException("Image source has no layers")).LayerMat;
+    if(args[1]=="--image-rgb-encode") {
+        // Explicit alternative reference for Sun raster: its grayscale writer
+        // omits the palette and the original decoder reads an all-black mask.
+        // RGB channels all contain the same source samples; no pixel repair.
+        using var rgb=new Emgu.CV.Mat();
+        Emgu.CV.CvInvoke.CvtColor(mask,rgb,Emgu.CV.CvEnum.ColorConversion.Gray2Bgr);
+        rgb.Save(args[3]);
+    } else mask.Save(args[3]);
+    Console.WriteLine(JsonSerializer.Serialize(new {status="encoded",mode=args[1],source=args[2],output=args[3]}));return;
+}
+if(args[1]=="--anycubic-enable-tsmc") {
+    if(args.Length!=4)throw new ArgumentException("--anycubic-enable-tsmc requires input and new output");
+    if(File.Exists(args[3]))throw new IOException("Refusing to overwrite TSMC oracle output");
+    using var original=FileFormat.Open(args[2],FileFormat.FileDecodeType.Full) as AnycubicFile
+        ?? throw new InvalidDataException("Expected Anycubic source");
+    original.LiftHeight2=2.5f;
+    original.BottomLiftHeight2=3f;
+    original.Encode(args[3]);
+    Console.WriteLine(JsonSerializer.Serialize(new {status="encoded_by_original_setters",source=args[2],output=args[3]}));return;
+}
+if(args[1]=="--anycubic-inspect") {
+    if(args.Length!=3)throw new ArgumentException("--anycubic-inspect requires a file");
+    using var original=FileFormat.Open(args[2],FileFormat.FileDecodeType.Full) as AnycubicFile
+        ?? throw new InvalidDataException("Expected Anycubic input");
+    var previews=new List<object>();
+    foreach(var image in original.Thumbnails) {
+        var rowSize=checked(image.Cols*image.NumberOfChannels);
+        var pixels=new byte[checked(rowSize*image.Rows)];
+        for(var row=0;row<image.Rows;++row)
+            Marshal.Copy(IntPtr.Add(image.DataPointer,checked(row*(int)image.Step)),pixels,row*rowSize,rowSize);
+        previews.Add(new {width=image.Cols,height=image.Rows,channels=image.NumberOfChannels,
+            sha256=Convert.ToHexString(SHA256.HashData(pixels)).ToLowerInvariant()});
+    }
+    Console.WriteLine(JsonSerializer.Serialize(new {filename=args[2],status="fully_decoded",original.FileMarkSettings,
+        original.HeaderSettings,original.ExtraSettings,original.MachineSettings,original.SoftwareSettings,
+        original.ModelSettings,original.SubLayersDefinition,previews}));return;
+}
+if(args[1]=="--ctb-inspect") {
+    if(args.Length!=3)throw new ArgumentException("--ctb-inspect requires a file");
+    using var original=FileFormat.Open(args[2],FileFormat.FileDecodeType.Full) as ChituboxFile
+        ?? throw new InvalidDataException("Expected ordinary CTB input");
+    var previews=new List<object>();
+    foreach(var image in original.Thumbnails) {
+        var rowSize=checked(image.Cols*image.NumberOfChannels);
+        var pixels=new byte[checked(rowSize*image.Rows)];
+        for(var row=0;row<image.Rows;++row)
+            Marshal.Copy(IntPtr.Add(image.DataPointer,checked(row*(int)image.Step)),pixels,row*rowSize,rowSize);
+        previews.Add(new {width=image.Cols,height=image.Rows,channels=image.NumberOfChannels,
+            sha256=Convert.ToHexString(SHA256.HashData(pixels)).ToLowerInvariant()});
+    }
+    Console.WriteLine(JsonSerializer.Serialize(new {filename=args[2],status="fully_decoded",original.HeaderSettings,
+        original.PrintParametersSettings,original.SlicerInfoSettings,original.PrintParametersV4Settings,
+        original.ResinParametersSettings,previews}));return;
+}
+if(args[1]=="--ctb-schema") {
+    if(args.Length!=2)throw new ArgumentException("--ctb-schema takes no input paths");
+    using var original=new ChituboxFile();
+    original.SlicerInfoSettings.ModifiedTimestampMinutes=0;
+    var tables=new Dictionary<string,object>();
+    foreach(var instance in new object[]{original.HeaderSettings,original.PrintParametersSettings,
+        original.SlicerInfoSettings,original.PrintParametersV4Settings,original.ResinParametersSettings,
+        new ChituboxFile.LayerDef(),new ChituboxFile.LayerDefEx(),new ChituboxFile.Preview()}) {
+        var bytes=UVtools.Core.Helpers.Serialize(instance).ToArray();
+        var fields=new Dictionary<string,object>();
+        foreach(var property in instance.GetType().GetProperties()) {
+            if(!property.CustomAttributes.Any(a=>a.AttributeType.Name=="FieldOrderAttribute"))continue;
+            object? value=null;byte[]? marker=null;
+            if(property.PropertyType==typeof(uint)){value=0x12345678U;marker=BitConverter.GetBytes((uint)value);}
+            else if(property.PropertyType==typeof(ushort)){value=(ushort)0x1234;marker=BitConverter.GetBytes((ushort)value);}
+            else if(property.PropertyType==typeof(byte)){value=(byte)0x5b;marker=[0x5b];}
+            else if(property.PropertyType==typeof(float)){value=BitConverter.UInt32BitsToSingle(0x41234567);marker=BitConverter.GetBytes((float)value);}
+            else continue;
+            var before=property.GetValue(instance);property.SetValue(instance,value);
+            var changed=UVtools.Core.Helpers.Serialize(instance).ToArray();
+            var offset=changed.AsSpan().IndexOf(marker);property.SetValue(instance,before);
+            if(offset<0) {
+                fields.Add(property.Name,new {offset=(int?)null,size=marker.Length,type=property.PropertyType.Name,
+                    note="Original serializer did not retain the assigned marker (for example an automatic string length)"});
+                continue;
+            }
+            fields.Add(property.Name,new {offset,size=marker.Length,type=property.PropertyType.Name});
+        }
+        tables.Add(instance.GetType().Name,new {size=bytes.Length,bytes=Convert.ToHexString(bytes).ToLowerInvariant(),fields});
+    }
+    Console.WriteLine(JsonSerializer.Serialize(new {scope="original_Chitubox_schema_with_clock_zeroed",tables}));return;
+}
+if(args[1]=="--ctb-encrypted-crypto") {
+    if(args.Length!=3)throw new ArgumentException("--ctb-encrypted-crypto requires native vectors");
+    var key=(byte[])typeof(CTBEncryptedFile).GetField("Bigfoot",BindingFlags.NonPublic|BindingFlags.Static)!.GetValue(null)!;
+    var iv=(byte[])typeof(CTBEncryptedFile).GetField("CookieMonster",BindingFlags.NonPublic|BindingFlags.Static)!.GetValue(null)!;
+    using var input=JsonDocument.Parse(File.ReadAllText(args[2]));
+    var output=new List<object>();
+    foreach(var item in input.RootElement.EnumerateArray()) {
+        var plain=Convert.FromHexString(item.GetProperty("plaintext").GetString()!);
+        var cipher=CryptExtensions.AesCryptBytes(plain,key,CipherMode.CBC,PaddingMode.None,true,iv);
+        var decoded=CryptExtensions.AesCryptBytes(cipher,key,CipherMode.CBC,PaddingMode.None,false,iv);
+        var checksum=item.GetProperty("checksum").GetUInt64();
+        var bytes=BitExtensions.ToBytesLittleEndian(checksum);
+        var hash=SHA256.HashData(bytes);
+        var signature=CryptExtensions.AesCryptBytes(hash,key,CipherMode.CBC,PaddingMode.None,true,iv);
+        var layer=plain.ToArray();var seed=item.GetProperty("seed").GetUInt32();var index=item.GetProperty("index").GetUInt32();
+        ChituboxFile.LayerRleCryptBuffer(seed,index,layer);
+        var Hex=(byte[] data)=>Convert.ToHexString(data).ToLowerInvariant();
+        output.Add(new {name=item.GetProperty("name").GetUInt32(),checksum,seed,index,
+            encrypted=Hex(cipher),decrypted=Hex(decoded),digest=Hex(hash),signature=Hex(signature),xor=Hex(layer)});
+    }
+    Console.WriteLine(JsonSerializer.Serialize(output));return;
+}
+if(args[1]=="--ctb-encrypted-inspect") {
+    if(args.Length!=3)throw new ArgumentException("--ctb-encrypted-inspect requires a file");
+    using var original=FileFormat.Open(args[2],FileFormat.FileDecodeType.Full) as CTBEncryptedFile
+        ?? throw new InvalidDataException("Expected encrypted CTB input");
+    var key=(byte[])typeof(CTBEncryptedFile).GetField("Bigfoot",BindingFlags.NonPublic|BindingFlags.Static)!.GetValue(null)!;
+    var iv=(byte[])typeof(CTBEncryptedFile).GetField("CookieMonster",BindingFlags.NonPublic|BindingFlags.Static)!.GetValue(null)!;
+    var raw=File.ReadAllBytes(args[2]);
+    var block=raw.AsSpan((int)original.Header.SettingsOffset,(int)original.Header.SettingsSize).ToArray();
+    var plain=CryptExtensions.AesCryptBytes(block,key,CipherMode.CBC,PaddingMode.None,false,iv);
+    Console.WriteLine(JsonSerializer.Serialize(new {filename=args[2],status="fully_decoded",original.Header,original.Settings,
+        original.ResinParametersSettings,plain_settings=Convert.ToHexString(plain).ToLowerInvariant()}));return;
+}
+if(args[1]=="--ctb-encrypted-schema") {
+    if(args.Length!=2)throw new ArgumentException("--ctb-encrypted-schema takes no input paths");
+    using var original=new CTBEncryptedFile();
+    var header=UVtools.Core.Helpers.Serialize(original.Header).ToArray();
+    var settings=UVtools.Core.Helpers.Serialize(original.Settings).ToArray();
+    var resin=UVtools.Core.Helpers.Serialize(original.ResinParametersSettings).ToArray();
+    var fields=new Dictionary<string,object>();
+    foreach(var property in typeof(CTBEncryptedFile.SlicerSettings).GetProperties()) {
+        if(!property.CustomAttributes.Any(a=>a.AttributeType.Name=="FieldOrderAttribute"))continue;
+        object? value=null;byte[]? marker=null;
+        if(property.PropertyType==typeof(uint)){value=0x12345678U;marker=BitConverter.GetBytes((uint)value);}
+        else if(property.PropertyType==typeof(ulong)){value=0x123456789ABCDEF0UL;marker=BitConverter.GetBytes((ulong)value);}
+        else if(property.PropertyType==typeof(ushort)){value=(ushort)0x1234;marker=BitConverter.GetBytes((ushort)value);}
+        else if(property.PropertyType==typeof(byte)){value=(byte)0x5b;marker=[0x5b];}
+        else if(property.PropertyType==typeof(float)){value=BitConverter.UInt32BitsToSingle(0x41234567);marker=BitConverter.GetBytes((float)value);}
+        if(value is null||marker is null)throw new InvalidDataException("Unhandled settings property "+property.Name);
+        var before=property.GetValue(original.Settings);property.SetValue(original.Settings,value);
+        var modified=UVtools.Core.Helpers.Serialize(original.Settings).ToArray();
+        var offset=modified.AsSpan().IndexOf(marker);property.SetValue(original.Settings,before);
+        if(offset<0)throw new InvalidDataException("Missing serialized marker for "+property.Name);
+        fields.Add(property.Name,new {offset,size=marker.Length,type=property.PropertyType.Name});
+    }
+    Console.WriteLine(JsonSerializer.Serialize(new {headerSize=header.Length,settingsSize=settings.Length,resinSize=resin.Length,
+        header=Convert.ToHexString(header).ToLowerInvariant(),settings=Convert.ToHexString(settings).ToLowerInvariant(),
+        resin=Convert.ToHexString(resin).ToLowerInvariant(),fields,original.AvailableVersions}));return;
+}
+if (args[1] == "--nanodlp-volume-set") {
+    if(args.Length!=5)throw new ArgumentException("--nanodlp-volume-set requires input, new output, ml");
+    if(File.Exists(args[3]))throw new IOException("Refusing to overwrite oracle output");
+    using var source=FileFormat.Open(args[2],FileFormat.FileDecodeType.Full)
+        ?? throw new InvalidDataException("Could not open NanoDLP input");
+    if(source is not NanoDLPFile nano)throw new InvalidDataException("Expected NanoDLP input");
+    var value=float.Parse(args[4],CultureInfo.InvariantCulture);
+    if(!float.IsFinite(value)||value<0)throw new ArgumentException("Expected finite nonnegative ml");
+    var before=nano.PlateManifest.TotalSolidArea;
+    nano.MaterialMilliliters=value;
+    var after=nano.PlateManifest.TotalSolidArea;
+    nano.Encode(args[3]);
+    Console.WriteLine(JsonSerializer.Serialize(new {scope="original_NanoDLP_volume_setter_then_Encode",
+        input=args[2],output=args[3],material_ml=value,plate_before=before,plate_after_setter=after,
+        plate_after_encode=nano.PlateManifest.TotalSolidArea}));
+    return;
+}
+if (args[1] == "--contour-paths") {
+    if(args.Length!=3)throw new ArgumentException("--contour-paths requires native contour fixtures");
+    using var input=JsonDocument.Parse(File.ReadAllText(args[2]));
+    var output=new List<object>();
+    foreach(var fixture in input.RootElement.EnumerateArray()) {
+        var width=fixture.GetProperty("width").GetInt32();var height=fixture.GetProperty("height").GetInt32();
+        var pixels=Convert.FromHexString(fixture.GetProperty("pixels").GetString()!);
+        if(pixels.Length!=checked(width*height))throw new InvalidDataException("Wrong contour mask size");
+        using var mat=new Emgu.CV.Mat(height,width,Emgu.CV.CvEnum.DepthType.Cv8U,1);
+        for(var y=0;y<height;++y)Marshal.Copy(pixels,y*width,IntPtr.Add(mat.DataPointer,checked(y*(int)mat.Step)),width);
+        using var paths=mat.FindContours(out var hierarchy,Emgu.CV.CvEnum.RetrType.Tree);
+        var contours=new List<object>();
+        for(int i=0;i<paths.Size;++i) {
+            int parent=hierarchy[i,3],root=i,depth=0;
+            for(int current=parent;current>=0;current=hierarchy[current,3]) {root=current;++depth;}
+            contours.Add(new {points=paths[i].ToArray().Select(p=>new[]{p.X,p.Y}).ToArray(),parent,root,
+                hole=depth%2!=0,area=Emgu.CV.CvInvoke.ContourArea(paths[i]),
+                perimeter=Emgu.CV.CvInvoke.ArcLength(paths[i],true)});
+        }
+        // Fill the NATIVE paths using the same primitive as SVGX's decoder.
+        var native=fixture.GetProperty("contours").EnumerateArray().Select(c=>
+            c.GetProperty("points").EnumerateArray().Select(p=>new System.Drawing.Point(p[0].GetInt32(),p[1].GetInt32())).ToArray()).ToArray();
+        using var fill=new Emgu.CV.Mat(height,width,Emgu.CV.CvEnum.DepthType.Cv8U,1);
+        fill.SetTo(new Emgu.CV.Structure.MCvScalar(0));
+        if(native.Length>0) {
+            using var vectors=new Emgu.CV.Util.VectorOfVectorOfPoint(native);
+            Emgu.CV.CvInvoke.DrawContours(fill,vectors,-1,new Emgu.CV.Structure.MCvScalar(255),-1);
+        }
+        var actual=new byte[pixels.Length];
+        for(var y=0;y<height;++y)Marshal.Copy(IntPtr.Add(fill.DataPointer,checked(y*(int)fill.Step)),actual,y*width,width);
+        var binary=pixels.Select(p=>p==0?(byte)0:(byte)255).ToArray();
+        output.Add(new {name=fixture.GetProperty("name").GetString(),contours,
+            native_fill_sha256=Convert.ToHexString(SHA256.HashData(actual)).ToLowerInvariant(),
+            binary_source_sha256=Convert.ToHexString(SHA256.HashData(binary)).ToLowerInvariant()});
+    }
+    Console.WriteLine(JsonSerializer.Serialize(output));
+    return;
+}
+if (args[1] == "--contour-raw") {
+    if(args.Length!=3)throw new ArgumentException("--contour-raw requires a native fixture JSON");
+    using var input=JsonDocument.Parse(File.ReadAllText(args[2]));
+    var output=new List<object>();
+    foreach(var fixture in input.RootElement.EnumerateArray()) {
+        var width=fixture.GetProperty("width").GetInt32();var height=fixture.GetProperty("height").GetInt32();
+        var pixels=Convert.FromHexString(fixture.GetProperty("pixels").GetString()!);
+        if(pixels.Length!=checked(width*height))throw new InvalidDataException("Wrong mask size");
+        using var mat=new Emgu.CV.Mat(height,width,Emgu.CV.CvEnum.DepthType.Cv8U,1);
+        for(var y=0;y<height;++y)Marshal.Copy(pixels,y*width,IntPtr.Add(mat.DataPointer,checked(y*(int)mat.Step)),width);
+        using var contours=new UVtools.Core.EmguCV.EmguContours(mat);
+        var pixelArea=fixture.GetProperty("pixel_area").GetSingle();
+        var occupied=Enumerable.Range(0,pixels.Length).Where(i=>pixels[i]!=0).ToArray();
+        var info=new NanoDLPFile.NanoDLPInfoItem {
+            TotalSolidArea=MathF.Round((float)contours.TotalSolidArea*pixelArea,4,MidpointRounding.AwayFromZero),
+            SmallestArea=MathF.Round((float)contours.MinSolidArea*pixelArea,4,MidpointRounding.AwayFromZero),
+            LargestArea=MathF.Round((float)contours.MaxSolidArea*pixelArea,4,MidpointRounding.AwayFromZero),
+            AreaCount=(uint)contours.ExternalContoursCount,
+            MinX=occupied.Length>0?occupied.Min(i=>i%width):0,
+            MinY=occupied.Length>0?occupied.Min(i=>i/width):0,
+            MaxX=occupied.Length>0?occupied.Max(i=>i%width)+1:0,
+            MaxY=occupied.Length>0?occupied.Max(i=>i/width)+1:0 };
+        output.Add(new {name=fixture.GetProperty("name").GetString(),info,
+            total_area=contours.TotalSolidArea,smallest_area=contours.MinSolidArea,
+            largest_area=contours.MaxSolidArea,external_count=contours.ExternalContoursCount});
+    }
+    Console.WriteLine(JsonSerializer.Serialize(output,new JsonSerializerOptions{WriteIndented=true}));
+    return;
+}
+if (args[1] == "--nanodlp-schema") {
+    if(args.Length!=2)throw new ArgumentException("--nanodlp-schema takes no file paths");
+    using var nano=new NanoDLPFile();
+    // Explicitly fixed clock fields make this a deterministic schema/default
+    // oracle, not an original encoded file or firmware acceptance certificate.
+    nano.PlateManifest.Updated=0; nano.ProfileManifest.Updated=0;
+    Console.WriteLine(JsonSerializer.Serialize(new {
+        scope="original_NanoDLP_schema_defaults_with_clock_zeroed",
+        meta=nano.MetaManifest,slicer=nano.SlicerManifest,plate=nano.PlateManifest,
+        profile=nano.ProfileManifest,info=new NanoDLPFile.NanoDLPInfoItem()
+    },new JsonSerializerOptions{WriteIndented=true}));
+    return;
+}
+if (args[1] == "--zcode-rsa-lines") {
+    if (args.Length != 4) throw new ArgumentException("--zcode-rsa-lines requires plaintext and ciphertext paths");
+    var plain = File.ReadAllLines(args[2]);
+    var encoded = File.ReadAllLines(args[3]);
+    if (plain.Length == 0 || plain.Length != encoded.Length)
+        throw new InvalidDataException("RSA line fixtures must be complete and nonempty");
+    var cryptoName = typeof(ZCodeFile).Assembly.GetReferencedAssemblies()
+        .Single(n => n.Name!.StartsWith("BouncyCastle", StringComparison.Ordinal));
+    var crypto = Assembly.Load(cryptoName);
+    var pemType = crypto.GetType("Org.BouncyCastle.OpenSsl.PemReader", true)!;
+    var engineType = crypto.GetType("Org.BouncyCastle.Crypto.Engines.RsaEngine", true)!;
+    object ReadKey(string pem) {
+        var reader = Activator.CreateInstance(pemType, new StringReader(pem))!;
+        return pemType.GetMethod("ReadObject")!.Invoke(reader, null)!;
+    }
+    var privateEngine = Activator.CreateInstance(engineType)!;
+    var publicEngine = Activator.CreateInstance(engineType)!;
+    engineType.GetMethod("Init")!.Invoke(privateEngine, new object[]{true, ReadKey(ZCodeFile.GCodeRSAPrivateKey)});
+    engineType.GetMethod("Init")!.Invoke(publicEngine, new object[]{true, ReadKey(ZCodeFile.GCodeRSAPublicKey)});
+    var processBlock = engineType.GetMethod("ProcessBlock")!;
+    var timer = System.Diagnostics.Stopwatch.StartNew();
+    for (int index=0; index<plain.Length; ++index) {
+        var data=System.Text.Encoding.UTF8.GetBytes(plain[index]);
+        if (data.Length==0 || data.Length>61) throw new InvalidDataException("Invalid fixture line length");
+        var pad = new List<byte>{0,1,0}; pad.AddRange(data);
+        while(pad.Count<64) pad.Insert(2,255);
+        var original=(byte[])processBlock.Invoke(privateEngine,new object[]{pad.ToArray(),0,64})!;
+        if(Convert.ToBase64String(original)!=encoded[index])
+            throw new InvalidDataException($"Original RSA encryption differs at line {index}");
+        var bytes=Convert.FromBase64String(encoded[index]);
+        var decoded=(byte[])processBlock.Invoke(publicEngine,new object[]{bytes,0,bytes.Length})!;
+        decoded=decoded.Skip(2).SkipWhile(b=>b is 255 or 0).ToArray();
+        if(!decoded.SequenceEqual(data)) throw new InvalidDataException($"Original RSA decode differs at line {index}");
+    }
+    timer.Stop();
+    Console.WriteLine(JsonSerializer.Serialize(new {status="passed", scope="original ZCode RSA engine and padding, not archive/firmware",
+        lines=plain.Length,original_serial_encrypt_and_decrypt_seconds=timer.Elapsed.TotalSeconds}));
+    return;
+}
+if (args[1] == "--jxs-plan") {
+    if (args.Length != 4 || File.Exists(args[3]))
+        throw new ArgumentException("--jxs-plan requires input and new output paths");
+    using var original = FileFormat.Open(args[2], FileFormat.FileDecodeType.Full) as JXSFile
+        ?? throw new InvalidDataException("Expected JXS source");
+    // Unmodified original Encode builds ControlFile correctly in memory, but
+    // serializes ConfigFile to control.json. Retain its raw broken output and
+    // expose the original action plan as a separate, explicitly scoped oracle.
+    original.Encode(args[3]);
+    Console.WriteLine(JsonSerializer.Serialize(new { scope="original_in_memory_JXS_control_not_raw_file",
+        rawOutput=args[3], control=original.ControlFile }));
+    return;
+}
 if (args[1] == "--roundtrip") {
     if (args.Length != 4) throw new ArgumentException("--roundtrip requires input and output paths");
     if (Path.GetFullPath(args[2]) == Path.GetFullPath(args[3]) || File.Exists(args[3]))
@@ -28,6 +436,62 @@ if (args[1] == "--roundtrip") {
         ?? throw new InvalidDataException("Unknown input format");
     original.Encode(args[3]);
     Console.WriteLine(JsonSerializer.Serialize(new { status="encoded_by_uvtools",input=args[2],output=args[3] }));
+    return;
+}
+if (args[1]=="--convert-aa") {
+    if(args.Length!=6)throw new ArgumentException("--convert-aa requires input, new output, version and AA count");
+    if(File.Exists(args[3]))throw new IOException("Refusing to replace an AA reference");
+    var extension=Path.GetExtension(args[3]).ToLowerInvariant();
+    if(extension!=".cbddlp" && extension!=".photon")throw new ArgumentException("AA reference requires CBDDLP or Photon");
+    using var source=FileFormat.Open(args[2],FileFormat.FileDecodeType.Full)
+        ?? throw new InvalidDataException("Unknown AA source");
+    source.AntiAliasing=byte.Parse(args[5],CultureInfo.InvariantCulture);
+    using var converted=source.Convert(typeof(ChituboxFile),args[3],uint.Parse(args[4],CultureInfo.InvariantCulture))
+        ?? throw new InvalidDataException("Original AA conversion was rejected");
+    Console.WriteLine(JsonSerializer.Serialize(new {status="converted_by_uvtools",input=args[2],output=args[3],
+        converted.Version,converted.AntiAliasing}));return;
+}
+if (args[1] == "--convert") {
+    if (args.Length != 5 && !(args.Length == 6 && args[5] == "--preserve-layer-rest"))
+        throw new ArgumentException("--convert requires input, new output, version and optional --preserve-layer-rest");
+    if (Path.GetFullPath(args[2]) == Path.GetFullPath(args[3]) || File.Exists(args[3]))
+        throw new ArgumentException("Conversion output must be a new file");
+    using var original = FileFormat.Open(args[2], FileFormat.FileDecodeType.Full)
+        ?? throw new InvalidDataException("Unknown input format");
+    // Ask the unmodified registry for the target family, then call the original
+    // conversion API. No hand-written metadata or image transformation here.
+    using var target = FileFormat.FindByExtensionOrFilePath(Path.GetExtension(args[3]).TrimStart('.'), true)
+        ?? throw new InvalidDataException("Unknown target format");
+    using var converted = original.Convert(target.GetType(), args[3], uint.Parse(args[4], CultureInfo.InvariantCulture))
+        ?? throw new InvalidDataException("UVtools conversion was rejected");
+    var preserveLayerRest = args.Length == 6;
+    if (preserveLayerRest) {
+        if ((converted is not ChituboxFile && converted is not PHZFile) || converted.Version != 2)
+            throw new ArgumentException("Layer rest normalization is only defined for Chitubox/PHZ v2");
+        // Keep the ordinary conversion above as a separate reference artifact.
+        // UVtools Convert clones SL1 layers whose LightOffDelay is zero; the v2
+        // writer has no rest-time fields, so those cloned layers lose their
+        // explicit wait. Use the ORIGINAL Layer calculator to represent that
+        // same source rest in the legacy target's light-off field before Encode.
+        for (uint i = 0; i < converted.LayerCount; ++i)
+            converted[i].SetLightOffDelay(original[i].WaitTimeBeforeCure);
+        converted.Encode(args[3]);
+    }
+    Console.WriteLine(JsonSerializer.Serialize(new { status="converted_by_uvtools",input=args[2],output=args[3],
+        version=converted.Version,preserveLayerRest }));
+    return;
+}
+if (args[1] == "--fdg-cipher") {
+    if(args.Length!=5)throw new ArgumentException("--fdg-cipher requires seed, index, hex bytes");
+    var data=Convert.FromHexString(args[4]);
+    FDGFile.LayerRleCryptBuffer(uint.Parse(args[2],CultureInfo.InvariantCulture),uint.Parse(args[3],CultureInfo.InvariantCulture),data);
+    Console.WriteLine(Convert.ToHexString(data).ToLowerInvariant());
+    return;
+}
+if (args[1] == "--phz-cipher") {
+    var data = Convert.FromHexString(args[4]);
+    PHZFile.LayerRleCryptBuffer(uint.Parse(args[2],CultureInfo.InvariantCulture),uint.Parse(args[3],CultureInfo.InvariantCulture),data);
+    Console.WriteLine(Convert.ToHexString(data).ToLowerInvariant());
     return;
 }
 var fullOpen = args[1] == "--full-open";
@@ -74,7 +538,59 @@ foreach (var filename in args.Skip(fullOpen ? 2 : 1)) {
     if (filename == "--registry") {
         reports.AddRange(FileFormat.AvailableFormats.Select(format => new {
             family=format.GetType().Name, extensions=format.FileExtensions.Select(extension=>extension.Extension).ToArray(),
+            extensionVersions=format.FileExtensions.Select(extension=>new { extension=extension.Extension,
+                versions=format.GetAvailableVersionsForExtension(extension.Extension) }).ToArray(),
             format.AvailableVersions,format.DefaultVersion }));
+        continue;
+    }
+    if (filename == "--makerbase-schema") {
+        using var gr1 = Helpers.Serialize(new GR1File.Header());
+        using var mdlp = Helpers.Serialize(new MDLPFile.Header());
+        using var line = Helpers.Serialize(new GR1File.LayerLine(1,2,3));
+        reports.Add(new { status="schema",gr1HeaderSize=gr1.Length,mdlpHeaderSize=mdlp.Length,
+            gr1Header=Convert.ToBase64String(gr1.ToArray()),mdlpHeader=Convert.ToBase64String(mdlp.ToArray()),
+            lineSize=line.Length,line=Convert.ToBase64String(line.ToArray()) });
+        continue;
+    }
+    if (filename == "--lgs-schema") {
+        using var header = Helpers.Serialize(new LGSFile.Header());
+        reports.Add(new { status="schema",headerSize=header.Length,
+            defaultHeader=Convert.ToBase64String(header.ToArray()) });
+        continue;
+    }
+    if (filename == "--svgx-schema") {
+        using var header = Helpers.Serialize(new FlashForgeSVGXFile.Header());
+        using var preview = Helpers.Serialize(new FlashForgeSVGXFile.Preview { BGR=[] });
+        reports.Add(new {status="schema",headerSize=header.Length,previewHeaderSize=preview.Length,
+            defaultHeader=Convert.ToBase64String(header.ToArray()),
+            defaultPreview=Convert.ToBase64String(preview.ToArray()),
+            defaultSVG=new FlashForgeSVGXSvg().SerializeToString()});
+        continue;
+    }
+    if (filename == "--chitubox-schema") {
+        using var header = Helpers.Serialize(new ChituboxFile.Header());
+        using var layer = Helpers.Serialize(new ChituboxFile.LayerDef());
+        using var parameters = Helpers.Serialize(new ChituboxFile.PrintParameters());
+        using var preview = Helpers.Serialize(new ChituboxFile.Preview());
+        reports.Add(new {status="schema",headerSize=header.Length,layerSize=layer.Length,parametersSize=parameters.Length,
+            previewSize=preview.Length,defaultParameters=Convert.ToBase64String(parameters.ToArray()),
+            extensions=new ChituboxFile().FileExtensions.Select(e=>e.Extension).ToArray()});
+        continue;
+    }
+    if (filename == "--fdg-schema") {
+        using var header = Helpers.Serialize(new FDGFile.Header());
+        using var layer = Helpers.Serialize(new FDGFile.LayerDef());
+        using var preview = Helpers.Serialize(new FDGFile.Preview());
+        reports.Add(new {status="schema",headerSize=header.Length,layerSize=layer.Length,previewSize=preview.Length,
+            defaultHeader=Convert.ToBase64String(header.ToArray())});
+        continue;
+    }
+    if (filename == "--phz-schema") {
+        using var header = Helpers.Serialize(new PHZFile.Header());
+        using var layer = Helpers.Serialize(new PHZFile.LayerDef());
+        using var preview = Helpers.Serialize(new PHZFile.Preview());
+        reports.Add(new {status="schema",headerSize=header.Length,layerSize=layer.Length,previewSize=preview.Length,
+            defaultHeader=Convert.ToBase64String(header.ToArray())});
         continue;
     }
     if (filename == "--osf-schema") {

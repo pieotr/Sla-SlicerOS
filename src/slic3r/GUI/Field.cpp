@@ -1275,6 +1275,21 @@ void Choice::set_value(const boost::any& value, bool change_event)
 	m_disable_change_event = false;
 }
 
+void Choice::set_enum_values(std::vector<std::string> values, std::vector<std::string> labels, const std::string &selected)
+{
+    // Repeated tab updates must not clear an open popup. Keep the stable value
+    // mapping and displayed labels together, including unknown imported text.
+    if (m_opt.enum_def && m_opt.enum_def->values() == values && m_opt.enum_def->labels() == labels)
+        return;
+    m_opt.set_enum_values(std::move(values), std::move(labels));
+    m_disable_change_event = true;
+    auto *field = dynamic_cast<choice_ctrl*>(window);
+    field->Clear();
+    for (const auto &label : m_opt.enum_def->labels()) field->Append(_(label));
+    m_disable_change_event = false;
+    set_value(boost::any(from_u8(selected)), false);
+}
+
 //! it's needed for _update_serial_ports()
 void Choice::set_values(const std::vector<std::string>& values)
 {

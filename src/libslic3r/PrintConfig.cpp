@@ -930,6 +930,12 @@ void PrintConfigDef::init_fff_params()
 
     // The following value is to be stored into the project file (AMF, 3MF, Config ...)
     // and it contains a sum of "compatible_printers_condition" values over the print and filament profiles.
+    // Project-only, role-specific SLA library settings. Runtime settings remain
+    // flattened so the project can print without installed parent presets.
+    def = this->add("sla_preset_metadata", coString);
+    def->set_default_value(new ConfigOptionString());
+    def->cli = ConfigOptionDef::nocli;
+
     def = this->add("compatible_printers_condition_cummulative", coStrings);
     def->set_default_value(new ConfigOptionStrings());
     def->cli = ConfigOptionDef::nocli;
@@ -4297,13 +4303,16 @@ void PrintConfigDef::init_sla_params()
     def->full_label = L("Number of pixels in");
     def->label = ("X");
     def->tooltip = L("Number of pixels in X");
-    def->min = 100;
+    // Match the SLA geometry contract: every positive resolution is valid.
+    // wxSpinCtrl otherwise displays/clamps small loaded profiles to 100 while
+    // the engine continues using their original raster dimensions.
+    def->min = 1;
     def->set_default_value(new ConfigOptionInt(2560));
 
     def = this->add("display_pixels_y", coInt);
     def->label = ("Y");
     def->tooltip = L("Number of pixels in Y");
-    def->min = 100;
+    def->min = 1;
     def->set_default_value(new ConfigOptionInt(1440));
 
     def = this->add("display_mirror_x", coBool);
@@ -4841,9 +4850,46 @@ void PrintConfigDef::init_sla_params()
     def = this->add("sla_archive_format", coString);
     def->label = L("Format of the output SLA archive");
     def->tooltip = L("Output format stored in this printer preset. Save the printer preset to keep your selection. "
-                     "Some listed formats are not implemented; selecting an entry does not certify printer compatibility.");
+                     "Select the version supported by your printer firmware; some formats require additional printer settings.");
     def->mode = comSimple;
     def->set_default_value(new ConfigOptionString("SL1"));
+
+    def = this->add("sla_anycubic_version", coString);
+    def->label = L("Anycubic file version");
+    def->tooltip = L("Version saved in this printer preset. Automatic uses the format default. Choose a version supported by your firmware. "
+                     "Versions 1/515 have limited motion and infer geometry from the extension (PWC dimensions decode as zero); versions 516/517/518 store a machine table. "
+                     "An incompatible imported value remains visible and must be corrected before slicing or export.");
+    def->gui_type = ConfigOptionDef::GUIType::select_open;
+    def->set_enum_values(std::vector<std::string>{"auto", "1", "515", "516", "517", "518"},
+                         std::vector<std::string>{L("Automatic (format default)"), "1", "515", "516", "517", "518"});
+    def->mode = comSimple;
+    def->set_default_value(new ConfigOptionString("auto"));
+
+    def = this->add("sla_cbddlp_aa", coInt);
+    def->label = L("CBDDLP / Photon AA planes");
+    def->tooltip = L("Number of binary exposure planes in CBDDLP/Photon v2, saved in the printer preset. "
+                     "UVtools supports 1 to 16. Powers of two (1, 2, 4, 8, 16) preserve full-white pixels on repeated encoding; "
+                     "other counts quantize full white below 255. Version 1 always uses one plane. "
+                     "This controls the file codec, separately from raster smoothing.");
+    def->min = 1; def->max = 16; def->mode = comSimple;
+    def->set_default_value(new ConfigOptionInt(8));
+
+    def = this->add("nanodlp_device_profile", coString);
+    def->label = L("NanoDLP controller profile (JSON)");
+    def->tooltip = L("Controller profile saved inside this printer preset. Load profile.json from your NanoDLP controller or paste its JSON here. "
+                     "The controller's motion templates determine lift/retract speeds and hardware commands. Generic SLA speeds do not rewrite those templates. "
+                     "A valid profile requires ShieldBeforeLayer and ShieldAfterLayer. Empty profiles cannot be exported.");
+    def->multiline = true;
+    def->full_width = true;
+    def->height = 12;
+    def->mode = comSimple;
+    def->set_default_value(new ConfigOptionString(""));
+
+    def = this->add("sla_phz_encryption_key", coString);
+    def->label = L("PHZ encryption seed");
+    def->tooltip = L("PHZ v2 only. 0 disables encryption. Enter an unsigned 32-bit decimal number or hexadecimal with 0x prefix. Saved with this printer preset.");
+    def->mode = comSimple;
+    def->set_default_value(new ConfigOptionString("0"));
 
     for (const auto &setting : sla::machine_settings) {
         def = this->add(setting.key, setting.integer ? coInt : coFloat);
@@ -5098,6 +5144,8 @@ static std::set<std::string> PrintConfigDef_ignore = {
 
 void PrintConfigDef::handle_legacy(t_config_option_key &opt_key, std::string &value)
 {
+    if(opt_key=="sla_archive_format" && boost::iequals(value,"cbt"))
+        value="ctb_v1"; // Historical typo; never an actual .cbt printer format.
     // handle legacy options
     if (opt_key == "extrusion_width_ratio" || opt_key == "bottom_layer_speed_ratio"
         || opt_key == "first_layer_height_ratio") {

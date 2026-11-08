@@ -728,6 +728,8 @@ PlaterPresetComboBox::PlaterPresetComboBox(wxWindow *parent, Preset::Type preset
             switch_to_tab();
     });
 
+#ifndef SLIC3R_OFFLINE_ONLY
+    // Remote fleet status has no meaning in the local offline workspace.
     if (m_type == Preset::TYPE_PRINTER) {
 
 #ifdef _WIN32
@@ -772,6 +774,7 @@ PlaterPresetComboBox::PlaterPresetComboBox(wxWindow *parent, Preset::Type preset
         connect_info_sizer->Add(new wxStaticText(parent, wxID_ANY, _L("printing")), 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 10);
 #endif
     }
+#endif // !SLIC3R_OFFLINE_ONLY
 }
 
 PlaterPresetComboBox::~PlaterPresetComboBox()
@@ -1138,7 +1141,7 @@ void PlaterPresetComboBox::update()
 
         if (m_type == Preset::TYPE_PRINTER) {
             bitmap_type_name = bitmap_key += get_connect_state_suffix_for_printer(preset);
-            if (is_selected)
+            if (is_selected && connect_info_sizer)
                 connect_info_sizer->Show(fill_data_to_connect_info_line(preset, connect_available_info, connect_offline_info, connect_printing_info));
         }
 
@@ -1256,7 +1259,7 @@ void PlaterPresetComboBox::update()
                         is_selected_some_ph_printer = true;
                 }
             }
-            if (is_selected_some_ph_printer)
+            if (is_selected_some_ph_printer && connect_info_sizer)
                 connect_info_sizer->Show(false);
             std::sort(preset_data.begin(), preset_data.end(), [](const PhysicalPrinterPresetData& a, const PhysicalPrinterPresetData& b) {
                 return a.lower_name < b.lower_name;

@@ -576,8 +576,10 @@ wxString file_wildcards(FileType file_type, const std::string &custom_extension)
     return file_wildcards(file_wildcards_by_type[file_type], custom_extension);
 }
 
-wxString sla_wildcards(const char *formatid, const std::string& custom_extension, bool export_only)
+wxString sla_wildcards(const char *formatid, const std::string& custom_extension, bool export_only,
+                      std::vector<std::string> *format_ids)
 {
+    if (format_ids) format_ids->clear();
     const bool all_formats = (formatid == nullptr || *formatid == '\0');
     const ArchiveEntry *entry = all_formats ? nullptr : get_archive_entry(formatid);
     wxString ret;
@@ -590,8 +592,9 @@ wxString sla_wildcards(const char *formatid, const std::string& custom_extension
         return boost::to_lower_copy(ext);
     };
 
-    auto append_single_filter = [&ret](const std::string &title, const std::string &ext) {
+    auto append_single_filter = [&ret, format_ids](const std::string &title, const std::string &ext, const char *id) {
         ret += "|" + GUI::format_wxstr("%s (*%s)|*%s", title, ext, ext);
+        if (format_ids) format_ids->emplace_back(id);
     };
 
     if (all_formats) {
@@ -601,13 +604,15 @@ wxString sla_wildcards(const char *formatid, const std::string& custom_extension
             std::string tr_title = I18N::translate_utf8(arch_entry.desc);
             tr_title = GUI::format(_u8L("%s files"), tr_title);
 
-            std::vector<std::string> exts = get_extensions(arch_entry);
+            // Export selects a schema, not just an extension. Different ZIP/
+            // CWS families must all remain selectable. Import keeps aliases.
+            std::vector<std::string> exts = export_only ? std::vector<std::string>{arch_entry.ext} : get_extensions(arch_entry);
             for (std::string &ext : exts) {
                 const std::string norm = normalize_ext(ext);
                 if (norm.empty())
                     continue;
-                if (seen_exts.insert(norm).second)
-                    append_single_filter(tr_title, norm);
+                if (export_only || seen_exts.insert(norm).second)
+                    append_single_filter(tr_title, norm, arch_entry.id);
             }
         }
 
@@ -619,13 +624,13 @@ wxString sla_wildcards(const char *formatid, const std::string& custom_extension
         // TRN %s = type of file
         tr_title = GUI::format(_u8L("%s files"), tr_title);
 
-        std::vector<std::string> exts = get_extensions(*entry);
+        std::vector<std::string> exts = export_only ? std::vector<std::string>{entry->ext} : get_extensions(*entry);
         for (std::string &ext : exts) {
             const std::string norm = normalize_ext(ext);
             if (norm.empty())
                 continue;
             if (seen_exts.insert(norm).second)
-                append_single_filter(tr_title, norm);
+                append_single_filter(tr_title, norm, entry->id);
         }
 
         if (!ret.empty())
@@ -3662,7 +3667,7 @@ void GUI_App::window_pos_sanitize(wxTopLevelWindow* window)
     }
 
     auto metrics = WindowMetrics::from_window(window);
-    metrics.sanitize_for_display(display);
+    metrics.sanitize_for_display(display, window->GetMinSize());
     if (window->GetScreenRect() != metrics.get_rect()) {
         window->SetSize(metrics.get_rect());
     }

@@ -1,3 +1,4 @@
+#include "libslic3r/SLA/ExportPrinterValidation.hpp"
 #include "libslic3r/SLA/PrinterRaster.hpp"
 ///|/ Copyright (c) Prusa Research 2026
 ///|/
@@ -5,8 +6,11 @@
 ///|/
 #include "CrealityCXDLPv4.hpp"
 #include "CrealityChecksum.hpp"
+#include "CrealityCXDLPv4Counts.hpp"
+#include "ChituboxPreview.hpp"
 #include "CrealityContourArea.hpp"
 #include "libslic3r/SLA/LayerDocument.hpp"
+#include "libslic3r/SLA/CrealityCXDLPv4FreshExportPlan.hpp"
 #include <unordered_map>
 #include <string_view>
 
@@ -38,6 +42,49 @@ static constexpr size_t LAYER_DEF_SIZE =
 
 static constexpr size_t LAYER_DEF_EX_SIZE =
     11 * sizeof(float);
+
+// Final native row values are shared by serialization and metadata estimation.
+// The timing view follows the reference's two-decimal public layer settings;
+// it does not round or alter the stored motion/exposure values.
+struct CXDLPv4LayerSettings {
+    float z, exposure, light_off;
+    std::array<float, 11> extended;
+};
+float cxdlp_round2(float value) { return std::nearbyint(value * 100.f) / 100.f; }
+float cxdlp_layer_seconds(const CXDLPv4LayerSettings &row,
+                          const std::array<float, 4> &fallback_speeds, bool fresh = false)
+{
+    auto round2 = [&](float value) { return fresh ? sla::cxdlpv4_public_round2(value) : cxdlp_round2(value); };
+    const auto &e = row.extended;
+    for (float value : e)
+        if (!std::isfinite(value) || value < 0)
+            throw ExportError("CXDLPv4 layer settings must be finite and nonnegative");
+    if (!std::isfinite(row.exposure) || row.exposure < 0 ||
+        !std::isfinite(row.light_off) || row.light_off < 0 || e[5] > e[0])
+        throw ExportError("Invalid CXDLPv4 exposure, light-off or retract distance");
+    const float first = round2(round2(e[0]) - e[2]);
+    const float second = round2(e[2]);
+    if (first < 0)
+        throw ExportError("CXDLPv4 first lift cannot be represented in the timing view");
+    const float total = fresh ? round2(first + second) : first + second;
+    const float retract2 = std::clamp(round2(e[5]), 0.f, total);
+    float motor = 0.f;
+    auto phase = [&](float distance, float speed, size_t fallback_index) {
+        if (distance <= 0) return;
+        float represented_speed = round2(speed);
+        // Layer setters use raw global values when rounded speed is zero.
+        // This projection changes only the estimate, never the stored speed.
+        if (represented_speed <= 0) represented_speed = fallback_speeds[fallback_index];
+        if (!std::isfinite(represented_speed) || represented_speed <= 0)
+            throw ExportError("CXDLPv4 moving phase requires a finite positive reference speed");
+        motor += distance / (represented_speed / 60.f);
+    };
+    phase(first, e[1], 0); phase(second, e[3], 1);
+    phase(retract2, e[6], 3); phase(fresh ? round2(total - retract2) : total - retract2, e[4], 2);
+    const float rests = round2(e[9]) + round2(row.exposure) +
+        round2(e[7]) + round2(e[8]);
+    return rests + std::max(round2(motor), round2(row.light_off));
+}
 
 static constexpr size_t PRINT_PARAMS_SIZE =
     10 * sizeof(float) +
@@ -85,47 +132,6 @@ void write_be_len_nt_string(std::ofstream &out, const std::string &s)
     const std::string stored = s + '\0';
     write_u32_be(out, uint32_t(stored.size()));
     out.write(stored.data(), std::streamsize(stored.size()));
-}
-
-// Original UVtools RGB15 runs: bit 5 marks a following 12-bit repeat
-// count (run minus one). Split before 4096; two pixels cost the same as a run.
-std::vector<uint8_t> compress_rgb15(const std::vector<uint8_t> &raw)
-{
-    std::vector<uint8_t> encoded;encoded.reserve(raw.size());
-    auto word=[&](uint16_t value){encoded.push_back(uint8_t(value));encoded.push_back(uint8_t(value>>8));};
-    for(size_t cursor=0;cursor<raw.size();) {
-        const uint16_t color=uint16_t(raw[cursor])|(uint16_t(raw[cursor+1])<<8);
-        size_t run=1;
-        while(run<4095 && cursor+2*run<raw.size() && raw[cursor+2*run]==uint8_t(color) &&
-              raw[cursor+2*run+1]==uint8_t(color>>8))++run;
-        if(run<=2)for(size_t i=0;i<run;++i)word(color);
-        else {word(color|0x20);word(uint16_t((run-1)|0x3000));}
-        cursor+=2*run;
-    }
-    return encoded;
-}
-
-// UVtools RGB15 reserves bit 5 for the RLE marker, BETWEEN green and
-// blue. Raw pixels must clear it: RRRRRGGGGG0BBBBB, little endian.
-// Keep the aspect ratio and convert bottom-up renderer RGBA over black.
-std::vector<uint8_t> encode_cxdlpv4_rgb15(uint32_t width,uint32_t height,const ThumbnailsList &thumbnails)
-{
-    std::vector<uint8_t> output(size_t(width)*height*2,0);
-    const auto source=std::find_if(thumbnails.begin(),thumbnails.end(),[](const ThumbnailData &image){return image.is_valid() && image.width<=4096 && image.height<=4096;});
-    if(source==thumbnails.end()) return compress_rgb15(output);
-    const double scale=std::min(double(width)/source->width,double(height)/source->height);
-    const size_t image_width=std::max<size_t>(1,std::lround(source->width*scale)),image_height=std::max<size_t>(1,std::lround(source->height*scale));
-    const size_t left=(width-image_width)/2,top=(height-image_height)/2;
-    for(size_t y=0;y<image_height;++y)for(size_t x=0;x<image_width;++x) {
-        const size_t sx=std::min<size_t>(source->width-1,x*source->width/image_width);
-        const size_t sy=source->height-1-std::min<size_t>(source->height-1,y*source->height/image_height);
-        const auto *rgba=source->pixels.data()+4*(sy*source->width+sx);
-        const unsigned r=(unsigned(rgba[0])*rgba[3]+127)/255,g=(unsigned(rgba[1])*rgba[3]+127)/255,b=(unsigned(rgba[2])*rgba[3]+127)/255;
-        const uint16_t pixel=uint16_t(((r>>3)<<11)|((g>>3)<<6)|(b>>3));
-        const size_t offset=2*((top+y)*width+left+x);
-        output[offset]=uint8_t(pixel);output[offset+1]=uint8_t(pixel>>8);
-    }
-    return compress_rgb15(output);
 }
 
 struct CXDLPv4RasterEncoder
@@ -178,7 +184,25 @@ struct CXDLPv4RasterEncoder
         for (size_t i = 0; i < n; ++i) {
             const uint8_t grey7 = uint8_t(src[i] >> 1);
             if (grey7 == color) {
-                ++stride;
+                if (++stride == 8) {
+                    // The low bit is not represented in this codec. Skip
+                    // complete equal runs eight pixels at a time, retaining
+                    // the exact seven-bit palette and original RLE boundaries.
+                    // memcpy permits unaligned input without aliasing or
+                    // endianness assumptions; never read beyond the raster.
+                    constexpr uint64_t low_bits = UINT64_C(0x0101010101010101);
+                    const uint64_t expected = uint64_t(color << 1) * low_bits;
+                    size_t next = i + 1;
+                    while (n - next >= sizeof(uint64_t)) {
+                        uint64_t pixels;
+                        std::memcpy(&pixels, src + next, sizeof(pixels));
+                        if ((pixels & ~low_bits) != expected)
+                            break;
+                        next += sizeof(pixels);
+                    }
+                    stride += uint32_t(next - i - 1);
+                    i = next - 1;
+                }
             } else {
                 flush_run();
                 color = grey7;
@@ -246,16 +270,54 @@ sla::RasterEncoder CrealityCXDLPv4Archive::get_encoder() const
     return encode_mask;
 }
 
-void CrealityCXDLPv4Archive::export_print(const std::string     fname,
-                                          const SLAPrint       &print,
-                                          const ThumbnailsList &thumbnails,
-                                          const std::string    &)
+void CrealityCXDLPv4Archive::export_print(const std::string fname, const SLAPrint &print,
+    const ThumbnailsList &thumbnails, const std::string &)
 {
-    const uint32_t layer_count = uint32_t(m_layers.size());
+    export_print_impl(fname, print, thumbnails, nullptr);
+}
+
+void CrealityCXDLPv4Archive::export_fresh_print(const std::string &fname, const SLAPrint &print,
+    const ThumbnailsList &thumbnails, const sla::CXDLPv4FreshExportPlan &fresh)
+{
+    export_print_impl(fname, print, thumbnails, &fresh);
+}
+
+void CrealityCXDLPv4Archive::export_fresh_print_with_encoding(const std::string &fname,
+    const SLAPrint &print, const ThumbnailsList &thumbnails,
+    const sla::CXDLPv4FreshExportPlan &fresh, const std::vector<sla::EncodedRaster> &encoding)
+{
+    export_print_impl(fname, print, thumbnails, &fresh, &encoding);
+}
+
+void CrealityCXDLPv4Archive::export_print_impl(const std::string &fname, const SLAPrint &print,
+    const ThumbnailsList &thumbnails, const sla::CXDLPv4FreshExportPlan *fresh,
+    const std::vector<sla::EncodedRaster> *encoding)
+{
+    const auto &layers = encoding ? *encoding : m_layers;
+    const uint32_t layer_count = uint32_t(layers.size());
     if (layer_count == 0 || layer_count>100000 || layer_count!=print.print_layers().size())
         throw ExportError("CXDLPv4 layer count is outside the supported limits");
 
     const auto &cfg = print.full_print_config();
+    std::array<float, 2> fresh_material{};
+    if (fresh) {
+        const auto &material = print.material_config();
+        fresh_material = sla::cxdlpv4_fresh_material_metrics(fresh->material_ml,
+            material.material_density.value, material.bottle_cost.value, material.bottle_volume.value);
+    }
+    using F = sla::LayerParameter;
+    if (fresh && fresh->rows.size() != layer_count)
+        throw ExportError("CXDLPv4 fresh rows do not match the encoded masks");
+    auto global_parameter = [&](const char *key, bool bottom) -> float {
+        if (!fresh) return sla::motion_parameter(print, key, bottom);
+        static const std::map<std::string, F> fields{
+            {"lift_height",F::LiftDistance},{"lift_height2",F::LiftDistance2},
+            {"lift_speed",F::LiftSpeed},{"lift_speed2",F::LiftSpeed2},
+            {"retract_speed",F::RetractSpeed},{"retract_height2",F::RetractDistance2},
+            {"retract_speed2",F::RetractSpeed2},{"wait_before_cure",F::WaitBefore},
+            {"wait_after_cure",F::WaitAfter},{"wait_after_lift",F::WaitAfterLift},{"light_pwm",F::LightPWM}};
+        return float((bottom ? fresh->globals.bottom : fresh->globals.normal).at(fields.at(key)));
+    };
 
     double w = m_cfg.display_width.getFloat();
     double h = m_cfg.display_height.getFloat();
@@ -266,21 +328,63 @@ void CrealityCXDLPv4Archive::export_print(const std::string     fname,
         std::swap(res_x, res_y);
     }
 
-    const float layer_height = float(cfg.opt_float("layer_height"));
-    const uint32_t bottom_layers = uint32_t(sla::bottom_layers(print, layer_count));
-    const float bottom_exposure = float(cfg.opt_float("initial_exposure_time"));
-    const float normal_exposure = float(cfg.opt_float("exposure_time"));
+    if (fresh) {
+        // Physical material accounting uses the same float32 dimensions stored on wire.
+        w = double(float(fresh->geometry.width_mm)); h = double(float(fresh->geometry.height_mm));
+        res_x = uint32_t(fresh->geometry.columns); res_y = uint32_t(fresh->geometry.rows);
+    }
+    const float layer_height = fresh ? float(fresh->globals.layer_height) : float(cfg.opt_float("layer_height"));
+    const uint32_t bottom_layers = fresh ? uint32_t(fresh->globals.bottom_layers) : uint32_t(sla::bottom_layers(print, layer_count));
+    const float bottom_exposure = fresh ? float(fresh->globals.bottom.at(F::Exposure)) : float(cfg.opt_float("initial_exposure_time"));
+    const float normal_exposure = fresh ? float(fresh->globals.normal.at(F::Exposure)) : float(cfg.opt_float("exposure_time"));
 
     // Profile values use the same mm/min units as the UVtools specification.
-    const float bottom_lift_h = sla::motion_parameter(print, "lift_height", true);
-    const float bottom_lift_s = sla::motion_parameter(print, "lift_speed", true);
-    const float lift_h = sla::motion_parameter(print, "lift_height", false);
-    const float lift_s = sla::motion_parameter(print, "lift_speed", false);
-    const float retract_s = sla::motion_parameter(print, "retract_speed", false);
+    const float bottom_lift_h = global_parameter("lift_height", true);
+    const float bottom_lift_s = global_parameter("lift_speed", true);
+    const float lift_h = global_parameter("lift_height", false);
+    const float lift_s = global_parameter("lift_speed", false);
+    const float retract_s = global_parameter("retract_speed", false);
+
+    std::vector<CXDLPv4LayerSettings> settings;
+    settings.reserve(layer_count);
+    float complete_time = 300.f; // UVtools FileFormat.ExtraPrintTime.
+    for (size_t i = 0; i < layer_count; ++i) {
+        const bool bottom = i < bottom_layers;
+        auto parameter = [&](const char *key) { return global_parameter(key, bottom); };
+        CXDLPv4LayerSettings row{sla::layer_z(print, i), sla::layer_exposure(print, i), 0.f,
+            {parameter("lift_height") + parameter("lift_height2"), parameter("lift_speed"),
+             parameter("lift_height2"), parameter("lift_speed2"), parameter("retract_speed"),
+             parameter("retract_height2"), parameter("retract_speed2"), parameter("wait_after_cure"),
+             parameter("wait_after_lift"), parameter("wait_before_cure"), parameter("light_pwm")}};
+        if (fresh) {
+            const auto &values = fresh->rows[i];
+            auto v = [&](F field) { return float(values.at(field)); };
+            row = {v(F::PositionZ),v(F::Exposure),v(F::LightOff),
+                {float(values.at(F::LiftDistance)+values.at(F::LiftDistance2)),v(F::LiftSpeed),
+                 v(F::LiftDistance2),v(F::LiftSpeed2),v(F::RetractSpeed),v(F::RetractDistance2),
+                 v(F::RetractSpeed2),v(F::WaitAfter),v(F::WaitAfterLift),v(F::WaitBefore),v(F::LightPWM)}};
+        }
+        // CXDLP has no stored bottom retract globals. During a new decode
+        // they remain FileFormat defaults (100/80) until AFTER row CopyTo.
+        // Lift and normal retract fallback getters expose raw native globals.
+        const std::array<float, 4> fallback_speeds{
+            parameter("lift_speed"), parameter("lift_speed2"),
+            bottom ? 100.f : retract_s,
+            bottom ? 80.f : global_parameter("retract_speed2", false)};
+        complete_time += cxdlp_layer_seconds(row, fallback_speeds, fresh != nullptr);
+        settings.push_back(row);
+    }
+    const auto counts = sla::cxdlpv4_generated_counts(layer_count,
+        fresh ? int(fresh->globals.bottom_layers) : print.material_config().sla_bottom_layers.value,
+        fresh ? int(fresh->globals.transition_layers) : print.material_config().sla_transition_layers.value,
+        [&](size_t i) { return settings[i].exposure; });
+    complete_time = fresh ? sla::cxdlpv4_public_round2(complete_time) : cxdlp_round2(complete_time);
+    if (!std::isfinite(complete_time) || complete_time < 0 || double(complete_time) > UINT32_MAX)
+        throw ExportError("CXDLPv4 complete print time exceeds its uint32 range");
+    const uint32_t stored_print_time = uint32_t(complete_time); // Reference truncates positive seconds.
 
     const std::string printer_model = m_cfg.printer_model.value;
-    if(printer_model.size()>255 || printer_model.find('\0')!=std::string::npos)
-        throw ExportError("Invalid CXDLPv4 printer model identifier");
+    sla::require_cxdlpv4_printer_identifier(printer_model,fresh!=nullptr);
     const auto *document=print.layer_document();
     if(!document || document->layer_count()!=layer_count)
         throw ExportError("CXDLPv4 requires its canonical layer masks for geometry metadata");
@@ -309,7 +413,6 @@ void CrealityCXDLPv4Archive::export_print(const std::string     fname,
         const auto mask=document->image(i);
         if(mask.cols!=res_x || mask.rows!=res_y)throw ExportError("CXDLPv4 mask dimensions differ from the printer");
         auto &geometry=geometries[i];
-        geometry.nonzero=uint32_t(std::count_if(mask.buf.begin(),mask.buf.end(),[](uint8_t value){return value>=2;}));
         // Trace only the occupied rectangle, as UVtools does. Empty screen
         // margins must not be flooded/allocated for every individual layer.
         // Translation leaves contour area unchanged; gray 1 is dropped by RLE.
@@ -320,6 +423,10 @@ void CrealityCXDLPv4Archive::export_print(const std::string     fname,
             if(first==end)continue;
             const auto last=std::find_if(std::make_reverse_iterator(end),std::make_reverse_iterator(first),
                                          [](uint8_t value){return value>=2;});
+            // The already located outer span contains every exposed pixel
+            // of this row. Count there instead of scanning all screen margins
+            // again in a separate full-image pass. Gray 1 still quantizes to 0.
+            geometry.nonzero+=uint32_t(std::count_if(first,last.base(),[](uint8_t value){return value>=2;}));
             left=std::min(left,size_t(first-begin));right=std::max(right,size_t(last.base()-begin));
             top=std::min(top,y);bottom=y+1;
         }
@@ -334,13 +441,19 @@ void CrealityCXDLPv4Archive::export_print(const std::string     fname,
         geometry.area=uint32_t(area);
     }); });
     double volume_mm3=0,previous_z=0;
+    sla::ExposurePositionValidator positions(fresh ? fresh->position_policy : sla::ExposurePositionPolicy::IncreasingLayers);
     for(size_t i=0;i<layer_count;++i) {
         const auto &geometry=geometries[representative[i]];
         areas[i]=geometry.area;
-        const double z=double(print.print_layers()[i].level())*SCALING_FACTOR;
-        if(!std::isfinite(z) || z<=previous_z)throw ExportError("Invalid CXDLPv4 layer position");
+        const double z=fresh ? double(settings[i].z) : double(print.print_layers()[i].level())*SCALING_FACTOR;
+        positions.append(z);
         volume_mm3+=geometry.nonzero*volume_pixel_area*(z-previous_z);previous_z=z;
     }
+
+    // The validated owned plan accounts for the union of all masks at one Z.
+    // The ordinary count above remains the fast path for increasing model layers.
+    if (fresh && fresh->position_policy == sla::ExposurePositionPolicy::RepeatedExposureHeights)
+        volume_mm3 = double(fresh->material_ml) * 1000.;
 
     // Header layout per UVtools CrealityCXDLPv4File:
     // MagicSize (4) + Magic (9) + Version (2) + PrinterModel (4+len+1) +
@@ -366,8 +479,8 @@ void CrealityCXDLPv4Archive::export_print(const std::string     fname,
     static constexpr uint32_t PREVIEW_LARGE_HEIGHT = 300;
     static constexpr uint32_t PREVIEW_HEADER_SIZE = 32;  // 8 uint32s per UVtools Preview schema
 
-    const auto preview_small_data=encode_cxdlpv4_rgb15(PREVIEW_SMALL_WIDTH,PREVIEW_SMALL_HEIGHT,thumbnails);
-    const auto preview_large_data=encode_cxdlpv4_rgb15(PREVIEW_LARGE_WIDTH,PREVIEW_LARGE_HEIGHT,thumbnails);
+    const auto preview_small_data=encode_chitubox_rgb15(PREVIEW_SMALL_WIDTH,PREVIEW_SMALL_HEIGHT,thumbnails);
+    const auto preview_large_data=encode_chitubox_rgb15(PREVIEW_LARGE_WIDTH,PREVIEW_LARGE_HEIGHT,thumbnails);
     const uint32_t preview_small_image_size=uint32_t(preview_small_data.size());
     const uint32_t preview_large_image_size=uint32_t(preview_large_data.size());
 
@@ -390,8 +503,8 @@ void CrealityCXDLPv4Archive::export_print(const std::string     fname,
     BOOST_LOG_TRIVIAL(debug) << "[CXDLPv4] data_blob_offset=" << data_blob_offset << ", LAYER_DEF_EX_SIZE=" << LAYER_DEF_EX_SIZE;
     BOOST_LOG_TRIVIAL(debug) << "[CXDLPv4] preview_small size=" << preview_small_image_size << " preview_large size=" << preview_large_image_size;
     
-    for (size_t i = 0; i < m_layers.size(); ++i) {
-        const sla::EncodedRaster &rst = m_layers[i];
+    for (size_t i = 0; i < layers.size(); ++i) {
+        const sla::EncodedRaster &rst = layers[i];
         if(rst.size()>UINT32_MAX-LAYER_DEF_EX_SIZE)throw ExportError("CXDLPv4 layer data exceeds 32-bit offsets");
         const uint32_t rle_size = uint32_t(rst.size());
         const uint32_t layer_blob = uint32_t(LAYER_DEF_EX_SIZE + rle_size);
@@ -415,11 +528,11 @@ void CrealityCXDLPv4Archive::export_print(const std::string     fname,
     // Calculate slicer offset
     slicer_offset = data_blob_offset + total_layer_data_size;
     
-    // Verify m_layers count matches expected layer_count
-    if (m_layers.size() != size_t(layer_count)) {
+    // Verify encoded layer count matches expected layer_count
+    if (layers.size() != size_t(layer_count)) {
         throw RuntimeError(
-            std::string("Mismatch: m_layers.size()=") + 
-            std::to_string(m_layers.size()) + " but layer_count=" +
+            std::string("Mismatch: layers.size()=") + 
+            std::to_string(layers.size()) + " but layer_count=" +
             std::to_string(layer_count));
     }
     
@@ -442,20 +555,20 @@ void CrealityCXDLPv4Archive::export_print(const std::string     fname,
         write_f32_le(out, float(w));
         write_f32_le(out, float(h));
         write_f32_le(out, float(m_cfg.max_print_height.getFloat()));
-        write_f32_le(out, sla::layer_z(print, layer_count-1));
+        write_f32_le(out, fresh ? settings.back().z : sla::layer_z(print, layer_count-1));
         write_f32_le(out, layer_height);
-        write_u32_le(out, std::min(bottom_layers, layer_count));
+        write_u32_le(out, counts.bottom);
         write_u32_le(out, preview_small_offset);  // preview small offset
         write_u32_le(out, layer_defs_offset);
         write_u32_le(out, layer_count);
         write_u32_le(out, preview_large_offset);  // preview large offset
-        write_u32_le(out, sla::lcd_print_time(print));
+        write_u32_le(out, stored_print_time);
         write_u32_le(out, 0); // Canonical masks already contain printer mirroring.
         write_u32_le(out, print_params_offset);
         write_u32_le(out, uint32_t(PRINT_PARAMS_SIZE));
         write_u32_le(out, 1); // anti alias
-        write_u16_le(out, uint16_t(sla::motion_parameter(print, "light_pwm", false)));
-        write_u16_le(out, uint16_t(sla::motion_parameter(print, "light_pwm", true)));
+        write_u16_le(out, uint16_t(global_parameter("light_pwm", false)));
+        write_u16_le(out, uint16_t(global_parameter("light_pwm", true)));
         write_u32_le(out, 0); // encryption key
         write_u32_le(out, slicer_offset);  // slicer address - NOW WITH CORRECT OFFSET
         write_u32_le(out, slicer_size);    // slicer size
@@ -487,18 +600,20 @@ void CrealityCXDLPv4Archive::export_print(const std::string     fname,
         // Seven-bit encoding drops gray 1. Volume and contours must describe
         // the mask actually sent to the printer, including any user edits.
         const float material_ml = float(volume_mm3 / 1000.0);
-        write_f32_le(out, bottom_lift_h + sla::motion_parameter(print, "lift_height2", true));
+        write_f32_le(out, fresh ? float(fresh->globals.bottom.at(F::LiftDistance) + fresh->globals.bottom.at(F::LiftDistance2))
+                               : bottom_lift_h + global_parameter("lift_height2", true));
         write_f32_le(out, bottom_lift_s);
-        write_f32_le(out, lift_h + sla::motion_parameter(print, "lift_height2", false));
+        write_f32_le(out, fresh ? float(fresh->globals.normal.at(F::LiftDistance) + fresh->globals.normal.at(F::LiftDistance2))
+                               : lift_h + global_parameter("lift_height2", false));
         write_f32_le(out, lift_s);
         write_f32_le(out, retract_s);
         write_f32_le(out, material_ml);
-        write_f32_le(out, float(material_ml * print.material_config().material_density.value));
-        write_f32_le(out, print.material_config().bottle_volume.value > 0 ?
+        write_f32_le(out, fresh ? fresh_material[0] : float(material_ml * print.material_config().material_density.value));
+        write_f32_le(out, fresh ? fresh_material[1] : print.material_config().bottle_volume.value > 0 ?
             float(material_ml * print.material_config().bottle_cost.value / print.material_config().bottle_volume.value) : 0.f);
-        write_f32_le(out, 0.0f); // bottom light off
-        write_f32_le(out, 0.0f); // light off
-        write_u32_le(out, std::min(bottom_layers, layer_count));
+        write_f32_le(out, fresh ? float(fresh->globals.bottom.at(F::LightOff)) : 0.f); // bottom light off
+        write_f32_le(out, fresh ? float(fresh->globals.normal.at(F::LightOff)) : 0.f); // light off
+        write_u32_le(out, counts.bottom);
         write_f32_le(out, normal_exposure);
         write_f32_le(out, bottom_exposure);
         write_u32_le(out, 0);
@@ -509,9 +624,9 @@ void CrealityCXDLPv4Archive::export_print(const std::string     fname,
         // Layer definitions table
         uint32_t cur_data_offset = data_blob_offset;
         for (uint32_t i = 0; i < layer_count; ++i) {
-            write_f32_le(out, sla::layer_z(print, i));
-            write_f32_le(out, sla::layer_exposure(print, i));
-            write_f32_le(out, 0.0f); // light off
+            write_f32_le(out, settings[i].z);
+            write_f32_le(out, settings[i].exposure);
+            write_f32_le(out, settings[i].light_off);
             write_u32_le(out, cur_data_offset);
             write_u32_le(out, data_sizes[size_t(i)]);
             write_u32_le(out, 0); // datatype
@@ -525,41 +640,31 @@ void CrealityCXDLPv4Archive::export_print(const std::string     fname,
 
         // Per-layer extended definitions + payload
         for (uint32_t i = 0; i < layer_count; ++i) {
-            const bool is_bottom = i < std::min(bottom_layers, layer_count);
-            write_f32_le(out, is_bottom ? bottom_lift_h : lift_h);
-            write_f32_le(out, is_bottom ? bottom_lift_s : lift_s);
-            write_f32_le(out, sla::motion_parameter(print, "lift_height2", is_bottom));
-            write_f32_le(out, sla::motion_parameter(print, "lift_speed2", is_bottom));
-            write_f32_le(out, sla::motion_parameter(print, "retract_speed", is_bottom));
-            write_f32_le(out, sla::motion_parameter(print, "retract_height2", is_bottom));
-            write_f32_le(out, sla::motion_parameter(print, "retract_speed2", is_bottom));
-            write_f32_le(out, sla::motion_parameter(print, "wait_after_cure", is_bottom));
-            write_f32_le(out, sla::motion_parameter(print, "wait_after_lift", is_bottom));
-            write_f32_le(out, sla::motion_parameter(print, "wait_before_cure", is_bottom));
-            write_f32_le(out, sla::motion_parameter(print, "light_pwm", is_bottom));
+            for (float value : settings[i].extended)
+                write_f32_le(out, value);
 
-            const sla::EncodedRaster &rst = m_layers[size_t(i)];
+            const sla::EncodedRaster &rst = layers[size_t(i)];
             out.write(reinterpret_cast<const char *>(rst.data()), std::streamsize(rst.size()));
         }
 
         // Write Slicer Info section (76 bytes)
-        write_f32_le(out, sla::motion_parameter(print, "lift_height2", true));
-        write_f32_le(out, sla::motion_parameter(print, "lift_speed2", true));
-        write_f32_le(out, sla::motion_parameter(print, "lift_height2", false));
-        write_f32_le(out, sla::motion_parameter(print, "lift_speed2", false));
-        write_f32_le(out, sla::motion_parameter(print, "retract_height2", false));
-        write_f32_le(out, sla::motion_parameter(print, "retract_speed2", false));
-        write_f32_le(out, sla::motion_parameter(print, "wait_after_lift", false));
+        write_f32_le(out, global_parameter("lift_height2", true));
+        write_f32_le(out, global_parameter("lift_speed2", true));
+        write_f32_le(out, global_parameter("lift_height2", false));
+        write_f32_le(out, global_parameter("lift_speed2", false));
+        write_f32_le(out, global_parameter("retract_height2", false));
+        write_f32_le(out, global_parameter("retract_speed2", false));
+        write_f32_le(out, global_parameter("wait_after_lift", false));
         write_u32_le(out, 1); // Enable the per-layer extended parameters.
         write_u32_le(out, uint32_t(std::time(nullptr) / 60)); // UTC minutes since epoch
         write_u32_le(out, 1); // AntiAliasLevel
         write_u32_le(out, 0); // SoftwareVersion
-        write_f32_le(out, sla::motion_parameter(print, "wait_before_cure", false));
-        write_f32_le(out, sla::motion_parameter(print, "wait_after_cure", false));
+        write_f32_le(out, global_parameter("wait_before_cure", false));
+        write_f32_le(out, global_parameter("wait_after_cure", false));
         write_f32_le(out, normal_exposure);
         write_f32_le(out, bottom_exposure);
-        write_f32_le(out, sla::motion_parameter(print, "wait_after_lift", true));
-        write_u32_le(out, uint32_t(std::max(0, print.material_config().sla_transition_layers.value)));
+        write_f32_le(out, global_parameter("wait_after_lift", fresh ? false : true));
+        write_u32_le(out, counts.transition);
         write_u32_le(out, 0);
         write_u32_le(out, 0);
 

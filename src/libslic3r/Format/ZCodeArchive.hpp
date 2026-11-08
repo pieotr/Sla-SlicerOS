@@ -24,6 +24,7 @@ protected:
     sla::RasterEncoder get_encoder() const override;
 
 public:
+    static void validate_configuration(const SLAPrint &print);
     explicit ZCodeArchive(const SLAPrinterConfig &cfg) : m_cfg(cfg) {}
     explicit ZCodeArchive(SLAPrinterConfig &&cfg) : m_cfg(std::move(cfg)) {}
 
@@ -33,7 +34,7 @@ public:
                       const std::string    &projectname = "") override;
 };
 
-// Z-Suite ZCodex format (variation of ZCode)
+// Z-Suite Inkspire archive: JSON metadata and relative SLA protocol.
 class ZCodexArchive : public SLAArchiveWriter {
     SLAPrinterConfig m_cfg;
 
@@ -42,6 +43,7 @@ protected:
     sla::RasterEncoder get_encoder() const override;
 
 public:
+    static void validate_configuration(const SLAPrint &print);
     explicit ZCodexArchive(const SLAPrinterConfig &cfg) : m_cfg(cfg) {}
     explicit ZCodexArchive(SLAPrinterConfig &&cfg) : m_cfg(std::move(cfg)) {}
 

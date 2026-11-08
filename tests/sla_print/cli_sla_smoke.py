@@ -70,7 +70,10 @@ def main():
     run('reject-fff-material-query', ['--query-print-material-profiles', '--printer-profile', 'CLI FFF'], success=False)
     run('reject-query-output', ['--query-printer-models', '--output', output / 'missing-parent/models.json'], success=False)
 
+    # Synthetic raster for software acceptance; the required CXDLP identifier
+    # does not certify these dimensions for a physical CL-60 printer.
     configuration = '''printer_technology = SLA
+printer_model = CL-60
 layer_height = 0.1
 initial_layer_height = 0.1
 display_width = 12

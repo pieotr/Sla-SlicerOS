@@ -38,8 +38,10 @@ ComboBox::ComboBox(wxWindow *      parent,
     drop.Create(this, style);
 
     SetFont(Slic3r::GUI::wxGetApp().normal_font());
-    if (style & wxCB_READONLY)
+    if (style & wxCB_READONLY) {
         GetTextCtrl()->Hide();
+        SetCanFocus(true);
+    }
     else
         GetTextCtrl()->Bind(wxEVT_KEY_DOWN, &ComboBox::keyDown, this);
 

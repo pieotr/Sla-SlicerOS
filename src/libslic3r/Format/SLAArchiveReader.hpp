@@ -46,7 +46,8 @@ public:
     // registered_sla_archives(). An explicit ID takes precedence over the
     // filename; unknown IDs and formats without readers return nullptr.
     // If empty, the longest registered filename suffix is used. Equal suffixes
-    // (like *.zip) use the first registered reader; contents are not probed.
+    // (like *.zip) use the first registered format; contents are not probed.
+    // A longer suffix without a reader does not fall back to a shorter one.
     static std::unique_ptr<SLAArchiveReader> create(
         const std::string &fname,
         const std::string &format_id,

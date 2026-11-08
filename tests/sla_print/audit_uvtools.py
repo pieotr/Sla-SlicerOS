@@ -3,6 +3,8 @@
 
 Read the current generator manifest so stale files from a previous run cannot
 be counted as supported. A completed probe is not pixel/metadata validation.
+The optional full oracle decodes every mask and retains pixel hashes/fields.
+That proves decoder acceptance, not equality to a source or printer firmware.
 Only local executables are invoked; nothing is installed or downloaded.
 """
 import argparse
@@ -18,6 +20,8 @@ def main():
     parser.add_argument("directory", type=Path, help="sla-format-audit directory")
     parser.add_argument("uvtools", type=Path, help="local UVtoolsCmd executable or DLL")
     parser.add_argument("--native-dir", type=Path, help="directory containing libcvextern.so")
+    parser.add_argument("--full-oracle", type=Path,
+                        help="original UVtools full-decoder development oracle DLL; decode every layer and retain pixel hashes")
     parser.add_argument("--timeout", type=float, default=60)
     args = parser.parse_args()
     if args.timeout <= 0:
@@ -28,7 +32,9 @@ def main():
         parser.error("UVtools executable does not exist")
     with (directory / "exports.tsv").open(newline="") as stream:
         rows = list(csv.DictReader(stream, delimiter="\t"))
-    logs = directory / "uvtools-current"
+    if args.full_oracle and not args.full_oracle.is_file():
+        parser.error("Full-decoder oracle does not exist")
+    logs = directory / ("uvtools-full" if args.full_oracle else "uvtools-current")
     logs.mkdir(exist_ok=True)
     env = dict(os.environ, DOTNET_CLI_TELEMETRY_OPTOUT="1",
                DOTNET_SKIP_FIRST_TIME_EXPERIENCE="1")
@@ -51,13 +57,36 @@ def main():
             result.update(status="fixture_error", detail="Expected exactly one current fixture")
             continue
         try:
-            process = subprocess.run(command + ["print-properties", str(candidates[0]), "--all"],
+            probe = (["dotnet", str(args.full_oracle.resolve()), str(executable.parent),
+                      "--full-open", str(candidates[0])] if args.full_oracle else
+                     command + ["print-properties", str(candidates[0]), "--all"])
+            process = subprocess.run(probe,
                                      capture_output=True, text=True, errors="replace",
                                      timeout=args.timeout, env=env)
             output = process.stdout + process.stderr
             result["exit_code"] = process.returncode
             if "DllNotFoundException" in output:
                 result["status"] = "blocked_native_dependency"
+            elif args.full_oracle:
+                (logs / (format_id + ".json")).write_text(process.stdout)
+                (logs / (format_id + ".stderr")).write_text(process.stderr)
+                try:
+                    reports = json.loads(process.stdout)
+                    if process.returncode != 0 or not isinstance(reports, list) or len(reports) != 1:
+                        raise ValueError("Expected one successful full report")
+                    report = reports[0]
+                    layers = report["decodedLayers"]
+                    if report["status"] != "fully_decoded" or not layers or len(layers) != report["LayerCount"]:
+                        raise ValueError("Incomplete full layer decode")
+                    for index, layer in enumerate(layers):
+                        if (layer["index"] != index or layer["width"] != report["ResolutionX"] or
+                            layer["height"] != report["ResolutionY"] or len(layer["sha256"]) != 64 or
+                            any(c not in "0123456789abcdef" for c in layer["sha256"])):
+                            raise ValueError("Invalid layer dimensions, index or pixel hash")
+                    result.update(status="fully_decoded", family=report["family"],
+                                  layer_count=len(layers), resolution=[report["ResolutionX"], report["ResolutionY"]])
+                except (ValueError, KeyError, TypeError) as error:
+                    result.update(status="decode_error", detail=str(error))
             elif "Unhandled exception" in output:
                 result["status"] = "decoder_error"
             else:

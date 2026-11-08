@@ -10,6 +10,12 @@
 #include "MainFrame.hpp"
 #include "format.hpp"
 #include "libslic3r/GCode/Thumbnails.hpp"
+#include "libslic3r/SLA/ExportRequest.hpp"
+#include "libslic3r/SLA/ExportPrinterValidation.hpp"
+#include "libslic3r/SLA/GeneratedLayerOwnership.hpp"
+#include "libslic3r/SLA/LayerPaletteProjection.hpp"
+#include "libslic3r/SLA/SL1FreshExportPlan.hpp"
+#include "libslic3r/SLA/CWSFreshExportPlan.hpp"
 
 #include <wx/app.h>
 #include <wx/panel.h>
@@ -26,7 +32,9 @@
 #include "libslic3r/Print.hpp"
 #include "libslic3r/SLAPrint.hpp"
 #include "libslic3r/Utils.hpp"
+#ifndef SLIC3R_SLA_ONLY
 #include "libslic3r/GCode/PostProcessor.hpp"
+#endif
 #include "libslic3r/Format/SL1.hpp"
 #include "libslic3r/Thread.hpp"
 #include "libslic3r/libslic3r.h"
@@ -134,6 +142,17 @@ BackgroundSlicingProcess::~BackgroundSlicingProcess()
 
 bool BackgroundSlicingProcess::select_technology(PrinterTechnology tech)
 {
+#ifdef SLIC3R_SLA_ONLY
+    // Reject invalid selection before resetting or mutating the active job.
+    if(tech != ptSLA)throw ExportError("FFF sessions are unavailable in the SLA-only application");
+    if(m_sla_print == nullptr)throw std::logic_error("No SLA print is bound to the background worker");
+    const bool changed=m_print != m_sla_print;
+    if(changed) {
+        if(m_print != nullptr)this->reset();
+        m_print=m_sla_print;
+    }
+    return changed;
+#else
 	bool changed = false;
 	if (m_print == nullptr || m_print->technology() != tech) {
 		if (m_print != nullptr)
@@ -149,6 +168,8 @@ bool BackgroundSlicingProcess::select_technology(PrinterTechnology tech)
 		m_print = m_fff_print;
 	assert(m_print != nullptr);
 	return changed;
+
+#endif
 }
 
 PrinterTechnology BackgroundSlicingProcess::current_printer_technology() const
@@ -168,6 +189,9 @@ std::string BackgroundSlicingProcess::output_filepath_for_project(const boost::f
 // from the G-code generator.
 void BackgroundSlicingProcess::process_fff()
 {
+#ifdef SLIC3R_SLA_ONLY
+    throw ExportError("FFF slicing is unavailable in the SLA-only application");
+#else
 	assert(m_print == m_fff_print);
 	m_print->process();
 	wxCommandEvent evt(m_event_slicing_completed_id);
@@ -188,43 +212,122 @@ void BackgroundSlicingProcess::process_fff()
 	    }
 		this->set_step_done(bspsGCodeFinalize);
 	}
+#endif
 }
 
 void BackgroundSlicingProcess::process_sla()
 {
     assert(m_print == m_sla_print);
-    m_print->process();
-    if (this->set_step_started(bspsGCodeFinalize)) {
-        if (! m_export_path.empty()) {
-			wxQueueEvent(GUI::wxGetApp().mainframe->m_plater, new wxCommandEvent(m_event_export_began_id));
-
-            const std::string export_path = m_sla_print->print_statistics().finalize_output_path(m_export_path);
-
-			auto [thumbnails_list, errors] = GCodeThumbnails::make_and_check_thumbnail_list(current_print()->full_print_config());
-
-			if (errors != enum_bitmask<ThumbnailError>()) {
-				std::string error_str = format("Invalid thumbnails value:");
-				error_str += GCodeThumbnails::get_error_string(errors);
-				throw Slic3r::ExportError(error_str);
-			}
-
-			Vec2ds 	sizes;
-			if (!thumbnails_list.empty()) {
-				sizes.reserve(thumbnails_list.size());
-				for (const auto& [format, size] : thumbnails_list)
-					sizes.emplace_back(size);
-			}
-			ThumbnailsList thumbnails = this->render_thumbnails(ThumbnailsParams{sizes, true, true, true, true });
-			m_sla_print->export_print(export_path, thumbnails);
-
-            m_print->set_status(100, GUI::format(_L("Masked SLA file exported to %1%"), export_path));
-        } else if (! m_upload_job.empty()) {
-			wxQueueEvent(GUI::wxGetApp().mainframe->m_plater, new wxCommandEvent(m_event_export_began_id));
+    try {
+        m_print->process();
+        // Capture before checking the accepted input. An input change before
+        // capture fails input.check(); a later change retires completed_source.
+        const auto completed_source = m_sla_print->export_generation_guard();
+        if (!m_sla_completion) throw ExportError("SLA processing has no accepted input");
+        m_sla_completion->input.check();
+        this->throw_if_canceled();
+        completed_source.check();
+        m_sla_completion->ready_source = completed_source;
+        if (!this->set_step_started(bspsGCodeFinalize)) return;
+        if (!m_export_path.empty()) {
+            // schedule_export publishes this owner under the print-state lock
+            // used by set_step_started. It is not reset until the worker joins.
+            const auto intent = m_sla_export_request;
+            if (!intent) throw ExportError("SLA export has no accepted request");
+            auto check = [this, &intent] { this->throw_if_canceled(); intent->check(); };
+            check();
+            completed_source.check();
+            m_sla_completion->export_started = true;
+            wxQueueEvent(GUI::wxGetApp().mainframe->m_plater, new wxCommandEvent(m_event_export_began_id));
+            auto [thumbnails_list, errors] = GCodeThumbnails::make_and_check_thumbnail_list(current_print()->full_print_config());
+            if (errors != enum_bitmask<ThumbnailError>())
+                throw ExportError("Invalid thumbnails value:" + GCodeThumbnails::get_error_string(errors));
+            Vec2ds sizes;
+            sizes.reserve(thumbnails_list.size());
+            for (const auto &[format, size] : thumbnails_list) sizes.emplace_back(size);
+            auto thumbnails = this->render_thumbnails(ThumbnailsParams{sizes, true, true, true, true});
+            check();
+            const auto snapshot = std::make_shared<const sla::ExportSnapshot>(
+                m_sla_print->capture_export_snapshot(thumbnails, [&](size_t, size_t) { check(); return true; }));
+            check();
+            auto confirm = [&](const wxString &message, const wxString &title) {
+                // A modal UI callback can outlive the worker if source changes
+                // cancel it. Own its result; never capture worker stack data.
+                const auto accepted = std::make_shared<bool>(false);
+                snapshot->generation().check();
+                const bool completed = this->execute_ui_task([accepted, message, title] {
+                    *accepted = wxMessageBox(message, title, wxYES_NO | wxNO_DEFAULT | wxICON_QUESTION,
+                        GUI::wxGetApp().mainframe->m_plater) == wxYES;
+                });
+                check();
+                snapshot->generation().check();
+                if (!completed) throw CanceledException{};
+                return *accepted;
+            };
+            auto decline = [&] {
+                intent->cancel();
+                m_export_declined = true;
+                m_print->set_status(100, _u8L("Export cancelled. Sliced layers remain available."));
+                this->set_step_done(bspsGCodeFinalize);
+            };
+            const auto &document = snapshot->document();
+            if (intent->format() == "cxdlpv4") {
+                const bool owned = !snapshot->objects().empty() || (document && document->fresh_job());
+                const auto error = sla::cxdlpv4_printer_identifier_error(
+                    snapshot->configuration().opt_string("printer_model"), owned);
+                if (!error.empty()) throw ExportError(error +
+                    "\n\nSet Printer > General > Output > Printer model (firmware), then save the printer preset and try again.");
+            }
+            if (document && document->fresh_job()) {
+                if (intent->format() == "SL1" || intent->format() == "SL1S") {
+                    const auto plan = sla::sl1_exposure_transition_preview(*document,
+                        [&](size_t, size_t) { check(); snapshot->generation().check(); return true; });
+                    if (plan.projected_transition_exposures && !confirm(wxString::Format(
+                        "SL1 uses a global exposure transition. Exporting will project %llu transition exposures; the largest change is %.6g seconds.\n\nContinue? The original project parameters will be kept.",
+                        static_cast<unsigned long long>(plan.projected_transition_exposures), plan.maximum_exposure_change),
+                        "Confirm exposure transition")) { decline(); return; }
+                }
+                if (intent->format() == "cws") {
+                    const auto plan = sla::cws_fresh_export_plan(*document);
+                    if (plan.projected_time_fields && !confirm(wxString::Format(
+                        "CWS uses whole milliseconds. Exporting will round %llu time values; the largest change is %.6g seconds.\n\nContinue? The original project parameters will be kept.",
+                        static_cast<unsigned long long>(plan.projected_time_fields), plan.maximum_time_change),
+                        "Confirm export times")) { decline(); return; }
+                }
+            }
+            bool palette_approved = false;
+            const auto precision = sla::generated_mask_precision(intent->format(),
+                snapshot->configuration().opt_int("sla_cbddlp_aa"), snapshot->configuration().opt_string("sla_anycubic_version"));
+            if (document && document->fresh_job() && precision != sla::LayerMaskPrecision::Gray8 &&
+                precision != document->fresh_job()->mask_precision) {
+                const auto loss = sla::layer_palette_loss(*document, precision,
+                    [&](size_t, size_t) { check(); snapshot->generation().check(); return true; });
+                if (loss.changed_pixels) {
+                    const unsigned levels = precision == sla::LayerMaskPrecision::NativeGray7 ? 128 :
+                        precision == sla::LayerMaskPrecision::NativeGray4 ? 16 : (1u << sla::mask_bitplanes(precision));
+                    palette_approved = confirm(wxString::Format(
+                        "The selected format uses %u grayscale levels. Exporting will change %llu pixels; the largest change is %u of 255.\n\nExport a converted copy? Your original layers and Undo history will be kept.",
+                        levels, static_cast<unsigned long long>(loss.changed_pixels), loss.maximum_change), "Convert export palette");
+                    if (!palette_approved) { decline(); return; }
+                }
+            }
+            const auto request = intent->bind(snapshot, palette_approved);
+            m_sla_completion->publication.emplace(SLAExportPublication{request.path(), request.format(), false});
+            request.write([this] { this->throw_if_canceled(); });
+            m_sla_completion->publication->committed = true;
+            m_print->set_status(100, GUI::format(_L("Masked SLA file exported to %1%"), request.path()));
+        } else if (!m_upload_job.empty()) {
+            wxQueueEvent(GUI::wxGetApp().mainframe->m_plater, new wxCommandEvent(m_event_export_began_id));
             prepare_upload(m_upload_job);
         } else {
-			m_print->set_status(100, _u8L("Slicing complete"));
+            m_print->set_status(100, _u8L("Slicing complete"));
         }
         this->set_step_done(bspsGCodeFinalize);
+    } catch (const CanceledException &) {
+        // Export guards may cancel independently of PrintBase. Keep the worker
+        // state machine's cancellation invariant without overriding internal stop.
+        if (!m_print->canceled()) m_print->cancel();
+        throw;
     }
 }
 
@@ -240,7 +343,11 @@ void BackgroundSlicingProcess::thread_proc()
 	TBBLocalesSetter setter;
 
 	assert(m_print != nullptr);
+#ifdef SLIC3R_SLA_ONLY
+    assert(m_print == m_sla_print);
+#else
 	assert(m_print == m_fff_print || m_print == m_sla_print);
+#endif
 	std::unique_lock<std::mutex> lck(m_mutex);
 	// Let the caller know we are ready to run the background processing task.
 	m_state = STATE_IDLE;
@@ -271,7 +378,8 @@ void BackgroundSlicingProcess::thread_proc()
 			// Don't post the canceled event, if canceled from Print::apply().
 			SlicingProcessCompletedEvent evt(m_event_finished_id, 0, 
 				(m_state == STATE_CANCELED) ? SlicingProcessCompletedEvent::Cancelled :
-				exception ? SlicingProcessCompletedEvent::Error : SlicingProcessCompletedEvent::Finished, exception);
+				exception ? SlicingProcessCompletedEvent::Error : SlicingProcessCompletedEvent::Finished, exception,
+                m_attempts.current(), m_sla_completion);
         	wxQueueEvent(GUI::wxGetApp().mainframe->m_plater, evt.Clone());
         	// Cancelled by the user, not internally, thus cleanup() was not called yet.
         	// Otherwise cleanup() is called from Print::apply()
@@ -361,7 +469,13 @@ void BackgroundSlicingProcess::call_process(std::exception_ptr &ex) throw()
 	try {
 		assert(m_print != nullptr);
 		switch (m_print->technology()) {
-		case ptFFF: this->process_fff(); break;
+        case ptFFF:
+#ifdef SLIC3R_SLA_ONLY
+            throw ExportError("FFF slicing is unavailable in the SLA-only application");
+#else
+            this->process_fff();
+            break;
+#endif
 		case ptSLA: this->process_sla(); break;
 		default: m_print->process(); break;
 		}
@@ -410,6 +524,7 @@ void BackgroundSlicingProcess::thread_proc_safe() throw()
 
 void BackgroundSlicingProcess::join_background_thread()
 {
+	if (m_sla_export_request) m_sla_export_request->cancel();
 	std::unique_lock<std::mutex> lck(m_mutex);
 	if (m_state == STATE_INITIAL) {
 		// Worker thread has not been started yet.
@@ -452,7 +567,12 @@ bool BackgroundSlicingProcess::start()
 		return false;
 	if (! this->idle())
 		throw Slic3r::RuntimeError("Cannot start a background task, the worker thread is not idle.");
-	m_state = STATE_STARTED;
+    m_attempts.advance();
+    m_sla_completion.reset();
+    if (m_print == m_sla_print) {
+        m_sla_completion.emplace(SLAProcessCompletion{m_sla_print->export_input_guard(), {}, false});
+    }
+    m_state = STATE_STARTED;
 	m_print->set_cancel_callback([this](){ this->stop_internal(); });
 	lck.unlock();
 	m_condition.notify_one();
@@ -463,6 +583,7 @@ bool BackgroundSlicingProcess::start()
 bool BackgroundSlicingProcess::stop()
 {
 	// m_print->state_mutex() shall NOT be held. Unfortunately there is no interface to test for it.
+    if (m_sla_export_request) m_sla_export_request->cancel();
 	std::unique_lock<std::mutex> lck(m_mutex);
 	if (m_state == STATE_INITIAL) {
 //		m_export_path.clear();
@@ -490,6 +611,7 @@ bool BackgroundSlicingProcess::stop()
 bool BackgroundSlicingProcess::reset()
 {
 	bool stopped = this->stop();
+    m_attempts.advance(); // Retire already queued events before replacing data.
 	this->reset_export();
 	m_print->clear();
 	this->invalidate_all_steps();
@@ -502,6 +624,7 @@ bool BackgroundSlicingProcess::reset()
 void BackgroundSlicingProcess::stop_internal()
 {
 	// m_print->state_mutex() shall be held. Unfortunately there is no interface to test for it.
+    if (m_sla_export_request) m_sla_export_request->cancel();
 	if (m_state == STATE_IDLE)
 		// The worker thread is waiting on m_mutex/m_condition for wake up. The following lock of the mutex would block.
 		return;
@@ -599,6 +722,7 @@ Print::ApplyStatus BackgroundSlicingProcess::apply(const Model &model, const Dyn
 	assert(m_print != nullptr);
 	assert(config.opt_enum<PrinterTechnology>("printer_technology") == m_print->technology());
 	Print::ApplyStatus invalidated = m_print->apply(model, config, warnings);
+#ifndef SLIC3R_SLA_ONLY
 	if ((invalidated & PrintBase::APPLY_STATUS_INVALIDATED) != 0 && m_print->technology() == ptFFF &&
 		!m_fff_print->is_step_done(psGCodeExport)) {
 		// Some FFF status was invalidated, and the G-code was not exported yet.
@@ -607,6 +731,7 @@ Print::ApplyStatus BackgroundSlicingProcess::apply(const Model &model, const Dyn
 		if (m_gcode_result != nullptr)
 			m_gcode_result->reset();
 	}
+#endif
 	return invalidated;
 }
 
@@ -617,7 +742,7 @@ void BackgroundSlicingProcess::set_task(const PrintBase::TaskParams &params)
 }
 
 // Set the output path of the G-code.
-void BackgroundSlicingProcess::schedule_export(const std::string &path, bool export_path_on_removable_media)
+void BackgroundSlicingProcess::schedule_export(const std::string &path, bool export_path_on_removable_media, const std::string &sla_format)
 { 
 	assert(m_export_path.empty());
 	if (! m_export_path.empty())
@@ -626,6 +751,13 @@ void BackgroundSlicingProcess::schedule_export(const std::string &path, bool exp
 	// Guard against entering the export step before changing the export path.
 	std::scoped_lock<std::mutex> lock(m_print->state_mutex());
 	this->invalidate_step(bspsGCodeFinalize);
+    std::shared_ptr<sla::DeferredExportRequest> intent;
+    if (m_print == m_sla_print) {
+        const auto format = sla_format.empty() ? m_sla_print->printer_config().sla_archive_format.value : sla_format;
+        intent = std::make_shared<sla::DeferredExportRequest>(m_sla_print->export_input_guard(), format, path);
+    }
+    m_sla_export_request = std::move(intent);
+    m_export_declined = false;
 	m_export_path = path;
 	m_export_path_on_removable_media = export_path_on_removable_media;
 }
@@ -640,6 +772,9 @@ void BackgroundSlicingProcess::schedule_upload(Slic3r::PrintHostJob upload_job)
 	std::scoped_lock<std::mutex> lock(m_print->state_mutex());
 	this->invalidate_step(bspsGCodeFinalize);
 	m_export_path.clear();
+	if (m_sla_export_request) m_sla_export_request->cancel();
+	m_sla_export_request.reset();
+    m_export_declined = false;
 	m_upload_job = std::move(upload_job);
 }
 
@@ -648,6 +783,10 @@ void BackgroundSlicingProcess::reset_export()
 	assert(! this->running());
 	if (! this->running()) {
 		m_export_path.clear();
+		if (m_sla_export_request) m_sla_export_request->cancel();
+		m_sla_export_request.reset();
+        m_sla_completion.reset();
+        m_export_declined = false;
 		m_export_path_on_removable_media = false;
 		// invalidate_step expects the mutex to be locked.
 		std::scoped_lock<std::mutex> lock(m_print->state_mutex());
@@ -686,6 +825,11 @@ bool BackgroundSlicingProcess::invalidate_all_steps()
 // Copy the final G-code to target location (possibly a SD card, if it is a removable media, then verify that the file was written without an error).
 void BackgroundSlicingProcess::finalize_gcode(const std::string &path, const bool path_on_removable_media)
 {
+#ifdef SLIC3R_SLA_ONLY
+    (void)path;
+    (void)path_on_removable_media;
+    throw ExportError("FFF G-code finalization is unavailable in the SLA-only application");
+#else
 	m_print->set_status(95, _u8L("Running post-processing scripts"));
 
 	// Perform the final post-processing of the export path by applying the print statistics over the file name.
@@ -743,6 +887,7 @@ void BackgroundSlicingProcess::finalize_gcode(const std::string &path, const boo
 	}
 
 	m_print->set_status(100, GUI::format(_L("G-code file exported to %1%"), export_path));
+#endif
 }
 
 // A print host upload job has been scheduled, enqueue it to the printhost job queue
@@ -752,7 +897,10 @@ void BackgroundSlicingProcess::prepare_upload(PrintHostJob &upload_job)
 	boost::filesystem::path source_path = boost::filesystem::temp_directory_path()
 		/ boost::filesystem::unique_path("." SLIC3R_APP_KEY ".upload.%%%%-%%%%-%%%%-%%%%");
 
-	if (m_print == m_fff_print) {
+	if (m_print->technology() == ptFFF) {
+#ifdef SLIC3R_SLA_ONLY
+        throw ExportError("FFF upload is unavailable in the SLA-only application");
+#else
 		m_print->set_status(95, _u8L("Running post-processing scripts"));
 		std::string error_message;
 		if (copy_file(m_temp_output_path, source_path.string(), error_message) != SUCCESS)
@@ -764,6 +912,7 @@ void BackgroundSlicingProcess::prepare_upload(PrintHostJob &upload_job)
         std::string output_name_str = upload_job.upload_data.upload_path.string();
 		if (run_post_process_scripts(source_path_str, false, upload_job.printhost->get_name(), output_name_str, m_fff_print->full_print_config()))
 			upload_job.upload_data.upload_path = output_name_str;
+#endif
     } else {
         upload_job.upload_data.upload_path = m_sla_print->print_statistics().finalize_output_path(upload_job.upload_data.upload_path.string());
 

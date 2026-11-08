@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.0//EN" "http://www.w3.org/TR/2001/REC-SVG-20010904/DTD/svg10.dtd">
+<svg height="2000" width="2000" xmlns="http://www.w3.org/2000/svg" xmlns:svg="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+   <marker id="endArrow" markerHeight="8" markerUnits="strokeWidth" markerWidth="10" orient="auto" refX="1" refY="5" viewBox="0 0 10 10">
+      <polyline fill="darkblue" points="0,0 10,5 0,10 1,5" />
+   </marker>
+<rect fill='white' stroke='none' x='0' y='0' width='2000.000000' height='2000.000000'/>
+   <path d="M 118 81.6345 168 81.6345 168 131.635 118 131.635 z" style="fill: green; stroke: black; stroke-width: 0.000000; fill-type: evenodd"  fill-opacity="1.000000" />
+   <path d="M 1.89286 0 151.893 0 151.893 50 76.8929 120 1.89286 50 z" style="fill: blue; stroke: black; stroke-width: 0.000000; fill-type: evenodd"  fill-opacity="1.000000" />
+   <path d="M 40 85.5678 80 125.568 40 165.568 0 125.568 z" style="fill: red; stroke: black; stroke-width: 0.000000; fill-type: evenodd"  fill-opacity="1.000000" />
+   <path d="M 85.0482 118 105.048 118 125.048 148 95.0482 168 65.0482 148 z" style="fill: grey; stroke: black; stroke-width: 0.000000; fill-type: evenodd"  fill-opacity="1.000000" />
+</svg>

@@ -1,5 +1,6 @@
 #include <catch2/catch_test_macros.hpp>
 #include <test_utils.hpp>
+#include "sla_archive_test_config.hpp"
 
 #include "libslic3r/SLAPrint.hpp"
 #include "libslic3r/TriangleMesh.hpp"
@@ -28,8 +29,12 @@ TEST_CASE("Archive export test", "[sla_archives]") {
 
         auto m = FileReader::load_model(TEST_DATA_DIR PATH_SEPARATOR + std::string(pname) + ".obj");
 
-        fullcfg.printer_technology.setInt(ptSLA); // FIXME this should be ensured
-        fullcfg.set("sla_archive_format", entry.id);
+        Test::configure_archive_fixture(fullcfg, entry.id);
+        // Reconstructing the idler's small holes needs finer pixels than the
+        // codec smoke fixture. Preserve the existing 10% volume criterion.
+        if (entry.rdfactoryfn) {
+            fullcfg.set("display_pixels_x", 2000); fullcfg.set("display_pixels_y", 1200);
+        }
         fullcfg.set("supports_enable", false);
         fullcfg.set("pad_enable", false);
 
@@ -41,7 +46,11 @@ TEST_CASE("Archive export test", "[sla_archives]") {
         print.process();
 
         ThumbnailsList thumbnails;
-        auto outputfname = std::string("output_") + pname + "." + entry.ext;
+        struct TemporaryArchive {
+            boost::filesystem::path path;
+            ~TemporaryArchive() { boost::system::error_code error; boost::filesystem::remove(path, error); }
+        } output{boost::filesystem::unique_path(std::string("output_") + pname + "-%%%%-%%%%." + entry.ext)};
+        const auto outputfname = output.path.string();
 
         print.export_print(outputfname, thumbnails, pname);
 

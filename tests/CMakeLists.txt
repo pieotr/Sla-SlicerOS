@@ -17,6 +17,14 @@ target_include_directories(test_common INTERFACE ${CMAKE_CURRENT_LIST_DIR})
 target_compile_definitions(test_common INTERFACE TEST_DATA_DIR=R"\(${TEST_DATA_DIR}\)" CATCH_CONFIG_FAST_COMPILE)
 target_link_libraries(test_common INTERFACE Catch2::Catch2WithMain)
 
+# This policy is std-only and can run without a GUI backend or core library.
+if (SLIC3R_SLA_ONLY)
+    add_subdirectory(gui_window_geometry)
+    if (SLIC3R_GUI)
+        add_subdirectory(gui_background_events)
+    endif ()
+endif ()
+
 if (APPLE)
     target_link_libraries(test_common INTERFACE "-liconv -framework IOKit" "-framework CoreFoundation" -lc++)
 endif()

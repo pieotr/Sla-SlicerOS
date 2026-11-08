@@ -16,6 +16,7 @@
 #include <limits>
 #include <cassert>
 #include <cstdlib>
+#include <chrono>
 
 #include "Tesselate.hpp"
 #include "TriangleMesh.hpp"
@@ -1948,6 +1949,10 @@ std::vector<typename PolygonsType<mesh_info>::type> slice_mesh(
     }();
 
     BOOST_LOG_TRIVIAL(debug) << "slice_mesh to polygons";
+    const auto mesh_started = std::chrono::steady_clock::now();
+    const auto seconds_since = [](const auto &started) {
+        return std::chrono::duration<double>(std::chrono::steady_clock::now()-started).count();
+    };
        
     std::vector<IntersectionLines> lines;
 
@@ -1957,6 +1962,8 @@ std::vector<typename PolygonsType<mesh_info>::type> slice_mesh(
         // However facets_edges assigns a single edge ID to two triangles only, thus when factoring facets_edges out, one will have
         // to make sure that no code relies on it.
         std::vector<Vec3i> face_edge_ids = its_face_edge_ids<mesh_info>(mesh);
+        BOOST_LOG_TRIVIAL(info) << "Mesh slicing: edge topology " << seconds_since(mesh_started)
+            << " s; triangles=" << mesh.indices.size() << "; layers=" << zs.size();
         if (zs.size() <= 1) {
             // It likely is not worthwile to copy the vertices. Apply the transformation in place.
             if (is_identity(params.trafo)) {
@@ -1978,7 +1985,10 @@ std::vector<typename PolygonsType<mesh_info>::type> slice_mesh(
 
     throw_on_cancel();
 
+    BOOST_LOG_TRIVIAL(info) << "Mesh slicing: topology and intersections " << seconds_since(mesh_started) << " s";
+    const auto loops_started = std::chrono::steady_clock::now();
     std::vector<PolygonsType> layers = make_loops<mesh_info>(lines, params, throw_on_cancel);
+    BOOST_LOG_TRIVIAL(info) << "Mesh slicing: contour assembly " << seconds_since(loops_started) << " s";
 
 #ifdef SLIC3R_DEBUG
     {
@@ -2143,6 +2153,7 @@ std::vector<ExPolygons> slice_mesh_ex(
         layers_p = slice_mesh(mesh, zs, slicing_params, throw_on_cancel);
     }
     
+    const auto polygons_started = std::chrono::steady_clock::now();
 //    BOOST_LOG_TRIVIAL(debug) << "slice_mesh make_expolygons in parallel - start";
     std::vector<ExPolygons> layers(layers_p.size(), ExPolygons{});
     tbb::parallel_for(
@@ -2201,6 +2212,8 @@ std::vector<ExPolygons> slice_mesh_ex(
 #endif // NDEBUG
             }
         });
+    BOOST_LOG_TRIVIAL(info) << "Mesh slicing: polygon normalization "
+        << std::chrono::duration<double>(std::chrono::steady_clock::now()-polygons_started).count() << " s";
 //    BOOST_LOG_TRIVIAL(debug) << "slice_mesh make_expolygons in parallel - end";
 
     return layers;

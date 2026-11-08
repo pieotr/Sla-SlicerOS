@@ -9,6 +9,7 @@
 #include <boost/functional/hash.hpp>
 #include <stdlib.h>
 #include <cstdint>
+#include <atomic>
 #include <mutex>
 #include <set>
 #include <Eigen/Geometry>
@@ -19,12 +20,15 @@
 #include <iterator>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <string>
 #include <type_traits>
 #include <utility>
 #include <vector>
 
 #include "PrintBase.hpp"
+#include "SLA/CalibrationRecipe.hpp"
+#include "SLA/ExportGeneration.hpp"
 #include "SLA/SupportTree.hpp"
 #include "SLA/SupportPointGenerator.hpp" // SupportPointGeneratorData
 #include "Point.hpp"
@@ -48,8 +52,14 @@
 
 namespace Slic3r {
 namespace sla {
+class ExportGenerationGuard;
+class ExportSnapshot;
+class ExportRequest;
+class NativeArchiveConversionRequest;
+class SlicedResultSession;
 struct ProjectRasterState;
 struct JobController;
+struct LayerConversionPlan;
 }  // namespace sla
 
 enum SLAPrintStep : unsigned int {
@@ -328,6 +338,7 @@ public:
 protected:
     // to be called from SLAPrint only.
     friend class SLAPrint;
+    friend class sla::SlicedResultSession;
     friend class PrintBaseWithState<SLAPrintStep, slapsCount>;
 
 	SLAPrintObject(SLAPrint* print, ModelObject* model_object);
@@ -436,7 +447,12 @@ class TriangleMesh;
 
 struct SLAPrintStatistics
 {
+    // Owned neutral schedules exclude codec-specific setup and rounding.
+    // An exported file's executable estimate is a separate codec result.
+    enum class TimeBasis { LegacyProcess, OwnedNeutralSchedule };
     SLAPrintStatistics() { clear(); }
+    TimeBasis                       time_basis;
+    double                          raster_area_mm2;
     double                          estimated_print_time;
     double                          estimated_print_time_tolerance;
     double                          objects_used_material;
@@ -456,6 +472,8 @@ struct SLAPrintStatistics
     std::string             finalize_output_path(const std::string &path_in) const;
 
     void clear() {
+        time_basis = TimeBasis::LegacyProcess;
+        raster_area_mm2 = 0.;
         estimated_print_time = 0.;
         estimated_print_time_tolerance = 0.;
         objects_used_material = 0.;
@@ -504,7 +522,7 @@ public:
     // Returns true if an object step is done on all objects and there's at least one object.
     bool                is_step_done(SLAPrintObjectStep step) const;
     // Returns true if the last step was finished with success.
-    bool                finished() const override { return (m_raster_job && m_layer_document && !m_printer_input.empty()) ||
+    bool                finished() const override { return (m_frozen_export_ready && !m_printer_input.empty()) || (m_raster_job && m_layer_document && !m_printer_input.empty()) ||
         (this->is_step_done(slaposSliceSupports) && this->Inherited::is_step_done(slapsRasterize)); }
 
     const PrintObjects& objects() const { return m_objects; }
@@ -534,7 +552,7 @@ public:
 
 	std::string                 output_filename(const std::string &filename_base = std::string()) const override;
 
-    const SLAPrintStatistics&   print_statistics() const { return m_print_statistics; }
+    const SLAPrintStatistics&   print_statistics() const;
 
     std::string validate(std::vector<std::string>* warnings = nullptr) const override;
 
@@ -581,18 +599,62 @@ public:
     const std::vector<PrintLayer>& print_layers() const { return m_printer_input; }
     // Build an independent SLA raster job (PCB/calibration/import) without a
     // dummy mesh or a slicing pass. Masks are already in oriented raster space.
+    // Only explicit producers create new owned intent, after final overrides;
+    // imports and conversions retain their existing ownership by default.
     static std::unique_ptr<SLAPrint> create_raster_job(const DynamicPrintConfig &config,
-        const sla::LayerDocument &document, const std::vector<double> &positions_z);
+        const sla::LayerDocument &document, const std::vector<double> &positions_z,
+        std::optional<sla::FreshLayerProducer> producer = std::nullopt,
+        sla::ExposurePositionPolicy position_policy = sla::ExposurePositionPolicy::IncreasingLayers);
+    // Convert an imported native table using an explicit destination printer
+    // configuration, without a mesh or modifications to the source document.
+    static void convert_layer_archive(const DynamicPrintConfig &config, const sla::LayerDocument &document,
+        const std::string &format, const std::string &path);
+    // Derive neutral owned intent only on an explicit producer request, from
+    // finalized engine Z and typed settings. Does not attach or encode masks.
+    sla::FreshLayerJob make_fresh_layer_job(sla::FreshLayerProducer producer,
+        sla::ExposurePositionPolicy position_policy = sla::ExposurePositionPolicy::IncreasingLayers) const;
     bool is_raster_job() const { return m_raster_job; }
+    const std::shared_ptr<const sla::CalibrationRecipe> &calibration_recipe() const { return m_calibration_recipe; }
+    void set_calibration_recipe(std::shared_ptr<const sla::CalibrationRecipe> recipe);
     const sla::LayerDocument *layer_document() const { return m_layer_document.get(); }
+    // Distinguishes replacements with equal document revisions and config-only
+    // changes. A queued export must belong to the generation it captured.
+    uint64_t export_generation() const { return m_export_generation->generation.load(std::memory_order_acquire); }
+    sla::ExportGenerationGuard export_generation_guard() const;
+    sla::ExportInputGuard export_input_guard() const { return sla::ExportInputGuard(m_export_generation); }
+    // Frozen export contexts additionally check their request-owned guard.
+    void throw_if_canceled() const;
+    // Caller owns a ready-result phase; progress may cancel but must not
+    // re-enter source mutation while the coherent capture holds state_mutex.
+    sla::ExportSnapshot capture_export_snapshot(const ThumbnailsList &thumbnails = {},
+        const sla::LayerProgress &progress = {}) const;
     void replace_layer_document(const sla::LayerDocument &document);
+    void replace_layer_document(const sla::LayerDocument &document,
+                                const sla::ExportGenerationGuard &expected);
     // Restored masks are applied inside process(), before any export phase.
     // Immutable state can also remain available to a project save in the GUI.
     void queue_project_layers(std::shared_ptr<const sla::ProjectRasterState> state);
     bool project_layer_restore_failed() const { return m_project_layer_restore_failed; }
+    // Synchronous export: caller keeps this context and document immutable until
+    // return. A per-request guard must belong to this context; it never cancels
+    // the source job. Checkpoints run on the coordinator and may throw. The
+    // commit guard, not a last callback alone, serializes Cancel with rename.
     void export_layer_document(const sla::LayerDocument &document, const std::string &format,
                                const std::string &path, const ThumbnailsList &thumbnails = {},
-                               const std::string &projectname = "") const;
+                               const std::string &projectname = "",
+                               const std::function<void()> &checkpoint = {},
+                               const sla::ExportGenerationGuard *request_generation = nullptr) const;
+
+    // Synchronous export of an explicit edited document, captured without its
+    // Undo/Redo history. Output arguments are owned before any checkpoint.
+    // Keep the context alive and the document stable during capture; capture
+    // callbacks must not re-enter editing. Later callbacks cannot reach the
+    // private mask copy. The original document is never marked saved or applied.
+    void export_layer_document_snapshot(const sla::LayerDocument &document, std::string format,
+                               std::string path, ThumbnailsList thumbnails = {},
+                               std::string projectname = "",
+                               const std::function<void()> &checkpoint = {},
+                               const sla::ExportGenerationGuard *request_generation = nullptr) const;
 
     void export_print(const std::string &fname, const std::string &projectname = "")
     {
@@ -607,7 +669,62 @@ public:
     static bool is_prusa_print(const std::string& printer_model);
     
 private:
-    
+    // Only export_layer_document_snapshot may grant this capability after
+    // constructing its own const document. Public arguments remain caller-owned.
+    enum class LayerExportInput { CallerOwned, PrivateSnapshot };
+    void export_layer_document_impl(const sla::LayerDocument &document, const std::string &format,
+        const std::string &path, const ThumbnailsList &thumbnails, const std::string &projectname,
+        const std::function<void()> &checkpoint, const sla::ExportGenerationGuard *request_generation,
+        LayerExportInput input) const;
+    // Encoding contexts exist only inside export after a complete typed fresh
+    // plan has validated its source. They deliberately have no job statistics;
+    // their writer consumes the plan's exact native metrics instead.
+    // Conversion dispatch owns settings, native rows and cancellation only.
+    // Its final writer context remains responsible for complete statistics.
+    enum class RasterJobPurpose { CompleteJob, ValidatedFreshEncoding, PlannedConversionDispatch };
+    // Only a captured, ready result can supply existing statistics. The public
+    // raster factory always builds a complete job and calculates its own.
+    static std::unique_ptr<SLAPrint> create_raster_job_impl(const DynamicPrintConfig &config,
+        const sla::LayerDocument &document, const std::vector<double> &positions_z,
+        std::optional<sla::FreshLayerProducer> producer, sla::ExposurePositionPolicy position_policy,
+        const SLAPrintStatistics *statistics, const sla::ExportGenerationGuard *generation,
+        const std::function<void()> &checkpoint,
+        RasterJobPurpose purpose = RasterJobPurpose::CompleteJob);
+    void advance_export_generation(bool input_changed = true);
+    void reset_layer_document_cache();
+    // Called only after raw model rasterization and canonical validation both
+    // succeed. Metadata-only encoding/restored projects deliberately get no receipt.
+    void remember_completed_cxdlpv4_encoding();
+    void reset_completed_cxdlpv4_encoding();
+    void finalize_completed_cxdlpv4_encoding();
+    bool can_capture_completed_cxdlpv4_encoding() const;
+    // An editor needs the owned canonical document and history, never a native
+    // output cache. Keep this choice private; ordinary export capture includes it.
+    sla::ExportSnapshot capture_export_snapshot_impl(const ThumbnailsList &thumbnails,
+        const sla::LayerProgress &progress, bool include_native_encoding) const;
+    // Caller holds state_mutex and has checked completion. Process already
+    // owns the worker; external callers must stop it first.
+    void replace_layer_document_locked(const sla::LayerDocument &document, bool input_changed = true);
+    // Only internal callers may reuse a plan: the public API always plans the
+    // supplied document, so an unrelated table cannot bypass preflight.
+    void export_layer_document_planned(const sla::LayerDocument &document, const std::string &format,
+        const std::string &path, const ThumbnailsList &thumbnails, const std::string &projectname,
+        const sla::LayerConversionPlan *plan,
+        const sla::ExportGenerationGuard *request_generation = nullptr,
+        const std::function<void()> &checkpoint = {},
+        LayerExportInput input = LayerExportInput::CallerOwned) const;
+
+    friend class sla::ExportRequest;
+    friend class sla::NativeArchiveConversionRequest;
+    friend class sla::SlicedResultSession;
+    static void convert_layer_archive_owned(const DynamicPrintConfig &configuration,
+        const sla::LayerDocument &document, const std::string &format, const std::string &path,
+        const sla::ExportGenerationGuard &generation, const sla::LayerProgress &progress);
+    static void write_export_snapshot(const sla::ExportSnapshot &snapshot,
+        const sla::ExportGenerationGuard &generation, const std::string &format,
+        const std::string &path, const std::string &projectname, bool palette_approved,
+        const std::function<void()> &checkpoint);
+
     // Implement same logic as in SLAPrintObject
     bool invalidate_step(SLAPrintStep st);
 
@@ -628,12 +745,40 @@ private:
     std::unique_ptr<SLAArchiveWriter>     m_archiver;
     std::unique_ptr<sla::LayerDocument>    m_layer_document;
     uint64_t                             m_encoded_revision = 0;
+    struct CompletedCXDLPv4Encoding {
+        sla::ExportGenerationGuard document_generation;
+        uint64_t revision;
+        DynamicPrintConfig configuration;
+        sla::LayerRasterGeometry geometry;
+        size_t layer_count;
+        bool finalized = false;
+    };
+    // Input invalidation may precede worker stop/join. This mutex protects
+    // receipt mutation independently of state_mutex; never hold it across
+    // callbacks, joins, document copies or the publication commit lock.
+    mutable std::mutex m_completed_cxdlpv4_encoding_mutex;
+    std::optional<CompletedCXDLPv4Encoding> m_completed_cxdlpv4_encoding;
+    // These borrowed descriptors are installed only inside synchronous
+    // write_export_snapshot; its immutable snapshot outlives the entire job.
+    const sla::LayerDocument *m_frozen_cxdlpv4_document = nullptr;
+    const DynamicPrintConfig *m_frozen_cxdlpv4_configuration = nullptr;
+    std::shared_ptr<const std::vector<sla::EncodedRaster>> m_frozen_cxdlpv4_encoding;
+    // Capability set only on the local job inside write_export_snapshot.
+    // It must equal m_layer_document.get(): public/editor document arguments
+    // can never authorize borrowing, even when this context reports finished.
+    const sla::LayerDocument *m_frozen_sl1_document = nullptr;
+    std::shared_ptr<sla::ExportGenerationState> m_export_generation=std::make_shared<sla::ExportGenerationState>();
     bool                                 m_raster_job = false;
+    bool                                 m_frozen_export_ready = false;
+    std::optional<sla::ExportGenerationGuard> m_frozen_export_guard;
+    std::function<void()>                 m_frozen_export_checkpoint;
+    std::shared_ptr<const sla::CalibrationRecipe> m_calibration_recipe;
     std::shared_ptr<const sla::ProjectRasterState> m_pending_project_layers;
     bool                                 m_project_layer_restore_failed = false;
     
     // Estimated print time, material consumed.
     SLAPrintStatistics              m_print_statistics;
+    RasterJobPurpose               m_raster_job_purpose = RasterJobPurpose::CompleteJob;
     
     class StatusReporter
     {

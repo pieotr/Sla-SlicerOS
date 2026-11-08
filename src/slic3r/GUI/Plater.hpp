@@ -103,11 +103,26 @@ public:
     //const SLAPrint& sla_print() const;
     //SLAPrint& sla_print();
     
+#ifndef SLIC3R_SLA_ONLY
     Print& active_fff_print();
+#endif
     SLAPrint& active_sla_print();
+    bool can_edit_sliced_layers();
     void edit_sliced_layers();
+    void open_layer_file(const std::string &path = {});
+    // Main commands follow the visible editor; scene-save internals stay separate.
+    bool has_active_sliced_editor() const;
+    bool has_active_layer_document() const;
+    bool can_use_sliced_editor() const;
+    bool save_layer_document(bool save_as);
+    void export_sliced_document();
+    // Captures the generated job; the caller may release it after this returns.
+    bool open_generated_layers(SLAPrint &job);
+    bool can_close_sliced_workspace(bool discard_current_project);
 
+#ifndef SLIC3R_SLA_ONLY
     std::vector<std::unique_ptr<Print>>& get_fff_prints();
+#endif
     const std::vector<GCodeProcessorResult>& get_gcode_results() const;
 
     void new_project();
@@ -179,7 +194,11 @@ public:
     const Worker & get_ui_job_worker() const;
 
     void select_view(const std::string& direction);
+    // An explicit full Slice action already submitted its SLA task. Its
+    // automatic Preview navigation may skip a second submission; ordinary
+    // navigation keeps the default, including partial-support tasks.
     void select_view_3D(const std::string& name);
+    void select_view_3D(const std::string& name, bool request_sla_slice);
 
     bool is_preview_shown() const;
     bool is_preview_loaded() const;
@@ -231,8 +250,10 @@ public:
     void reload_from_disk();
     void replace_with_stl();
     void reload_all_from_disk();
+#ifndef SLIC3R_SLA_ONLY
     bool has_toolpaths_to_export() const;
     void export_toolpaths_to_obj() const;
+#endif
     void reslice();
     void reslice_FFF_until_step(PrintObjectStep step, const ModelObject &object, bool postpone_error_messages = false);
     void reslice_SLA_until_step(SLAPrintObjectStep step, const ModelObject &object, bool postpone_error_messages = false);
@@ -247,6 +268,7 @@ public:
     void schedule_background_process(bool schedule = true);
     bool is_background_process_update_scheduled() const;
     void suppress_background_process(const bool stop_background_process) ;
+    bool cancel_slicing();
     void send_gcode();
     void send_gcode_inner(DynamicPrintConfig* physical_printer_config);
 	void eject_drive();
@@ -374,7 +396,9 @@ public:
     void update_preview_moves_slider(std::optional<int> visible_range_min = std::nullopt, std::optional<int> visible_range_max = std::nullopt);
     void enable_preview_moves_slider(bool enable);
 
+#ifndef SLIC3R_SLA_ONLY
     void reset_gcode_toolpaths();
+#endif
     void reset_last_loaded_gcode() { m_last_loaded_gcode = ""; }
 
     const Mouse3DController& get_mouse3d_controller() const;
@@ -463,7 +487,8 @@ public:
 private:
     std::optional<fs_path> get_default_output_file();
     std::optional<wxString> check_output_path_has_error(const boost::filesystem::path& path) const;
-    std::optional<fs_path> get_output_path(const std::string &start_dir, const fs_path &default_output_file);
+    std::optional<fs_path> get_output_path(const std::string &start_dir, const fs_path &default_output_file,
+                                         std::string *selected_sla_format = nullptr);
     std::optional<fs_path> get_multiple_output_dir(const std::string &start_dir);
 
     void export_gcode_to_path(const fs_path &output_path, const std::function<void(bool)> &export_callback);

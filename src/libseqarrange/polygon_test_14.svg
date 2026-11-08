@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.0//EN" "http://www.w3.org/TR/2001/REC-SVG-20010904/DTD/svg10.dtd">
+<svg height="2000" width="2000" xmlns="http://www.w3.org/2000/svg" xmlns:svg="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+   <marker id="endArrow" markerHeight="8" markerUnits="strokeWidth" markerWidth="10" orient="auto" refX="1" refY="5" viewBox="0 0 10 10">
+      <polyline fill="darkblue" points="0,0 10,5 0,10 1,5" />
+   </marker>
+<rect fill='white' stroke='none' x='0' y='0' width='2000.000000' height='2000.000000'/>
+   <path d="M 0 85.6467 50 85.6467 50 135.647 0 135.647 z" style="fill: green; stroke: black; stroke-width: 0.000000; fill-type: evenodd"  fill-opacity="1.000000" />
+   <path d="M 11.8075 0 161.808 0 161.808 50 86.8075 120 11.8075 50 z" style="fill: blue; stroke: black; stroke-width: 0.000000; fill-type: evenodd"  fill-opacity="1.000000" />
+   <path d="M 128 87.35 168 127.35 128 167.35 88 127.35 z" style="fill: red; stroke: black; stroke-width: 0.000000; fill-type: evenodd"  fill-opacity="1.000000" />
+   <path d="M 61.7656 118 81.7656 118 101.766 148 71.7656 168 41.7656 148 z" style="fill: grey; stroke: black; stroke-width: 0.000000; fill-type: evenodd"  fill-opacity="1.000000" />
+   <path d="M 0 214.016 50 214.016 50 264.016 0 264.016 z" style="fill: cyan; stroke: black; stroke-width: 0.000000; fill-type: evenodd"  fill-opacity="1.000000" />
+   <path d="M 131.37 164 281.37 164 281.37 214 206.37 284 131.37 214 z" style="fill: magenta; stroke: black; stroke-width: 0.000000; fill-type: evenodd"  fill-opacity="1.000000" />
+   <path d="M 110.036 204 150.036 244 110.036 284 70.0356 244 z" style="fill: yellow; stroke: black; stroke-width: 0.000000; fill-type: evenodd"  fill-opacity="1.000000" />
+   <path d="M 230.154 23.8616 250.154 23.8616 270.154 53.8616 240.154 73.8616 210.154 53.8616 z" style="fill: black; stroke: black; stroke-width: 0.000000; fill-type: evenodd"  fill-opacity="1.000000" />
+</svg>

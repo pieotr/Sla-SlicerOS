@@ -1,3 +1,64 @@
+Zmiana nazwy profilu — poprawka 8 listopada 2026
+W panelu Printers, Materials lub Print Settings użyj Rename preset.
+Zmiana nazwy zachowuje niezapisane ustawienia; aby je utrwalić, użyj Save preset.
+Błąd zmiany nazwy również zachowuje edytowane wartości i istniejący plik.
+Preferencja formatu eksportu drukarki przechodzi na nową nazwę. Po usunięciu
+profilu jego preferencja jest usuwana; nowa kopia pod tą samą nazwą korzysta
+z ustawień źródłowego profilu. Sprawdzono SL1/CXDLPv4 i restart na Linux GTK.
+Zakres odbioru i dalsze zadania: doc/M2_PRESET_RENAME_LIFECYCLE_2026-11-08.md.
+Uruchomienie aktualnej aplikacji: bash ./run_mid_refactor_tests.sh
+
+Zapis po odświeżeniu i anulowaniu — poprawka 8 listopada 2026
+Zastosowane przez Apply edycje warstw zachowują się przy zapisie 3MF po
+odświeżeniu samych parametrów, podczas tej pracy oraz po Cancel.
+Zapisany projekt można ponownie otworzyć i wyeksportować z nową ekspozycją.
+Jeśli po Apply wykonasz dalsze edycje, których jeszcze nie zastosowano,
+komunikat o starszych warstwach nadal wymaga decyzji. No nie zmienia pliku.
+Yes zapisuje model bez tych masek i pozostawia osobną sesję edycji niezapisaną.
+Sprawdzony zakres: CXDLPv4 Main/Linux GTK; zmiana geometrii wymaga ponownego
+slicingu. Szczegóły: doc/M2_MODEL_PROJECT_RUNTIME_SAVE_2026-11-08.md.
+
+Apply i pierwszy zapis edycji — poprawka 8 listopada 2026
+Po Apply możesz zmienić ekspozycję i zapisać projekt 3MF przed ponownym
+slicingiem. Jeżeli model i LCD się nie zmieniły, zastosowane maski zostaną
+zachowane bez pytania o ich pominięcie, także po Undo/Redo wracającym do Apply.
+Jeżeli po Apply wykonasz nowe, niezastosowane edycje, aplikacja nadal zapyta
+przed ich pominięciem. No pozostawia istniejący plik bez zmian.
+Panel Older slices zachowuje poprzednie ustawienia swojego wyniku. Do eksportu
+z nowymi ustawieniami odśwież slicing i otwórz aktualne warstwy albo ponownie
+otwórz zapisany projekt. Starsza sesja może nadal wyeksportować osobną kopię.
+Raport: doc/M2_MODEL_PROJECT_UNSAVED_METADATA_2026-11-08.md.
+
+Zapis przy oczekującej zmianie ustawień — poprawka 8 listopada 2026
+Gotowy, zapisany wynik zachowuje maski w 3MF również po zmianie ekspozycji,
+gdy ponowny slicing jeszcze nie ruszył. Po ponownym otwarciu projektu
+normalna ekspozycja odzwierciedla nową wartość. Ręcznie zmienione parametry
+warstw zachowują własne wartości. Zmiana geometrii nadal wymaga nowego slicingu.
+Sprawdzono wynik bez edycji oraz wcześniej zapisane Apply na CXDLPv4;
+odbiór stanów pracy/anulowania opisano powyżej. Inne formaty i platformy
+wymagają osobnych testów.
+Raport: doc/M2_MODEL_PROJECT_METADATA_PENDING_2026-11-08.md.
+
+Zachowanie edycji modelu — poprawka 8 listopada 2026
+Apply to sliced result przenosi zmiany PNG do bieżącego wyniku slicingu.
+Aby zachować je po zamknięciu aplikacji, zapisz projekt 3MF przez File →
+Save Project / Save Project as. Eksport natywnego pliku drukarki i zapis
+projektu są osobnymi czynnościami.
+Jeżeli po Apply zmienisz geometrię modelu, zapis 3MF zapyta o pominięcie
+starszych, niezapisanych masek. No pozostawia istniejący plik bez zmian.
+Yes zapisuje nowy model bez tych masek; starsza sesja w Sliced nadal pozwala
+wyeksportować ich kopię. Przed jej zamknięciem lub zastąpieniem zachowaj dane.
+Udany zapis pasującego projektu usuwa potrzebę ponownego pytania o tę samą
+rewizję; Undo i Redo są oceniane względem rzeczywiście zapisanego stanu.
+Raport i testy: doc/M2_MODEL_PROJECT_STALE_EDITS_2026-11-08.md.
+
+Aktualizacja testów edytora — 8 listopada 2026
+Przerwane rysowanie nie dopisuje kreski do historii. Po utracie przechwycenia
+myszy podczas minimalizacji zachowane pozostają zatwierdzone zmiany,
+Undo/Redo i wybrany zakres; nowe rysowanie nadal działa. Sprawdzono Linux/GTK,
+CXDLPv4 i główną maskę. Raport: doc/M2_LAYER_CAPTURE_LOSS_2026-11-08.md.
+To rozszerzenie QA; nie wymaga nowego buildu aplikacji.
+
 SLA-Slicer — instrukcja wersji rozwojowej
 ======================================
 
@@ -7,12 +68,115 @@ Projekt jest w trakcie przebudowy. Lista formatów eksportu nie jest listą
 potwierdzonej zgodności z drukarkami. Edytor warstw po slicingu jest dostępny;
 Dostępne są podstawowe generatory PCB i kalibracji. Pełny zestaw operacji
 oraz wzorców UVtools nadal wymaga wdrożenia.
-Bieżące zmiany i ograniczenia: doc/WDROZENIE_2026-10-04.md.
+Bieżące zmiany i ograniczenia: doc/KANBAN_WDROZENIA_2026-10-11.md.
+W edytorze Main/SUBIMGS opis zakresu podaje liczbę warstw współdzielonych
+i niezależnych. Współdzielona warstwa zmienia obie maski; niezależna tylko
+wybraną maskę. Przebiegi pędzla, gumki, historii i zapisu opisuje
+doc/M2_MIXED_MASK_RANGE_WORKFLOW_2026-11-08.md.
+Slicing testowej ramki skrócił się z 22.323 do 20.095 s dzięki
+szybszym obliczeniom geometrii. Poprawka działa automatycznie; pozostałe
+etapy nadal wymagają optymalizacji. Pomiar i zakres testów:
+doc/M2_CLIPPER_ROUND_PROJECTION_2026-11-08.md.
+Eksport CXDLPv4 szybciej przygotowuje niezmienione warstwy; poprawka działa
+automatycznie. Dla testowej ramki cały eksport z edytora skrócił się z
+3.042 do 2.246 s. Slicing podpór wymaga dalszej optymalizacji.
+Pomiar i zakres weryfikacji: doc/M2_CXDLPV4_VALIDATED_PLAN_2026-11-08.md.
+Wspólny koder CXDLPv4 ma szybszy zapis jednolitych obszarów masek;
+nie wymaga włączania opcji. Zakres pomiarów i testów:
+doc/M2_CXDLPV4_RLE_RUNS_2026-11-07.md.
+PM4n z wyborem wersji auto lub 515 używa w nowych warstwach 16 poziomów
+szarości. Pędzel pokazuje wartość rzeczywiście zapisywaną, np. 128 -> 136.
+Kalibracja informuje o zmianie żądanej palety i wymaga potwierdzenia;
+powtórzone poziomy po przeliczeniu blokują generowanie. Wersja 516 zachowuje
+dotychczasowe działanie. Stare projekty pozostają w swojej zapisanej palecie.
+Zakres i ograniczenia odczytu PM4n: doc/M2_PM4N_PRODUCERS_2026-11-07.md.
+Model z edycjami warstw zapisuj przez File / Save Project as jako 3MF.
+Save layer project dotyczy generatorów i otwartych archiwów warstwowych.
+Aby utrwalić gotowe warstwy, zakończ slicing i wybierz File / Save Project as.
+3MF zawiera wtedy model, ustawienia oraz maski, również przed pierwszą edycją.
+Po otwarciu wybierz Open as project, a następnie Slice now / Edit layers.
+Zapis zachowuje także nowsze zmiany Apply wykonane po odtworzeniu projektu.
+Projekt zapisany przed slicingiem zawiera model i ustawienia. Gotowe maski
+powiększają plik 3MF o swój skompresowany zapis.
+Zakres odbioru: doc/M2_FRESH_MODEL_PROJECT_2026-11-07.md.
+Panele ustawień SLA pokazują pełny poziom opcji. Nie trzeba wybierać trybu
+Beginner/Normal/Expert; niedziałający przełącznik został usunięty z widoku.
+Aktualizacja 2026-10-13: liczniki przejść w generowanym CXDLPv4
+są zgodne z odczytem UVtools w macierzy 64 eksportów. Ekspozycje z profilu
+pozostają zachowane; nieprzedstawialne liczniki są odrzucane przed zapisem
+pliku docelowego. Pełny kontrakt świeżych parametrów i edytor tych
+parametrów dla SL1/CXDLP nadal są w przebudowie.
+M1/M2: tabela warstw i globalne ustawienia konwersji Anycubic PWC516/517
+na CTB/AES v4/v5 przeszły testy natywne, GUI oraz niezależny odczyt UVtools.
+Wartości, których kodek nie potrafi zachować, blokują eksport przed publikacją.
+Pełny kontrakt innych rodzin, wszystkie drukarki i testy sprzętowe są otwarte.
+Jeżeli CXDLPv4 odmawia zapisania parametru dolnych warstw, komunikat pokazuje
+wartość żądaną i odczytywaną oraz drogę do ustawienia w Materials > LCD
+exposure and motion > Bottom layers. Przejrzyj wskazane pole, uaktualnij
+slicing i ponów eksport albo wybierz format zachowujący żądaną wartość.
+Odmowa nie zmienia profilu; gotowe warstwy pozostają dostępne.
+Stan walidacji kreatora i dostępności GUI: doc/WDROZENIE_M1_M2_2026-10-11.md.
+Aktualizacja 2026-11-06: edytor pozwala anulować końcowy zapis SL1/SL1S
+w oknie Export layers. Poprawiono także zachowanie wyboru formatu w projekcie
+warstwowym. Sprawdzanie przejść ekspozycji przed eksportem jest szybsze;
+pełny zapis nadal sprawdza obrazy i parametry pliku.
+Aktualizacja 2026-11-07: główny eksport SLA pokazuje przycisk Cancel slicing.
+Po skutecznym anulowaniu eksportu gotowego zadania wracają Export i Edit layers;
+warstwy, ich edycje oraz Undo/Redo pozostają dostępne do ponownego eksportu.
+Zakres odbioru: doc/M2_MAIN_WORKER_CANCEL_2026-11-07.md.
+Po zmianie ekspozycji Cancel działa także podczas ponownego kodowania
+zachowanych warstw. Edycje i Undo/Redo pozostają zachowane; przed eksportem
+anulowanego zadania ponów slicing. Przycisk Slice now uruchamia pojedyncze
+zadanie i przełącza do Preview. Zwykłe otwarcie Preview także uruchamia slicing,
+gdy jest potrzebny; powrót do gotowego podglądu nie przelicza warstw.
+Menu File / (Re)Slice Now (Ctrl+R) pozostaje dostępne.
+Zakres odbioru: doc/M2_METADATA_CANCEL_2026-11-07.md oraz
+ doc/M2_SIDEBAR_PREVIEW_2026-11-07.md.
+
+
+Główny eksport SL1/SL1S automatycznie wykorzystuje gotowe PNG i porównuje
+ich pełne bajty podczas odczytu kontrolnego. Nie trzeba ustawiać żadnych flag.
+Po zmianie warstw użyj Apply to sliced result, aby główny eksport zapisał
+aktualne obrazy. Bezpośredni Export edited layers także zachowuje edycje,
+także przed Apply; dla SL1/SL1S korzysta już z szybszego przygotowania
+prywatnej kopii dokumentu. Zakres: doc/M2_EDITOR_SL1_EXPORT_2026-11-07.md.
+Na modelu testowym etap przechwycenia i eksportu SL1 skrócił się z około
+3,80 s do 1,79 s. To pomiar jednego modelu, nie gwarancja czasu slicingu.
+Zakres i testy: doc/M2_SL1_PNG_2026-11-07.md.
+
+Eksport świeżo zeslicowanego modelu do CXDLPv4 korzysta teraz automatycznie
+z gotowego kodowania warstw. Nie wymaga dodatkowej opcji uruchamiania.
+Po edycji warstw lub zmianie niezgodnych ustawień program ponownie koduje
+aktualne obrazy; sprawdzanie parametrów i odczyt kontrolny pliku pozostają
+obowiązkowe. Pomiar na modelu testowym skrócił ten etap średnio o około 25%;
+czas całego slicingu nadal zależy od modelu i wymaga dalszych usprawnień.
+Raport i zakres testów: doc/M2_ENCODED_MASK_REUSE_2026-11-07.md.
+
+Slicing masek o ograniczonej palecie automatycznie ponownie wykorzystuje liczbę
+pikseli policzoną podczas jej sprawdzania. Na platformie SSE2 skróciło to ten
+etap o około 45%, a cały slicing testowej ramki średnio o około 3,5%.
+Nie zmienia to obrazów ani ustawień wydruku. Po malowaniu warstw statystyki
+wynikają z aktualnych masek; wielokrotne naświetlanie na tej samej wysokości
+nadal uwzględnia nakładanie obrazów. Inne platformy zachowują wcześniejszą
+ścieżkę do czasu osobnych pomiarów. Eksport jest osobnym etapem.
+Szczegóły i zakres odbioru: doc/M2_VALIDATED_MASK_STATISTICS_2026-11-07.md.
+
+Slicing automatycznie ponownie wykorzystuje identyczną geometrię potrzebną
+przy przygotowaniu nawisów. Nie wymaga dodatkowych ustawień. W serii ośmiu
+prób ramki cały slicing skrócił się średnio o 7,76%; czas zależy od modelu
+i warunków pracy komputera. Warstwy i podpory pozostały identyczne. Eksport
+jest osobnym etapem. Raport: doc/M2_OVERHANG_SAFETY_REUSE_2026-11-07.md.
+Do testów bieżącej aplikacji uruchom ./run_mid_refactor_tests.sh w Sla-SlicerOS.
 
 Budowanie na Linux
 ------------------
 Otwórz terminal w katalogu Sla-SlicerOS. Wymagane są kompilator C/C++, CMake,
 narzędzia budowania oraz biblioteki systemowe opisane w install.md.
+Natywne wzorce ExposureFinder wymagają również OpenCV core/imgproc (pliki
+programistyczne, lokalny build sprawdzany z OpenCV 5.0). To biblioteka C++;
+aplikacja nie uruchamia UVtools, Emgu ani .NET do generowania wzorców.
+Biblioteki muszą być przygotowane lokalnie przed budowaniem offline.
+OpenCV_DIR może wskazywać lokalny katalog konfiguracji CMake OpenCV.
 Uruchamiana aplikacja działa offline. Pierwsze budowanie zależności wymaga
 lokalnie przygotowanych bibliotek lub archiwów źródłowych; standardowy skrypt
 zależności może je pobierać, jeśli nie ma ich w cache. Nie jest uruchamiany
@@ -56,6 +220,14 @@ Przygotowanie wydruku
    aktualizuje jej preferencję eksportu.
 7. Dla niezweryfikowanego formatu sprawdź wynik niezależnym dekoderem UVtools:
    liczbę i obrazy warstw, wymiary, orientację, ekspozycję i ruch osi Z.
+
+Zmiana filtra z SL1 na CXDLPv4 zachowuje bazę nazwy: np. part.v2.sl1
+staje się part.v2.cxdlpv4. Jeżeli końcowa ścieżka już istnieje, potwierdzenie
+nadpisania pokazuje właśnie tę ścieżkę. Wybór No zachowuje plik i preferencję.
+Zapisane drukarki mogą pamiętać różne formaty eksportu także po otwarciu
+projektu w nowej sesji. Nie trzeba zmieniać wymiarów LCD ani zapisywać
+sprzętowego presetu, aby wybrać format eksportu.
+Zakres testów i pozostałe zadania: doc/M2_PRINTER_FORMAT_PREFERENCES_2026-11-07.md.
 
 Otwieranie wydruku warstwowego nie odtwarza oryginalnej sceny edytowalnych
 modeli. Natywne czytniki formatów binarnych są jeszcze niekompletne; program
@@ -126,9 +298,22 @@ rozszerzenia pliku, aby obejść brak kodeka. Ta blokada nie zastępuje implemen
 Edycja warstw po slicingu:
 Po zakończeniu slicingu użyj Edit layers pod przyciskiem eksportu albo
 Window → Edit sliced layers (Ctrl+Alt+L). Osobny plik SL1 otwórz przez
-Window → SL1 Layer Editor. Wybierz warstwę i promień
-pędzla, ustaw jasność (0 = gumka, 255 = naświetlenie), przeciągnij po podglądzie.
-Jedno pociągnięcie jest jednym krokiem Undo. Apply to sliced result włącza
+Window → SL1 Layer Editor. Wybierz narzędzie Brush (pędzel) lub Eraser
+(gumka), warstwę i promień; dla pędzla ustaw jasność 0–255. Przeciągnij
+po podglądzie. Do wspólnej edycji wielu warstw ustaw Range: first / last layer
+i zaznacz Overlay and paint selected range. Podgląd nakłada maski, a każde
+pociągnięcie zmienia wskazany obszar na wszystkich warstwach tego zakresu,
+łącznie z pierwszą i ostatnią. Pozostałe piksele każdej warstwy są zachowane.
+Esc podczas rysowania anuluje wyłącznie bieżące pociągnięcie i pozostawia
+edytor otwarty. Puszczenie myszy po Esc nie zapisuje kreski; wcześniejsze
+edycje, Undo/Redo i zakres pozostają zachowane. Bez aktywnego pociągnięcia
+Esc zachowuje dotychczasową akcję powrotu z edytora.
+Ctrl+Z podczas rysowania odrzuca niedokończone pociągnięcie, a następnie
+cofa poprzednią zatwierdzoną operację, jeśli jest dostępna. Ctrl+Y oraz
+Ctrl+Shift+Z również odrzucają bieżące pociągnięcie i ponawiają dostępną
+operację. Przy pustej historii skrót tylko anuluje pociągnięcie.
+Późniejsze puszczenie myszy nie dodaje nowej edycji ani kroku Undo.
+Jedno pociągnięcie jest jednym krokiem Undo dla całego zakresu. Apply to sliced result włącza
 edycje do bieżącego wyniku, także dla eksportu z głównego okna. Export edited
 layers zapisuje wybrany dostępny format bez ponownej rasteryzacji modelu.
 Dostępne są progowanie, Invert layer, Undo/Redo. Otwarty osobno plik SL1
@@ -138,6 +323,19 @@ Po Apply to sliced result zapisz projekt przez File → Save project / Save proj
 Po otwarciu jako projekt wykonaj Slice now: program przywróci zapisane poprawki,
 jeśli geometria i ustawienia rasteryzacji są zgodne. Historia Undo dotyczy
 bieżącej sesji i nie zapisuje się w 3MF. Edycje nie zmieniają modelu 3D.
+
+Eksport z głównego okna:
+File → Export → Export sliced layers pozwala zamówić eksport także przed
+pierwszym slicingiem. Po zakończeniu slicingu służy do tego również Export
+w panelu bocznym. W oknie zapisu wybierz format: proponowana końcówka
+pliku zmienia się automatycznie. Format i ścieżka należą do tego zlecenia.
+Zmiana modelu, ustawień lub masek unieważnia jego poprzedni wynik.
+Gdy format wymaga zmiany palety szarości, przejść ekspozycji albo precyzji
+czasów, potwierdź opisaną konwersję. Odpowiedź „Nie” odrzuca sam eksport
+i pozostawia gotowe warstwy dostępne. „Tak” zapisuje kopię; źródłowe maski i parametry
+projektu pozostają zachowane. Błędy zgodności formatu mogą nadal wymagać
+wyboru innego formatu lub korekty ustawień. Użyj Cancel, aby przerwać
+trwającą pracę; anulowany lub nieaktualny eksport nie zastępuje starego pliku.
 Zmiana ekspozycji i ruchów zachowuje edycje; zmiana modelu, geometrii ekranu,
 orientacji albo gamma wymaga nowych masek i usuwa poprzednie edycje.
 Objętość żywicy i czas wyniku slicingu są przeliczane z aktualnych masek
@@ -172,16 +370,84 @@ W wersji offline nie ma konfiguracji serwera wydruku ani kolejki wysyłania.
 
 Anycubic binarny: PWS / PW0 i warianty
 ------------------------------------
-PWS zapisuje maskę binarną (próg 128); pozostałe warianty PW0 zapisują
+W Printer Settings > General > Output wybierz format oraz "Anycubic file version".
+Automatic używa domyślnej wersji danego formatu. Lista wersji dopasowuje się
+do rozszerzenia. Zapisz preset drukarki, aby zachować wybór po restarcie.
+Zmiana wersji nie zmienia rozszerzenia: np. PWC 516 i PWC 518 używają .pwc,
+ale mają inne struktury binarne. Wybór niezgodny z rozszerzeniem zgłasza błąd
+przed slicowaniem i eksportem; popraw go w tym samym panelu. Przy zmianie
+formatu jawny wybór wersji pozostaje widoczny, więc należy dobrać zgodną
+wersję lub wybrać Automatic. Stare presety dostają domyślnie Automatic.
+PWS z AA=1 zapisuje maskę binarną (wartości <128 są czarne, >=128 są białe); pozostałe warianty PW0 zapisują
 16 poziomów szarości. Wersje 1 i 515 nie mają tabeli wymiarów maszyny:
 UVtools odczytuje fizyczny ekran i wysokość Z z rozszerzenia. Profil musi
 odpowiadać tej drukarce, również po zastosowaniu orientacji ekranu.
 Edytor pokazuje wymagane wymiary przy wyborze formatu. Niezgodny eksport
-jest odrzucany i nie nadpisuje istniejącego pliku.
+jest odrzucany i nie nadpisuje istniejącego pliku. DL2P 515 wymaga ekranu
+130.56 x 73.44 mm i Z 165 mm (Photon D2). Wyjątek: PWC 1/515 nie ma
+identyfikacji drukarki; UVtools odczytuje wymiary/Z jako zero. Edytor pokazuje
+to przed eksportem. Wybierz PWC 516 lub nowszą, aby zachować fizyczne wymiary.
 DL2P (517) oraz Anycubic Custom PWC (516) zapisują osobną tabelę MACHINE
 z obiema osiami, rozdzielczością i Z. Nie uśredniamy wymiarów pikseli.
-Obecny koder wymaga AA=1 i ruchu jednostopniowego; zgodność firmware
-pozostaje do potwierdzenia na rzeczywistych urządzeniach.
+Kodery 516/517/518 wymagają AA=1 i obsługują TSMC oraz osobne prędkości
+normal/bottom. Zgodność firmware pozostaje do potwierdzenia na urządzeniach.
+
+Anycubic PM5/PM3N/PX6S zapisują wersję 517 z geometrią w MACHINE.
+PM5S (.pm5s) i M5SP (.m5sp) zapisują natywną 518, z dwiema tabelami
+podglądów RGB565 oraz SUBIMGS. Wybierz format w panelu/edytorze;
+sufiks pliku zmienia się razem z wyborem. Wymiary ekranu i Z pochodzą
+z presetu drukarki. Kodery 516/517/518 obsługują oba etapy lift i osobne prędkości retract normal/bottom.
+Ustaw je w Material Settings > LCD exposure and motion. Wait-before musi
+być wspólny. Format nie zapisuje retract_height2, wait-after ani custom PWM;
+nieobsługiwane ustawienia są odrzucane. Natywny import/edycja masek 1/515/516/517/518 jest dostępny z menu
+Open layer archive. Zapis zachowuje tę samą wersję i parametry warstw.
+Pełne nadpisania parametrów i konwersja między rodzinami są w kolejce.
+Układy 1/515 zweryfikowano dla wszystkich 24 kombinacji, w obu orientacjach.
+Dokumentacja zakresu i testów: doc/ANYCUBIC_518_2026-10-07.md
+oraz doc/ANYCUBIC_TSMC_2026-10-07.md, doc/ANYCUBIC_MODERN_2026-10-07.md
+i doc/ANYCUBIC_VERSION_SELECTION_2026-10-07.md oraz
+doc/ANYCUBIC_LEGACY_2026-10-07.md.
+
+Edycja pliku binarnego Anycubic
+-----------------------------
+Otwórz plik przez Open layer archive. Użyj pędzla, Invert, Undo/Redo i Save
+edited archive. PW0 zachowuje 16 poziomów; importowany PWS zachowuje AA1–16.
+Ta obsługa importu AA nie zmienia zakresu AA świeżego eksportera modelu.
+Zapis zachowuje wersję, ekspozycje/ruchy warstw, miniatury i dane producenta.
+Nowe maski są dopisywane, więc plik po edycji może być większy.
+Volume i obszar modelu aktualizują się z masek i dostępnej geometrii.
+Weight/cost skaluje istniejące szacunki; zero nie dostarcza gęstości/ceny.
+Pusty model można uzupełnić, jeśli MACHINE albo rodzaj urządzenia określa LCD.
+PWC1/515 nie zawiera tych danych: do nowych szacunków użyj jawnego profilu
+drukarki/materiału opisanego poniżej. Bez danych geometrii błąd zachowuje
+poprzedni plik i historię edycji.
+Pliki 518: można edytować główną maskę i zapisać plik, zachowując niezależne
+SUBIMGS oraz ich nieznane pola. SUBIMGS współdzielące maskę główną podążają
+za jej zmianą. Uszkodzone dodatkowe maski są odrzucane przy otwarciu.
+W edytorze wybierz Mask plane: Main mask albo SUBIMGS mask. Pędzel,
+Invert, Threshold, operacje zakresowe i eksport obrazów używają tego wyboru.
+Opis pokazuje, czy dodatkowa maska jest niezależna czy współdzieli główną;
+współdzielone pozostają powiązane. Undo/Redo obejmuje obie maski.
+Zapisz przez Save edited archive w oryginalnym formacie 518 (PWC, PM5S,
+M5SP lub PM4N). Projekt 3MF i konwersja wielomaskowego dokumentu nie mają
+jeszcze pełnego kontraktu; obecne ścieżki odmawiają zamiast pomijać obrazy.
+UVtools Full Open sprawdza maskę główną; niezależne SUBIMGS wymagają
+osobnego porównania pikseli/bajtów, ponieważ referencyjny decoder je pomija.
+Jeśli potrzebujesz nowych oszacowań żywicy, wybierz właściwą drukarkę
+oraz materiał przed otwarciem pliku. W edytorze zaznacz Use selected printer
+and material for resin estimates. Podsumowanie pokaże ekran mm, gęstość g/ml
+i koszt/ml. Opcja jest dobrowolna; nie zmienia masek ani ekspozycji/ruchów.
+Rozdzielczość musi odpowiadać plikowi, a znane wymiary LCD też muszą się zgadzać.
+Zapis przelicza volume/weight/cost również bez malowania. Błąd profilu
+zachowuje poprzedni plik i Undo. Opcja dotyczy sesji eksportu; po ponownym
+otwarciu wybierz profil ponownie, jeśli chcesz zastąpić źródłowe szacunki.
+Waluta pliku jest zachowana; cena materiału musi używać tej samej jednostki.
+PWC1/515 nadal nie zapisuje wymiarów LCD. UVtools może pokazać zerową
+objętość z powodu brakującej geometrii, mimo poprawnej wartości surowej.
+Dla przenoszenia geometrii wybierz nowszy format z MACHINE; pełna konwersja
+importowanych dokumentów w GUI jest w kolejce.
+Zakres i testy: doc/ANYCUBIC_EDITOR_2026-10-08.md
+oraz doc/LAYER_EXPORT_PROFILE_2026-10-08.md.
 
 Anycubic ZIP: PM4U / PM7 / PM7M / PWSZ
 ------------------------------------
@@ -207,7 +473,7 @@ Pełna zgodność tych plików z UVtools i firmware wymaga dalszej walidacji.
 
 Wybór formatu drukarki (2026-09-24):
 W Printers → General → Output pole Format of the output SLA archive ma listę
-identyfikatorów rejestru i jest dostępne również w trybie Simple. Wybrany format
+identyfikatorów rejestru. Wybrany format
 zapisz jako część presetu drukarki. Lista zawiera także formaty zablokowane
 na czas implementacji; ich obecność nie potwierdza zgodności z drukarką.
 Pole pozwala zachować identyfikator z importowanego profilu. Nieznana wartość
@@ -395,3 +661,1308 @@ Range operation → Median blur używa mediany w tym samym kwadracie i usuwa
 odosobnione jasne/ciemne piksele. Brzegi powiela, zgodnie z UVtools, podczas
 gdy Box blur je odbija. Zachowuje szarość, jedno Undo/Redo zakresu oraz
 atomowe anulowanie. StackBlur, Pyramid, Gaussian i Filter2D są nadal otwarte.
+
+Photon S (.photons) — natywny format binarny
+------------------------------------------
+W ustawieniach formatu wybierz "Anycubic Photon S (binary masks)".
+Format ma stałą geometrię: ekran wyjściowy 1440x2560 pikseli,
+68.04x120.96 mm, wysokość drukarki 165 mm, mirroring poziomy.
+Stosuj jednakową wysokość wszystkich warstw i wyłącz warstwy przejściowe.
+Ruch i odpoczynek dolnych/normalnych warstw muszą być wspólne;
+PWM=255, ruch jednoetapowy. Prędkość wybierz jako wielokrotność 0.6 mm/min
+(np. 120). Format zamienia szarości na czarny/biały przy progu 127/128.
+Objętość w pliku wynika z tej maski binarnej. Light-off zawiera ruch i
+odpoczynek. Ustawienia, których kontener nie może zachować, powodują błąd
+z wyjaśnieniem. Inne drukarki i maski z AA wymagają odpowiedniego formatu.
+Szczegóły implementacji i testów: doc/PHOTON_S_2026-10-05.md.
+
+PHZ v2 (.phz) — natywny format grayscale
+--------------------------------------
+W Printer Settings → General → Output wybierz
+"Phrozen PHZ v2 (grayscale) (.phz)". Pole "PHZ encryption seed"
+przyjmuje 0 (bez szyfrowania), liczbę 0..4294967295 albo 0xFFFFFFFF.
+Zapisz preset drukarki, aby zachować format i seed. Eksport zachowuje
+Z, ekspozycje, PWM, jednoetapowy ruch i odpoczynek przed naświetlaniem.
+Dolny i zwykły ruch mogą się różnić, ale prędkość powrotu jest wspólna.
+Wyłącz ruch dwustopniowy oraz odpoczynek po naświetlaniu i podniesieniu;
+format nie ma odpowiednich pól. Nieprawidłowe ustawienia powodują błąd.
+Kwantyzacja PHZ jest zgodna z oryginalnym UVtools (maksymalna jasność 248).
+Import istniejących masek PHZ pozostaje w kolejce. Raport: doc/PHZ_2026-10-05.md.
+
+Longer Orange LGS / LGS30 / LGS120 / LGS4K
+---------------------------------------
+Wybierz wariant drukarki jako format eksportu. Ustaw poprawny ekran i
+rozdzielczość; wyjściowa szerokość w pikselach musi być <= wysokości.
+Wymagany mirroring poziomy, bez pionowego. Wysokość Z: Orange 10=140,
+30=170, 120=150, 4K=190 mm. Wariant 4K domyślnie zapisuje model 4500
+(mono); firmware ID "4000" w profilu wybiera model 4000 (kolorowy).
+Maski mają 16 poziomów szarości. 4K obraca dane zgodnie z kodekiem,
+a LGS120 zapisuje też dodatkową miniaturę PNG.
+Ustaw stałą wysokość warstw, brak przejść ekspozycji i PWM=255. Ruch
+musi być jednoetapowy; odpoczynek tylko przed naświetlaniem. Prędkość
+powrotu dolnych i normalnych warstw musi być równa normalnej prędkości
+podnoszenia. Ekspozycje, odpoczynek i podnoszenie dolne/normalne można
+ustawić osobno. Niezgodne parametry są odrzucane z wyjaśnieniem.
+Raport implementacji/testów: doc/LGS_2026-10-05.md. Import masek LGS
+i pełna korekta gotowych presetów pozostają w kolejce.
+
+Makerbase GR1 / MDLP — binarne odcinki
+-----------------------------------
+Wybierz GR1 Workshop (.gr1) albo Makerbase MDLP (.mdlp). Maski są binarne:
+jasność <128 jest czarna, >=128 biała. Używaj rzeczywistej rozdzielczości
+i wymiarów ekranu, bez mirroringu. Warstwy (także pierwsza) muszą mieć
+stałą wysokość; wyłącz przejścia ekspozycji. Ekspozycje są całkowitymi
+sekundami. Format ma wspólny całkowity light-off dolny/normalny: podnoszenie
+i powrót oraz odpoczynek przed naświetleniem muszą dawać tę samą sumę.
+GR1 przechowuje całkowite wysokości/prędkości ruchu i osobne PWM. MDLP nie
+przechowuje ruchu ani PWM; aplikacja wymaga zgodności z interpretacją
+UVtools (podniesienie 6 mm, podnoszenie/powrót 100 mm/min, PWM=255).
+To nie są komendy ruchu w MDLP. Nieobsługiwane ustawienia są odrzucane.
+Przykład GR1: normalnie 6 mm/120 mm/min, dolne 4 mm/60 mm/min, wspólny
+powrót 120 mm/min, odpoczynek 2 s → wspólny light-off 8 s.
+Przykład MDLP: ruch 6 mm/100 mm/min, powrót 100 mm/min, odpoczynek 0.8 s
+→ light-off 8 s. Szczegóły: doc/MAKERBASE_2026-10-05.md.
+Natywny import tych masek oraz pełne gotowe profile pozostają w kolejce.
+
+QDT / Emake3D Galaxy 1 (2026-10-05)
+Wybierz QDT jako format eksportu profilu SLA. Wymagany ekran fizyczny
+400x200 mm, Z=400 mm, mirroring X, bez Y, identyczna pierwsza i normalna
+warstwa w calych mikrometrach. Przy orientacji portrait zamien wymiary
+oraz rozdzielczosc osi. QDT zawiera binarne sciezki lasera i podglad 10%.
+Nie zawiera ustawien ekspozycji/ruchu: aplikacja wymaga wartosci zgodnych
+z odczytem UVtools (3/30 s, 4 bottom, bez przejsc, 6 mm, 100 mm/min,
+PWM 255, bez dodatkowych oczekiwan). Nie oznacza to ustawien firmware.
+Zmiana formatu automatycznie zmienia rozszerzenie na .qdt. Bledna
+konfiguracja jest odrzucana przed kodowaniem, bez nadpisania pliku.
+Dokladny zakres testow/ograniczen: doc/QDT_2026-10-05.md. Natywny import
+QDT, pelna biblioteka profili i test fizycznej drukarki nadal w kolejce.
+
+VDT v1 / Voxeldance Tango (2026-10-05)
+Wybierz VDT w profilu SLA; zapisze manifest JSON i szare PNG warstw.
+Geometria i mirroring pochodza z profilu. Obslugiwane sa zmienny Z,
+ruch dwuetapowy, osobne PWM oraz oczekiwania dolne/normalne. Z musi
+miec precyzje do 0,001 mm, parametry warstw do 0,01 jednostki; ekspozycje
+przejsciowe zaokraglane sa jak w UVtools. Rozszerzenie zmienia sie na .vdt.
+Zapisujemy dwa podglady FLT bez rozciagania proporcji; Top/Right/Left/Front
+oraz natywny import pozostaja w kolejce. AA=16 w native, AA=8 odziedziczone
+przez zwykly Convert SL1 UVtools to jawna roznica informacyjna.
+Statystyki z PNG i Z sa rzeczywiste; czas nie dodaje stalego 300 s UVtools.
+Zakres, roznice manifestow i testy: doc/VDT_2026-10-05.md.
+
+JXS / Uniformation GKone (2026-10-05)
+Format JXS wymaga ekranu 4920x2880 px, 221,4x129,6 mm, Z=245 mm
+i pionowego odbicia; obie orientacje panelu są obsługiwane. Zapis jest
+natywny, bez UVtools lub dostępu do Internetu. Ustawienia ruchu/ekspozycji
+i odpoczynku: precyzja 0,01, Z: 0,001 mm. Eksport waliduje geometrię
+i zakres ruchu. Oryginalny UVtools poprawnie odczytuje maski i indywidualne
+warstwy, ale ma błędy globalnych liczników/liftu oraz własnego zapisu JXS.
+Szczegóły i otwarte przypadki: doc/JXS_2026-10-05.md. Weryfikacja
+firmware i natywny import pozostają do wykonania.
+
+ZCodex / Zortrax Inkspire (2026-10-05)
+Wybierz ZCodex dla ekranu 1440x2560 px, 74,67x132,88 mm, poziomego
+odbicia. Wysokość profilu musi pozwalać na końcowy wznios o 40 mm.
+Zapis jest natywny; nie wymaga UVtools/.NET ani Internetu. Ruch,
+prędkość i odpoczynek przed cure muszą być wspólne dla dolnych/normalnych
+warstw; prędkości dodatnie całkowite mm/min. Obsługiwane są oddzielne
+ekspozycje dolne/normalne, zmienny Z i PWM. Przejścia, ruch dwuetapowy,
+after-cure/after-lift nie mają pól tego kontenera i są jawnie odrzucane.
+ZCode (RSA/XML) to osobny format, opisany poniżej. Ograniczenia
+dekodera/encodera UVtools oraz zakres testów: doc/ZCODEX_2026-10-05.md.
+
+ZCode / UnizMaker IBEE (2026-10-05)
+ZCode ma teraz natywny eksport XML/PNG/RSA; UVtools i .NET nie są
+wymagane do pracy aplikacji. Domyślna geometria IBEE w źródle formatu:
+3840x2400 px, 192x120 mm, pionowe odbicie, Z=220 mm. Można zapisać
+inną geometrię, jeśli wspólny pixel_size odtwarza obie długości ekranu
+do 0,01 mm; zgodność realnego urządzenia wymaga właściwego profilu.
+Z i wysokość maszyny: 0,001 mm; parametry ruchu/waits/cure: 0,01;
+prędkość: co 0,1 mm/min (kontener zapisuje cm/min). Dwuetapowy ruch,
+przejścia i osobne dolne/normalne PWM/odpoczynki są zapisywane.
+PWM musi wynosić 1..255 przy dodatnim cure; zero jest jawnie odrzucane
+z powodu utraty ustawień w oryginalnym dekoderze. ZCode to osobny
+format od ZCodex. Ograniczenia/globalne błędy UVtools, importy i testy
+firmware: doc/ZCODE_2026-10-05.md.
+
+NanoDLP — etap przygotowawczy (2026-10-05)
+Kodowanie masek i geometria są naprawione, ale eksport całego NanoDLP
+nadal jest niedostępny. Manifesty, ruch, wersje i pełna weryfikacja GUI
+pozostają w kolejce. Szczegóły: doc/NANODLP_ENCODER_2026-10-05.md.
+Natywne statystyki NanoDLP i info.json są również wdrożone i sprawdzone
+z oryginalnym UVtools (68 056 masek), lecz wymagają podłączenia do
+całego writera. Raport: doc/NANODLP_CONTOURS_2026-10-05.md.
+Przygotowanie manifestów NanoDLP i cache statystyk są podłączone; osiem
+paczek testowych odczytał UVtools. Nadal nie można drukować ani eksportować
+NanoDLP w GUI: ruch/ZIP/wersje/preview wymagają ukończenia. Nie doliczamy
+paczek utworzonych przez harness do eksportów aplikacji.
+Raport: doc/NANODLP_METADATA_2026-10-05.md.
+NanoDLP: skorygowano jednostkę Plate.TotalSolidArea na mm², a ml
+zachowano jako osobną wewnętrzną statystykę. Oryginalny setter UVtools
+może nadpisać poprawione pole przy ustawianiu objętości.
+Zakres: doc/NANODLP_UNITS_2026-10-05.md. Writer nadal blocked.
+
+FDG / Voxelab — eksport v2 (2026-10-05)
+W ustawieniach drukarki wybierz format fdg / Voxelab FDG, zapisz preset,
+wykonaj slicing i eksportuj plik .fdg. Eksporter pracuje natywnie/offline;
+UVtools i .NET nie są potrzebne do uruchomienia aplikacji.
+Wymiary ekranu i wysokość Z muszą odpowiadać Twojej drukarce. Format
+przechowuje pojedynczy etap podnoszenia, osobne dolne/normalne lift speeds,
+wspólny retract speed i odpoczynek przed ekspozycją jako część light-off.
+Pionowe odbicie, drugi etap ruchu i odpoczynki po cure/lift są odrzucane.
+GUI zapisuje nieszyfrowany FDG; wybór seeda w profilu jest w kolejce.
+Import FDG i odbiór fizycznych drukarek pozostają otwarte.
+Szczegóły testów, różnice z konwerterem i ograniczenia:
+doc/FDG_2026-10-05.md.
+
+CTB v1 — poprawiony historyczny wpis CBT (2026-10-05)
+Stare ID cbt w presetach są rozpoznawane jako ctb_v1. Eksport używa
+rozszerzenia .v1.ctb i rzeczywistej wersji 1. Rozszerzenie .cbt nie jest
+formatem UVtools i przestało być oferowane. Zwykły wybór ctb zapisuje v2.
+CTB v1 nie przechowuje niestandardowych ustawień lift/retract; ich wybór
+powoduje błąd przed eksportem. CTB v2 pozwala zapisać ustawienia ruchu.
+Domyślne odczyty ruchu v1 w UVtools nie potwierdzają sterowania konkretnej
+drukarki — szczegóły i zakres testów: doc/CTB_V1_2026-10-05.md.
+
+SVGX — przygotowanie writera (2026-10-05)
+SVGX nadal nie można eksportować. Format jest binarnym nagłówkiem,
+podglądami BMP i dokumentem SVG, a nie ZIP. Geometria rastera i natywne
+kontury z otworami/wyspami są już sprawdzone z UVtools; pełny zapis i jego
+odczyt/GUI pozostają w kolejce. Dotychczasowe puste powodzenie bezpośredniej
+metody export_print zastąpiono jawnym błędem. Raport:
+doc/SVGX_CONTOURS_2026-10-05.md.
+
+SVGX — eksport odblokowany (2026-10-05)
+Wybierz Flashforge SVGX w ustawieniach aktywnej drukarki. Eksport zapisuje
+natywny plik .svgx; nie wymaga UVtools ani połączenia z Internetem.
+Wymagane: mirror X=off/Y=on, jednolita wysokość warstw (także 0.025 mm),
+bez transition, pojedynczy lift 6 mm, lift/retract 100 mm/min, wait=0, PWM=255.
+Format nie zapisuje innych ruchów ani szarego AA; nieobsługiwane wartości
+są zgłaszane przed slicingiem. Nie jest jeszcze dostępny importer SVGX.
+Dowody i dokładne ograniczenia: doc/SVGX_FILE_2026-10-05.md.
+
+CTBEncrypted v4/v5 — eksport odblokowany (2026-10-05)
+W ustawieniach drukarki wybierz Chitubox CTB encrypted v5 albo v4.
+Końcówka to odpowiednio .encrypted.ctb lub .v4.encrypted.ctb; wybór
+filtra eksportu zmienia ją automatycznie. Zapisz preset drukarki, aby
+zachować domyślny wariant. Wariant jest zapisany także w nagłówku pliku.
+Format obsługuje dwufazowe ruchy, waits, PWM i przejściowe ekspozycje.
+Ustaw brak odbicia albo odbicie poziome; pionowe nie jest obsługiwane.
+Precyzja wysokości: 0.001 mm; ekspozycji/ruchów: 0.01 jednostki.
+Niewyrażalne ustawienia zgłaszane są przed slicingiem. Od 2026-10-08
+Open layer archive obsługuje natywny import/edycję CTBEncrypted v4/v5.
+Save edited archive zachowuje wersję, parametry, checksum i podpis.
+Podgląd/Undo uwzględniają Gray7; końcówka wynika z wykrytej wersji.
+Dowody i limity: doc/CTB_ENCRYPTED_EDITOR_2026-10-08.md. Szczegóły: doc/CTB_ENCRYPTED_FILE_2026-10-05.md.
+
+NanoDLP — konfiguracja kontrolera (2026-10-06)
+Dostępne są Mono/RGB v1/v2. W Printer Settings > General > Output wybierz
+wariant i kliknij Configure NanoDLP controller... > Load controller profile...
+Wybierz profile.json właściwego kontrolera, następnie zapisz preset drukarki.
+JSON jest zapisany wewnątrz presetu i po imporcie nie wymaga źródłowego pliku.
+Można też wkleić JSON na stronie NanoDLP controller. Nieprawidłowy profil
+jest odrzucany. Ruch i prędkości wynikają z szablonów kontrolera; ogólne
+prędkości SLA nie przepisują ich automatycznie. Program nie wykonuje skryptów.
+Domyślne końcówki: .nanodlp, .v1.nanodlp, .rgb.nanodlp, .v1.rgb.nanodlp.
+Sama .nanodlp zachowuje wariant presetu; jawna dłuższa końcówka wskazuje wariant.
+Jednolita wysokość warstw (także początkowej), wspólny PWM, bez pionowego
+odbicia. Z: 0.001 mm, ekspozycja/lift/waits: 0.01. Brak profilu i niewyrażalne
+ustawienia zgłaszane są przed slicingiem. Natywny import nadal do wykonania.
+Testy odczytu plików nie potwierdzają ruchu urządzenia ani czasu jego pracy.
+Aktualny zakres i dowody: doc/NANODLP_GUI_2026-10-06.md.
+
+CTB v3/v4/v5 i UniFormation GKtwo (2026-10-06)
+Wybierz wariant w ustawieniach drukarki i zapisz preset. Końcówki:
+.v3.ctb, .v4.ctb, .v5.ctb oraz .gktwo.ctb. V3 zapisuje jedną fazę ruchu,
+V4/V5 oba etapy i trzy waits; V5 również metadane materiału. GKtwo ma
+odrębny identyfikator protokołu, mimo że korzysta z v4. To nie są warianty
+osobnego CTBEncrypted. Niewyrażalne ustawienia są zgłaszane przed slicingiem.
+Nazwę/model firmware i właściwe wymiary LCD ustaw według swojego urządzenia.
+Same testy odczytu w UVtools nie certyfikują firmware. Natywny import tej
+rodziny i wybór seed w GUI pozostają do wdrożenia. Szczegóły oraz zachowane
+surowe różnice oryginalnego Convert: doc/CTB_MODERN_2026-10-06.md.
+
+Obrazy warstw: PNG/JPG/JPEG/JP2/TIF/TIFF/BMP/PBM/PGM/SR/RAS (2026-10-06)
+Open layer archive otwiera także pojedynczy obraz. Save edited image zapisuje
+edytowany obraz w jego oryginalnym formacie. Obrazy nie przechowują ustawień
+naświetlania, ruchu ani wymiarów LCD w mm i nie zastępują zadania druku.
+Po slicingu otwórz Edit layers. Export current mask zapisuje bieżącą warstwę;
+Export mask range zapisuje zakres first/last jako osobne ponumerowane obrazy.
+Wybierz format w dialogu; końcówka zmieni się automatycznie. Dla zakresu nazwa
+maska.pgm oznacza nowy folder maska_layers. Program pokazuje ścieżkę przed
+zapisem i chroni istniejące foldery. Anulowanie działa między warstwami; błąd
+lub anulowanie nie publikuje niekompletnego zakresu. Eksport obrazów nie
+stosuje zmian do wyniku slicingu ani nie oznacza zadania druku jako zapisanego.
+PNG i JP2 zachowują szarości bezstratnie. JPEG jest stratny (quality 95),
+a PBM ma tylko czarny/biały (0 zostaje czarny, niezerowe wartości stają się białe); program pokazuje potwierdzenie.
+Do dokładnego zachowania pikseli używaj PNG. Podgląd edytowanego PBM już
+uwzględnia kwantyzację; zapis JPEG może różnić się od bezstratnej edycji sesji.
+Wielostronicowy TIFF i niektóre kolorowe odmiany JP2 wymagają dalszego importera
+i są jawnie odrzucane. Zakres testów i ograniczenia: doc/IMAGE_FILE_2026-10-06.md.
+
+CBDDLP / Photon v1/v2 i AA (2026-10-06)
+W Printer Settings > General > Output wybierz wariant formatu. W v2 pole
+CBDDLP / Photon AA planes (1–16) należy do presetu drukarki; zapisz preset.
+Zmiana AA zachowuje ręczne edycje warstw i Undo oraz ponownie koduje eksport.
+Najbardziej przewidywalne wartości to 1, 2, 4, 8, 16: pozostałe obniżają
+maksymalną biel, a ponowny zapis odczytanej maski w UVtools może ją zmienić.
+To oddzielne ustawienie od wygładzania rasteryzacji.
+V1 zapisuje maskę binarną (wyłącznie 255) oraz wymaga domyślnego ruchu
+odczytywanego przez UVtools: bottom lift 6 mm, normal lift 0.05 mm,
+speeds 100 mm/min. Nieobsługiwane ustawienia są zgłaszane przed slicingiem.
+Rozszerzenia: .cbddlp/.photon dla v2, .v1.cbddlp/.v1.photon dla v1.
+Oba warianty zapisują dwa podglądy. Szczegóły, testy i ograniczenia:
+doc/CBDDLP_PHOTON_VERSIONS_2026-10-06.md.
+
+CTB v1/v2: eksport zawiera teraz dwa podglądy RGB15. Wybierz CTB v1 lub
+CTB v2 w ustawieniach drukarki; końcówka odpowiednio .v1.ctb lub .ctb.
+Szczegóły ograniczeń v1 i weryfikacji: doc/CTB_LEGACY_PREVIEWS_2026-10-06.md.
+
+Edytor plików CTB/CBDDLP/Photon v1/v2 (2026-10-06)
+W menu wybierz Open layer archive i otwórz .ctb, .cbddlp lub .photon.
+Wersja jest wykrywana z zawartości. Od 2026-10-08 można także importować
+i edytować zwykłe CTB v3/v4/v5 oraz GKtwo; zapis zachowuje ich parametry
+i końcówki .v3.ctb/.v4.ctb/.v5.ctb/.gktwo.ctb. CTBEncrypted ma osobny
+schemat i od 2026-10-08 własny importer/edytor. Dowody: doc/CTB_MODERN_EDITOR_2026-10-08.md.
+Możesz edytować maski, używać Undo/Redo i zapisać Save edited archive.
+Końcówka jest dobierana do wykrytego wariantu, np. .v1.ctb dla v1.
+Niezmieniony dokument zapisuje się identycznie bajtowo. Edycje używają
+rzeczywistych poziomów szarości pliku i zachowują oryginalne ustawienia
+oraz podglądy. Po edycji plik może urosnąć: nowe maski są dopisywane,
+a stary payload pozostaje. Import i zapis oryginalnego archiwum mają Cancel; część kodeków musi
+zakończyć bieżący obraz przed przerwaniem. Więcej: doc/CHITUBOX_EDITOR_2026-10-06.md.
+
+Anulowanie importu/zapisu warstw (2026-10-07)
+W oknach Open layer archive oraz Save layer archive możesz nacisnąć Cancel.
+Poczekaj na zatrzymanie worker i zniknięcie okna. Anulowany import nie
+otwiera częściowego dokumentu. Anulowany zapis nie nadpisuje poprzedniego
+pliku, nie oznacza edycji jako zapisanej i zachowuje Undo/Redo.
+Niektóre kodeki najpierw kończą bieżący obraz. Eksport ze sceny3D ma osobną ścieżkę; Cancel gotowego zadania SL1 odebrano
+7 listopada (doc/M2_MAIN_WORKER_CANCEL_2026-11-07.md). Szczegóły importu/zapisu warstw:
+doc/LAYER_ARCHIVE_CANCEL_2026-10-07.md.
+
+SL1S (.sl1s) jako wybór eksportu
+------------------------------
+W Printer Settings > General > Output wybierz "SL1S Speed archive" i zapisz
+preset drukarki. Wybrany ID SL1S wraca po restarcie. Panel eksportu i edytor
+warstw dobierają .sl1s; przełączenie na SL1 dobiera .sl1. Oba rozszerzenia
+używają natywnego schematu SL1 i otwierają się w edytorze bez konwersji.
+SL1/SL1S wymaga stałej grubości warstw po pierwszej. Nieudany zapis zachowuje
+poprzedni plik. Dokumentacja prób i ograniczeń: doc/SL1S_EXPORT_2026-10-07.md.
+W projekcie warstwowym zmiana listy formatu oznacza ustawienia jako zmienione.
+Wybierz Save layer project, aby zachować wybrany format razem z maskami.
+Zapis projektu i eksport pliku drukarki to dwie osobne czynności.
+Podczas Export layers użyj Cancel i poczekaj na powrót do edytora. Poprzedni
+plik oraz edycje i Undo/Redo pozostają dostępne; możesz od razu ponowić eksport.
+Pojedynczy obraz lub operacja zapisu może wymagać dokończenia przed przerwaniem.
+Odbiór GUI SL1/SL1S: doc/M2_SL1_TRANSITION_PREVIEW_2026-11-06.md.
+Klipper ZIP/RGB.ZIP pozostaje w kolejce: nie traktuj pliku SL1 z końcówką
+ZIP/RGB.ZIP jako poprawnego kontenera Klipper.
+
+Klipper MSLA: Mono ZIP / RGB ZIP (eksport)
+---------------------------------------
+W Printer Settings > General > Output wybierz Klipper MSLA (Mono) albo
+Klipper MSLA (RGB), następnie zapisz preset. Mono używa .zip, RGB .rgb.zip.
+Ustaw ekran mm/px, orientację/mirror i Z dla swojego sprzętu. W Material
+Settings > LCD exposure and motion ustaw ekspozycje, waits, lift/retract
+i PWM. Aktualny eksport wymaga PWM 1–255 oraz dodatniego pierwszego
+etapu lift/retract; błędne ustawienia zostają odrzucone przed podmianą pliku.
+Po Slice now możesz użyć Export albo Edit layers > Apply > eksport.
+Lista eksportu rozróżnia schematy również przy identycznej końcówce .zip.
+Wybór Generic ZIP nie jest wyborem Klipper; kontenery mają inne metadane.
+Wynik Klipper zawiera numerowane maski PNG, marker i skrypt MSLA. To nie
+jest plik FDM. Kontroler musi mieć odpowiednie makra cyklu naświetlania.
+Natywne otwieranie Klipper i pełne parametry per-layer/acceleration są jeszcze
+w kolejce; test UVtools nie certyfikuje urządzenia. Szczegółowy zakres oraz
+znane różnice original Roundtrip: doc/KLIPPER_MSLA_2026-10-08.md.
+
+Parametry importowanych warstw Anycubic:
+W edytorze wybierz warstwę i Layer parameters. Z position podaje absolutne Z
+w mm, Exposure czas w sekundach. Apply parameters zatwierdza je razem jako
+jedno Undo. Z musi pozostawać pomiędzy sąsiadami i w znanej wysokości drukarki.
+Zapis przelicza przyrosty warstw, nie zmieniając Z innych warstw ani masek.
+Stored lift distance i Lift speed (mm/min) są teraz edytowalne. Wait-before, retract i faza2 są globalnym kontekstem tylko do odczytu.
+Pełna edycja ruchów/opóźnień/PWM i innych rodzin jest nadal w przebudowie.
+Parametry dotyczą warstwy i jej masek, także SUBIMGS. Zapisuj oryginalny
+format przez Save edited archive; obecny projekt/konwersja nie pomijają
+edytowanych parametrów po cichu, lecz odmawiają do czasu pełnego wdrożenia.
+Legacy PWC bez geometrii może zachować zerowe, nieznane szacunki żywicy;
+aby zastąpić je wyliczonymi, wybierz jawny zgodny profil drukarki/materiału.
+
+Parametry warstw CTB v3/v4/v5/GKtwo
+Otwórz archiwum i Layer parameters dla wybranej warstwy. V3 udostępnia Z, ekspozycję, light-off, lift/retract i PWM. V4/v5/GKtwo dodatkowo drugą fazę oraz waits. Dystanse są w mm, prędkości w mm/min, czasy w sekundach; PWM to liczba całkowita 0–255. Apply, Undo/Redo i Save layer archive zachowują parametry w natywnym pliku. CTBEncrypted/AES v4/v5 także udostępnia parametry warstw; w drukarkach z uchylną kuwetą ruchy pozostają readonly. Konwersja/projekt edytowanych parametrów pozostają chronione odmową do pełnego wdrożenia.
+
+CTBEncrypted v4/v5: zapis parametrów zachowuje maski, AES ustawień, XOR/partial-AES payloadów oraz signature/trailer. Wybierz Layer parameters, Apply, Undo/Redo i Save layer archive. Model z uchylną kuwetą (np. Saturn 4 Ultra/Mars 5 Ultra) pozwala zmieniać ekspozycję, waits, light-off, Z i PWM; ruchy są tylko do odczytu zgodnie z możliwościami formatu. Sprawdź wynik w UVtools przed odbiorem na fizycznej drukarce.
+
+Anycubic ruch warstwy: Layer parameters pokazuje zapisany dystans lift i prędkość w mm/min. Plik przechowuje prędkość w mm/s. Globalny EXTRA (phase2/retract) pozostaje bez zmian; Basic ignoruje zapisane fazy EXTRA. Zapisany dystans używany przez native writer/globalne settery obejmuje obie fazy, więc nie dodawaj globalnego lift2 drugi raz. Zmiana jednej warstwy wymaga native save; konwersja/projekt z edytowanymi parametrami pozostają do wdrożenia.
+
+Projekt warstw — aktualizacja 2026-10-08
+Schemat payloadu SLA v2 przechowuje cały dokument warstw, w tym parametry,
+main/secondary, powiązane maski oraz natywny source i unknown data. Odczyt v1
+pozostaje dostępny. Historia Undo pozostaje lokalna dla sesji. Pełny GUI
+workflow importowanego dokumentu, trwały profil eksportu i zastosowanie
+parametrów/multiplane do ścieżki rasterowej konwersji nie są jeszcze odebrane.
+Raport: doc/PROJECT_DOCUMENT_V2_2026-10-08.md. Nie zakładaj na tej podstawie,
+że cały projekt z kontekstem profili jest już zachowywany po restarcie.
+
+Jawny kontekst eksportu — aktualizacja 2026-10-08
+API projektu v2 zachowuje opcjonalne LCD mm/px, gęstość, cenę/ml i max Z.
+Brak kontekstu nie pobiera wartości z aktualnych presetów. W GUI Anycubic
+opt-in resin estimates pokazuje także wybrany max Z i sprawdza wysokości
+przy native save. Granica Z uwzględnia precyzję native float; rzeczywiste
+przekroczenia są odrzucane. Pełny GUI save/reopen projektu z tym kontekstem
+i pełne definicje presetów są jeszcze w kolejce. Native PWC1/515 nie może
+samo przechować LCD mm i machine Z. Raport: doc/PROJECT_EXPORT_PROFILE_2026-10-08.md.
+
+2026-10-08 — PROJECT ORIGIN / ATOMIC SAVE (developer API)
+ProjectArchive v2 now distinguishes model_slice/imported_archive/generated_raster.
+Imported layer projects do not fabricate a model fingerprint or baseline Z.
+save_layer_project stages and atomically publishes a standalone layer ZIP;
+read/write callbacks support cancellation between entries/masks and before publish.
+This part does not add GUI Save/Open/restart or complete preset persistence.
+Details: doc/PROJECT_LAYER_ORIGIN_2026-10-08.md.
+
+2026-10-08 — PROJEKT IMPORTOWANYCH WARSTW W GUI
+Window > Open layer archive (Ctrl+Shift+L): otwórz plik warstw.
+Po edycji wybierz Save layer project i zapisz .sla-project.
+Po restarcie otwórz go przez tę samą akcję Open layer archive.
+Projekt zachowuje dokument oraz jawny kontekst eksportu, gdy został wybrany.
+Saved project estimates pokazuje zachowane wartości; globalne presety się nie zmieniają.
+Save edited archive eksportuje plik drukarki. Po zapisaniu projektu gwiazdka
+oznacza jego niezapisane zmiany także wtedy, gdy wyeksportowano plik natywny.
+Projekt warstw nie odtwarza siatki 3D. Model/generator i pełne presety mają
+osobne, nadal otwarte etapy. Dowody i ograniczenia: doc/PROJECT_LAYER_GUI_2026-10-08.md.
+
+2026-10-08 — EFEKTYWNE USTAWIENIA SLA W PROJEKCIE WARSTW
+Capture selected SLA settings pobiera wybrane opcje drukarki/materiału/procesu.
+Rozdzielczość musi pasować do dokumentu; nieudane pobranie go nie zmienia.
+Project SLA settings pokazuje zachowane nazwy i 157 opcji obecnego schematu.
+Okno jest do odczytu; pełne kreatory i edycja presetów nadal mają osobny etap.
+Zapisz .sla-project, aby zachować pełne ustawienia. Sam native export nie zapisuje
+wszystkich opcji procesu/presetów. Przy włączonym kontekście resin estimates
+jawne ponowne Capture na zgodnym ekranie aktualizuje również materiał/statystyki.
+Preferred format/version w snapshotcie nie zmienia wersji importowanego native pliku.
+Szczegóły: doc/PROJECT_SETTINGS_SNAPSHOT_2026-10-08.md.
+
+Projekty generatorów (2026-10-08):
+W edytorze po wygenerowaniu kalibracji lub PCB użyj Save layer project.
+Plik .sla-project zachowuje maski, wysokości Z i efektywne ustawienia SLA.
+Po restarcie wybierz Window > Open layer archive i otwórz ten projekt.
+Export generated layers używa ustawień zapisanych w projekcie, także gdy
+aktywne presety są inne. Project SLA settings pokazuje zapisane wartości.
+Eksport nie zastępuje zapisu projektu: po zmianie warstw zapisz także projekt.
+To zapis wyniku rastrowego; receptura Gerber i ustawienia kreatora nie są jeszcze
+odtwarzane. Pełny odbiór PCB i wszystkich generatorów/formatów pozostaje otwarty.
+
+PCB project workflow (2026-10-08):
+PCB exposure: podaj Gerbery i opcjonalny Excellon. Wyłącz Merge Gerber files
+into one exposure, aby uzyskać osobne maski ze wspólną rejestracją.
+Generate PCB layers tworzy lokalne stationary exposure job; nie zmienia
+presetów sceny. Ekspozycja jest w sekundach, lift/waits są zerowe, PWM255.
+Save layer project zachowuje te ustawienia i wszystkie maski w obu orientacjach.
+Projekt można ponownie otworzyć bez plików PCB, jako wynik rastrowy.
+Odtwarzanie edytowalnej receptury oraz pełne parsery PCB nadal wymagają pracy.
+
+Projekt modelowy i edycje SLA (2026-10-08):
+Po slicingu wybierz Edit layers, edytuj i Apply to sliced result.
+Save Project as zapisuje model3MF wraz z pasującymi maskami/ustawieniami.
+Po otwarciu i slicingu zgodne poprawki są przywracane; stary wynik z inną
+geometrią lub ustawieniami rastra jest odrzucany. Historia Undo jest nową sesją.
+Import3MF pokazuje nazwę projektu w lokalnych etykietach GUI; zapis projektu
+zachowuje pierwotne identities drukarki/materiału/procesu (2026-10-08).
+Presety biblioteki użytkownika używają swoich nazw. Pełne metadata i CRUD
+trzech ról nadal wymagają odbioru.
+
+2026-10-09 — format eksportu po imporcie 3MF:
+Preferencja formatu w edytorze warstw i oknie eksportu używa źródłowej nazwy
+presetu drukarki, również gdy GUI pokazuje etykietę z nazwą projektu.
+Save As własnego presetu kopiuje preferencję do jego nowej nazwy.
+CXDLPv4 zapisuje 7-bitowe szarości: np. wartość maski 24 odczytana w UVtools
+wynosi 25. Projekt 3MF zachowuje pełną 8-bitową maskę.
+
+2026-10-09 — KONWERSJA IMPORTOWANEGO ARCHIWUM
+1. Otwórz plik drukarki przez Window > Open layer archive.
+2. Wybierz w głównym oknie zgodną drukarkę/materiał/proces, następnie w edytorze
+   użyj Capture selected SLA settings. Rozdzielczość musi pasować do masek.
+3. Convert archive otwiera wybór wdrożonych formatów zachowujących pola źródła.
+   Dialog pokazuje drukarkę ze snapshotu; Convert przechodzi do zapisu pliku.
+4. Nazwa otrzymuje końcówkę wybranego formatu. Udany wybór jest preferencją
+   tej drukarki. Natywne Save edited archive i projekt źródłowy pozostają dostępne.
+Konwersja nie usuwa niezapisanych zmian projektu ani historii edycji.
+Obecnie schematy konwersji obejmują adresowane CTB/GKtwo i CTBEncrypted;
+pełna macierz wszystkich rodzin nadal jest rozwijana. Secondary masks oraz
+nieprzedstawialne pola/piksele powodują odmowę przed publikacją. Szarość 34
+z Anycubic nie może być zachowana dokładnie w 7-bitowym CTB; automatyczna
+kwantyzacja nie jest jeszcze oferowana. Pozostań przy natywnym zapisie takiego pliku.
+Szczegóły i zakres testów: doc/IMPORT_CONVERSION_GUI_2026-10-09.md.
+
+2026-10-11 — GLOBALNE PARAMETRY KONWERSJI CTB/AES
+Konwersja między CTB v4/v5 i CTB encrypted v4/v5 zachowuje parametry
+nagłówka źródła osobno od ustawień poszczególnych warstw, również ich
+niezapisanych zmian. Preset docelowy wybiera kontekst drukarki; nie zastępuje
+źródłowych ekspozycji i ustawień ruchu podczas tej konwersji.
+Obsługa Anycubic516/517 do tych czterech formatów ma ten sam kontrakt.
+Nieznana flaga parametrów warstw, sprzeczne kopie pól lub niezgodna
+nominalna wysokość warstwy powodują odmowę z komunikatem. Poprzedni plik
+wyjściowy i zmiany dokumentu pozostają zachowane. UVtools obsługuje nominalną
+wysokość warstwy z maksymalnie trzema miejscami po przecinku; program nie
+zaokrągla niezgodnego źródła po cichu. Zakres i testy opisuje
+ doc/M2_CTB_GLOBAL_CONVERSION_2026-10-11.md.
+Pełna macierz formatów, parametry świeżego slicingu i dalsze UI/UX pozostają
+w doc/KANBAN_WDROZENIA_2026-10-11.md.
+
+2026-10-11 — WALIDACJA WSPÓLNYCH PARAMETRÓW SLA
+Wspólny model zachowuje osobne normalne/bazowe waits i zamierzoną
+precyzję. Wybrany format ma własne ograniczenia: CTB/AES odrzuca różne
+shared waits, nominalną wysokość poza siatką 0.001mm oraz wartości poza
+zakresem natywnej reprezentacji. Odmowa nie nadpisuje pliku docelowego.
+To zmiana kontraktu; tabela parametrów fresh jobs i pełny capabilities/loss
+plan nadal wymagają wdrożenia. Status: doc/KANBAN_WDROZENIA_2026-10-11.md.
+
+2026-10-11 — PREFLIGHT PARAMETRÓW KONWERSJI
+Importowany dokument jest sprawdzany przed kopiowaniem masek i encodingiem.
+Silnik wskazuje nieobsługiwane pole razem z jednostką; globals i native Z
+są sprawdzane zanim ruszy eksport. GUI nadal filtruje niezgodne formaty,
+więc pełny raport powodów nieobecności pozycji wymaga dalszej poprawki UX.
+Finalny plik nadal przechodzi kontrolę pikseli, ruchu i parametrów przed
+publikacją. Status: doc/M2_CONVERSION_PREFLIGHT_2026-10-11.md.
+
+2026-10-11 — SKALA FIZYCZNA IMPORTOWANEJ KONWERSJI
+Dla CTB/AES i Anycubic ze znaną geometrią ekran wybranej drukarki musi
+odpowiadać źródłowym wymiarom LCD i rozdzielczości w osiach rastra.
+Sama zgodność liczby pikseli nie wystarcza: zmiana mm zmienia skalę modelu.
+Konwersja odmówi takiej zmiany oraz przekroczenia rzeczywistego limitu Z
+przed kopiowaniem/kodowaniem masek, zachowując istniejący plik docelowy.
+Dobierz profil o zgodnej geometrii. Workflow jawnego resamplingu/zmiany
+skali nie jest jeszcze wdrożony; źródła o nieznanej geometrii nie są dowodem
+zgodności skali. Status: doc/M2_CONVERSION_GEOMETRY_2026-10-11.md.
+
+2026-10-11 — RUCH UCHYLNEJ KUWETY W IMPORTOWANYM AES CTB
+Rozpoznawanie numeryczne tilt odpowiada UVtools: nominalna wysokość
+warstwy równa pierwszej fazie lift, first lift<0.5 i normal lift speed<0.5.
+Prędkość bazowa nie służy do rozpoznawania. Nazwane Saturn 4 Ultra/Mars 5
+Ultra nadal mają motion readonly. Layer parameters pokazuje pola ruchu
+tylko do odczytu dla tilt; ekspozycja pozostaje edytowalna. Poprawka nie
+stanowi jeszcze pełnego odbioru eksportu na docelowe drukarki tilt.
+Status: doc/M2_PRINTER_MOTION_2026-10-11.md.
+
+2026-10-11 — CTB AES v4/v5, Saturn 4 Ultra i Mars 5 Ultra
+Eksport tych nazwanych drukarek używa pól ruchu .05/0 wymaganych przez
+lokalny schemat CTBEncrypted i szacuje cykl uchyłu jako 4 sekundy.
+Nominalna wysokość warstwy nie zostaje wymuszona na .05 mm.
+Przy konwersji importowanego zadania ruch źródłowy musi być zgodny z
+polami docelowej drukarki; błąd pokazuje zakres, nazwę pola i jednostkę.
+Odmowa zachowuje istniejący plik, edycje oraz Undo/Redo. Źródło można
+nadal zapisać w formacie natywnym. Nie ma automatycznej normalizacji ruchu.
+To odbiór programowy writer/preflight i GUI Capture→Convert, bez testu
+sprzętowego. Anonimowe numeric tilt, pełny wybór printer preset/wizard
+oraz tabela parametrów świeżego zadania nadal wymagają kolejnych kart.
+Raport: doc/M2_NAMED_TILT_TARGET_2026-10-11.md.
+
+2026-10-11 — anonimowe numeric tilt i konwersja do CTB AES
+Klasyfikacja numeryczna korzysta z końcowych wartości w pliku: nominalna
+wysokość = pierwsza faza podnoszenia, odległość i normalna prędkość < .5.
+Eksport zachowuje te natywne wartości i liczy cykl 4s z opóźnieniem jako
+minimum. Nie podmienia ich na .05 ani nie dopisuje nazwy innej drukarki.
+Importowany plik z nieznanym czasem 0 zachowuje 0 przy zapisie natywnym;
+nowa konwersja wylicza pełną estymatę z rzeczywistych warstw i defaults.
+UVtools może wyświetlać zaokrąglony lift/speed lub dziedziczyć prędkość z
+globals; raport odróżnia te widoki od natywnych danych, zachowanych dokładnie.
+Editorreadonly pól ruchu, Undo/Redo i historia oryginału pozostają chronione.
+Raport: doc/M2_NUMERIC_TILT_2026-10-11.md. Pełny fresh parametereditor,
+wszystkie formaty/varianty i testy sprzętowe nadal wymagają dalszych etapów.
+
+CTB v3: preserving settings during conversion
+-------------------------------------------
+Aktualizacja 2026-11-07: końcowa kontrola konwersji CTB v3/v4/v5 jest szybsza
+bez utraty sprawdzania obrazów i parametrów. W teście dużego CTBv4→v5 czas
+spadł z 9,79 do 8,19 s; nie jest to czas całego slicingu.
+Nowe warstwy można także eksportować do CTB v3, jeśli ich ustawienia mieszczą
+się w protokole v3: bez drugiej fazy ruchu i jawnych czasów oczekiwania.
+Niezerowe nieobsługiwane pola blokują zapis z komunikatem; program nie usuwa
+ich po cichu. Wersja v3 wymaga też wspólnej normalnej/dolnej prędkości powrotu.
+Odbiór i ograniczenia: doc/M2_CTB_NATIVE_READBACK_2026-11-07.md.
+Kolejna optymalizacja transferu ustawień CTB v3/v4/v5 działa automatycznie.
+W nowych próbach duża konwersja CTBv4→v5 skróciła się z 8,20 do 5,78 s
+(około 29,45%). Sprawdzanie pikseli i parametrów pozostaje obowiązkowe;
+zwykły zapis zmienionych warstw nadal uwzględnia wszystkie edycje.
+Pomiar obejmuje konwersję gotowych warstw, nie cały slicing.
+Zakres odbioru: doc/M2_CTB_PARAMETER_TRANSFER_2026-11-07.md.
+Dedykowany test GUI świeżego v3 oraz testy na drukarkach nadal są w kolejce.
+
+Imported CTB v3 stores nominal print defaults separately from individual layer
+changes. Conversion to CTB v4/v5 or AES v4/v5 keeps these defaults, actual Z,
+exposure, light-off delays, PWM and supported single-phase motion. V3 has no
+second motion phase or explicit rest waits; these remain zero when converting,
+even if the selected printer preset contains additional phases or waits.
+Opaque v3 fields are preserved when saving the native archive.
+A native global-settings overlay requires a valid, unambiguous source and rejects
+settings that v3 cannot store. Malformed-source rejection preserves an existing
+output file. Software reference validation does not establish printer hardware
+compatibility. Other format families and complete fresh-job editor support are
+still tracked in the refactor kanban.
+
+Project persistence foundation (2026-10-11):
+Image-only and native layer projects continue to use manifest v2; v1/v2 remain
+readable. Explicit fresh-job descriptors use manifest v3 to preserve producer,
+physical geometry, nominal defaults and actual per-layer intentions. Older
+application binaries reject v3 rather than silently dropping these parameters.
+This is currently a core persistence feature: model/calibration/PCB producers
+and the GUI fresh-parameter editor have not been connected to it yet. It does
+not establish printable-format export support. See
+ doc/M2_FRESH_FACTORY_2026-10-11.md and the implementation kanban.
+
+Fresh native-export integration (2026-10-11, core/API scope):
+Explicit fresh-job descriptors now select the parameter-preserving exporter
+for CTB v4/v5 and encrypted CTB v4/v5 through either public print route.
+A selected preset no longer supplies replacement layer/default parameters.
+Print files use their native float32 representation; projects keep the original
+double values. Unsupported destination contracts and grayscale alphabets reject
+instead of silently losing data. Named Saturn 4 Ultra/Mars 5 Ultra require
+matching protocol motion. This does not enable fresh parameter controls or
+attach descriptors to existing model/calibration/PCB producers yet.
+See doc/M2_FRESH_EXPORT_2026-10-11.md for the tested scope and remaining gates.
+
+Checkpoint 2026-10-13: poprawiono CXDLPv4 zapis ruchu dwufazowego: TOTAL w tabeli natywnej, FIRST i SECOND po odczycie UVtools. Osobny znany problem pozostaje w zapisanym szacowaniu czasu (około 300 sekund przygotowania); szczegóły w doc/M2_CXDLPV4_TWO_STAGE_2026-10-13.md. Generator neutralnych parametrów jest API; nowe workflow świeżych parametrów w GUI nie zostało jeszcze podłączone. Pełny stan i zależności: doc/KANBAN_WDROZENIA_2026-10-11.md.
+
+Checkpoint 2026-10-13 (czas CXDLPv4): poprawiono opisany wcześniej brak 300 sekund przygotowania w generated native eksporcie. Zapisane oszacowanie uwzględnia ruch, ekspozycję, opóźnienia i precyzję całkowitych sekund; potwierdzone niezależnie w UVtools na 16 plikach/48 warstwach. To zmiana metadanych czasu wydruku, nie przyspieszenie eksportu. Bardzo małe aktywne prędkości zaokrąglane do zera są obecnie odrzucane; dokładna polityka fallback oraz pełna integracja GUI/statystyk pozostają otwarte. Raport: doc/M2_CXDLPV4_TIME_2026-10-13.md.
+
+Checkpoint 2026-10-13 (fallback CXDLPv4): poprzednia odmowa aktywnych prędkości .004 mm/min została poprawiona. Natywne wartości są zachowane; metadane czasu stosują reguły odczytu UVtools, w tym domyślne 100/80 dla bottom retract przy zaokrągleniu do zera. Potwierdzone 48 eksportów/144 warstwy, nie oznacza weryfikacji ruchu na drukarce. Pełny stan i ograniczenia: doc/M2_CXDLPV4_FALLBACK_2026-10-13.md.
+
+Checkpoint 2026-10-13 (natywne parametry CXDLPv4): dodano i zweryfikowano wewnętrzny czytnik 14 pól warstwy. Import w GUI nadal korzysta z dotychczasowej edycji masek; pełne edytowanie parametrów wymaga kontraktów globali, zapisu, Undo/Redo i projektów. Aktualna kolejka: doc/KANBAN_WDROZENIA_2026-10-11.md.
+
+Checkpoint 2026-10-13 (globalne parametry CXDLPv4): wewnętrzny odczyt zachowuje osobno ustawienia zapisane w pliku oraz brakujące pola dolnych warstw. Edycja tych parametrów w GUI nadal wymaga dalszej integracji. W krótkich zadaniach wykryto różnicę licznika warstw przejściowych (natywne 5, UVtools 0); korekta zapisu i sprawdzenie ekspozycji są kolejnym P0. Aktualny status: doc/KANBAN_WDROZENIA_2026-10-11.md.
+
+Checkpoint 2026-10-13 (owned fresh CXDLPv4 core/API): nowa ścieżka eksportu zachowuje jawne parametry zadania zamiast nadpisywać je presetem. Kontroluje obrazy, geometrię, Z, globalne i per-layer parametry, czas oraz objętość/masę/koszt przed publikacją. Nieprzedstawialne ustawienia są odrzucane z nazwą pola, poprzedni plik zostaje zachowany. Niezależny lokalny UVtools:36 plików/108 warstw i32 projekty PASS. Nie udostępnia to jeszcze nowego edytora parametrów w GUI ani nie kończy integracji producentów PCB/kalibracji. Wydajność i test rzeczywistej drukarki wymagają osobnego odbioru. Raport: doc/M2_CXDLPV4_FRESH_2026-10-13.md; kolejka: doc/KANBAN_WDROZENIA_2026-10-11.md.
+
+Checkpoint 2026-10-13 (owned fresh SL1/SL1S core/API): jawne parametry zadania, pierwsza wysokość Z, opóźnienie LightOff, globalne ustawienia i zgodny harmonogram warstw są zachowywane w obu ścieżkach eksportu. SL1 nie przechowuje dowolnych niezależnych ustawień każdej warstwy: zmiany, których jego dekoder nie wykona, są odrzucane z nazwą pola i bez zastąpienia poprzedniego pliku. Dodano kontrolę profilu żywicy i fizycznej objętości. UVtools:92 pliki/276 warstw +64 projekty PASS. Nie oznacza to nowego GUI edytora parametrów ani przyspieszenia eksportu. Integracja producentów, statystyk i kolejne bramki pozostają w doc/KANBAN_WDROZENIA_2026-10-11.md; szczegóły doc/M2_SL1_FRESH_2026-10-13.md.
+
+
+Checkpoint 2026-10-13 — owned raster statistics (core/API)
+Explicit fresh layer documents calculate source statistics from their own physical geometry, exact Z positions, current masks and layer parameters. The neutral schedule excludes printer preparation and codec rounding; an exported file can have a different executable estimate. Existing GUI time/cost/area consumers still require the separate acceptance described in doc/M2_OWNED_STATISTICS_2026-10-13.md. This checkpoint does not claim the complete refactor or new GUI functionality is finished.
+
+Checkpoint 2026-10-13 (statystyki SLA w GUI): dla własnego zadania panel pokazuje czas bez przygotowania drukarki, koszt z żywicy przypisanej do zadania i zużycie rzeczywistych masek. Legenda pokazuje czas wybranej warstwy i czas skumulowany. Małe wartości i duże skończone czasy pozostają widoczne w notacji naukowej. Czas neutralnego harmonogramu może różnić się od czasu zapisanego w formacie drukarki, który uwzględnia własne przygotowanie i zaokrąglenia. Przełącznik „Show estimated print time on hover” w menu suwaka włącza czas po najechaniu. Odbiór końcowy i ograniczenia: doc/M2_STATISTICS_UI_2026-10-13.md.
+
+Checkpoint 2026-10-13 (generatory PCB/kalibracji, core/API): dla SL1/SL1S,
+CXDLPv4, CTB4/5 i encrypted4/5 generator zachowuje własne parametry po
+finalnych zmianach, również po zapisie i ponownym otwarciu projektu. PCB
+zeruje nieaktywne ruchy i prędkości. Poprawiono dokładność masy i kosztu
+CTB/AES; dodatnie wartości zbyt małe dla formatu powodują odmowę bez
+zastąpienia poprzedniego pliku. Bramka112 eksportów/280 warstw PASS.
+Pełna integracja z Plater/Sliced i edycją własnych parametrów, ModelSlice
+oraz wszystkie pozostałe formaty nadal wymagają prac. To nie jest ukończenie
+pełnego PCB ani kompletu kalibracji. Aktualny status:
+ doc/M2_GENERATED_OWNERSHIP_2026-10-13.md
+ doc/KANBAN_WDROZENIA_2026-10-11.md
+
+Kalibracja grayscale (formularz Printer calibration):
+Wybierz Grayscale patches i sprawdź tabelę Requested -> generated. Pokazuje
+poziomy zapisane w maskach dla aktualnego formatu. Jeśli poziomy się powtarzają,
+zmniejsz Grayscale steps lub poszerz zakres First/Last; Generate będzie
+wyłączony do poprawienia zakresu. Domyślne0–255/16 daje16 różnych poziomów PWC.
+Zmiana poziomów wymaga potwierdzenia; No wraca do formularza. Przy porównywaniu
+wydruku używaj wartości generated. Kolejna zmiana formatu eksportu może
+wymagać odrębnej konwersji palety.
+
+Przepis kalibracji w projekcie:
+Save layer project zapisuje wzorzec, wymiary, odstępy i żądane/wygenerowane
+poziomy. Po ponownym otwarciu użyj Calibration recipe w edytorze warstw.
+Jest to opis pierwotnej generacji; ręczne edycje masek są zachowane. Widok
+nie przegenerowuje warstw ani nie zmienia presetów. Projekty z tym opisem
+używają manifestu6 i wymagają aktualnej aplikacji; starsze projekty bez
+opisu pozostają obsługiwane.
+
+Zgodność ustawień wyjścia:
+W Materials → LCD exposure and motion sekcja Output compatibility pokazuje
+aktualny format i wersję. Gdy wartość nie ma reprezentacji w formacie, podaje
+nazwę ustawienia i sposób poprawienia. Komunikat aktualizuje się po wpisaniu
+wartości i zatwierdzeniu (przeniesieniu focus). Nie zeruje innych presetów.
+Modern Anycubic wymaga jednakowych czasów przed naświetlaniem normal/bottom,
+zerowych wait after/retract distance2 oraz power255. Pełny eksport nadal
+sprawdza warstwy, geometrię i reprezentację parametrów.
+
+
+Anulowanie eksportu modelu (przyrost 2026-10-14):
+Silnik sprawdza Cancel przed eksportem, między etapami kodowania warstw
+oraz przed podmianą pliku docelowego. Wykryte anulowanie zachowuje wcześniejszy
+wynik i usuwa staging. Niektóre kodeki i zapis/readback kończą bieżący etap
+przed kolejnym sprawdzeniem — natychmiastowe przerwanie całego eksportu
+w GUI wymaga jeszcze odbioru. Szczegóły i granice testów:
+doc/M2_EXPORT_CANCELLATION_2026-10-14.md.
+
+Publikacja eksportu — dalsza weryfikacja 2026-10-14:
+Wspólny mechanizm eksportu usuwa plik tymczasowy również po błędzie zapisu,
+walidacji wyniku lub odmowie podmiany. Poprzedni wynik pozostaje dostępny,
+a po usunięciu przyczyny można ponowić eksport. Testy cancel po zapisie
+są odebrane na poziomie tego mechanizmu; GUI Cancel i czas reakcji nadal
+wymagają odbioru. Raport: doc/M2_EXPORT_PUBLICATION_2026-10-14.md.
+
+Zmiana ustawień a eksport (2026-10-14):
+Zmiana konfiguracji, również modelu drukarki lub danych materiału, wywołuje
+zatrzymanie zadania w tle przed podmianą danych używanych przez eksport.
+Wymiana edytowanych warstw stosuje ten sam mechanizm. Ponowne zastosowanie
+identycznych ustawień nie wymienia ich pamięci. Test równoległej zmiany
+podczas eksportu w GUI i pełny snapshot/revision nadal oczekują odbioru.
+Raport: doc/M2_EXPORT_MUTATION_2026-10-14.md.
+
+Zadania rastrowe — czyszczenie i przejście do sceny (2026-10-14):
+Silnik zatrzymuje właściciela eksportu przed zwolnieniem masek i writera,
+również dla wygenerowanych zadań PCB/kalibracji bez etapów slicingu modeli.
+Core przetestowano z rzeczywistym wątkiem; mutacja w GUI podczas kodowania
+oraz pełny snapshot/revision nadal wymagają odbioru.
+Raport: doc/M2_RASTER_OWNER_LIFETIME_2026-10-14.md.
+
+Dane materiału a statystyki gotowego zadania (2026-10-14):
+Po zastosowaniu nowej gęstości, ceny lub objętości butelki silnik odświeża
+masę i koszt z już zmierzonej objętości wydruku. Nie wymaga to ponownego
+slicingu i zachowuje edycje warstw. Objętość butelki0 nie określa ceny
+za ml; presentation pokazuje N/A. Core jest odebrany; pełny flow GUI
+zmiany materiału i dialogu z placeholderami pozostaje do weryfikacji.
+Raport: doc/M2_MATERIAL_STATISTICS_2026-10-14.md.
+
+Materiał, panel i nazwa eksportu (2026-10-14):
+Po zastosowaniu ceny/gęstości/objętości butelki panel Cost odświeża się
+z danych gotowego zadania. Szablon `{total_cost}_{total_weight}` zachowuje
+liczby dziesiętne oraz otrzymuje rozszerzenie drukarki, np.
+`1.68_16.8.pm5s`. Nie zmienia objętości zeslicowanego modelu.
+GUI i natywny PM5S518 odebrane w opisanym workflow; pełna macierz innych
+formatów i profili pozostaje do weryfikacji.
+Raport: doc/M2_MATERIAL_GUI_FILENAME_2026-10-14.md.
+
+Powiązane pola butelki żywicy (2026-10-14):
+Objętość jest w ml, masa butelki w kg, gęstość w g/ml. Zmiana objętości
+lub gęstości przelicza masę butelki, zachowując jej pojemność. Wpisanie
+masy przelicza objętość tylko przy dodatniej gęstości; przy gęstości0
+objętość pozostaje. Gęstość0 nie daje już nieskończonej objętości.
+Zapis takiego presetu i powrót do dodatniej gęstości sprawdzono w GUI.
+Pełne profile/restart/format matrix pozostają w refaktorze.
+Raport: doc/M2_RESIN_BOTTLE_2026-10-14.md.
+
+Zmiana samej ceny materiału (2026-10-14):
+Zmiana Cost w Material Settings aktualizuje koszt gotowego zadania również
+bez edycji gęstości lub masy butelki. Sprawdzono zmianę100→50→0→50 oraz
+zachowanie objętości zeslicowanego modelu. Nie trzeba zmieniać dodatkowego
+pola, aby zastosować cenę. Pozostałe controls/presety pozostają w refaktorze.
+Raport: doc/M2_MATERIAL_SINGLE_FIELD_2026-10-14.md.
+
+Preset materiału po restarcie (odbiór 2026-10-14):
+SavePreset utrwala materiał; późniejsze zmiany robocze nie nadpisują pliku
+bez zapisu. Sprawdzono odtworzenie price50/volume1000/density0/weight0
+w nowej sesji oraz zachowanie pliku presetu po dodatnim draft.
+Test obejmuje restart po zakończonym zapisie i eksporcie, nie przerwanie
+zapisu ani pełny restart projektu z edycjami warstw.
+Raport: doc/M2_MATERIAL_RESTART_2026-10-14.md.
+
+Masa butelki a objętość i koszt (odbiór GUI 2026-10-14):
+Przy dodatniej gęstości wpisanie masy przelicza pojemność butelki i cenę za ml.
+Przykład: density2g/ml, cena100; masa2kg odpowiada1000ml, masa1kg500ml.
+Nie zmienia to objętości zeslicowanego modelu. Przy density0 masa nie daje
+informacji do wyliczenia pojemności — znana objętość pozostaje bez zmian.
+Sprawdzono oba przebiegi w GUI oraz zapis/restart; pełny system profili
+nadal jest w refaktorze. Raport: doc/M2_MATERIAL_WEIGHT_GUI_2026-10-14.md.
+
+Wybór materiałów klawiaturą (2026-10-14):
+Selektor presetów materiału przyjmuje fokus; strzałki w górę i w dół
+przełączają zapisane materiały. Sprawdzono dwa profile w jednej sesji:
+ustawienia i koszt zmieniają się razem z wyborem, model volume oraz pliki
+presetów pozostają zachowane. Restart odtwarza ostatnio wybrany materiał.
+Odbiór dotyczy wskazanego workflow na Linuksie; pełna macierz pozostałych
+list i wybór popup myszą pozostają w refaktorze.
+Raport: doc/M2_MATERIAL_COMBO_FOCUS_2026-10-14.md.
+
+Popup materiałów z klawiatury (odbiór 2026-10-14):
+Po ustawieniu fokusu na selektorze F4 otwiera listę. Strzałki zmieniają
+wybór w liście; Enter zatwierdza, Escape zamyka bez zmiany aktywnego materiału.
+Sprawdzono oba kierunki przełączania, koszt i zapisane presety na Linuksie.
+Wybór myszą i inne listy nadal wymagają pełnej weryfikacji.
+Raport: doc/M2_MATERIAL_POPUP_2026-10-14.md.
+
+Popup materiałów z myszy (odbiór 2026-10-14):
+Kliknięcie selektora otwiera listę; kliknięcie wiersza zatwierdza materiał.
+Kliknięcie poza listą zamyka ją i zachowuje poprzedni aktywny profil.
+Sprawdzono dwa zapisane materiały, koszt i restart na kontrolowanym
+układzie Linuksa. Pełna macierz innych list/DPI/platform jest nadal otwarta.
+Raport: doc/M2_MATERIAL_MOUSE_2026-10-14.md.
+
+Drukarki i rozdzielczość LCD (2026-10-14):
+Panel rozdzielczości nie ogranicza już wartości poniżej100 pikseli do100.
+Minimum1 odpowiada dodatniemu zakresowi silnika; konkretne formaty nadal
+mają własne ograniczenia. Przełączanie dwóch zapisanych drukarek strzałkami
+sprawdzono z różnymi LCD/rastrami i formatami PWC517/PM5S518. Proponowane
+rozszerzenia i zapisane preferencje zmieniają się razem z drukarką.
+Zapisany obrys stołu odpowiada LCD; szersza macierz GUI/GL/drukarek
+pozostaje w refaktorze. Raport: doc/M2_PRINTER_COMBO_GEOMETRY_2026-10-14.md.
+
+Drukarki po ponownym uruchomieniu (odbiór 2026-10-14):
+Zapisane presety drukarek odtwarzają LCD, rozdzielczość i format/wersję.
+Sprawdzono restart B, wybór A w GUI i kolejny restart A; osobne preferencje
+formatu eksportu pozostały przypisane do właściwych drukarek. Nie było
+potrzebne ręczne wczytanie ustawień ani zmiana INI. Test nie obejmuje
+przerwania zapisu ani odtworzenia modelu i masek z projektu.
+Raport: doc/M2_PRINTER_RESTART_2026-10-14.md.
+
+Kalibracja zmniejszanego obszaru Lift (odbiór 2026-10-14):
+Wybierz drukarkę, materiał i proces, a następnie Window / Okno ->
+Printer calibration -> Pattern: Lift area. Pattern X/Y określa początkowy
+prostokąt. Lift size step (%) = 0 zachowuje stały rozmiar; np.10 daje
+końcowe prostokąty90%,80% itd., do Minimum lift size (%). Procent dotyczy
+obu wymiarów początkowych:90% X i90% Y to81% powierzchni.
+Test height obejmuje wszystkie warstwy. Przy1mm, layer height0,05mm,
+kroku10 i minimum10 podgląd pokaże11 pełnych oraz9 malejących warstw.
+Generator odmawia, gdy wysokość nie mieści części malejącej po warstwach
+bazowych. Ekspozycja i ruch nadal pochodzą z aktywnych presetów.
+Generate calibration layers otwiera edytor. Calibration recipe pokazuje
+parametry pierwotnej generacji; malowanie nie zmienia tego przepisu.
+Save layer project zachowuje maski, ustawienia i przepis, także po restarcie.
+Export generated layers zapisuje plik drukarki. Przy bardzo małej
+rozdzielczości kilka kolejnych rozmiarów może mieć tę samą liczbę pikseli
+niezerowych, lecz zmniejsza się ich łączna szarość dzięki antyaliasingowi.
+Odbiór obejmuje UVJ/PWC oraz GUI obu orientacji; pełna kalibracja LiftHeight,
+interpretacja wyników i pozostała suite UVtools nadal są w planie.
+Raport: doc/M2_LIFT_TAPER_2026-10-14.md.
+
+Projekty zawierające kilka naświetlań na tej samej wysokości Z:
+Window / Okno -> Open layer archive otwiera również własny projekt warstw.
+Edytor pokazuje osobno numer naświetlania i fizycznej warstwy, np.
+Exposure2/4; physical layer1/2 oznacza drugą maskę na pierwszej wysokości.
+Zmiana maski nie tworzy automatycznie nowej fizycznej warstwy.
+Save layer project zachowuje kolejność, maski, Z i ustawienia naświetlań.
+Dla tej sekwencji obecnie dostępny jest eksport UVJ. Eksport do innych
+formatów drukarek wymaga dalszego wdrożenia i niezależnej weryfikacji.
+Pełny generator ExposureFinder oraz edycja owned parametrów każdego
+rekordu w GUI pozostają w planie; to opis otwierania i edycji masek
+istniejącego projektu, nie kompletnego kreatora tej kalibracji.
+Raport: doc/M2_EXPOSURE_SEQUENCE_2026-10-14.md.
+
+Parametry własnych wygenerowanych warstw:
+W edytorze wybierz rekord i Layer parameters. Dostępne są ekspozycja,
+oczekiwanie przed/po naświetlaniu, light-off, ruch lift/retract i PWM.
+Z jest widoczne, ale readonly: pochodzi z wygenerowanych warstw i wymaga
+osobnej operacji zmieniającej wysokość/geometrię. Apply parameters
+zatwierdza zmiany razem; nieprawidłowe wartości pozostawiają dane bez zmian.
+Undo i Redo obejmują parametry oraz edycję masek we wspólnej historii.
+Ręczna zmiana parametrów wygenerowanego modelu chroni bieżący schedule
+przed automatycznym nadpisaniem przez presety. Save layer project zachowuje
+bieżące wartości; po restarcie historia wcześniejszych Undo nie wraca.
+Odebrano pojedynczy rekord w GUI projektu Raster/Repeated i eksport UVJ;
+pełna macierz modeli3D, innych formatów i edycja grupowa nadal w planie.
+Raport: doc/M2_OWNED_PARAMETERS_2026-10-14.md.
+
+Parametry zakresu własnych warstw:
+Ustaw Range:first/last w edytorze i wybierz Range parameters. Panel
+pokazuje wartości pierwszego rekordu; zmień wyłącznie pola, które mają
+być zastosowane do całego zakresu. Nie zmienione pola pozostają takie,
+jak w każdym rekordzie. Apply parameters zatwierdza zakres razem;
+jedno Undo cofa cały zakres, a Redo przywraca go. Maski oraz Z są zachowane.
+Save layer project i eksport zachowują końcowe wartości.
+Odbiór GUI dotyczy własnego projektu Raster/Repeated i UVJ; native range UI
+oraz pełna macierz rzeczywistych modeli/formatów pozostają w planie.
+Raport: doc/M2_OWNED_PARAMETER_RANGE_2026-10-14.md.
+
+Eksport CXDLPv4 z edytora po pocięciu modelu:
+Wybierz CXDLPv4 i Export edited layers. Format przechowuje128 poziomów
+szarości. Jeżeli oryginalne maski zawierają inne odcienie, aplikacja pokaże
+liczbę zmienianych pikseli i największą zmianę. No anuluje zapis; Yes zapisuje
+przekonwertowaną kopię. Oryginalne maski, parametry i Undo pozostają w projekcie.
+Zapisz projekt3MF, aby zachować oryginał. Profil musi mieć jawny identyfikator
+drukarki; GENERIC jest oznaczeniem testowym i nie potwierdza zgodności sprzętu.
+Nietypowego czasu pojedynczej warstwy nie można zapisać w globalnym schemacie
+SL1; przy odmowie zachowaj projekt i wybierz format obsługujący te parametry.
+Ten przepływ konwersji dotyczy edytora warstw; panel boczny ma osobną bramkę.
+
+Brak identyfikatora drukarki przy eksporcie CXDLPv4:
+Edytor warstw sprawdza identyfikator przed oknem zapisu i przygotowaniem masek.
+Przejdź do Printer > General > Output > Printer model (firmware), uzupełnij
+identyfikator zgodnie z drukarką i zapisz preset.
+Własny eksport CXDLPv4 wymaga 1–255 bajtów bez znaków NUL; UTF-8 może
+zajmować więcej niż jeden bajt na znak. Użyj identyfikatora swojego modelu drukarki; GENERIC oznacza profil użyty
+wyłącznie do testów programowych.
+
+
+Pędzel i zakres warstw (aktualizacja 2026-11-07):
+Po zakończeniu slicingu wybierz Edit layers w panelu bocznym.
+Drawing tool -> Brush rysuje wybraną jasnością Grayscale / threshold;
+Eraser usuwa piksele (wartość 0). Radius (pixels) określa promień na LCD,
+a nie promień w pikselach powiększonego podglądu. Na ekranach wysokiej
+rozdzielczości użyj większego promienia lub zwiększ Preview zoom.
+Przeciągnij lewy przycisk myszy po masce. Jeden stroke to jeden krok Undo.
+Podczas przeciągania poza obraz pędzel zatrzymuje się na najbliższej
+krawędzi. Naprawiono błąd przenoszący ruch poza lewą lub górną granicę
+na przeciwległy brzeg maski. Zakres testów: doc/M2_LAYER_CANVAS_COORDINATES_2026-11-07.md.
+Aby rysować na wielu warstwach, ustaw First layer i Last layer oraz zaznacz
+Overlay and paint selected range. Zakres jest włącznie z obiema granicami.
+Podgląd pokazuje maksimum jasności nakładanych masek. Pociągnięcie jest
+nakładane na każdą oryginalną warstwę osobno; reszta jej pikseli pozostaje.
+Undo/Redo dotyczy całego pociągnięcia na zakresie. Cancel podczas
+nakładania zmian zachowuje poprzednie maski bez częściowego zapisu.
+Apply to sliced result zatwierdza zmiany w wyniku slicingu. Zapisz projekt
+3MF, aby zachować edycję między uruchomieniami. Eksport wybierz osobno.
+Preparing support analysis jest analizą podpór, wykonywaną po przekrojach;
+nie oznacza samej rasteryzacji. Dalsza optymalizacja punktów podpór trwa.
+
+
+Anulowanie slicing (aktualizacja 2026-10-15):
+Podczas slicing SLA w panelu bocznym pojawia się Cancel slicing.
+Działa także podczas Preparing support analysis (analizy podpór).
+Kliknij, aby zatrzymać bieżącą pracę. Poczekaj na powrót przycisku Slice now;
+możesz wtedy ponownie rozpocząć slicing. Niekompletny wynik nie jest
+udostępniany do edycji. Edit layers staje się dostępny po zakończeniu pracy,
+gdy aktualne ustawienia odpowiadają gotowemu dokumentowi warstw.
+Długie pojedyncze operacje geometryczne mogą opóźnić zakończenie anulowania.
+
+Anulowanie głównego eksportu gotowych warstw (aktualizacja 2026-11-07):
+Po Slice now i ewentualnym Apply to sliced result wybierz Export.
+Podczas pracy użyj Cancel slicing i poczekaj na zakończenie anulowania.
+Wrócą Export oraz Edit layers. Możesz kontynuować edycję lub ponowić eksport;
+nie trzeba ponownie rasterować modelu z powodu przerwanego zapisu.
+Anulowanie przed publikacją pozostawia poprzedni plik docelowy i historię edycji.
+Odbiór głównej ścieżki GTK/SL1 oraz dalsze przypadki: doc/M2_MAIN_WORKER_CANCEL_2026-11-07.md.
+
+Błąd zapisu gotowego zadania SLA (aktualizacja 2026-10-15):
+Jeśli eksport nie może zapisać pliku, zamknij komunikat błędu i wybierz
+ponownie Export. Gotowe warstwy, ich edycje oraz Sliced Info pozostają
+na miejscu. Możesz wskazać inną nazwę lub katalog albo zmienić ustawienia
+formatu. Nie musisz ponownie wybierać Slice now tylko z powodu błędu zapisu.
+Nieudany eksport nie jest oznaczany jako zakończony sukcesem. Poprzedni
+plik docelowy jest zastępowany dopiero po poprawnym zapisie i kontroli
+nowego pliku. Błąd samego slicingu nadal wymaga poprawienia jego przyczyny.
+
+Zapis otwartego pliku warstwowego (aktualizacja 2026-10-15):
+Save edited archive zapisuje przechwyconą kopię bieżących warstw,
+parametrów i oryginalnych metadanych kontenera. Podczas zapisu możesz
+wybrać Cancel; poczekaj na zamknięcie okna postępu. Nieudany lub anulowany
+zapis zachowuje poprzedni plik docelowy, zmiany w edytorze i historię Undo.
+Udany zapis nie usuwa historii Undo. Save layer project jest osobnym
+zapisem projektu i ustawień; eksport pliku drukarki go nie zastępuje.
+
+Konwersja otwartego archiwum na inny format (aktualizacja 2026-10-15):
+Wybierz docelową drukarkę i jej ustawienia, otwórz archiwum, a w edytorze
+wybierz Capture selected SLA settings. Convert archive pokazuje dostępne
+formaty z obsługiwaną tabelą parametrów. Po wyborze formatu sprawdź nazwę
+pliku i wybierz Save. Rozszerzenie odpowiada wybranemu wariantowi formatu.
+Konwersja tworzy osobny plik; zmiany źródła i historia Undo/Redo pozostają
+w edytorze. Do zapisania całego kontekstu służy Save layer project.
+Podczas Convert layers możesz wybrać Cancel. Poczekaj na zakończenie
+workera przed kolejną operacją. Niedopasowanie wymiarów LCD lub parametrów
+jest zgłaszane przed publikacją pliku; konwersja nie skaluje warstw samodzielnie.
+
+Sesja edycji gotowych warstw (aktualizacja 2026-10-15):
+Edytor korzysta z własnej kopii warstw i ustawień z chwili otwarcia.
+Apply to sliced result stosuje zmiany do tego samego wyniku slicingu.
+Jeśli wynik źródłowy został wymieniony, aplikacja odrzuci Apply;
+zmiany i Undo pozostaną w edytorze. Otwórz warstwy aktualnego wyniku,
+aby rozpocząć edycję nowej wersji. Sam eksport nie zastępuje zapisu projektu.
+Po Apply, powrocie do 3D i ponownym Edit layers w tym samym uruchomieniu
+Undo/Redo pozostają dostępne. Restart aplikacji odtwarza zapisane edycje
+z projektu, rozpoczynając nową historię Undo.
+
+
+Stały widok Sliced (aktualizacja 2026-10-15):
+Po Slice now wybierz Sliced obok 3D i Preview. Pierwsze otwarcie ładuje
+maski gotowego modelu. Load current slices przechwytuje aktualny wynik;
+przycisk wymaga zakończonego slicingu. Przy zastępowaniu edycji aplikacja
+prosi o potwierdzenie. Nie uruchamia to ponownie slicingu.
+Brush/Eraser i ustawienia First layer / Last layer / Overlay and paint
+selected range działają jak w opisanym wcześniej edytorze. Aby dotrzeć
+do pozostałych kontroli, przewiń panel. Ctrl+Z/Ctrl+Y i menu Edit w Sliced
+obsługują historię warstw. Przejście do 3D lub Preview zachowuje edycje,
+wybrane narzędzie i historię. Stan zwinięcia panelu bocznego sceny jest
+przywracany po powrocie do 3D/Preview.
+Save Project do 3MF dołącza bieżące niezastosowane zmiany warstw po
+zaakceptowaniu nazwy. Cancel w wyborze nazwy zachowuje zmiany w Sliced.
+Apply to sliced result pozwala wcześniej dołączyć je do gotowego wyniku.
+Eksport pliku drukarki jest osobną operacją.
+Po zmianie sceny starsza sesja Sliced może nadal zawierać własne maski
+oraz ustawienia. Komunikat sygnalizuje starszy wynik. Możesz go edytować
+i eksportować, ale Apply do nowej sceny jest wyłączone. Aby edytować nowy
+wynik, zakończ jego slicing i wybierz Load current slices. Zamknięcie
+aplikacji wymaga osobnego potwierdzenia porzucenia starszych zmian.
+W Sliced wybierz Open layer file, aby otworzyć archiwum drukarki, obraz
+lub projekt .sla-project bez modelu 3D. Edycje i historia pozostają po
+przejściu do 3D i z powrotem. Save layer project zapisuje maski i kontekst;
+eksport pliku drukarki lub obrazu jest osobną operacją. Taki dokument nie
+ma Apply do modelu. Przed zastąpieniem niezapisanych zmian wybierz Yes
+albo No; Cancel w wyborze pliku zachowuje bieżący dokument.
+Projekt generatora zachowuje zapisane ustawienia, nawet gdy aktywna
+konfiguracja drukarki jest inna. Modelowe projekty 3MF otwieraj w 3D.
+Menu Window > Open layer archive otwiera teraz stały Sliced. Generatory PCB
+oraz kalibracji po Generate otwierają już stały widok Sliced. Możesz
+przejść do 3D i wrócić bez utraty masek, zmian i historii. Świeży wynik
+ma informację, że nie został jeszcze zapisany ani wyeksportowany.
+Save layer project zapisuje kontekst generatora i edycje; Export generated
+layers tworzy plik drukarki. Projekt nie wymaga źródłowego Gerbera/Excellona
+do późniejszego otwarcia. Przed zastąpieniem otwartego dokumentu nowym
+wynikiem wybierz Yes lub No. No zachowuje wcześniejszy dokument i zakładkę.
+Po sukcesie aplikacja pokaże Sliced także z zakładki ustawień drukarki.
+Gdy w Sliced wybrano archiwum, obraz lub generator, File > Save Project
+oraz Ctrl+S zapisują projekt .sla-project. Pierwszy zapis wybiera nazwę;
+następne korzystają z tej ścieżki. Save Project as wybiera nową ścieżkę,
+na którą przechodzą kolejne Save. Cancel i błąd zapisu zachowują edycje.
+Open Project w takim widoku otwiera plik lub projekt warstwowy. File >
+Export > Export sliced layers korzysta z danych i formatu edytora, także
+bez modelu 3D. Możesz nadal używać przycisków zapisu/eksportu w panelu.
+W 3D/Preview główne polecenia dotyczą sceny i projektu 3MF. W Sliced
+z wynikiem modelu Save również zapisuje 3MF z kontrolowanym Apply.
+Gdy Sliced zawiera inny plik lub starszy wynik, Edit layers po slicingu
+proponuje załadowanie aktualnego wyniku modelu. No zachowuje poprzedni
+dokument i widok; Yes zastępuje go nową sesją. Przycisk Sliced sam w sobie
+wraca do zachowanego dokumentu, bez wymuszania przeładowania.
+File > Recent layer documents przechowuje do 9 ostatnio otwartych plików
+i zapisanych projektów warstwowych, osobno od projektów 3D. Wybierz wpis,
+aby odtworzyć dokument w Sliced; niezapisane zmiany wymagają potwierdzenia.
+Lista pozostaje po ponownym uruchomieniu. Niedostępny plik jest usuwany
+z listy po komunikacie, bez usuwania aktualnych masek. Nieudany import
+zachowuje poprzednie edycje i historię; uszkodzony plik nie trafia do listy.
+New Project dotyczy sceny 3D. Niezależny dokument warstwowy pozostaje
+w Sliced, do którego możesz wrócić. Menu otwierania pokazuje wynik także
+z ustawień drukarki. Pierwsze oraz kolejne Edit layers korzystają już
+ze stałego Sliced.
+Pełna macierz poleceń sceny i układów okna nadal wymaga odbioru.
+Przy zamykaniu mogą pojawić się
+osobne pytania o scenę, presety oraz dokument warstwowy. Odrzucenie zmian
+sceny lub presetów nie oznacza zgody na porzucenie edycji warstw.
+Uruchomienie bieżących testów ręcznych: z katalogu Sla-SlicerOS wykonaj
+./run_mid_refactor_tests.sh. Skrypt korzysta z osobnych trwałych profili;
+nie resetuje ich do ustawień testu automatycznego.
+
+Pędzel i zakres warstw (aktualizacja 2026-10-15):
+W Sliced nad podglądem znajduje się blok Paint masks. Drawing tool wybiera
+Brush (rysowanie) lub Eraser (gumka); Radius ustawia promień w pikselach,
+a Grayscale / threshold żądaną wartość 0–255. Komunikat Brush source palette
+pokazuje liczbę poziomów źródła oraz Requested -> paints, czyli rzeczywistą
+jasność pędzla. Najedź na komunikat, aby sprawdzić dozwolone poziomy.
+Przykładowo żądane 127 w źródle Gray4 maluje 119; w testowanym źródle
+binarnym o progu 255 maluje 0. Inne źródła mogą mieć inny próg lub paletę.
+Pole zachowuje żądaną wartość; narzędzia progowania nadal używają właśnie
+jej. Gumka maluje 0 i zachowuje ustawioną wartość pędzla na później.
+Podgląd podczas rysowania pokazuje skuteczną jasność źródła.
+Rysuj przeciągnięciem po obrazie warstwy.
+Aby malować wiele warstw, ustaw First layer i Last layer oraz zaznacz
+Overlay and paint selected range. Podgląd nakłada warstwy przez maksimum
+jasności; pociągnięcie zmienia każdą oryginalną maskę w zadanym zakresie.
+Jeden Undo cofa całe pociągnięcie. Komunikat Painting layer/layers pokazuje
+bieżący zakres. Range filters pod obrazem uruchamiają osobne operacje.
+Skrypt testów ręcznych odmawia uruchomienia binarium starszego od plików
+interfejsu edytora i podaje polecenie przebudowy. Wyświetla też ścieżkę
+oraz SHA256 uruchamianej aplikacji, aby łatwiej rozpoznać wersję testową.
+
+
+Pierwsze Edit layers (aktualizacja 2026-10-15):
+Po zakończeniu slicingu kliknij Edit layers w panelu bocznym lub Window >
+Edit sliced layers. Otworzy się stały Sliced. Back to 3D ukrywa edytor,
+bez porzucania masek, narzędzia i Undo/Redo. Ponowne Edit layers wraca
+do bieżącej sesji, także z zakładki ustawień drukarki. Apply to sliced
+result zatwierdza edycję w wyniku; Save Project do 3MF utrwala ją na dysku.
+Przy innym/starszym dokumencie potwierdź wymianę na aktualne warstwy.
+No zachowuje poprzedni dokument i widok. Nie ma już osobnego modalnego
+okna edytora warstw; dialogi parametrów i potwierdzeń nadal działają.
+
+Recent projects i przerwany pędzel (aktualizacja 2026-10-15):
+- Otwieranie projektu 3D z File / Recent projects respektuje pytanie o zapis.
+  Cancel zachowuje bieżącą scenę i edycje. Discard otwiera wybrany projekt;
+  wcześniejszy wynik Sliced może pozostać starszą niezależną sesją bez Apply.
+- Przejście z edytora lub otwarcie pytania podczas trzymania przycisku pędzla
+  anuluje niedokończone pociągnięcie. Zatwierdzone wcześniej pociągnięcia zostają.
+  Po powrocie zwolnij przycisk i zacznij nowe pociągnięcie.
+- Odbiór dotyczy testowanego GTK/X11. Pełna macierz platform i zdarzeń nadal otwarta.
+
+Sekwencje naświetlań i CXDLPv4 (aktualizacja 2026-10-15):
+- Własny projekt z kilkoma ekspozycjami na tym samym Z można otworzyć w Sliced,
+  edytować i wyeksportować jako UVJ lub CXDLPv4. Wybierz format na liście eksportu;
+  proponowana nazwa otrzyma odpowiadające rozszerzenie.
+- Zapis projektu warstwowego zachowuje wszystkie rekordy oraz ich parametry.
+  Objętość uwzględnia sumę zajętych obszarów ekspozycji na jednej wysokości,
+  bez wielokrotnego liczenia overlap. Niewspierana precyzja Z jest odrzucana.
+- Historyczny zakres przed wdrożeniem formularza: pełny generator ExposureFinder
+  był w budowie. Aktualne instrukcje są w sekcji „Formularz ExposureFinder” poniżej.
+  Pozostałe formaty i testy na drukarce nadal wymagają osobnego odbioru.
+
+Zapisany przepis ExposureFinder (historyczny checkpoint 2026-10-15, przed formularzem):
+- Jeżeli projekt warstwowy zawiera taki przepis, przycisk Calibration recipe
+  w Sliced pokazuje rodzaj tabeli (Generated/Manual), wysokości, czasy oraz
+  żądaną jasność. Wiersze szkicu z niepoprawnymi wartościami są oznaczone.
+- Podgląd jest tylko do odczytu. Dla dużej tabeli pokazuje pierwsze100wierszy;
+  zapis projektu zachowuje całość, również kolejność i celowe duplikaty.
+- Ręczna zmiana masek zachowuje oryginalny przepis. Otwieranie projektu nie
+  regeneruje masek na jego podstawie.
+- Dostępny generator Printer calibration nadal oferuje XYZ, grayscale i lift.
+  W tym historycznym checkpointcie formularz ExposureFinder nie był jeszcze dostępny.
+  Obecnie ma oddzielny wpis Window -> ExposureFinder calibration; patrz instrukcja poniżej.
+
+Harmonogram w przepisie ExposureFinder (historyczny checkpoint 2026-10-15):
+- Zapis projektu zachowuje również dostępne opcje bazy/detali, czas custom,
+  tryby ekspozycji i jasności oraz ustawienia lift/wait dla wspólnego Z.
+- Calibration recipe w Sliced pokazuje wszystkie te wartości i stany Enabled /
+  Disabled. Wyłączenie opcji nie usuwa jej zapisanych wartości.
+- Starsze przepisy bez harmonogramu pozostają bez niego; aplikacja nie dopisuje
+  nowych domyślnych ustawień. Odtworzenie nadal używa zapisanych masek.
+- Ten historyczny checkpoint dotyczył zapisu i podglądu przepisu. Później dodano
+  formularz opisany poniżej; Calibration recipe pozostaje widokiem tylko do odczytu.
+
+Historyczny checkpoint 2026-10-15 (przed formularzem ExposureFinder): backend
+generował już wzorce i zadania, a formularz był w budowie. Ten stan został
+zastąpiony instrukcją „Formularz ExposureFinder” poniżej. Podgląd recipe pozostaje
+read-only; cały zestaw kalibracji nadal ma osobne otwarte zadania. Szczegóły i zakres testów:
+doc/M2_EXPOSURE_FINDER_PATTERNS_2026-10-15.md.
+
+
+Formularz ExposureFinder — aktualizacja 2026-10-15
+------------------------------------------------
+1. Wybierz drukarkę SLA, materiał i ustawienia procesu. W menu Window wybierz
+   ExposureFinder calibration. Otworzy się formularz Exposure finder.
+2. Strony Table, Schedule, Pattern i Layout zawierają odpowiednio tabelę prób,
+   harmonogram naświetlania, wygląd wzorca i rozmieszczenie na LCD. Pola na
+   stronach można przewijać; Preview plan, Generate i Cancel pozostają na dole.
+3. Generate table tworzy tabelę z parametrów zakresu. Przed zastąpieniem tabeli
+   Manual aplikacja pyta o zgodę. W tabeli ręcznej dodawaj/usuwaj/przesuwaj wiersze
+   i edytuj cztery kolumny wejściowe. Validity: Valid oznacza poprawny wiersz
+   na siatce precyzji; Needs normalization wymaga jawnego Normalize rows; Invalid
+   oznacza wiersz niespełniający warunków wartości. Oznaczenie nie zmienia danych.
+   Możesz też użyć osobnego paska Selected row: wybierz numer wiersza, a następnie
+   „Edit selected row...”. Otworzy się małe okno z czterema polami: wysokością,
+   czasem dolnym, czasem zwykłym i jasnością 0–255 oraz statusem Row validity.
+   Pola zachowują dokładny wpisany tekst. Apply zapisuje zmianę wyłącznie tego
+   wiersza, ustawia Manual i wymaga ponownego Preview plan. Cancel zachowuje
+   poprzedni wiersz; sam wybór wiersza i anulowanie edycji nie zmieniają planu.
+   Niepoprawny zapis liczby lub przekroczenie zakresu pozostawia okno otwarte
+   z komunikatem, aby można było poprawić wpis albo użyć Cancel. Wiersze liczbowe
+   z zerowymi lub ujemnymi wartościami mogą pozostać w szkicu jako Invalid.
+   Selected row śledzi Add row, Remove row, Move up i Move down; przy pustej
+   tabeli wybór i edycja są wyłączone. Nadal można edytować bezpośrednio w siatce.
+4. Normalize rows wymaga zgody na zaokrąglenie wysokości do 0.001 mm i czasu do 0.01 s.
+   Nie usuwa duplikatów ani nieważnych wierszy i nie przestawia kolejności.
+5. Preview plan sprawdza rzeczywistą geometrię i harmonogram. Zmiana pola
+   unieważnia podgląd; przed Generate uruchom Preview plan ponownie. Wynik planu
+   nie jest oszacowaniem pamięci szczytowej ani rozmiaru skompresowanego pliku.
+   Błąd zapisu liczby lub zakresu liczby całkowitej wskazuje nazwę pola. Po OK
+   formularz otwiera jego zakładkę i ustawia fokus w polu, zachowując wpisany
+   tekst. Popraw wartość i ponownie wybierz Preview plan. Potwierdzono tę ścieżkę
+   dla włączonych pól liczbowych; błędy list, nieaktywnych ustawień i ogólnej
+   walidacji generatora mają osobny zakres i mogą wymagać ręcznego przejścia
+   do właściwej zakładki.
+6. Generate tworzy maski w tle. Cancel zachowuje szkic formularza i wcześniejszy
+   dokument. Odmowa zastąpienia edytowanych warstw również zachowuje formularz.
+   Po sukcesie wynik jest dostępny w Sliced; zapisz projekt i wybierz eksport
+   obsługujący harmonogram wielokrotnych naświetlań, obecnie UVJ.
+
+Zapis projektu zachowuje przepis i maski. Ten formularz tworzy nowe zadanie;
+pełna interpretacja wyniku testu i automatyczne stosowanie do profilu pozostają
+w kolejce refaktoru. Obsługa wszystkich formatów i zgodność sprzętowa wymagają
+osobnego potwierdzenia. Powyższa instrukcja zastępuje wcześniejsze wzmianki
+w tym pliku o braku formularza; pełny odbiór aktualnego buildu opisuje kanban.
+
+SVG jako obiekt 3D (aktualizacja 2026-10-16):
+Na pustym stole otwórz menu prawym przyciskiem i wybierz Add Shape > SVG.
+Wskaż lokalny plik SVG. Dla utworzonego obiektu menu jego głównego wiersza
+zawiera Edit SVG, które ponownie otwiera narzędzie SVG. Esc zamyka narzędzie.
+Przy zapisie projektu 3MF program pyta o zachowanie oryginalnych SVG oraz ich
+lokalnych ścieżek. Wybierz Yes, jeśli chcesz zachować edytowalne źródło SVG;
+No zachowuje geometrię, ale usuwa możliwość dalszej edycji jako SVG.
+Sprawdzono import, otwarcie narzędzia, Esc i ponowny zapis bez zmiany obiektu.
+Zmiana wymiarów SVG, ponowne otwarcie i slicing takiego projektu wymagają
+jeszcze osobnych testów regresji. To narzędzie obiektów 3D; generowanie
+naświetlania PCB jest osobnym przepływem.
+
+PCB — polaryzacja i pierwsze cofnięcie (2026-10-16)
+Wybrana w formularzu „Invert exposure polarity” jest częścią początkowego
+stanu wygenerowanych warstw. Po Generate PCB layers przyciski Undo i Redo
+są wyłączone. Dopiero późniejsze rysowanie lub Invert layer tworzy krok
+historii; Undo przywraca dokładnie wygenerowaną polaryzację. Save layer
+project zachowuje maski i ustawienia. Ponowne otwarcie projektu rozpoczyna
+nową historię edycji. Sprawdzony przepływ GUI: PM7, scalone odwrócone
+Gerbery; testy API obejmują również osobne pliki, UVJ i obie orientacje LCD.
+
+UVJ zachowuje maksymalną wysokość drukarki w danych Vendor aplikacji.
+Referencyjny UVtools nie odczytuje tej wartości z Vendor do pola MachineZ
+i wyświetla tam wysokość ostatniej warstwy. Nie oznacza to zmiany wysokości
+roboczej wybranej drukarki ani utraty ustawienia w projekcie.
+
+Legenda w Preview (2026-10-16)
+W widoku Preview klawisz L oraz View > Show Legend ukrywają lub przywracają
+panel Layer statistics. Ukrycie pozostaje zachowane po przejściu do 3D
+lub Sliced i powrocie do Preview. Suwak wybiera warstwę, której powierzchnię
+i czas pokazuje panel; Time since start jest czasem narastającym.
+Preview 3D przedstawia geometrię modelu, a statystyki uwzględniają aktualne
+maski naświetlania. Po rysowaniu lub odwracaniu warstw rzeczywiste piksele
+naświetlania obejrzysz w Sliced.
+
+PMX2/PWMB 515 — czas w eksportowanym pliku (2026-10-16)
+Pole czasu druku w nagłówku jest wyliczane z zapisywanych parametrów warstw,
+z uwzględnieniem referencyjnego narzutu przygotowania 300 s i reguł UVtools.
+Poprawka dotyczy metadanych pliku; nie oznacza skrócenia samego eksportu.
+Jeżeli wartość nie mieści się w polu formatu lub liczba dolnych warstw
+przekracza 65535, eksport zgłasza błąd i zachowuje dotychczasowy plik.
+Zgodność oprogramowania sprawdzono osobno od zgodności z fizyczną drukarką.
+
+Lokalne wskazówki SLA i modele PMX2/PWMB 515 (2026-10-16)
+Help > Show Tip of the Day pokazuje sześć lokalnych wskazówek dotyczących
+warstw, pędzla, zakresu edycji, statystyk i tabeli testu naświetlania.
+Nie wymagają dostępu do internetu. W wersji polskiej menu Pomoc otwiera
+te same wskazówki; niektóre nazwy narzędzi w ich treści pozostają angielskie.
+Panel wyboru drukarki nie pokazuje już nieaktywnych liczników floty online.
+
+Nowo cięte modele PMX2/PWMB w wersji 515 zapisują źródłowe maski warstw
+w palecie Gray4. Pędzel pokazuje wartość efektywną: żądane 128 daje 136,
+a 127 daje 119. Zmiana celu eksportu nie zmienia palety źródła. Starsze
+projekty bez zapisanego kontraktu palety zachowują oryginalne piksele;
+otwarcie ich nie dopisuje automatycznie kontraktu ani nie kwantyzuje edycji.
+Paleta Gray4 obejmuje również nowe warstwy PCB PMX2/PWMB 515: polaryzacja
+z formularza jest stanem początkowym, a pierwsze Undo cofa dopiero późniejszą
+edycję. Po zapisie poczekaj na zakończenie okna postępu przed następną operacją.
+Save layer project zachowuje piksele i ustawienia do ponownego otwarcia.
+Sprawdzono GUI PMX2 515: dwa scalone, odwrócone Gerbery, zapis, pierwszą
+inwersję, Undo, restart i eksport. Pozostałe formaty i pełny zestaw operacji
+PCB mają odrębne zadania w doc/KANBAN_WDROZENIA_2026-10-11.md.
+
+
+Aktualizacja 2026-11-07 — zakończenie głównego eksportu SLA
+Po poprawnym zapisaniu pliku późne kliknięcie Anuluj nie zmienia już wyniku
+eksportu na anulowany. Wcześniejsze anulowanie zachowuje poprzedni plik,
+edytowane warstwy i Undo/Redo; eksport można ponowić bez ponownego slicingu.
+Zmiana modelu podczas kończenia zadania unieważnia poprzednie warstwy:
+przed kolejnym eksportem wykonaj ponowny slicing. Zakres testów tej poprawki
+i pozostałe zadania opisuje doc/M2_MAIN_WORKER_CANCEL_2026-11-07.md.
+
+Aktualizacja wydajności — 7 listopada 2026:
+Obliczanie geometrii pomija zbędne porównania uporządkowanych krawędzi.
+Nie wymaga to zmiany ustawień drukarki ani jakości warstw. W ośmiu pomiarach
+modelu ramki slicing był średnio krótszy o około 5%; wynik zależy od modelu
+i komputera, a pełna optymalizacja slicingu trwa. Do bieżących testów uruchom
+./run_mid_refactor_tests.sh. Raport i zakres odbioru:
+doc/M2_CLIPPER_INTERSECTION_ORDER_2026-11-07.md.
+
+Aktualizacja 2026-11-07: naprawiono zapętlenie generowania punktów podpór
+przy zbieżnych kontaktach i zaokrągleniu współrzędnych. Nieudane wyrównanie
+przywraca poprzedni poprawny stan wszystkich kontaktów i ograniczeń ruchu.
+Ten etap sprawdza również anulowanie. Repozytoryjny nawis, który nie kończył
+slicingu przez ponad6min, kończy go w około0,47s. Nie jest to obietnica czasu
+dla każdego modelu. Raport: doc/M2_SUPPORT_ALIGNMENT_ROLLBACK_2026-11-07.md.
+Do własnych testów z dotychczasowymi profilami: ./run_mid_refactor_tests.sh
+
+
+Aktualizacja 2026-11-07 — pionowy wybór warstw w edytorze
+Po slicingu wybierz Edit layers / Sliced. Narzędzie Brush lub Eraser,
+promień i wartość szarości są nad podglądem. Po prawej jest suwak Layer range.
+Zaznaczone Single layer: jeden uchwyt wskazuje wyświetlaną i edytowaną warstwę.
+Odznaczone Single layer: dwa uchwyty wyznaczają włącznie pierwszą i ostatnią
+warstwę. Podgląd nakłada te maski według maksymalnej jasności. Każde pociągnięcie
+zmienia wyłącznie wybrany zakres, a jedno Undo/Redo obejmuje całe pociągnięcie.
+Pola First/Last nad podglądem pozwalają wpisać dokładne numery. Przełącznik
+Overlay and paint selected range steruje tym samym trybem co Single layer;
+przejście do jednej warstwy i z powrotem zachowuje poprzedni zakres.
+
+Przeciągnij odpowiedni uchwyt. Gdy uchwyty się pokrywają, lewy wybiera początek,
+a prawy koniec zakresu. Uchwyty nie przekraczają siebie. Po kliknięciu suwaka:
+- strzałki lewo/prawo wybierają pierwszy/ostatni uchwyt;
+- góra/dół zmieniają warstwę o 1, Page Up/Down o 10;
+- Home/End przesuwają do dozwolonego końca;
+- Esc podczas przeciągania przywraca wcześniejszy wybór.
+Podgląd odświeża się po puszczeniu uchwytu; numery aktualizują się podczas ruchu.
+Samo przeglądanie i zmiana zakresu nie modyfikują masek ani historii Undo.
+Apply to sliced result zachowuje edycję w wyniku modelu; zapisz także projekt,
+aby zachować maski. Export edited layers zapisuje plik drukarki.
+Do własnych testów: ./run_mid_refactor_tests.sh
+Zakres odbioru i otwarte scenariusze: doc/M2_VERTICAL_LAYER_RANGE_2026-11-07.md.
+
+Aktualizacja 2026-11-07 — eksport SL1 po edycji warstw
+Po narysowaniu zmian w Sliced wybierz format SL1/SL1S i Export edited layers.
+Nie musisz wcześniej naciskać Apply to sliced result. Eksport korzysta z
+bieżących edytowanych masek i domyślnie używa szybszego zapisu; nie wymaga
+włączenia dodatkowej opcji. Możesz anulować zapis i ponowić go, zachowując
+edycję i historię Undo/Redo. Istniejący plik docelowy jest zastępowany dopiero
+po poprawnym ukończeniu eksportu i sprawdzeniu wyniku.
+Aby zachować zmiany w projekcie modelu, zapisz także projekt. Sam plik drukarki
+nie zastępuje projektu 3MF. Szczegóły pomiaru i zakres weryfikacji:
+doc/M2_EDITOR_SL1_EXPORT_2026-11-07.md.
+
+Aktualizacja 2026-11-07 — planowanie eksportu SL1/SL1S
+Na sprawdzonej architekturze SSE2 eksport automatycznie dekoduje duże maski
+w ograniczonych partiach i szybciej oblicza zużycie materiału. Nie trzeba
+zmieniać profilu drukarki ani ustawień. Pozostałe architektury używają
+dotychczasowej ścieżki. Zapis nadal sprawdza maski, parametry i końcowy plik;
+Cancel podczas dekodowania jest obsługiwane po ukończeniu bieżącej partii.
+Zakres odbioru i wyniki: doc/M2_SL1_MASK_BATCHES_2026-11-07.md.
+
+Aktualizacja 2026-11-07 — podgląd i rysowanie na dużym zakresie warstw
+W Sliced wybierz Brush lub Eraser i zakres warstw. Gotowy podgląd jest
+automatycznie wykorzystywany ponownie przy zmianie zoomu i rozpoczęciu
+pociągnięcia. Nowy zakres przygotowuje się w tle z postępem i przyciskiem
+Cancel; można go także anulować klawiszem Esc. Po anulowaniu obraz jest pusty,
+a komunikat wskazuje, jak ponowić przygotowanie. Naciśnij Refresh preview
+albo wybierz inną warstwę lub zakres. Kliknięcie pustego płótna nie rozpoczyna
+rysowania ani przygotowania obrazu. Anulowanie podglądu nie cofa już
+wykonanej edycji; jej historia pozostaje dostępna przez Undo/Redo.
+Pierwszy podgląd nadal wymaga odczytania wszystkich wybranych masek.
+Wyniki i dokładny zakres testów: doc/M2_LAYER_PREVIEW_CACHE_2026-11-07.md.
+
+Aktualizacja 2026-11-07 — szybsza konwersja otwartych archiwów
+Convert archive automatycznie pomija zbędne przygotowanie pośredniego zadania.
+Nie trzeba włączać dodatkowej opcji ani zmieniać profilu. Wybierz docelową
+drukarkę, otwórz archiwum w Sliced, użyj Capture selected SLA settings,
+a następnie Convert archive. Po wybraniu formatu aplikacja dopasowuje sufiks.
+Cancel zatrzymuje konwersję; po zamknięciu postępu możesz ponowić zapis.
+Edycje i Undo/Redo pozostają w otwartym dokumencie. Zapis pliku drukarki
+nie zastępuje Save layer project. Odbiór CTBv4→v5 i zakres pomiarów:
+doc/M2_CONVERSION_DISPATCH_2026-11-07.md.
+
+Edytor warstw w mniejszym oknie (sprawdzenie 2026-11-07):
+Jeżeli dolne akcje nie mieszczą się na ekranie, przewiń cały panel Sliced
+kółkiem myszy nad jego nagłówkiem albo użyj paska przy prawej krawędzi.
+Podgląd maski ma osobne przewijanie. Dolne akcje Export i Back to 3D są
+dostępne po przewinięciu; sprawdzono okna 1280×800, 1024×768 i 960×640.
+
+
+Aktualizacja 2026-11-07 — szybszy odczyt podczas konwersji CTB v3/v4/v5
+Convert archive automatycznie porównuje maski źródłowe podczas pierwszego
+odczytu zapisanego CTB. Usuwa to powtórne dekodowanie docelowych PNG.
+Nie trzeba zmieniać ustawień. Pełna kontrola pikseli i parametrów nadal działa;
+Cancel zachowuje otwarty dokument i historię, a konwersję można ponowić.
+Po wyborze formatu sprawdź automatycznie dobrany sufiks. Zapis do drukarki
+nie zastępuje Save layer project. Zakres testów i pomiary tej zmiany:
+doc/M2_CTB_BOOTSTRAP_READBACK_2026-11-07.md.
+
+
+Aktualizacja 2026-11-07 — szybszy szeroki pędzel i gumka
+Po slicingu przejdź do Sliced, wybierz Brush lub Eraser, promień i zakres
+warstw. Zaznacz Overlay and paint selected range, aby rysować na całym
+zakresie. Szerszy pędzel automatycznie korzysta z szybszego rysowania;
+nie trzeba włączać dodatkowej opcji. Jeden Undo cofa całe pociągnięcie.
+Esc lub skrót historii podczas trzymania myszy odrzuca niedokończoną kreskę;
+po puszczeniu myszy nie zostanie ona dopisana. Zapisz także projekt, aby
+zachować edycję, a Export edited layers użyj do utworzenia pliku drukarki.
+Odbiór promienia 64 i zakresu 2–4 oraz dokładny zakres pomiaru:
+doc/M2_LAYER_BRUSH_SPANS_2026-11-07.md.
+Koszt odczytu i zapisu PNG przy dużych zakresach nadal wymaga optymalizacji.
+Do własnych testów uruchom: ./run_mid_refactor_tests.sh
+
+
+Aktualizacja 2026-11-07 — szybszy zapis pociągnięcia na wielu warstwach
+W Sliced wybierz Brush lub Eraser, ustaw zakres i zaznacz Overlay and paint
+selected range. Zatwierdzanie pociągnięcia na dużych maskach jest szybsze
+automatycznie, także przy małym promieniu. Nie trzeba zmieniać ustawień.
+Cancel zatrzymuje operację bez dopisywania części zakresu do historii;
+obsługa zatrzymania może zaczekać na bieżącą grupę warstw. Jeden Undo cofa
+całe zatwierdzone pociągnięcie. Jeśli dokument zmienił się podczas operacji,
+aplikacja odrzuca starsze pociągnięcie i zachowuje nowszą zmianę.
+Zapisz projekt, aby zachować edycję, a plik drukarki utwórz przez Export.
+Pierwsze przygotowanie podglądu oraz slicing i eksport mają osobne koszty.
+Zakres odbioru, wyniki i dalsze prace: doc/M2_LAYER_PAINT_BATCHES_2026-11-07.md.
+Do własnych testów: ./run_mid_refactor_tests.sh
+
+
+Aktualizacja 2026-11-08 — zgodność materiałów i ustawień druku
+W Materials lub Print Settings otwórz Dependencies. Przy zgodności z drukarką
+lub profilem druku wybierz jeden z trybów:
+- All: profil nie ma tego ograniczenia.
+- Selected profiles: wskaż dozwolone profile; przycisk Select otwiera listę.
+  Cancel zachowuje poprzedni wybór. Potwierdzenie pustej listy wybiera None.
+- Condition: edytuj wyrażenie w polu poniżej. Panel pokaże zgodność z bieżącym
+  profilem. Błędny warunek oznacza niezgodność; najedź na komunikat błędu,
+  aby przeczytać pełną przyczynę.
+- None: profil jest niezgodny ze wszystkimi celami tego rodzaju.
+Zapisz preset przyciskiem Save preset, aby zachować ustawienia w bibliotece.
+Zapis projektu zachowuje także jego ograniczenia zgodności. All usuwa listę
+oraz warunek. Brakujący profil na liście jest oznaczony jako not installed.
+Migracja profili zależnych po rename/delete nadal wymaga dalszych poprawek;
+nie traktuj tego odbioru jako potwierdzenia całego zarządzania profilami.
+Zakres i testy: doc/M2_PROFILE_COMPATIBILITY_2026-11-08.md.
+Do własnych testów uruchom: ./run_mid_refactor_tests.sh

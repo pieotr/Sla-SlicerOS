@@ -1,90 +1,39 @@
 #include "SlaRasterToolsDialog.hpp"
+#include "RasterGeneratorTask.hpp"
 #include "GUI_App.hpp"
-#include "LayerEditorDialog.hpp"
+#include "Plater.hpp"
 #include "libslic3r/PresetBundle.hpp"
 #include "libslic3r/SLA/CalibrationRaster.hpp"
 #include "libslic3r/SLA/PCBExposure.hpp"
-#include <atomic>
 #include <boost/filesystem.hpp>
 #include <boost/nowide/fstream.hpp>
-#include <chrono>
 #include <cmath>
 #include <functional>
-#include <future>
 #include <wx/button.h>
 #include <wx/checkbox.h>
 #include <wx/choice.h>
 #include <wx/dialog.h>
 #include <wx/filedlg.h>
-#include <wx/gauge.h>
 #include <wx/msgdlg.h>
 #include <wx/sizer.h>
 #include <wx/spinctrl.h>
 #include <wx/stattext.h>
 #include <wx/textctrl.h>
-#include <wx/timer.h>
 #include <wx/tokenzr.h>
 
 namespace Slic3r::GUI {
 
 namespace {
-struct RasterGenerationCancelled {};
 using RasterGenerator =
     std::function<std::unique_ptr<SLAPrint>(const std::function<void()> &)>;
 std::unique_ptr<SLAPrint>
 run_raster_generator(wxWindow *parent, const RasterGenerator &generate) {
-  wxDialog progress(parent, wxID_ANY, "Generating layers");
-  auto *root = new wxBoxSizer(wxVERTICAL);
-  auto *label =
-      new wxStaticText(&progress, wxID_ANY, "Preparing exposure masks…");
-  auto *gauge =
-      new wxGauge(&progress, wxID_ANY, 100, wxDefaultPosition, wxSize(360, -1));
-  auto *abort = new wxButton(&progress, wxID_CANCEL, "Cancel");
-  root->Add(label, 0, wxALL, 12);
-  root->Add(gauge, 0, wxEXPAND | wxLEFT | wxRIGHT, 12);
-  root->Add(abort, 0, wxALIGN_RIGHT | wxALL, 12);
-  progress.SetSizerAndFit(root);
-  progress.CentreOnParent();
-  std::atomic<bool> cancel{false};
-  const std::function<void()> check = [&] {
-    if (cancel.load(std::memory_order_relaxed))
-      throw RasterGenerationCancelled{};
-  };
-  auto task = std::async(std::launch::async, [&] {
-    check();
-    auto job = generate(check);
-    check();
-    return job;
-  });
-  auto request_cancel = [&] {
-    cancel.store(true, std::memory_order_relaxed);
-    abort->Disable();
-    label->SetLabel("Cancelling…");
-  };
-  progress.Bind(
-      wxEVT_BUTTON, [&](wxCommandEvent &) { request_cancel(); }, wxID_CANCEL);
-  progress.Bind(wxEVT_CLOSE_WINDOW, [&](wxCloseEvent &event) {
-    request_cancel();
-    if (event.CanVeto())
-      event.Veto();
-  });
-  wxTimer timer(&progress);
-  progress.Bind(wxEVT_TIMER, [&](wxTimerEvent &) {
-    if (task.wait_for(std::chrono::milliseconds(0)) ==
-        std::future_status::ready) {
-      timer.Stop();
-      progress.EndModal(wxID_OK);
-    } else
-      gauge->Pulse();
-  });
-  timer.Start(30);
-  progress.ShowModal();
-  timer.Stop();
-  try {
-    return task.get();
-  } catch (const RasterGenerationCancelled &) {
-    return {};
-  }
+  auto result = run_raster_task<std::unique_ptr<SLAPrint>>(parent, "Generating layers",
+      [generate](const sla::LayerProgress &progress) {
+        const std::function<void()> check = [&progress] { sla::check_layer_progress(progress); };
+        return generate(check);
+      });
+  return result ? std::move(*result) : std::unique_ptr<SLAPrint>{};
 }
 std::string read_pcb_file(const wxString &path) {
   const boost::filesystem::path file{path.ToUTF8().data()};
@@ -232,47 +181,15 @@ void show_pcb_exposure(wxWindow *parent) {
                 throw RuntimeError("Combined copper exceeds the 12 million vertex budget");
               boards.push_back(std::move(board));
             }
-            printer.gamma_correction.value = 1.;
-            auto document =
-                sla::rasterize_pcb_layers(boards, printer, merge_files, placement, check);
-            if (invert_mask) {
-              document.transform_layers(0, document.layer_count()-1, sla::LayerDocument::MaskOperation::Invert);
-              document.mark_saved();
-            }
-            config.set("gamma_correction", 1.);
-            config.set("sla_bottom_layers", 0);
-            config.set("sla_transition_layers", 0);
-            config.set("exposure_time", exposure_seconds);
-            config.set("initial_exposure_time", exposure_seconds);
-            // PCB exposure is a separate, stationary job. These overrides do
-            // not change any resin/process/printer preset used by the scene.
-            config.set("max_exposure_time",
-                       std::max(config.opt_float("max_exposure_time"),
-                                exposure_seconds));
-            config.set("max_initial_exposure_time",
-                       std::max(config.opt_float("max_initial_exposure_time"),
-                                exposure_seconds));
-            for (const char *key :
-                 {"sla_lift_height", "sla_lift_height2", "sla_retract_height2",
-                  "sla_bottom_lift_height", "sla_bottom_lift_height2",
-                  "sla_bottom_retract_height2", "sla_wait_before_cure",
-                  "sla_wait_after_cure", "sla_wait_after_lift",
-                  "sla_bottom_wait_before_cure", "sla_bottom_wait_after_cure",
-                  "sla_bottom_wait_after_lift"})
-              config.set(key, 0.);
-            config.set("sla_light_pwm", 255);
-            config.set("sla_bottom_light_pwm", 255);
-            if (config.opt_string("sla_archive_format") == "SL1SVG")
-              config.set("sla_archive_format", std::string("uvj"));
-            check();
-            std::vector<double> positions;
-            for (size_t i = 0; i < document.layer_count(); ++i)
-              positions.push_back((i+1) * config.opt_float("layer_height"));
-            return SLAPrint::create_raster_job(config, document, positions);
+            return sla::create_pcb_exposure_job(config, boards, merge_files, placement,
+                                                exposure_seconds, invert_mask, check);
           });
       if (!job)
         continue;
-      show_layer_editor(parent, *job);
+      auto *plater = wxGetApp().plater();
+      if (!plater) throw RuntimeError("The Sliced workspace is unavailable");
+      if (!plater->open_generated_layers(*job))
+        continue; // Preserve the filled form when replacement is declined.
       return;
     } catch (const std::exception &error) {
       wxMessageBox(wxString::FromUTF8(error.what()), "PCB exposure",
@@ -291,7 +208,7 @@ void show_calibration_generator(wxWindow *parent) {
           "Exposure, layer height and movement come from the active "
           "material/process presets.\n"
           "XYZ: nine solid blocks. Grayscale: ordered patches. Lift: one "
-          "rectangular area."),
+          "rectangular area, optionally decreasing in size at the end."),
       0, wxALL, 12);
   auto *grid = new wxFlexGridSizer(2, 8, 12);
   grid->AddGrowableCol(1);
@@ -314,20 +231,90 @@ void show_calibration_generator(wxWindow *parent) {
   auto *steps =
       generator_number(options, *grid, "Grayscale steps", 16., 2., 256., 1.);
   auto *first =
-      generator_number(options, *grid, "First grayscale", 32., 0., 255., 1.);
+      generator_number(options, *grid, "First grayscale", 0., 0., 255., 1.);
   auto *last =
       generator_number(options, *grid, "Last grayscale", 255., 0., 255., 1.);
+  auto *taper_step = generator_number(options, *grid, "Lift size step (%)", 0., 0., 99., 1.);
+  auto *taper_min = generator_number(options, *grid, "Minimum lift size (%)", 10., 1., 99., 1.);
+  taper_step->SetDigits(0); taper_min->SetDigits(0);
+  taper_step->SetToolTip("0 keeps all layers at full size. Each final layer reduces both X and Y by this percentage of the original dimensions.");
+  taper_min->SetToolTip("Smallest allowed percentage of the original X and Y dimensions. Total test height includes the decreasing layers.");
+  auto *levels = new wxTextCtrl(&options, wxID_ANY, "", wxDefaultPosition,
+      wxSize(440, 110), wxTE_MULTILINE | wxTE_READONLY);
+  levels->SetName("Generated grayscale levels");
+  auto read_parameters = [&] {
+    sla::CalibrationParameters parameters;
+    parameters.pattern = static_cast<sla::CalibrationPattern>(pattern->GetSelection());
+    parameters.size_x = sx->GetValue(); parameters.size_y = sy->GetValue();
+    parameters.height = height->GetValue(); parameters.margin = margin->GetValue();
+    parameters.grayscale_steps = unsigned(std::lround(steps->GetValue()));
+    parameters.grayscale_first = uint8_t(std::lround(first->GetValue()));
+    parameters.grayscale_last = uint8_t(std::lround(last->GetValue()));
+    if (parameters.pattern == sla::CalibrationPattern::LiftArea) {
+      parameters.lift_taper_step = unsigned(std::lround(taper_step->GetValue()));
+      parameters.lift_taper_min = unsigned(std::lround(taper_min->GetValue()));
+    }
+    return parameters;
+  };
   auto update = [&] {
     const bool grayscale = pattern->GetSelection() == 1;
+    const bool lift = pattern->GetSelection() == 2;
     for (auto *control : {steps, first, last})
       control->Enable(grayscale);
+    taper_step->Enable(lift);
+    taper_min->Enable(lift && taper_step->GetValue() > 0);
+    bool valid = true;
+    wxString summary;
+    if (grayscale) {
+      try {
+        const auto plan = sla::calibration_grayscale_plan(
+            wxGetApp().preset_bundle->full_config(), read_parameters());
+        summary = wxString::Format("Generated mask levels: %u distinct / %u patches.\nRequested -> generated (0-255):\n",
+            unsigned(plan.distinct_levels), unsigned(plan.effective.size()));
+        for (size_t i = 0; i < plan.requested.size(); ++i)
+          summary += wxString::Format("%u -> %u%s", unsigned(plan.requested[i]),
+              unsigned(plan.effective[i]), (i + 1) % 4 == 0 ? "\n" : "    ");
+        if (plan.has_duplicates()) {
+          summary += "\nLevels repeat: reduce steps or widen the grayscale range.";
+          valid = false;
+        } else if (plan.changed_levels)
+          summary += "\nThe generated palette changes some requested levels.";
+        summary += "\nChanging the export format later may require another palette conversion.";
+      } catch (const std::exception &error) {
+        summary = wxString::FromUTF8(error.what()); valid = false;
+      }
+    }
+    if (lift) {
+      try {
+        const auto plan = sla::calibration_lift_plan(
+            wxGetApp().preset_bundle->full_config(), read_parameters());
+        summary = wxString::Format("%u full-size layers + %u decreasing layers.\nTotal height includes both parts.\n",
+            unsigned(plan.base_layers), unsigned(plan.factors.size()));
+        if (plan.factors.empty()) summary += "Size reduction disabled (step = 0).";
+        else {
+          summary += "Final X and Y sizes (% of original dimensions): ";
+          for (unsigned factor : plan.factors) summary += wxString::Format("%u%% ", factor);
+          summary += "\nBoth sides decrease: 90% X and Y gives 81% area.\nExposure and movement use the active presets.";
+        }
+      } catch (const std::exception &error) {
+        summary = wxString::FromUTF8(error.what()); valid = false;
+      }
+    }
+    levels->ChangeValue(summary);
+    levels->Enable(grayscale || lift);
+    if (auto *generate = options.FindWindow(wxID_OK)) generate->Enable(valid);
   };
   pattern->Bind(wxEVT_CHOICE, [&](wxCommandEvent &) { update(); });
-  update();
+  for (auto *control : {steps, first, last, taper_step, taper_min, height}) {
+    control->Bind(wxEVT_SPINCTRLDOUBLE, [&](wxSpinDoubleEvent &) { update(); });
+    control->Bind(wxEVT_TEXT, [&](wxCommandEvent &event) { update(); event.Skip(); });
+  }
   root->Add(grid, 0, wxEXPAND | wxALL, 12);
+  root->Add(levels, 1, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, 12);
   auto *buttons = options.CreateSeparatedButtonSizer(wxOK | wxCANCEL);
   options.FindWindow(wxID_OK)->SetLabel("Generate calibration layers");
   root->Add(buttons, 0, wxEXPAND | wxALL, 12);
+  update();
   options.SetSizerAndFit(root);
   options.CentreOnParent();
   while (options.ShowModal() == wxID_OK) {
@@ -335,16 +322,17 @@ void show_calibration_generator(wxWindow *parent) {
       auto config = wxGetApp().preset_bundle->full_config();
       if (config.opt_string("sla_archive_format") == "SL1SVG")
         config.set("sla_archive_format", std::string("uvj"));
-      sla::CalibrationParameters parameters;
-      parameters.pattern =
-          static_cast<sla::CalibrationPattern>(pattern->GetSelection());
-      parameters.size_x = sx->GetValue();
-      parameters.size_y = sy->GetValue();
-      parameters.height = height->GetValue();
-      parameters.margin = margin->GetValue();
-      parameters.grayscale_steps = unsigned(std::lround(steps->GetValue()));
-      parameters.grayscale_first = uint8_t(std::lround(first->GetValue()));
-      parameters.grayscale_last = uint8_t(std::lround(last->GetValue()));
+      const auto parameters = read_parameters();
+      if (parameters.pattern == sla::CalibrationPattern::GrayscalePatches) {
+        const auto plan = sla::calibration_grayscale_plan(config, parameters);
+        if (plan.has_duplicates()) { update(); continue; }
+        if (plan.changed_levels && wxMessageBox(
+            "The generated palette changes some requested grayscale levels.\n"
+            "Use the generated levels shown in the table for this calibration?",
+            "Grayscale calibration", wxYES_NO | wxNO_DEFAULT | wxICON_QUESTION,
+            &options) != wxYES)
+          continue;
+      }
       auto job =
           run_raster_generator(parent, [=](const std::function<void()> &check) {
             check();
@@ -352,7 +340,10 @@ void show_calibration_generator(wxWindow *parent) {
           });
       if (!job)
         continue;
-      show_layer_editor(parent, *job);
+      auto *plater = wxGetApp().plater();
+      if (!plater) throw RuntimeError("The Sliced workspace is unavailable");
+      if (!plater->open_generated_layers(*job))
+        continue; // Preserve the filled form when replacement is declined.
       return;
     } catch (const std::exception &error) {
       wxMessageBox(wxString::FromUTF8(error.what()), "Printer calibration",

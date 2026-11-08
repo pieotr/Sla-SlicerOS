@@ -4,6 +4,9 @@
 #include "libslic3r/ExPolygon.hpp"
 #include "libslic3r/PrintConfig.hpp"
 #include <functional>
+#include <memory>
+
+namespace Slic3r { class SLAPrint; }
 #include <string>
 
 namespace Slic3r::sla {
@@ -36,5 +39,11 @@ LayerDocument rasterize_pcb_layers(const std::vector<PCBArtwork> &boards,
                                    const SLAPrinterConfig &printer, bool merge,
                                    const PCBPlacement &placement = {},
                                    const std::function<void()> &check_cancel = {});
+// Build a stationary exposure job with local overrides, shared registration,
+// and explicit seconds. No resin/printer preset is changed by PCB generation.
+std::unique_ptr<SLAPrint> create_pcb_exposure_job(
+    const DynamicPrintConfig &configuration, const std::vector<PCBArtwork> &boards,
+    bool merge, const PCBPlacement &placement, double exposure_seconds,
+    bool invert_mask = false, const std::function<void()> &check_cancel = {});
 } // namespace Slic3r::sla
 #endif

@@ -16,15 +16,27 @@
 namespace Slic3r {
 
 class SLAPrint;
+namespace sla { struct CXDLPv4FreshExportPlan; }
 
 class CrealityCXDLPv4Archive : public SLAArchiveWriter {
+    friend class SLAPrint;
+    // Engine-private, synchronous read of an immutable snapshot's encoding.
+    // The caller retains shared ownership for the complete write/readback/commit.
+    void export_fresh_print_with_encoding(const std::string &fname, const SLAPrint &print,
+        const ThumbnailsList &thumbnails, const sla::CXDLPv4FreshExportPlan &fresh,
+        const std::vector<sla::EncodedRaster> &encoding);
     SLAPrinterConfig m_cfg;
+    void export_print_impl(const std::string &fname, const SLAPrint &print,
+        const ThumbnailsList &thumbnails, const sla::CXDLPv4FreshExportPlan *fresh,
+        const std::vector<sla::EncodedRaster> *encoding = nullptr);
 
 protected:
     std::unique_ptr<sla::RasterBase> create_raster() const override;
     sla::RasterEncoder get_encoder() const override;
 
 public:
+    void export_fresh_print(const std::string &fname, const SLAPrint &print,
+        const ThumbnailsList &thumbnails, const sla::CXDLPv4FreshExportPlan &fresh);
     // Shared native codec for model export and standalone layer editing.
     static sla::EncodedRaster encode_mask(const void *pixels, size_t width, size_t height, size_t components);
     static std::vector<uint8_t> decode_mask(const uint8_t *data, size_t length, size_t width, size_t height);

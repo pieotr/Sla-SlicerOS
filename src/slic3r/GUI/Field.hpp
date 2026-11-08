@@ -216,7 +216,9 @@ public:
 	bool			m_is_nonsys_value {true};
 
     /// Copy of ConfigOption for deduction purposes
-    const ConfigOptionDef			m_opt {ConfigOptionDef()};
+    // Each field owns this copy. Dynamic choices may replace their local
+    // value/label mapping without modifying the global config definition.
+    ConfigOptionDef                  m_opt {ConfigOptionDef()};
 	const t_config_option_key		m_opt_id;//! {""};
 	int								m_opt_idx = 0;
 
@@ -445,6 +447,7 @@ public:
 	void			set_value(const boost::any& value, bool change_event = false) override;
 	void			set_values(const std::vector<std::string> &values);
 	void			set_values(const wxArrayString &values);
+    void            set_enum_values(std::vector<std::string> values, std::vector<std::string> labels, const std::string &selected);
 	boost::any&		get_value() override;
 
     void            msw_rescale() override;

@@ -1,3 +1,7 @@
+#include "libslic3r/SLA/ResinBottle.hpp"
+#include "libslic3r/SLA/ExportFormatPreference.hpp"
+#include "libslic3r/SLA/GeneratedLayerOwnership.hpp"
+#include "libslic3r/SLA/AnycubicSettingsPreflight.hpp"
 ///|/ Copyright (c) Prusa Research 2017 - 2023 Oleksandra Iushchenko @YuSanka, Lukáš Matěna @lukasmatena, Lukáš Hejl @hejllukas, Vojtěch Bubník @bubnikv, Pavel Mikuš @Godrak, Tomáš Mészáros @tamasmeszaros, David Kocík @kocikdav, Enrico Turri @enricoturri1966, Vojtěch Král @vojtechkral
 ///|/ Copyright (c) 2021 Martin Budden
 ///|/ Copyright (c) 2021 Ilya @xorza
@@ -27,6 +31,10 @@
 #include "libslic3r/SLAPrint.hpp"
 #include "libslic3r/SLA/PrinterGeometry.hpp"
 #include "libslic3r/Format/SLAArchiveFormatRegistry.hpp"
+#include "libslic3r/Format/NanoDLPArchive.hpp"
+#include "libslic3r/Format/AnycubicSLA.hpp"
+#include <nlohmann/json.hpp>
+#include <boost/nowide/fstream.hpp>
 #include "libslic3r/GCode/GCodeProcessor.hpp"
 #include "libslic3r/GCode/GCodeWriter.hpp"
 #include "libslic3r/GCode/Thumbnails.hpp"
@@ -947,10 +955,10 @@ void Tab::msw_rescale()
     m_presets_choice->msw_rescale();
     m_treectrl->SetMinSize(wxSize(20 * m_em_unit, -1));
 
-    if (m_compatible_printers.checkbox)
-        CheckBox::Rescale(m_compatible_printers.checkbox);
-    if (m_compatible_prints.checkbox)
-        CheckBox::Rescale(m_compatible_prints.checkbox);
+    if (m_compatible_printers.mode)
+        m_compatible_printers.mode->SetMinSize(wxSize(16 * m_em_unit, -1));
+    if (m_compatible_prints.mode)
+        m_compatible_prints.mode->SetMinSize(wxSize(16 * m_em_unit, -1));
 
     // rescale options_groups
     if (m_active_page)
@@ -1085,18 +1093,17 @@ static wxString pad_combo_value_for_config(const DynamicPrintConfig &config)
 
 void Tab::on_value_change(const std::string& opt_key, const boost::any& value)
 {
-    if (m_type == Preset::TYPE_PRINTER && opt_key == "sla_archive_format") {
-        const auto &format = m_config->opt_string("sla_archive_format");
-        if (get_archive_entry(format.c_str()))
-            wxGetApp().app_config->set_sla_export_format(m_presets->get_edited_preset().name, format);
-    }
     if (wxGetApp().plater() == nullptr) {
         return;
     }
 
-    if (opt_key == "compatible_prints")
+    if (opt_key == "compatible_prints_condition" || opt_key == "compatible_printers_condition") {
+        m_preset_bundle->update_compatible(PresetSelectCompatibleType::Never);
+        m_presets_choice->update();
+    }
+    if (opt_key == "compatible_prints" || opt_key == "compatible_prints_condition")
         this->compatible_widget_reload(m_compatible_prints);
-    if (opt_key == "compatible_printers")
+    if (opt_key == "compatible_printers" || opt_key == "compatible_printers_condition")
         this->compatible_widget_reload(m_compatible_printers);
 
     const bool is_fff = supports_printer_technology(ptFFF);
@@ -3072,7 +3079,7 @@ void TabPrinter::build_sla()
     optgroup = page->new_optgroup(L("Output"));
     auto model_option = optgroup->get_option("printer_model");
     model_option.opt.label = L("Printer model (firmware)");
-    model_option.opt.tooltip = L("Model identifier stored in the printer file. Creality CXDLP v2/v3 requires the actual CL or CT model, for example CL-60. Saved with this printer preset.");
+    model_option.opt.tooltip = L("Model identifier stored in the printer file. CXDLPv4 requires a nonempty identifier (up to 255 bytes). Creality CXDLP v2/v3 requires the actual CL or CT model, for example CL-60. Saved with this printer preset.");
     model_option.opt.mode = comSimple;
     optgroup->append_single_option_line(model_option);
     option = optgroup->get_option("sla_archive_format");
@@ -3090,9 +3097,77 @@ void TabPrinter::build_sla()
     option.opt.set_enum_values(std::move(archive_ids), std::move(archive_labels));
     option.opt.gui_type = ConfigOptionDef::GUIType::select_open;
     optgroup->append_single_option_line(option);
+    optgroup->append_single_option_line("sla_anycubic_version");
+    optgroup->append_single_option_line("sla_cbddlp_aa");
+    optgroup->append_single_option_line("sla_phz_encryption_key");
     optgroup->append_single_option_line("sla_output_precision");
 
+    // Make controller configuration reachable from the format selector without
+    // requiring navigation of the platform-specific settings tree.
+    line = Line{"", ""};
+    line.full_width = true;
+    line.widget = [this](wxWindow *parent) {
+        auto *sizer = new wxBoxSizer(wxHORIZONTAL);
+        auto *button = new wxButton(parent, wxID_ANY, _("Configure NanoDLP controller..."));
+        button->Bind(wxEVT_BUTTON, [this](wxCommandEvent &) {
+            // Selecting a page destroys its old controls. Finish dispatching
+            // the button event before replacing the page that owns it.
+            CallAfter([this] { activate_option("nanodlp_device_profile", "NanoDLP controller"); });
+        });
+        sizer->Add(button, 0);
+        return sizer;
+    };
+    optgroup->append_line(line);
+
     build_print_host_upload_group(page.get());
+
+    page = add_options_page(L("NanoDLP controller"), "wrench");
+    optgroup = page->new_optgroup(L("Controller profile"));
+    optgroup->append_single_option_line("nanodlp_device_profile");
+    line = Line{"", ""};
+    line.full_width = true;
+    line.widget = [this](wxWindow *parent) {
+        auto *sizer = new wxBoxSizer(wxVERTICAL);
+        auto *description = new wxStaticText(parent, wxID_ANY,
+            _("Load profile.json from your NanoDLP controller. Save the printer preset to keep it. "
+              "Controller templates determine movement speeds and hardware commands; generic SLA speeds do not rewrite them."));
+        description->Wrap(550);
+        sizer->Add(description, 0, wxEXPAND | wxBOTTOM, 8);
+        auto *button = new wxButton(parent, wxID_ANY, _("Load controller profile..."));
+        button->Bind(wxEVT_BUTTON, [this](wxCommandEvent &) {
+          // Let native/accessibility button dispatch return before entering a
+          // modal event loop. The tab remains the parent across page rebuilds.
+          CallAfter([this] {
+            wxFileDialog dialog(this, _("Load NanoDLP controller profile"), wxEmptyString,
+                                "profile.json", _("Controller profile (*.json)|*.json"), wxFD_OPEN | wxFD_FILE_MUST_EXIST);
+            if (dialog.ShowModal() != wxID_OK) return;
+            try {
+                // Own UTF-8 storage: GetPath() returns a temporary wxString,
+                // whose conversion buffer must not outlive that expression.
+                const std::string path = into_u8(dialog.GetPath());
+                boost::nowide::ifstream input(path, std::ios::binary);
+                if (!input) throw std::runtime_error("Cannot open NanoDLP controller profile");
+                input.seekg(0, std::ios::end);
+                const auto length = input.tellg();
+                if (length < 0 || length > 4 * 1024 * 1024)
+                    throw std::runtime_error("NanoDLP controller profile exceeds 4 MiB");
+                input.seekg(0);
+                std::string text(size_t(length), '\0');
+                input.read(text.data(), text.size());
+                if (!input && !text.empty()) throw std::runtime_error("Cannot read NanoDLP controller profile");
+                const auto profile = NanoDLPArchive::parse_device_profile(text);
+                DynamicPrintConfig changed = *m_config;
+                changed.set("nanodlp_device_profile", profile.dump(2));
+                load_config(changed);
+            } catch (const std::exception &error) {
+                wxMessageBox(from_u8(error.what()), _("Invalid NanoDLP controller profile"), wxOK | wxICON_ERROR, this);
+            }
+          });
+        });
+        sizer->Add(button, 0, wxALIGN_LEFT);
+        return sizer;
+    };
+    optgroup->append_line(line);
 
     const int notes_field_height = 25; // 250
 
@@ -3640,8 +3715,21 @@ void TabPrinter::clear_pages()
 
 void TabPrinter::toggle_options()
 {
-    if (!m_active_page || m_presets->get_edited_preset().printer_technology() == ptSLA)
+    if (!m_active_page) return;
+    if (m_presets->get_edited_preset().printer_technology() == ptSLA) {
+        const auto &versions = anycubic_available_versions(m_config->opt_string("sla_archive_format"));
+        if (auto *field = dynamic_cast<Choice*>(get_field("sla_anycubic_version"))) {
+            std::vector<std::string> values{"auto"}, labels{L("Automatic (format default)")};
+            for (uint16_t version : versions) {
+                values.push_back(std::to_string(version)); labels.push_back(std::to_string(version));
+            }
+            field->set_enum_values(std::move(values), std::move(labels), m_config->opt_string("sla_anycubic_version"));
+        }
+        toggle_option("sla_anycubic_version", !versions.empty());
+        toggle_option("sla_cbddlp_aa", m_config->opt_string("sla_archive_format") == "cbddlp" || m_config->opt_string("sla_archive_format") == "photon");
+        toggle_option("sla_phz_encryption_key", m_config->opt_string("sla_archive_format") == "phz");
         return;
+    }
 
     const GCodeFlavor flavor = m_config->option<ConfigOptionEnum<GCodeFlavor>>("gcode_flavor")->value;
     bool have_multiple_extruders = m_extruders_count > 1;
@@ -3785,6 +3873,9 @@ void TabPrinter::update_sla()
     // it in dirty tracking so saving a printer persists the same geometry.
     if (sla::synchronize_bed_shape(*m_config))
         update_dirty();
+    // Re-evaluate format-specific fields immediately after editing the format;
+    // page activation alone leaves PHZ's seed disabled until reopening the tab.
+    toggle_options();
 }
 
 void Tab::update_ui_items_related_on_parent_preset(const Preset* selected_preset_parent)
@@ -4225,11 +4316,13 @@ void Tab::clear_pages()
     m_parent_preset_description_line = nullptr;
     m_detach_preset_btn = nullptr;
 
-    m_compatible_printers.checkbox  = nullptr;
+    m_compatible_printers.mode  = nullptr;
     m_compatible_printers.btn       = nullptr;
+    m_compatible_printers.status    = nullptr;
 
-    m_compatible_prints.checkbox    = nullptr;
+    m_compatible_prints.mode    = nullptr;
     m_compatible_prints.btn         = nullptr;
+    m_compatible_prints.status      = nullptr;
 }
 
 void Tab::update_description_lines()
@@ -4246,9 +4339,9 @@ void Tab::activate_selected_page(std::function<void()> throw_if_canceled)
     m_active_page->activate(m_mode, throw_if_canceled);
 
     if (m_active_page->title() == "Dependencies") {
-        if (m_compatible_printers.checkbox)
+        if (m_compatible_printers.mode)
             this->compatible_widget_reload(m_compatible_printers);
-        if (m_compatible_prints.checkbox)
+        if (m_compatible_prints.mode)
             this->compatible_widget_reload(m_compatible_prints);
     }
 
@@ -4396,10 +4489,11 @@ void Tab::transfer_options(const std::string &name_from, const std::string &name
 // opens a Slic3r::GUI::SavePresetDialog dialog.
 void Tab::save_preset(std::string name /*= ""*/, bool detach)
 {
-    // since buttons(and choices too) don't get focus on Mac, we set focus manually
-    // to the treectrl so that the EVT_* events are fired for the input field having
-    // focus currently.is there anything better than this ?
-//!	m_treectrl->OnSetFocus();
+    // Saving through a toolbar or accessibility action need not move focus
+    // out of an editable field. Commit its pending value before the save
+    // dialog snapshots the preset, including translated archive labels.
+    if (m_treectrl)
+        m_treectrl->SetFocus();
 
     Preset& edited_preset = m_presets->get_edited_preset();
     bool from_template = false;
@@ -4432,15 +4526,18 @@ void Tab::save_preset(std::string name /*= ""*/, bool detach)
 
     // Save the preset into Slic3r::data_dir / presets / section_name / preset_name.ini
     const auto previous_name = edited_preset.name;
-    const auto previous_export = m_type == Preset::TYPE_PRINTER ?
-        wxGetApp().app_config->sla_export_format(previous_name) : std::string{};
+    const auto previous_export = m_type == Preset::TYPE_PRINTER && edited_preset.printer_technology()==ptSLA ?
+        sla::preferred_export_format(m_presets->get_selected_preset().config.opt_string("sla_archive_format"),
+            edited_preset.config.opt_string("sla_archive_format"),
+            wxGetApp().app_config->sla_export_format(m_presets->get_selected_preset_source_name("printer_settings_id")),
+            edited_preset.config.opt_string("sla_anycubic_version")) : std::string{};
     try {
         save_current_preset(name, detach);
     } catch (const std::exception &error) {
         wxMessageBox(from_u8(error.what()), _L("Save preset"), wxOK | wxICON_ERROR, this);
         return;
     }
-    if (m_type == Preset::TYPE_PRINTER && previous_name != name && !previous_export.empty())
+    if (m_type == Preset::TYPE_PRINTER && !previous_export.empty())
         wxGetApp().app_config->set_sla_export_format(name, previous_export);
 
     if (detach && m_type == Preset::TYPE_PRINTER)
@@ -4536,14 +4633,7 @@ void Tab::rename_preset()
     if (new_name.empty() || new_name == m_presets->get_selected_preset().name)
         return;
 
-    // Note: selected preset can be changed, if in SavePresetDialog was selected name of existing preset
-    Preset& selected_preset = m_presets->get_selected_preset();
-    Preset& edited_preset   = m_presets->get_edited_preset();
-
-    const std::string old_name      = selected_preset.name;
-    const std::string old_file_name = selected_preset.file;
-
-    assert(old_name == edited_preset.name);
+    const std::string old_name = m_presets->get_selected_preset_name();
 
     if (m_type == Preset::TYPE_FILAMENT) {
         // Filaments will be sorted inside collection after remaning,
@@ -4551,35 +4641,18 @@ void Tab::rename_preset()
         m_preset_bundle->cache_extruder_filaments_names();
     }
 
-    bool was_renamed = true;
-    using namespace boost;
+    bool was_renamed = false;
     try {
-        // rename selected and edited presets
-
-        // Keep the in-memory selection intact until the file rename succeeds.
-        // Construct the sibling filename rather than replacing a name in its
-        // parent directory (which can contain the same text).
-        const auto new_file = filesystem::path(m_presets->path_from_name(new_name));
-        if (filesystem::exists(new_file))
-            throw std::runtime_error("A preset file with this name already exists");
-        filesystem::rename(old_file_name, new_file);
-        selected_preset.name = edited_preset.name = new_name;
-        selected_preset.file = edited_preset.file = new_file.string();
-
-        // rename selected preset in printers, if it's needed
-
-        if (!msg.IsEmpty())
+        was_renamed = m_presets->rename_current_preset(new_name);
+        if (was_renamed && !msg.IsEmpty())
             m_preset_bundle->physical_printers.rename_preset_in_printers(old_name, new_name);
     }
     catch (const std::exception& ex) {
         wxMessageBox(from_u8(ex.what()), _L("Rename preset"), wxOK | wxICON_ERROR, this);
         // Physical-printer propagation may fail after the preset file moved;
         // keep the actual file/name pair rather than claiming it was undone.
-        was_renamed = selected_preset.name == new_name;
+        was_renamed = m_presets->get_selected_preset_name() == new_name;
     }
-
-    // sort presets after renaming
-    std::sort(m_presets->begin(), m_presets->end());
 
     if (was_renamed && m_type == Preset::TYPE_FILAMENT) {
         // Reset extruder_filaments only if preset was renamed
@@ -4594,10 +4667,10 @@ void Tab::rename_preset()
             wxGetApp().app_config->set_sla_export_format(old_name, "");
         }
     }
-    // update selection
-    select_preset_by_name(was_renamed ? new_name : old_name, true);
-
+    // The collection keeps the selected index and unsaved draft together.
+    // Reloading the selection here would silently discard edits, even on error.
     m_presets_choice->update();
+    update_changed_ui();
     on_presets_changed();
 }
 
@@ -4685,7 +4758,7 @@ void Tab::delete_preset()
 
     // Select will handle of the preset dependencies, of saving & closing the depending profiles, and
     // finally of deleting the preset.
-    if (this->select_preset("", true) && m_type == Preset::TYPE_PRINTER)
+    if (this->select_preset("", true) && m_type == Preset::TYPE_PRINTER && !current_preset.is_external)
         wxGetApp().app_config->set_sla_export_format(current_preset.name, "");
 }
 
@@ -4746,80 +4819,103 @@ void Tab::create_line_with_widget(ConfigOptionsGroup* optgroup, const std::strin
 }
 
 // Return a callback to create a Tab widget to mark the preferences as compatible / incompatible to the current printer.
+namespace {
+enum class CompatibilityMode { All, Selected, Condition, None };
+}
+
 wxSizer* Tab::compatible_widget_create(wxWindow* parent, PresetDependencies &deps)
 {
-    deps.checkbox = CheckBox::GetNewWin(parent, _L("All"));
-    deps.checkbox->SetFont(Slic3r::GUI::wxGetApp().normal_font());
-    wxGetApp().UpdateDarkUI(deps.checkbox);
-    deps.btn = new ScalableButton(parent, wxID_ANY, "printer", format_wxstr(" %s %s", _L("Set"), dots),
-                                  wxDefaultSize, wxDefaultPosition, wxBU_LEFT | wxBU_EXACTFIT);
-    deps.btn->SetFont(Slic3r::GUI::wxGetApp().normal_font());
-    deps.btn->SetSize(deps.btn->GetBestSize());
+    deps.mode = new wxChoice(parent, wxID_ANY, wxDefaultPosition, wxDefaultSize,
+        wxArrayString{_L("All"), _L("Selected profiles"), _L("Condition"), _L("None")});
+    deps.mode->SetName(deps.type == Preset::TYPE_PRINTER ? "Printer compatibility mode" : "Print compatibility mode");
+    deps.mode->SetToolTip(deps.mode->GetName());
+    deps.mode->SetFont(wxGetApp().normal_font());
+    deps.mode->SetMinSize(wxSize(16 * m_em_unit, -1));
+    wxGetApp().UpdateDarkUI(deps.mode);
+    deps.btn = new ScalableButton(parent, wxID_ANY, "", _L("Select"),
+        wxDefaultSize, wxDefaultPosition, wxBU_LEFT | wxBU_EXACTFIT);
+    deps.btn->SetName(deps.type == Preset::TYPE_PRINTER ? "Select compatible printers" : "Select compatible print profiles");
+    deps.btn->SetToolTip(deps.btn->GetName());
+    deps.status = new wxStaticText(parent, wxID_ANY, "");
+    deps.status->SetFont(wxGetApp().normal_font());
+    auto *row = new wxBoxSizer(wxHORIZONTAL);
+    row->Add(deps.mode, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, m_em_unit);
+    row->Add(deps.btn, 0, wxALIGN_CENTER_VERTICAL);
+    // OG_CustomCtrl positions the immediate windows of a widget sizer itself.
+    // Keep the children flat; nested sizers would leave their controls at (0,0).
+    row->Add(deps.status, 0, wxALIGN_CENTER_VERTICAL | wxLEFT, m_em_unit);
 
-    auto sizer = new wxBoxSizer(wxHORIZONTAL);
-    sizer->Add((deps.checkbox), 0, wxALIGN_CENTER_VERTICAL);
-    sizer->Add((deps.btn), 0, wxALIGN_CENTER_VERTICAL);
-
-    deps.checkbox->Bind(wxEVT_CHECKBOX, ([this, &deps](wxCommandEvent e)
-    {
-        const bool is_checked = CheckBox::GetValue(deps.checkbox);
-        deps.btn->Enable(!is_checked);
-        // All printers have been made compatible with this preset.
-        if (is_checked)
-            this->load_key_value(deps.key_list, std::vector<std::string> {});
-        this->get_field(deps.key_condition)->toggle(is_checked);
-        this->update_changed_ui();
-    }) );
-
-    deps.btn->Bind(wxEVT_BUTTON, ([this, parent, &deps](wxCommandEvent e)
-    {
-        // Collect names of non-default non-external profiles.
-        PrinterTechnology printer_technology = m_preset_bundle->printers.get_edited_preset().printer_technology();
-        PresetCollection &depending_presets  = (deps.type == Preset::TYPE_PRINTER) ? m_preset_bundle->printers :
-                (printer_technology == ptFFF) ? m_preset_bundle->prints : m_preset_bundle->sla_prints;
-        wxArrayString presets;
-        for (size_t idx = 0; idx < depending_presets.size(); ++ idx)
-        {
-            Preset& preset = depending_presets.preset(idx);
-            bool add = ! preset.is_default && ! preset.is_external;
-            if (add && deps.type == Preset::TYPE_PRINTER)
-                // Only add printers with the same technology as the active printer.
-                add &= preset.printer_technology() == printer_technology;
-            if (add)
-                presets.Add(from_u8(preset.name));
+    // Publish both fields together: an empty list alone means unrestricted in
+    // legacy profiles. An explicit None is represented by the rule "false".
+    const auto apply = [this, &deps](std::vector<std::string> names, std::string condition) {
+        DynamicPrintConfig candidate = *m_config;
+        candidate.set_key_value(deps.key_list, new ConfigOptionStrings(std::move(names)));
+        candidate.set_key_value(deps.key_condition, new ConfigOptionString(std::move(condition)));
+        // These metadata keys may be absent in a legacy imported profile.
+        // load_config() compares only shared keys, so install both explicitly.
+        m_config->apply_only(candidate, {deps.key_list, deps.key_condition});
+        m_preset_bundle->update_compatible(PresetSelectCompatibleType::Never);
+        reload_config();
+        update_dirty();
+        update();
+        compatible_widget_reload(deps);
+    };
+    const auto select = [this, parent, &deps, apply]() {
+        const auto technology = m_preset_bundle->printers.get_edited_preset().printer_technology();
+        const auto &collection = deps.type == Preset::TYPE_PRINTER ? static_cast<const PresetCollection&>(m_preset_bundle->printers) :
+            technology == ptFFF ? m_preset_bundle->prints : m_preset_bundle->sla_prints;
+        wxArrayString labels;
+        std::vector<std::string> names;
+        for (const auto &preset : collection) {
+            if (preset.is_default || preset.is_external ||
+                (deps.type == Preset::TYPE_PRINTER && preset.printer_technology() != technology))
+                continue;
+            names.push_back(preset.name);
+            labels.Add(from_u8(preset.name));
         }
-
-        wxMultiChoiceDialog dlg(parent, deps.dialog_title, deps.dialog_label, presets);
-        wxGetApp().UpdateDlgDarkUI(&dlg);
-        // Collect and set indices of depending_presets marked as compatible.
-        wxArrayInt selections;
-        auto *compatible_printers = dynamic_cast<const ConfigOptionStrings*>(m_config->option(deps.key_list));
-        if (compatible_printers != nullptr || !compatible_printers->values.empty())
-            for (auto preset_name : compatible_printers->values)
-                for (size_t idx = 0; idx < presets.GetCount(); ++idx)
-                    if (presets[idx] == preset_name) {
-                        selections.Add(idx);
-                        break;
-                    }
-        dlg.SetSelections(selections);
-        std::vector<std::string> value;
-        // Show the dialog.
-        if (dlg.ShowModal() == wxID_OK) {
-            selections.Clear();
-            selections = dlg.GetSelections();
-            for (auto idx : selections)
-                value.push_back(presets[idx].ToUTF8().data());
-            if (value.empty()) {
-                CheckBox::SetValue(deps.checkbox, true);
-                deps.btn->Disable();
+        const auto *current = m_config->option<ConfigOptionStrings>(deps.key_list);
+        // Missing/imported references stay visible and selected. Opening this
+        // dialog must not silently erase a restriction to an unavailable profile.
+        if (current) for (const auto &name : current->values) {
+            if (std::find(names.begin(), names.end(), name) == names.end()) {
+                names.push_back(name);
+                labels.Add(from_u8(name) + " " + _L("(not installed)"));
             }
-            // All depending_presets have been made compatible with this preset.
-            this->load_key_value(deps.key_list, value);
-            this->update_changed_ui();
         }
-    }));
-
-    return sizer;
+        wxMultiChoiceDialog dialog(parent, deps.dialog_title, deps.dialog_label, labels);
+        wxGetApp().UpdateDlgDarkUI(&dialog);
+        wxArrayInt selections;
+        if (current) for (size_t i = 0; i < names.size(); ++i)
+            if (std::find(current->values.begin(), current->values.end(), names[i]) != current->values.end())
+                selections.Add(int(i));
+        dialog.SetSelections(selections);
+        if (dialog.ShowModal() != wxID_OK) {
+            compatible_widget_reload(deps);
+            return;
+        }
+        std::vector<std::string> selected;
+        for (const int index : dialog.GetSelections()) selected.push_back(names.at(size_t(index)));
+        const auto *condition = m_config->option<ConfigOptionString>(deps.key_condition);
+        const std::string rule = selected.empty() ? "false" : condition ? condition->value : std::string();
+        apply(std::move(selected), rule);
+    };
+    deps.btn->Bind(wxEVT_BUTTON, [select](wxCommandEvent&) { select(); });
+    deps.mode->Bind(wxEVT_CHOICE, [this, &deps, apply, select](wxCommandEvent&) {
+        const auto mode = static_cast<CompatibilityMode>(deps.mode->GetSelection());
+        if (mode == CompatibilityMode::Selected) {
+            select();
+            return;
+        }
+        std::string condition;
+        if (mode == CompatibilityMode::None) condition = "false";
+        if (mode == CompatibilityMode::Condition) {
+            const auto *current = m_config->option<ConfigOptionString>(deps.key_condition);
+            condition = current ? current->value : std::string();
+            if (condition.empty() || boost::trim_copy(condition) == "false") condition = "true";
+        }
+        apply({}, condition);
+    });
+    return row;
 }
 
 // G-code substitutions
@@ -5265,15 +5361,36 @@ void TabPrinter::update_machine_limits_description(const MachineLimitsUsage usag
 
 void Tab::compatible_widget_reload(PresetDependencies &deps)
 {
-    Field* field = this->get_field(deps.key_condition);
-    if (!field)
-        return;
+    Field *field = this->get_field(deps.key_condition);
+    if (!field || !deps.mode || !deps.status) return;
+    const auto *names = m_config->option<ConfigOptionStrings>(deps.key_list);
+    const auto *rule = m_config->option<ConfigOptionString>(deps.key_condition);
+    const std::string condition = rule ? boost::trim_copy(rule->value) : std::string();
+    const auto mode = names && !names->values.empty() ? CompatibilityMode::Selected :
+        condition.empty() ? CompatibilityMode::All :
+        condition == "false" ? CompatibilityMode::None : CompatibilityMode::Condition;
+    deps.mode->SetSelection(static_cast<int>(mode));
+    deps.btn->Enable(mode == CompatibilityMode::Selected);
+    field->toggle(mode == CompatibilityMode::Condition);
 
-    bool has_any = ! m_config->option<ConfigOptionStrings>(deps.key_list)->values.empty();
-    has_any ? deps.btn->Enable() : deps.btn->Disable();
-    CheckBox::SetValue(deps.checkbox, !has_any);
-
-    field->toggle(! has_any);
+    const auto printer = m_preset_bundle->printers.get_edited_preset_with_vendor_profile();
+    const auto current = m_presets->get_edited_preset_with_vendor_profile();
+    const auto &prints = printer.preset.printer_technology() == ptSLA ? m_preset_bundle->sla_prints : m_preset_bundle->prints;
+    const auto result = deps.type == Preset::TYPE_PRINTER ? evaluate_compatibility_with_printer(current, printer) :
+        evaluate_compatibility_with_print(current, prints.get_edited_preset_with_vendor_profile(), printer);
+    wxString text;
+    // Option rows have a fixed height. Keep the status to one line; full parser
+    // diagnostics remain available through the tooltip and accessibility API.
+    if (!result.error.empty()) text = _L("Invalid condition (hover for details).");
+    else if (deps.type == Preset::TYPE_PRINTER)
+        text = result.compatible ? _L("Compatible with the current printer.") : _L("Not compatible with the current printer.");
+    else text = result.compatible ? _L("Compatible with the current print profile.") : _L("Not compatible with the current print profile.");
+    if (result.error.empty()) deps.status->UnsetToolTip();
+    else deps.status->SetToolTip(from_u8(result.error));
+    if (deps.status->GetLabel() != text) {
+        deps.status->SetLabel(text);
+        deps.status->GetParent()->Layout();
+    }
 }
 
 void Tab::fill_icon_descriptions()
@@ -5524,22 +5641,18 @@ void TabSLAMaterial::build()
 
         DynamicPrintConfig new_conf = *m_config;
 
-        if (opt_key == "bottle_volume") {
-            double new_bottle_weight =  boost::any_cast<double>(value)*(new_conf.option("material_density")->getFloat() / 1000);
-            new_conf.set_key_value("bottle_weight", new ConfigOptionFloat(new_bottle_weight));
-        }
-        if (opt_key == "bottle_weight") {
-            double new_bottle_volume =  boost::any_cast<double>(value)/new_conf.option("material_density")->getFloat() * 1000;
-            new_conf.set_key_value("bottle_volume", new ConfigOptionFloat(new_bottle_volume));
-        }
-        if (opt_key == "material_density") {
-            double new_bottle_volume = new_conf.option("bottle_weight")->getFloat() / boost::any_cast<double>(value) * 1000;
-            new_conf.set_key_value("bottle_volume", new ConfigOptionFloat(new_bottle_volume));
-        }
+        if (const auto derived = sla::derive_bottle_setting(opt_key,
+                new_conf.opt_float("bottle_volume"), new_conf.opt_float("bottle_weight"),
+                new_conf.opt_float("material_density")))
+            new_conf.set(derived->key, derived->value);
 
         load_config(new_conf);
 
         update_dirty();
+        // The edited primary option is already stored by ConfigOptionsGroup.
+        // load_config only updates the engine when a derived option differs;
+        // forward price-only edits (and unchanged dependencies) as well.
+        on_value_change(opt_key, value);
 
         // Change of any from those options influences for an update of "Sliced Info"
         wxGetApp().sidebar().update_sliced_info_sizer();
@@ -5554,6 +5667,15 @@ void TabSLAMaterial::build()
     optgroup->append_single_option_line("initial_exposure_time");
 
     auto lcd_page = add_options_page(L("LCD exposure and motion"), "resin");
+    auto compatibility=lcd_page->new_optgroup(L("Output compatibility"));
+    Line compatibility_line{"", ""}; compatibility_line.full_width=1;
+    compatibility_line.widget=[this](wxWindow *parent) {
+        ogStaticText *description=nullptr;
+        auto *layout=description_line_widget(parent,&description);
+        description->SetName("SLA output compatibility");
+        return layout;
+    };
+    compatibility->append_line(compatibility_line);
     auto counts = lcd_page->new_optgroup(L("Exposure layers"));
     counts->append_single_option_line("sla_bottom_layers");
     counts->append_single_option_line("sla_transition_layers");
@@ -5799,6 +5921,24 @@ void TabSLAMaterial::update()
 
 void TabSLAMaterial::update_description_lines()
 {
+    if (auto *description=dynamic_cast<ogStaticText*>(wxWindow::FindWindowByName("SLA output compatibility",this))) {
+        try {
+            const auto &printer=m_preset_bundle->printers.get_edited_preset().config;
+            const auto format=printer.opt_string("sla_archive_format");
+            const auto version=sla::generated_anycubic_version(format,printer.opt_string("sla_anycubic_version"));
+            wxString text="Output format: ."+wxString::FromUTF8(format);
+            if (version) text+=wxString::Format(" (version %u)",unsigned(*version));
+            if (version && *version>=516 && *version<=518) {
+                const auto error=sla::anycubic_generated_settings_error(*m_config);
+                text+="\n";
+                text+=error.empty()?"Normal and bottom wait before cure share one value. Wait after cure/lift and secondary retract distance must be zero; power must be 255.":wxString::FromUTF8(error);
+            } else text+="\nExport checks the limitations of this format and the current layers.";
+            description->SetText(text);
+        } catch (const std::exception &error) {
+            description->SetText("Output format: "+wxString::FromUTF8(error.what()));
+        }
+    }
+
     if (m_active_page && m_active_page->title() == "Material" &&  m_z_correction_to_mm_description) {
         double lh = m_preset_bundle->sla_prints.get_edited_preset().config.opt_float("layer_height");
         int zlayers = m_config->opt_int("zcorrection_layers");

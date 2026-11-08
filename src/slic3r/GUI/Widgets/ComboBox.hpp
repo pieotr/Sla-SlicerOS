@@ -33,6 +33,15 @@ public:
 
     DropDown & GetDropDown() { return drop; }
 
+    // Read-only choices hide TextInput's editor. They must receive focus
+    // themselves instead of delegating keyboard navigation to that child.
+    bool AcceptsFocus() const override
+        { return HasFlag(wxCB_READONLY) || TextInput::AcceptsFocus(); }
+    bool AcceptsFocusRecursively() const override
+        { return HasFlag(wxCB_READONLY) || TextInput::AcceptsFocusRecursively(); }
+    bool AcceptsFocusFromKeyboard() const override
+        { return HasFlag(wxCB_READONLY) || TextInput::AcceptsFocusFromKeyboard(); }
+
     bool SetFont(wxFont const & font) override;
 
     bool SetBackgroundColour(const wxColour& colour) override;

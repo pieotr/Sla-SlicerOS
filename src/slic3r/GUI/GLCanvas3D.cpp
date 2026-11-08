@@ -29,6 +29,7 @@
 #include "libslic3r/Layer.hpp"
 #include "libslic3r/MultipleBeds.hpp"
 #include "libslic3r/Utils.hpp"
+#include "libslic3r/SLA/StatisticsPresentation.hpp"
 #include "libslic3r/Technologies.hpp"
 #include "libslic3r/Tesselate.hpp"
 #include "libslic3r/PresetBundle.hpp"
@@ -1623,8 +1624,10 @@ void GLCanvas3D::set_config(const DynamicPrintConfig* config)
     m_layers_editing.set_config(config);
 
     const PrinterTechnology ptech = current_printer_technology();
+#ifndef SLIC3R_SLA_ONLY
     if (const Print *print = fff_print(); ptech == ptFFF && print != nullptr)
         m_layers_editing.set_shrinkage_compensation(fff_print()->shrinkage_compensation());
+#endif
 
     if (config) {
         auto slot = ArrangeSettingsDb_AppCfg::slotFFF;
@@ -1724,6 +1727,37 @@ void GLCanvas3D::enable_layers_editing(bool enable)
     set_as_dirty();
 }
 
+bool GLCanvas3D::is_legend_shown() const
+{
+#ifdef SLIC3R_SLA_ONLY
+    return m_sla_legend_shown;
+#else
+    return m_gcode_viewer.is_legend_shown();
+#endif
+}
+
+void GLCanvas3D::show_legend(bool show)
+{
+#ifdef SLIC3R_SLA_ONLY
+    m_sla_legend_shown = show;
+#else
+    m_gcode_viewer.show_legend(show);
+#endif
+    m_dirty = true;
+    request_extra_frame();
+}
+
+void GLCanvas3D::msw_rescale()
+{
+#ifndef SLIC3R_SLA_ONLY
+    m_gcode_viewer.invalidate_legend();
+#endif
+    // SLA legend geometry/text use the current ImGui style scale on render.
+    // Reflow the real preview rather than invalidating an FFF legend texture.
+    m_dirty = true;
+    request_extra_frame();
+}
+
 void GLCanvas3D::zoom_to_bed()
 {
     BoundingBoxf3 box = m_bed.build_volume().bounding_volume();
@@ -1747,10 +1781,12 @@ void GLCanvas3D::zoom_to_selection()
         _zoom_to_box(m_selection.get_bounding_box());
 }
 
+#ifndef SLIC3R_SLA_ONLY
 void GLCanvas3D::zoom_to_gcode()
 {
     _zoom_to_box(m_gcode_viewer.get_paths_bounding_box(), 1.05);
 }
+#endif
 
 void GLCanvas3D::select_view(const std::string& direction)
 {
@@ -1765,6 +1801,7 @@ void GLCanvas3D::update_volumes_colors_by_extruder()
         m_volumes.update_colors_by_extruder(m_config);
 }
 
+#ifndef SLIC3R_SLA_ONLY
 using PerBedStatistics = std::vector<std::pair<
     std::size_t,
     std::optional<std::reference_wrapper<const PrintStatistics>>
@@ -2065,6 +2102,8 @@ void render_autoslicing_wait() {
     ImGui::End();
 }
 
+#endif
+
 void GLCanvas3D::render()
 {
     if (m_in_render) {
@@ -2087,8 +2126,10 @@ void GLCanvas3D::render()
     if (!is_initialized() && !init())
         return;
 
+#ifndef SLIC3R_SLA_ONLY
     if (!m_main_toolbar.is_enabled())
         m_gcode_viewer.init();
+#endif
 
     if (! m_bed.build_volume().valid()) {
         // this happens at startup when no data is still saved under <>\AppData\Roaming\Slic3rPE
@@ -2158,22 +2199,26 @@ void GLCanvas3D::render()
     glsafe(::glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT));
     _render_background();
 
-    if (! s_multiple_beds.is_autoslicing()) {
+    if (current_printer_technology() == ptSLA || ! s_multiple_beds.is_autoslicing()) {
         _render_objects(GLVolumeCollection::ERenderType::Opaque);
         _render_sla_slices();
         _render_selection();
         _render_bed_axes();
         if (is_looking_downward)
             _render_bed(camera.get_view_matrix(), camera.get_projection_matrix(), false);
+#ifndef SLIC3R_SLA_ONLY
         if (!m_main_toolbar.is_enabled() && current_printer_technology() != ptSLA)
             _render_gcode();
+#endif
         _render_objects(GLVolumeCollection::ERenderType::Transparent);
 
     #if ENABLE_RENDER_SELECTION_CENTER
         _render_selection_center();
     #endif // ENABLE_RENDER_SELECTION_CENTER
+#ifndef SLIC3R_SLA_ONLY
         if (!m_main_toolbar.is_enabled())
             _render_gcode_cog();
+#endif
 
         // we need to set the mouse's scene position here because the depth buffer
         // could be invalidated by the following gizmo render methods
@@ -2200,7 +2245,9 @@ void GLCanvas3D::render()
 
         if (m_picking_enabled && m_rectangle_selection.is_dragging())
             m_rectangle_selection.render(*this);
-    } else {
+    }
+#ifndef SLIC3R_SLA_ONLY
+ else {
         const auto &prints{wxGetApp().plater()->get_fff_prints()};
 
         bool all_finished{true};
@@ -2230,6 +2277,8 @@ void GLCanvas3D::render()
             render_print_statistics(scale);
         }
     }
+#endif
+
 
     _render_overlays();
 
@@ -2274,7 +2323,7 @@ void GLCanvas3D::render()
 #endif // ENABLE_SLA_VIEW_DEBUG_WINDOW
     }
 
-#if ENABLE_BINARIZED_GCODE_DEBUG_WINDOW
+#if ENABLE_BINARIZED_GCODE_DEBUG_WINDOW && !defined(SLIC3R_SLA_ONLY)
     if (wxGetApp().plater()->is_view3D_shown() && current_printer_technology() != ptSLA && fff_print()->config().binary_gcode)
         show_binary_gcode_debug_window();
 #endif // ENABLE_BINARIZED_GCODE_DEBUG_WINDOW
@@ -2312,7 +2361,7 @@ void GLCanvas3D::render()
 
     wxGetApp().plater()->get_notification_manager()->render_notifications(*this, get_overlay_window_width());
 
-    if (! s_multiple_beds.is_autoslicing())
+    if (current_printer_technology() == ptSLA || ! s_multiple_beds.is_autoslicing())
         wxGetApp().plater()->render_sliders(*this);
 
     wxGetApp().imgui()->render();
@@ -2391,11 +2440,13 @@ void GLCanvas3D::ensure_on_bed(unsigned int object_idx, bool allow_negative_z)
     }
 }
 
+#ifndef SLIC3R_SLA_ONLY
 void GLCanvas3D::set_toolpaths_z_range(const std::array<unsigned int, 2>& range)
 {
     if (m_gcode_viewer.has_data())
         m_gcode_viewer.set_layers_z_range(range);
 }
+#endif
 
 std::vector<int> GLCanvas3D::load_object(const ModelObject& model_object, int obj_idx, std::vector<int> instance_idxs)
 {
@@ -2738,6 +2789,7 @@ void GLCanvas3D::reload_scene(bool refresh_immediately, bool force_full_scene_re
         }
     }
 
+#ifndef SLIC3R_SLA_ONLY
     if (printer_technology == ptFFF && m_config->has("nozzle_diameter")) {
         // Should the wipe tower be visualized ?
         unsigned int extruders_count = (unsigned int)dynamic_cast<const ConfigOptionFloats*>(m_config->option("nozzle_diameter"))->values.size();
@@ -2794,7 +2846,9 @@ void GLCanvas3D::reload_scene(bool refresh_immediately, bool force_full_scene_re
         } else {
             m_wipe_tower_bounding_boxes.fill(std::nullopt);
         }
-    } else {
+    } else
+#endif
+    {
         m_wipe_tower_bounding_boxes.fill(std::nullopt);
     }
 
@@ -2909,14 +2963,24 @@ void GLCanvas3D::reload_scene(bool refresh_immediately, bool force_full_scene_re
 
 void GLCanvas3D::load_gcode_shells()
 {
+#ifdef SLIC3R_SLA_ONLY
+    throw ExportError("FFF toolpath preview is unavailable in the SLA-only application");
+#else
+
     m_gcode_viewer.load_shells(*this->fff_print());
     m_gcode_viewer.update_shells_color_by_extruder(m_config);
     m_gcode_viewer.set_force_shells_visible(true);
+
+#endif
 }
 
 void GLCanvas3D::load_gcode_preview(const GCodeProcessorResult& gcode_result, const std::vector<std::string>& str_tool_colors,
     const std::vector<std::string>& str_color_print_colors)
 {
+#ifdef SLIC3R_SLA_ONLY
+    throw ExportError("FFF toolpath preview is unavailable in the SLA-only application");
+#else
+
     m_gcode_viewer.enable_legend(true);
     m_gcode_viewer.enable_view_type_cache_write(true);
     m_gcode_viewer.enable_view_type_cache_load(true);
@@ -2932,6 +2996,8 @@ void GLCanvas3D::load_gcode_preview(const GCodeProcessorResult& gcode_result, co
 
     set_as_dirty();
     request_extra_frame();
+
+#endif
 }
 
 void GLCanvas3D::load_sla_preview()
@@ -2943,7 +3009,9 @@ void GLCanvas3D::load_sla_preview()
         reset_volumes();
         _load_sla_shells();
         _update_sla_shells_outside_state();
+#ifndef SLIC3R_SLA_ONLY
         m_gcode_viewer.set_force_shells_visible(false);
+#endif
         _set_warning_notification_if_needed(EWarning::ObjectClashed);
         _set_warning_notification_if_needed(EWarning::SlaSupportsOutside);
     }
@@ -2952,6 +3020,10 @@ void GLCanvas3D::load_sla_preview()
 void GLCanvas3D::load_preview(const std::vector<std::string>& str_tool_colors, const std::vector<std::string>& str_color_print_colors,
     const std::vector<CustomGCode::Item>& color_print_values)
 {
+#ifdef SLIC3R_SLA_ONLY
+    throw ExportError("FFF toolpath preview is unavailable in the SLA-only application");
+#else
+
     const Print *print = this->fff_print();
     if (print == nullptr)
         return;
@@ -2969,6 +3041,8 @@ void GLCanvas3D::load_preview(const std::vector<std::string>& str_tool_colors, c
     m_gcode_viewer.load_as_preview(std::move(data));
     m_gcode_viewer.set_force_shells_visible(false);
     _set_warning_notification_if_needed(EWarning::ToolpathOutside);
+
+#endif
 }
 
 void GLCanvas3D::bind_event_handlers()
@@ -3219,8 +3293,10 @@ void GLCanvas3D::on_char(wxKeyEvent& evt)
         case 'a': { post_event(SimpleEvent(EVT_GLCANVAS_ARRANGE)); break; }
         case 'B':
         case 'b': { zoom_to_bed(); break; }
+#ifndef SLIC3R_SLA_ONLY
         case 'C':
         case 'c': { m_gcode_viewer.toggle_gcode_window_visibility(); m_dirty = true; request_extra_frame(); break; }
+#endif
         case 'D':
         case 'd': { post_event(SimpleEvent(EVT_GLCANVAS_ARRANGE_CURRENT_BED)); break; }
         case 'E':
@@ -3252,8 +3328,13 @@ void GLCanvas3D::on_char(wxKeyEvent& evt)
             else {
                 if (!m_volumes.empty())
                     zoom_to_volumes();
-                else
+                else {
+#ifdef SLIC3R_SLA_ONLY
+                    zoom_to_bed();
+#else
                     _zoom_to_box(m_gcode_viewer.get_paths_bounding_box());
+#endif
+                }
             }
             break;
         }
@@ -5659,11 +5740,13 @@ BoundingBoxf3 GLCanvas3D::_max_bounding_box(bool include_bed_model) const
     }
     bb.merge(bed_bb);
     
+#ifndef SLIC3R_SLA_ONLY
     if (is_preview) {
         BoundingBoxf3 paths_bb = m_gcode_viewer.get_max_bounding_box();
         paths_bb.translate(s_multiple_beds.get_bed_translation(s_multiple_beds.get_active_bed()));
         bb.merge(paths_bb);
     }
+#endif
 
     // clamp max bb size with respect to bed bb size
     if (!m_picking_enabled) {
@@ -6073,8 +6156,14 @@ void GLCanvas3D::_render_background()
         } else {
             if (!m_volumes.empty())
                 use_error_color &= _is_any_volume_outside().first;
-            else
+            else {
+#ifdef SLIC3R_SLA_ONLY
+                // An empty SLA scene has no out-of-bed paths to classify.
+                use_error_color = false;
+#else
                 use_error_color &= m_gcode_viewer.has_data() && !m_gcode_viewer.is_contained_in_bed();
+#endif
+            }
         }
     }
 
@@ -6980,26 +7069,30 @@ void GLCanvas3D::_render_camera_target_validation_box()
 
 static void render_sla_layer_legend(const SLAPrint& print, int layer_idx, int cnv_width, float bed_sel_height)
 {
-    const std::vector<double>& areas = print.print_statistics().layers_areas;
-    const std::vector<double>& times = print.print_statistics().layers_times_running_total;
+    const auto& statistics = print.print_statistics();
+    const std::vector<double>& areas = statistics.layers_areas;
+    const std::vector<double>& times = statistics.layers_times_running_total;
     const double display_area        = print.printer_config().display_height * print.printer_config().display_width;
     if (layer_idx >= 0 && layer_idx < int(areas.size())) {
         const double area = areas[layer_idx];
-        const double time = times[layer_idx] - (layer_idx == 0 ? 0. : times[layer_idx-1]);
-        const double time_until_layer = times[layer_idx];
+        const auto time = sla::statistics_layer_time(statistics, size_t(layer_idx));
+        const auto fill = sla::statistics_layer_fill(statistics, display_area, size_t(layer_idx));
+        const std::string elapsed = time ? sla::statistics_time(times[layer_idx]) : "N/A";
             
         ImGuiWrapper& imgui = *wxGetApp().imgui();
         ImGuiPureWrap::set_next_window_pos(float(cnv_width) - imgui.get_style_scaling() * 5.f, 5.f + bed_sel_height, ImGuiCond_Always, 1.0f, 0.0f);
         ImGui::SetNextWindowBgAlpha(0.6f);
 
         ImGuiPureWrap::begin(_u8L("Layer statistics"), ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoFocusOnAppearing);
-        ImGui::Text("%s", GUI::format(_u8L("Layer area: %1% mm²"), int(0.1 + std::round(area))).c_str());
-        int area_percent_int = int(std::round(100. * area/display_area));
-        ImGui::Text("%s", GUI::format(_u8L("Area fill: %1% %%"), area_percent_int == 0 ? "<1" : std::to_string(area_percent_int)).c_str());
+        ImGui::Text("%s", GUI::format(_u8L("Layer area: %1% mm²"), sla::statistics_number(area, 0)).c_str());
+        const std::string percent = fill ? (*fill > 0 && *fill < 1 ? "<1" : sla::statistics_number(*fill, 0)) : "N/A";
+        ImGui::Text("%s", GUI::format(_u8L("Area fill: %1% %%"), percent).c_str());
         ImGui::Separator();
-        ImGui::Text("%s", GUI::format(_u8L("Layer time: %1%"), get_time_dhms(time)).c_str());
+        ImGui::Text("%s", GUI::format(_u8L("Layer time: %1%"), time ? sla::statistics_time(*time) : "N/A").c_str());
         std::string buffer_str = _u8L("Time since start: %1%"); 
-        ImGui::Text("%s", GUI::format(buffer_str, get_time_dhms(time_until_layer)).c_str());
+        ImGui::Text("%s", GUI::format(buffer_str, elapsed).c_str());
+        if (statistics.time_basis == SLAPrintStatistics::TimeBasis::OwnedNeutralSchedule)
+            ImGui::TextUnformatted(_u8L("Times exclude printer setup").c_str());
 
         // The dummy control below uses the assumption that the total time string will be the longest
         // and forces the width of the window large enough so it does not resize depending on the current value.
@@ -7021,7 +7114,7 @@ void GLCanvas3D::_render_sla_slices()
         // nothing to render, return
         return;
 
-    if (print->finished()) {
+    if (print->finished() && is_legend_shown()) {
         double slider_width = 0.;
         if (const Preview* preview = dynamic_cast<Preview*>(m_canvas->GetParent()))
             slider_width = preview->get_layers_slider_width();
@@ -7367,6 +7460,7 @@ void GLCanvas3D::_set_warning_notification_if_needed(EWarning warning)
         else
             show = _is_any_volume_outside().first;
     }
+#ifndef SLIC3R_SLA_ONLY
     else {
         if (wxGetApp().is_editor()) {
             if (current_printer_technology() != ptSLA) {
@@ -7379,6 +7473,7 @@ void GLCanvas3D::_set_warning_notification_if_needed(EWarning warning)
             }
         }
     }
+#endif
 
     _set_warning_notification(warning, show);
 }
@@ -7394,7 +7489,9 @@ void GLCanvas3D::_set_warning_notification(EWarning warning, bool state)
     ErrorType error = ErrorType::PLATER_WARNING;
     switch (warning) {
     case EWarning::ObjectOutside:      text = _u8L("An object outside the print area was detected."); break;
+#ifndef SLIC3R_SLA_ONLY
     case EWarning::ToolpathOutside:    text = _u8L("A toolpath outside the print area was detected."); error = ErrorType::SLICING_ERROR; break;
+#endif
     case EWarning::SlaSupportsOutside: text = _u8L("SLA supports outside the print area were detected."); error = ErrorType::PLATER_ERROR; break;
     case EWarning::SomethingNotShown:  text = _u8L("Some objects are not visible during editing."); break;
     case EWarning::ObjectClashed:
@@ -7402,6 +7499,7 @@ void GLCanvas3D::_set_warning_notification(EWarning warning, bool state)
             "Resolve the current problem to continue slicing.");
         error = ErrorType::PLATER_ERROR;
         break;
+#ifndef SLIC3R_SLA_ONLY
     case EWarning::GCodeConflict: {
         const ConflictResultOpt& conflict_result = m_gcode_viewer.get_conflict_result();
         if (!conflict_result.has_value()) { break; }
@@ -7425,9 +7523,11 @@ void GLCanvas3D::_set_warning_notification(EWarning warning, bool state)
         error = ErrorType::SLICING_ERROR;
         break;
     }
+#endif
     }
     auto& notification_manager = *wxGetApp().plater()->get_notification_manager();
 
+#ifndef SLIC3R_SLA_ONLY
     const ConflictResultOpt& conflict_result = m_gcode_viewer.get_conflict_result();
     if (warning == EWarning::GCodeConflict) {
         if (conflict_result.has_value()) {
@@ -7460,6 +7560,7 @@ void GLCanvas3D::_set_warning_notification(EWarning warning, bool state)
 
         return;
     }
+#endif
 
     switch (error)
     {
@@ -7498,7 +7599,13 @@ std::pair<bool, const GLVolume*> GLCanvas3D::_is_any_volume_outside() const
 
 bool GLCanvas3D::_is_sequential_print_enabled() const
 {
+#ifdef SLIC3R_SLA_ONLY
+    return false; // Sequential FFF extrusion clearance is not an SLA feature.
+#else
+
     return current_printer_technology() == ptFFF && fff_print()->config().complete_objects;
+
+#endif
 }
 
 void GLCanvas3D::_update_selection_from_hover()
@@ -7645,10 +7752,12 @@ void GLCanvas3D::highlight_gizmo(const std::string& gizmo_name)
     m_gizmo_highlighter.init(&m_gizmos, gizmo, this);
 }
 
+#ifndef SLIC3R_SLA_ONLY
 const Print* GLCanvas3D::fff_print() const
 {
     return (m_process == nullptr) ? nullptr : m_process->fff_print();
 }
+#endif
 
 const SLAPrint* GLCanvas3D::sla_print() const
 {

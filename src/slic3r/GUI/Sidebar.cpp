@@ -20,6 +20,7 @@
 #include "Sidebar.hpp"
 #include "FrequentlyChangedParameters.hpp"
 #include "Plater.hpp"
+#include "libslic3r/SLA/StatisticsPresentation.hpp"
 
 #include <cstddef>
 #include <string>
@@ -174,6 +175,10 @@ class SlicedInfo : public wxStaticBoxSizer
 public:
     SlicedInfo(wxWindow *parent);
     void SetTextAndShow(SlicedInfoIdx idx, const wxString& text, const wxString& new_label="");
+    void SetTooltip(SlicedInfoIdx idx, const wxString& text) {
+        info_vec[idx].first->SetToolTip(text);
+        info_vec[idx].second->SetToolTip(text);
+    }
 
 private:
     std::vector<std::pair<wxStaticText*, wxStaticText*>> info_vec;
@@ -519,6 +524,14 @@ Sidebar::Sidebar(Plater *parent)
     init_btn(&m_btn_edit_layers, _L("Edit layers"), scaled_height);
     m_btn_edit_layers->Hide();
     m_btn_edit_layers->Bind(wxEVT_BUTTON, [this](wxCommandEvent &) { m_plater->edit_sliced_layers(); });
+    init_btn(&m_btn_cancel_slicing, _L("Cancel slicing"), scaled_height);
+    m_btn_cancel_slicing->Hide();
+    m_btn_cancel_slicing->SetToolTip(_L("Stop the current slicing job. You can slice again after it stops."));
+    m_btn_cancel_slicing->Bind(wxEVT_BUTTON, [this](wxCommandEvent &) {
+        m_btn_cancel_slicing->Disable();
+        // Return from accessibility input before waiting for the worker.
+        m_plater->CallAfter([plater=m_plater] {plater->cancel_slicing();});
+    });
     init_btn(&m_btn_reslice     , _L("Slice now")            , scaled_height);
     init_btn(&m_btn_connect_gcode, _L("Send to Connect"), scaled_height);
 
@@ -535,6 +548,7 @@ Sidebar::Sidebar(Plater *parent)
     m_btns_sizer->Add(m_btn_reslice, 0, wxEXPAND | wxTOP, margin_5);
     m_btns_sizer->Add(complect_btns_sizer, 0, wxEXPAND | wxTOP, margin_5);
     m_btns_sizer->Add(m_btn_edit_layers, 0, wxEXPAND | wxTOP, margin_5);
+    m_btns_sizer->Add(m_btn_cancel_slicing, 0, wxEXPAND | wxTOP, margin_5);
 
     auto *sizer = new wxBoxSizer(wxVERTICAL);
     sizer->Add(m_scrolled_panel, 1, wxEXPAND);
@@ -575,11 +589,15 @@ Sidebar::Sidebar(Plater *parent)
             return;
 
         const bool export_gcode_after_slicing = wxGetKeyState(WXK_SHIFT);
-        if (export_gcode_after_slicing)
+        if (export_gcode_after_slicing) {
             m_plater->export_gcode(true);
-        else
+            m_plater->select_view_3D("Preview");
+        } else {
             m_plater->reslice();
-        m_plater->select_view_3D("Preview");
+            // This navigation follows an explicit full Slice request. Do not
+            // submit a second SLA task while its encoding is already running.
+            m_plater->select_view_3D("Preview", false);
+        }
     });
 
 #ifdef _WIN32
@@ -872,11 +890,11 @@ void Sidebar::sys_color_changed()
 #ifdef _WIN32
     wxWindowUpdateLocker noUpdates(this);
 
-    for (wxWindow* win : std::vector<wxWindow*>{ this, m_sliced_info->GetStaticBox(), m_object_info->GetStaticBox(), m_btn_reslice, m_btn_export_gcode })
+    for (wxWindow* win : std::vector<wxWindow*>{ this, m_sliced_info->GetStaticBox(), m_object_info->GetStaticBox(), m_btn_reslice, m_btn_export_gcode, m_btn_cancel_slicing })
         wxGetApp().UpdateDarkUI(win);
     for (wxWindow* win : std::vector<wxWindow*>{ m_scrolled_panel, m_presets_panel })
         wxGetApp().UpdateAllStaticTextDarkUI(win);
-    for (wxWindow* btn : std::vector<wxWindow*>{ m_btn_reslice, m_btn_export_gcode, m_btn_connect_gcode })
+    for (wxWindow* btn : std::vector<wxWindow*>{ m_btn_reslice, m_btn_export_gcode, m_btn_connect_gcode, m_btn_cancel_slicing })
         wxGetApp().UpdateDarkUI(btn, true);
 
     m_frequently_changed_parameters->sys_color_changed();
@@ -1020,41 +1038,34 @@ void Sidebar::update_sliced_info_sizer()
     {
         if (m_plater->printer_technology() == ptSLA)
         {
-            const SLAPrintStatistics& ps = m_plater->active_sla_print().print_statistics();
+            const auto& print = m_plater->active_sla_print();
+            const SLAPrintStatistics& ps = print.print_statistics();
             wxString new_label = _L("Used Material (ml)") + ":";
             const bool is_supports = ps.support_used_material > 0.0;
             if (is_supports)
                 new_label += format_wxstr("\n    - %s\n    - %s", _L_PLURAL("object", "objects", m_plater->model().objects.size()), _L("supports and pad"));
 
             wxString info_text = is_supports ?
-                wxString::Format("%.2f \n%.2f \n%.2f", (ps.objects_used_material + ps.support_used_material) / 1000,
-                                                       ps.objects_used_material / 1000,
-                                                       ps.support_used_material / 1000) :
-                wxString::Format("%.2f", (ps.objects_used_material + ps.support_used_material) / 1000);
+                from_u8(sla::statistics_number((ps.objects_used_material + ps.support_used_material) / 1000, 2) + "\n" +
+                        sla::statistics_number(ps.objects_used_material / 1000, 2) + "\n" +
+                        sla::statistics_number(ps.support_used_material / 1000, 2)) :
+                from_u8(sla::statistics_number((ps.objects_used_material + ps.support_used_material) / 1000, 2));
             m_sliced_info->SetTextAndShow(siMaterial_unit, info_text, new_label);
 
-            wxString str_total_cost = "N/A";
+            const auto cost = sla::statistics_cost(ps, print.material_config());
+            const wxString str_total_cost = cost ? from_u8(sla::statistics_number(*cost, 3)) : "N/A";
+            m_sliced_info->SetTextAndShow(siCost, str_total_cost, _L("Cost") + ":");
 
-            DynamicPrintConfig* cfg = wxGetApp().get_tab(Preset::TYPE_SLA_MATERIAL)->get_config();
-            if (cfg->option("bottle_cost")->getFloat() > 0.0 &&
-                cfg->option("bottle_volume")->getFloat() > 0.0)
-            {
-                double material_cost = cfg->option("bottle_cost")->getFloat() / 
-                                       cfg->option("bottle_volume")->getFloat();
-                str_total_cost = wxString::Format("%.3f", material_cost*(ps.objects_used_material + ps.support_used_material) / 1000);                
-            }
-            m_sliced_info->SetTextAndShow(siCost, str_total_cost, "Cost");
-
-            wxString t_est = "N/A";
-            if (! std::isnan(ps.estimated_print_time)) {
-                t_est = from_u8(short_time_ui(get_time_dhms(float(ps.estimated_print_time))));
-                if (ps.estimated_print_time_tolerance > 0.)
-                    t_est += from_u8(" \u00B1 ") + from_u8(short_time_ui(get_time_dhms(float(ps.estimated_print_time_tolerance))));
-            }
-
-            m_sliced_info->SetTextAndShow(siEstimatedTime, t_est, _L("Estimated printing time") + ":");
-
-            m_plater->get_notification_manager()->set_slicing_complete_print_time(_u8L("Estimated printing time") + ": " + into_u8(t_est), m_plater->is_sidebar_collapsed());
+            wxString t_est = from_u8(sla::statistics_time(ps.estimated_print_time, true, true));
+            if (t_est != "N/A" && std::isfinite(ps.estimated_print_time_tolerance) && ps.estimated_print_time_tolerance > 0.)
+                t_est += from_u8(" \u00B1 ") + from_u8(sla::statistics_time(ps.estimated_print_time_tolerance, true, true));
+            const bool neutral = ps.time_basis == SLAPrintStatistics::TimeBasis::OwnedNeutralSchedule;
+            const wxString time_label = neutral ? _L("Time without printer setup") : _L("Estimated printing time");
+            m_sliced_info->SetTextAndShow(siEstimatedTime, t_est, time_label + ":");
+            m_sliced_info->SetTooltip(siEstimatedTime, neutral ?
+                _L("Sum of layer motion, exposure and waits. The exported format may add printer preparation time.") :
+                _L("Estimated time for the active print job."));
+            m_plater->get_notification_manager()->set_slicing_complete_print_time(into_u8(time_label) + ": " + into_u8(t_est), m_plater->is_sidebar_collapsed());
 
             // Hide non-SLA sliced info parameters
             m_sliced_info->SetTextAndShow(siFilament_m, "N/A");
@@ -1062,6 +1073,7 @@ void Sidebar::update_sliced_info_sizer()
             m_sliced_info->SetTextAndShow(siFilament_g, "N/A");
             m_sliced_info->SetTextAndShow(siWTNumberOfToolchanges, "N/A");
         }
+#ifndef SLIC3R_SLA_ONLY
         else
         {
             const PrintStatistics& ps = m_plater->active_fff_print().print_statistics();
@@ -1157,6 +1169,7 @@ void Sidebar::update_sliced_info_sizer()
             // Hide non-FFF sliced info parameters
             m_sliced_info->SetTextAndShow(siMaterial_unit, "N/A");
         }
+#endif
     }
 
     Layout();
@@ -1204,7 +1217,7 @@ void Sidebar::enable_buttons(bool enable)
 {
     m_btn_reslice->Enable(enable);
     m_btn_export_gcode->Enable(enable);
-    m_btn_edit_layers->Enable(enable);
+    m_btn_edit_layers->Enable(enable && m_plater->can_edit_sliced_layers());
     m_btn_send_gcode->Enable(enable);
     m_btn_export_gcode_removable->Enable(enable);
     m_btn_connect_gcode->Enable(enable);
@@ -1215,6 +1228,14 @@ void Sidebar::enable_bulk_buttons(bool enable)
     m_btn_export_all_gcode->Enable(enable);
     m_btn_export_all_gcode_removable->Enable(enable);
     m_btn_connect_gcode_all->Enable(enable);
+}
+
+void Sidebar::show_cancel_slicing(bool show)
+{
+    const bool visible=show && m_plater->printer_technology()==ptSLA;
+    m_btn_cancel_slicing->Enable(visible);
+    m_btn_cancel_slicing->Show(visible);
+    Layout();
 }
 
 bool Sidebar::show_reslice(bool show) const {
