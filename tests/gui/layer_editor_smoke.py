@@ -417,36 +417,9 @@ def main():
                 n.get_state_set().contains(Atspi.StateType.EDITABLE) and n.get_state_set().contains(Atspi.StateType.SHOWING)), 'initial output filename')
             direct_extension={'klipper':'zip','klipper_rgb':'rgb.zip','cbddlp_v1':'v1.cbddlp','photon_v1':'v1.photon','ctb_v1':'v1.ctb','ctb_v3':'v3.ctb','ctb_v4':'v4.ctb','ctb_v5':'v5.ctb','ctb_gktwo':'gktwo.ctb','ctb_encrypted':'encrypted.ctb','ctb_encrypted_v4':'v4.encrypted.ctb','nanodlp_v1':'v1.nanodlp','nanodlp_rgb':'rgb.nanodlp','nanodlp_rgb_v1':'v1.rgb.nanodlp'}.get(args.direct_export,args.direct_export)
             assert Atspi.Text.get_text(initial_field,0,-1).endswith('.'+direct_extension), 'Default filter disagrees with printer format'
-            combos=[]
-            def collect(node):
-                if node.get_role_name() == 'combo box' and node.get_state_set().contains(Atspi.StateType.SHOWING): combos.append(node)
-                for index in range(node.get_child_count()): collect(node.get_child_at_index(index))
-            collect(chooser)
-            suffix='.'+direct_extension
-            for combo in combos:
-                option=find(combo, lambda n: n.get_role_name() in ('menu item','list item') and ('*'+suffix) in n.get_name() and (args.direct_export not in ('klipper','klipper_rgb') or ('Klipper MSLA' in n.get_name() and ('RGB' if args.direct_export=='klipper_rgb' else 'Mono') in n.get_name())))
-                if option:
-                    if args.exercise_format_switch:
-                        alternate_suffix='.sl1' if args.direct_export!='sl1' else '.ctb'
-                        alternate=find(combo, lambda n: n.get_role_name() in ('menu item','list item') and
-                                       ('*'+alternate_suffix) in n.get_name())
-                        assert alternate, 'Missing alternate native export filter'
-                        assert combo.get_selection_iface().select_child(alternate.get_index_in_parent())
-                        wait_for(lambda: Atspi.Text.get_text(initial_field,0,-1).endswith(alternate_suffix),
-                                 'automatic alternate filename suffix')
-                        assert combo.get_selection_iface().select_child(option.get_index_in_parent())
-                        wait_for(lambda: Atspi.Text.get_text(initial_field,0,-1).endswith(suffix),
-                                 'automatic restored filename suffix')
-                        report['checks'].append('native format switch changes filename suffix in both directions')
-                    if args.hold_format_popup:
-                        click(combo)
-                        wait_for(lambda: option.get_state_set().contains(Atspi.StateType.SHOWING), 'expanded native format list')
-                        time.sleep(1.2)
-                        assert option.get_state_set().contains(Atspi.StateType.SHOWING), 'Format list closed without a selection'
-                        report['checks'].append('native format popup stays open during timer polling')
-                    assert combo.get_selection_iface().select_child(option.get_index_in_parent())
-                    break
-            else: raise AssertionError('Missing native format filter '+suffix)
+            # nothing to pick in the chooser: the format came from the app's own 'Export format' dialog, which preselects the
+            # printer's format (proved by the proposed filename above). Switching formats there is covered by
+            # dropdown_stays_open_smoke and the sl1/printer-format preference scripts.
             time.sleep(.5)
             field=wait_for(lambda: find(chooser, lambda n: n.get_role_name() in ('text','entry') and
                 n.get_state_set().contains(Atspi.StateType.EDITABLE) and n.get_state_set().contains(Atspi.StateType.SHOWING)), 'output filename')
@@ -646,23 +619,10 @@ def main():
                 switched_outputs = []
                 for label, stem in [('Generic ZIP', 'shared-generic'), ('Klipper MSLA (Mono)', 'shared-klipper')]:
                     click(wait_for(lambda: button('Export'), 'export after completed previous job'))
+                    import xtest_shim   # the ZIP schema is chosen in the app's own 'Export format' dialog
+                    xtest_shim.pick_export_format(re.escape(label) + r'.*\(\*\.zip\)')
                     next_chooser = wait_for(lambda: find(app, lambda n: n.get_name().rstrip(':') == 'Save SLA file as'
                         and n.get_state_set().contains(Atspi.StateType.SHOWING)), 'shared suffix output dialog')
-                    next_combos = []
-                    def collect_next(node):
-                        if node.get_role_name() == 'combo box' and node.get_state_set().contains(Atspi.StateType.SHOWING):
-                            next_combos.append(node)
-                        for i in range(node.get_child_count()): collect_next(node.get_child_at_index(i))
-                    collect_next(next_chooser)
-                    selected = False
-                    for next_combo in next_combos:
-                        next_option = find(next_combo, lambda n: n.get_role_name() in ('menu item', 'list item')
-                            and label in n.get_name() and '*.zip' in n.get_name())
-                        if next_option:
-                            assert next_combo.get_selection_iface().select_child(next_option.get_index_in_parent())
-                            selected = True
-                            break
-                    assert selected, 'Missing independent ZIP schema filter: ' + label
                     next_field = wait_for(lambda: find(next_chooser, lambda n: n.get_role_name() in ('text', 'entry')
                         and n.get_state_set().contains(Atspi.StateType.EDITABLE)
                         and n.get_state_set().contains(Atspi.StateType.SHOWING)), 'shared ZIP filename')
@@ -687,7 +647,7 @@ def main():
         if args.range_brush:
             from brush_range_ui import assert_paint_controls_above_preview
             report['painting_discoverability'] = assert_paint_controls_above_preview(dialog)
-            tool=wait_for(lambda:find(dialog,lambda n:n.get_name()=='Brush' and n.get_role_name()=='combo box'),'explicit brush selector')
+            tool=wait_for(lambda:find(dialog,lambda n:n.get_name() in ('Brush','Drawing tool') and n.get_role_name()=='combo box'),'explicit brush selector')
             assert tool.get_selection_iface().select_child(0)
             overlay=wait_for(lambda:named(dialog,'Overlay and paint selected range'),'range overlay control')
             spins=[]
@@ -749,11 +709,9 @@ def main():
             from PIL import Image
             def choose_image(button_name, title, basename, extension, range_export=False):
                 click(named(dialog,button_name))
+                import xtest_shim   # the image format is chosen in the app's own 'Export format' dialog
+                xtest_shim.pick_export_format(r'\(\*\.'+extension+r'\)')
                 chooser=wait_for(lambda: find(app,lambda n:n.get_name()==title and n.get_role_name()=='file chooser'),title)
-                combo=wait_for(lambda: find(chooser,lambda n:n.get_role_name()=='combo box' and find(n,lambda c:('*.'+extension) in c.get_name())),'image format list')
-                selection=combo.get_selection_iface()
-                option=find(combo,lambda n:n.get_role_name() in ('menu item','list item') and ('*.'+extension) in n.get_name())
-                assert selection.select_child(option.get_index_in_parent())
                 field=wait_for(lambda: find(chooser,lambda n:n.get_role_name() in ('text','entry') and
                     n.get_state_set().contains(Atspi.StateType.EDITABLE) and n.get_state_set().contains(Atspi.StateType.SHOWING)),'mask filename')
                 wait_for(lambda: Atspi.Text.get_text(field,0,-1).endswith('.'+extension),'automatic image suffix')
@@ -1048,12 +1006,10 @@ def main():
                     n.get_name().startswith('Export') and n.get_state_set().contains(Atspi.StateType.SHOWING) and
                     n.get_state_set().contains(Atspi.StateType.SENSITIVE)),'owned sidebar export action')
                 click(export)
+                import xtest_shim   # the format is chosen in the app's own 'Export format' dialog
+                xtest_shim.pick_export_format(r'\(\*\.cxdlpv4\)')
                 chooser=wait_for(lambda:find(app,lambda n:n.get_name().rstrip(':')=='Save SLA file as' and
                     n.get_state_set().contains(Atspi.StateType.SHOWING)),'owned sidebar chooser')
-                combo=wait_for(lambda:find(chooser,lambda n:n.get_role_name()=='combo box' and
-                    find(n,lambda c:'*.cxdlpv4' in c.get_name())),'owned sidebar format list')
-                option=find(combo,lambda n:n.get_role_name() in ('menu item','list item') and '*.cxdlpv4' in n.get_name())
-                assert combo.get_selection_iface().select_child(option.get_index_in_parent())
                 field=wait_for(lambda:find(chooser,lambda n:n.get_role_name() in ('text','entry') and
                     n.get_state_set().contains(Atspi.StateType.EDITABLE) and n.get_state_set().contains(Atspi.StateType.SHOWING)),'owned sidebar filename')
                 wait_for(lambda:Atspi.Text.get_text(field,0,-1).endswith('.cxdlpv4'),'owned sidebar automatic suffix')

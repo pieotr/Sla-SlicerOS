@@ -3,6 +3,7 @@
 Run with the system Python (PyGObject/AT-SPI required) on a graphical session.
 No downloads, network calls or coordinate-dependent input.
 """
+from appname import T
 import argparse
 import json
 import os
@@ -14,6 +15,7 @@ import gi
 
 gi.require_version('Atspi', '2.0')
 from gi.repository import Atspi, GLib
+import xtest_shim  # noqa: F401  routes XTEST through KWin EIS inside run_private_gui.sh
 
 
 def find(node, predicate, depth=0):
@@ -22,6 +24,10 @@ def find(node, predicate, depth=0):
     try:
         if predicate(node):
             return node
+        if depth == 0:   # owner-drawn drop-downs expose no item children: synthesize them for item lookups
+            item = xtest_shim.find_owner_drawn_item(node, predicate)
+            if item:
+                return item
         for i in range(node.get_child_count()):
             child = node.get_child_at_index(i)
             if child:
@@ -34,14 +40,43 @@ def find(node, predicate, depth=0):
     return None
 
 
+AUTO_EXPORT_FORMAT = True   # tests that drive the 'Export format' dialog themselves set this False
+
+
 def wait_for(getter, description, timeout=20):
     end = time.monotonic() + timeout
+    export_chooser = xtest_shim.expects_export_chooser(getter)
     while time.monotonic() < end:
         result = getter()
         if result:
             return result
+        if export_chooser and AUTO_EXPORT_FORMAT:
+            # the app's own 'Export format' dialog precedes these file choosers (the GTK filter combo is not used any more)
+            dialog = xtest_shim.pending_export_format_dialog()
+            if dialog:
+                xtest_shim.accept_export_format(dialog)
         time.sleep(.2)
     raise RuntimeError('Timed out: ' + description)
+
+
+def sliced_editor(app):
+    """The Sliced editor is a permanent workspace view since wave 5 (no 'Layer editor' dialog any
+    more): it is present exactly when its 'Back to 3D' button is showing. Returns the search root
+    (the application) like archive_editor_smoke does, or None. Replaces the stale
+    find(... name startswith 'Layer editor' ...) lookups of the legacy scripts."""
+    back = find(app, lambda n: n.get_role_name() == 'button' and n.get_name() == 'Back to 3D' and
+                n.get_state_set().contains(Atspi.StateType.SHOWING))
+    return app if back else None
+
+
+def layer_dirty(app):
+    """True when the Sliced editor reports unsaved layer edits or project settings.
+
+    Since the editor became a permanent workspace view its title no longer ends with '*' (the
+    legacy scripts' dirty marker); the same state is the 'Layer document: modified' status label
+    (or 'Generated layers: not saved ...' for generated jobs)."""
+    return find(app, lambda n: n.get_role_name() == 'label' and n.get_state_set().contains(Atspi.StateType.SHOWING) and
+                (n.get_name() or '').startswith(('Layer document: modified', 'Generated layers: not saved'))) is not None
 
 
 def named(node, name):
@@ -73,7 +108,11 @@ def main():
         log = (datadir / 'application.log').open('a')
         proc = subprocess.Popen([str(args.binary.resolve()), '--datadir', str(datadir)],
                                 stdout=log, stderr=subprocess.STDOUT,
-                                env=dict(os.environ, GDK_BACKEND='x11', NO_AT_BRIDGE='0'))
+                                env=dict(os.environ, GDK_BACKEND='x11', NO_AT_BRIDGE='0',
+                                         # the audit check below needs the library inside the *app*, not in
+                                         # this Python process, so the harness hands it over by name
+                                         **({'LD_PRELOAD': os.environ['SLA_APP_NETWORK_AUDIT_LIBRARY']}
+                                            if os.environ.get('SLA_APP_NETWORK_AUDIT_LIBRARY') else {})))
         log.close()
         def application():
             if proc.poll() is not None:
@@ -87,7 +126,7 @@ def main():
             click(wait_for(lambda: find(app, lambda n: n.get_role_name() == 'menu item'
                 and n.get_name().startswith('Configuration Wizard')), 'wizard menu'))
         return wait_for(lambda: find(app, lambda n:
-            n.get_name() == 'PrusaSlicer - Configuration Wizard' and
+            n.get_name() == T('PrusaSlicer - Configuration Wizard') and
             n.get_state_set().contains(Atspi.StateType.SHOWING)), 'visible wizard dialog')
 
     def select(dialog):
@@ -110,7 +149,7 @@ def main():
     try:
         proc, app = launch()
         time.sleep(3)
-        dialog = named(app, 'PrusaSlicer - Configuration Wizard') or wizard(app)
+        dialog = named(app, T('PrusaSlicer - Configuration Wizard')) or wizard(app)
         select(dialog)
         click(named(dialog, 'Use Selected Profile'))
         original = datadir / ('printer/' + args.profile + '.ini')
@@ -140,7 +179,7 @@ def main():
         proc.terminate(); proc.wait(timeout=5); proc = None
         proc, app = launch()
         time.sleep(2)
-        assert named(app, 'PrusaSlicer - Configuration Wizard') is None
+        assert named(app, T('PrusaSlicer - Configuration Wizard')) is None
         assert ('printer = ' + args.profile + ' (2)\n') in config.read_text()
         report['checks'].append('restart preserves selection and skips first-launch wizard')
         audit = os.environ.get('SLA_NETWORK_AUDIT_FILE')

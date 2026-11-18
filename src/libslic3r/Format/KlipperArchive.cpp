@@ -1,6 +1,7 @@
 // Native port of the local UVtools KlipperFile/GCodeBuilder contract.
 // These commands control an MSLA exposure cycle; no FFF emitter is used.
 // SPDX-License-Identifier: AGPL-3.0-or-later
+#include "HeaderMirror.hpp"
 #include "KlipperArchive.hpp"
 #include "libslic3r/SLAPrint.hpp"
 #include "libslic3r/SLA/PrinterRaster.hpp"
@@ -167,7 +168,7 @@ void KlipperArchive::export_print(const std::string filename, const SLAPrint &pr
         {"MachineZ", m_cfg.max_print_height.value}, {"LayerHeight", print.default_object_config().layer_height.value},
         {"LayerCount", m_layers.size()}, {"BottomLayerCount", bottom_count},
         {"TransitionLayerCount", std::min<size_t>(mat.sla_transition_layers.value, m_layers.size() - bottom_count)},
-        {"Mirror", (m_cfg.display_mirror_x.value ? 1 : 0) + (m_cfg.display_mirror_y.value ? 2 : 0)}, {"AntiAliasing", 1},
+        {"Mirror", int(resolve_header_mirror(m_cfg, m_cfg.display_mirror_x.value, m_cfg.display_mirror_y.value).bits())}, {"AntiAliasing", 1},
         {"BottomExposureTime", mat.initial_exposure_time.value}, {"ExposureTime", mat.exposure_time.value}};
     for (bool bottom : {false, true}) {
         const std::string prefix = bottom ? "Bottom" : "";

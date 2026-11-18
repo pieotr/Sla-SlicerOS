@@ -25,6 +25,7 @@
 
 #include <algorithm>
 #include <fstream>
+#include <iterator>
 #include <stdexcept>
 #include <unordered_map>
 #include <boost/range/join.hpp>
@@ -751,9 +752,12 @@ static std::vector<std::string> s_Preset_sla_printer_options {
     "elefant_foot_min_width",
     "gamma_correction",
     "min_exposure_time", "max_exposure_time",
-    "min_initial_exposure_time", "max_initial_exposure_time", "sla_archive_format", "sla_anycubic_version", "sla_cbddlp_aa", "sla_phz_encryption_key", "nanodlp_device_profile", "sla_output_precision",
+    "min_initial_exposure_time", "max_initial_exposure_time", "sla_archive_format", "sla_anycubic_version", "sla_cbddlp_aa", "sla_archive_header_mirror", "sla_phz_encryption_key", "nanodlp_device_profile", "sla_output_precision",
+#ifndef SLIC3R_OFFLINE_ONLY
     //FIXME the print host keys are left here just for conversion from the Printer preset to Physical Printer preset.
+    // The offline build has no print hosts; legacy INIs carrying these keys are cleaned by remove_invalid_keys().
     "print_host", "printhost_apikey", "printhost_cafile",
+#endif
     "printer_notes",
     "inherits"
 };
@@ -767,6 +771,24 @@ const std::vector<std::string>& Preset::nozzle_options()         { return print_
 const std::vector<std::string>& Preset::sla_print_options()      { return s_Preset_sla_print_options; }
 const std::vector<std::string>& Preset::sla_material_options()   { return s_Preset_sla_material_options_all; }
 const std::vector<std::string>& Preset::sla_printer_options()    { return s_Preset_sla_printer_options; }
+
+const std::vector<std::string>& Preset::sla_hidden_option_keys()
+{
+    static const std::vector<std::string> s_keys {
+        "printer_technology",               // fixed by the Tab type, never user-editable
+        "bed_shape",                        // derived from display_width/height, an editor would let scene and raster disagree
+        "inherits",                         // set by the preset machinery (parent preset)
+        // Dependency widgets are created with custom widgets, not option lines.
+        "compatible_printers", "compatible_printers_condition",
+        "compatible_prints", "compatible_prints_condition",
+        // Written by vendor profiles, shown only as a description line.
+        "default_sla_print_profile", "default_sla_material_profile"
+#ifndef SLIC3R_OFFLINE_ONLY
+        , "print_host", "printhost_apikey", "printhost_cafile" // legacy, moved to physical printers
+#endif
+    };
+    return s_keys;
+}
 
 const std::vector<std::string>& Preset::printer_options()
 {
@@ -851,6 +873,18 @@ void PresetCollection::load_presets(
                     ConfigSubstitutions config_substitutions = config.load_from_ini(preset.file, substitution_rule);
                     if (! config_substitutions.empty())
                         substitutions.push_back({ preset.name, m_type, PresetConfigSubstitutions::Source::UserFile, preset.file, std::move(config_substitutions) });
+#ifdef SLIC3R_SLA_ONLY
+                    // A legacy FFF printer profile (or one without printer_technology, which has always
+                    // meant FFF) cannot be represented in the SLA-only schema. Skip it explicitly instead of
+                    // grafting it onto the SLA default and silently dropping its nozzle/extruder keys.
+                    if (m_type == Preset::TYPE_PRINTER) {
+                        const ConfigOption *technology = config.option("printer_technology");
+                        if (technology == nullptr || technology->getInt() != ptSLA) {
+                            BOOST_LOG_TRIVIAL(info) << "Skipping non-SLA printer profile in the SLA-only build: " << preset.file;
+                            continue;
+                        }
+                    }
+#endif
                     // Find a default preset for the config. The PrintPresetCollection provides different default preset based on the "printer_technology" field.
                     const Preset &default_preset = this->default_preset_for(config);
                     preset.config = default_preset.config;
@@ -1077,6 +1111,160 @@ Preset& PresetCollection::load_preset(const std::string &path, const std::string
     return preset;
 }
 
+namespace {
+PresetFileTransaction::FaultInjector &fault_injector()
+{
+    static PresetFileTransaction::FaultInjector injector;
+    return injector;
+}
+
+std::string read_regular_file(const boost::filesystem::path &path)
+{
+    if (boost::filesystem::is_symlink(path) || !boost::filesystem::is_regular_file(path))
+        throw std::runtime_error("Not a regular file: " + path.string());
+    boost::nowide::ifstream stream(path.string(), std::ios::in | std::ios::binary);
+    std::string bytes((std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>());
+    if (stream.bad())
+        throw std::runtime_error("Cannot read " + path.string());
+    return bytes;
+}
+
+// Write bytes to a fresh temp file next to `target`; returns its path. Removes the temp on failure.
+std::string write_sibling_temp(const boost::filesystem::path &target, const std::string &bytes)
+{
+    const auto temp = target.parent_path() / boost::filesystem::unique_path(".sla-preset-%%%%-%%%%.tmp");
+    {
+        boost::nowide::ofstream stream(temp.string(), std::ios::out | std::ios::binary | std::ios::trunc);
+        stream.write(bytes.data(), std::streamsize(bytes.size()));
+        stream.close();
+        if (!stream) {
+            boost::system::error_code ignored;
+            boost::filesystem::remove(temp, ignored);
+            throw std::runtime_error("Cannot write " + temp.string());
+        }
+    }
+    return temp.string();
+}
+} // namespace
+
+void PresetFileTransaction::set_fault_injector(FaultInjector injector) { fault_injector() = std::move(injector); }
+
+PresetFileTransaction::~PresetFileTransaction() { this->discard_temps(); }
+
+void PresetFileTransaction::discard_temps() noexcept
+{
+    for (Change &change : m_changes)
+        if (!change.temp.empty()) {
+            boost::system::error_code ignored;
+            boost::filesystem::remove(change.temp, ignored);
+            change.temp.clear();
+        }
+}
+
+void PresetFileTransaction::record_original(Change &change, bool must_not_exist)
+{
+    for (const Change &other : m_changes)
+        if (other.path == change.path)
+            throw std::runtime_error("The same preset file is changed twice: " + change.path);
+    const boost::filesystem::path path(change.path);
+    if (boost::filesystem::exists(path) || boost::filesystem::is_symlink(path)) {
+        if (must_not_exist)
+            throw std::runtime_error("A preset file already exists: " + change.path);
+        change.original = read_regular_file(path);
+        change.had_original = true;
+    }
+}
+
+void PresetFileTransaction::stage_config(const std::string &path, const DynamicPrintConfig &config, bool must_not_exist)
+{
+    Change change;
+    change.path = path;
+    this->record_original(change, must_not_exist);
+    // ConfigBase::save serializes to its own sibling and renames, so `temp` is complete or absent.
+    const auto temp = boost::filesystem::path(path).parent_path() / boost::filesystem::unique_path(".sla-preset-%%%%-%%%%.tmp");
+    config.save(temp.string());
+    change.temp = temp.string();
+    m_changes.push_back(std::move(change));
+}
+
+void PresetFileTransaction::stage_rename(const std::string &from, const std::string &to)
+{
+    Change created;
+    created.path = to;
+    this->record_original(created, true);
+    created.temp = write_sibling_temp(boost::filesystem::path(to), read_regular_file(from));
+    m_changes.push_back(std::move(created));
+    this->stage_remove(from);
+}
+
+void PresetFileTransaction::stage_remove(const std::string &path)
+{
+    Change change;
+    change.path = path;
+    change.removal = true;
+    this->record_original(change, false);
+    if (!change.had_original)
+        throw std::runtime_error("Cannot delete a missing preset file: " + path);
+    m_changes.push_back(std::move(change));
+}
+
+void PresetFileTransaction::commit()
+{
+    if (m_done)
+        throw std::logic_error("PresetFileTransaction committed twice");
+    size_t published = 0;
+    std::string failure;
+    try {
+        for (; published < m_changes.size(); ++published) {
+            Change &change = m_changes[published];
+            if (fault_injector()) fault_injector()(published, false);
+            if (change.removal) {
+                boost::system::error_code error;
+                boost::filesystem::remove(change.path, error);
+                if (error) throw std::runtime_error("Cannot delete " + change.path + ": " + error.message());
+            } else {
+                if (const auto error = rename_file(change.temp, change.path))
+                    throw std::runtime_error("Cannot write " + change.path + ": " + error.message());
+                change.temp.clear(); // now owned by the target
+            }
+        }
+    } catch (const std::exception &error) {
+        failure = error.what();
+    } catch (...) {
+        failure = "unknown error";
+    }
+    m_done = true;
+    if (failure.empty())
+        return;
+
+    // Publication failed after `published` changes: restore them from the saved bytes, newest first.
+    std::string unrestored;
+    for (size_t i = published; i-- > 0;) {
+        const Change &change = m_changes[i];
+        try {
+            if (fault_injector()) fault_injector()(i, true);
+            if (change.had_original) {
+                const std::string temp = write_sibling_temp(boost::filesystem::path(change.path), change.original);
+                if (const auto error = rename_file(temp, change.path)) {
+                    boost::system::error_code ignored;
+                    boost::filesystem::remove(temp, ignored);
+                    throw std::runtime_error(error.message());
+                }
+            } else {
+                boost::system::error_code error;
+                boost::filesystem::remove(change.path, error);
+                if (error) throw std::runtime_error(error.message());
+            }
+        } catch (const std::exception &) {
+            unrestored += "\n  " + change.path;
+        }
+    }
+    this->discard_temps();
+    if (unrestored.empty())
+        throw std::runtime_error(failure + "\nNo profile was changed.");
+    throw std::runtime_error(failure + "\nThe previous version of these profile files could not be restored:" + unrestored);
+}
+
 bool PresetCollection::save_current_preset(const std::string &new_name, bool detach)
 {
     auto existing = this->find_preset_internal(new_name);
@@ -1123,6 +1311,7 @@ bool PresetCollection::rename_current_preset(const std::string &new_name)
         return false;
     if (new_name.empty() || new_name.find_first_of("/\\") != std::string::npos)
         throw std::runtime_error("Invalid preset name");
+    const std::string old_name = selected.name;
     const auto existing = this->find_preset_internal(new_name);
     const auto destination = boost::filesystem::path(this->path_from_name(new_name));
     if ((existing != m_presets.end() && existing->name == new_name) ||
@@ -1131,13 +1320,28 @@ bool PresetCollection::rename_current_preset(const std::string &new_name)
     if (!boost::filesystem::is_regular_file(selected.file))
         throw std::runtime_error("The selected preset file is missing or is not a regular file");
 
-    // Prepare allocations before touching the file. Renaming changes identity,
-    // not configuration: selected is the saved baseline, edited is the draft.
+    // Stage every file change first (the renamed file, children of this collection, and referrers in other
+    // collections through the hook). Nothing in memory changes until the whole set is published, so a
+    // failure on the N-th dependent leaves disk and memory exactly as before.
+    PresetFileTransaction transaction;
+    transaction.stage_rename(selected.file, destination.string());
+    const auto migrate_children = this->stage_user_preset_migration([&](DynamicPrintConfig &config) {
+        auto *inherits = config.option<ConfigOptionString>("inherits", false);
+        if (inherits == nullptr || inherits->value != old_name) return false;
+        inherits->value = new_name;
+        return true;
+    }, transaction);
+    std::function<void()> migrate_others;
+    if (m_rename_hook.function)
+        migrate_others = m_rename_hook.function(m_type, old_name, new_name, transaction);
+    // Prepare allocations before the commit; the memory update below must not throw.
     std::string saved_name = new_name, edited_name = new_name;
     std::string saved_file = destination.string(), edited_file = saved_file;
     const bool rename_snapshot = m_saved_preset.name == selected.name;
     std::string snapshot_name = new_name, snapshot_file = saved_file;
-    boost::filesystem::rename(selected.file, destination);
+    transaction.commit();
+
+    // Renaming changes identity, not configuration: selected is the saved baseline, edited is the draft.
     selected.name.swap(saved_name);
     selected.file.swap(saved_file);
     m_edited_preset.name.swap(edited_name);
@@ -1149,6 +1353,96 @@ bool PresetCollection::rename_current_preset(const std::string &new_name)
     std::sort(m_presets.begin() + m_num_default_presets, m_presets.end());
     m_idx_selected = this->find_preset_internal(new_name) - m_presets.begin();
     // select_preset() would overwrite the draft and clear every dirty flag.
+    migrate_children();
+    if (migrate_others)
+        migrate_others();
+    return true;
+}
+
+std::function<void()> PresetCollection::stage_user_preset_migration(const std::function<bool(DynamicPrintConfig&)> &edit, PresetFileTransaction &transaction)
+{
+    std::vector<std::string> changed;
+    for (size_t idx = m_num_default_presets; idx < m_presets.size(); ++idx) {
+        const Preset &preset = m_presets[idx];
+        if (preset.is_default || preset.is_system || preset.is_external || preset.file.empty() || !preset.loaded)
+            continue;
+        DynamicPrintConfig candidate = preset.config;
+        if (!edit(candidate))
+            continue;
+        transaction.stage_config(preset.file, candidate);
+        changed.push_back(preset.name);
+    }
+    // The edit must be idempotent: it is re-applied to the in-memory configs after the commit.
+    return [this, edit, changed = std::move(changed)]() {
+        for (const std::string &name : changed) {
+            const auto it = this->find_preset_internal(name);
+            if (it == m_presets.end() || it->name != name)
+                continue;
+            edit(it->config);
+            if (size_t(it - m_presets.begin()) == m_idx_selected) {
+                edit(m_edited_preset.config);
+                if (m_saved_preset.name == it->name)
+                    edit(m_saved_preset.config);
+            }
+        }
+        this->update_dirty();
+    };
+}
+
+void PresetCollection::migrate_user_preset_configs(const std::function<bool(DynamicPrintConfig&)> &edit)
+{
+    PresetFileTransaction transaction;
+    const auto apply = this->stage_user_preset_migration(edit, transaction);
+    transaction.commit();
+    apply();
+}
+
+std::vector<std::string> PresetCollection::user_presets_affected_by(const std::function<bool(DynamicPrintConfig&)> &edit) const
+{
+    std::vector<std::string> names;
+    for (size_t idx = m_num_default_presets; idx < m_presets.size(); ++idx) {
+        const Preset &preset = m_presets[idx];
+        if (preset.is_default || preset.is_system || preset.is_external || preset.file.empty() || !preset.loaded)
+            continue;
+        DynamicPrintConfig candidate = preset.config;
+        if (edit(candidate))
+            names.push_back(preset.name);
+    }
+    return names;
+}
+
+bool PresetCollection::delete_preset_transactional(const std::string &name, const std::function<bool(DynamicPrintConfig&)> &flatten_children,
+    const std::function<std::function<void()>(PresetFileTransaction&)> &stage_extra)
+{
+    const auto it = this->find_preset_internal(name);
+    if (it == m_presets.end() || it->name != name)
+        return false;
+    if (it->is_default || it->is_system || it->is_external)
+        throw std::runtime_error("Only a saved user preset can be deleted with its references");
+    const size_t index = it - m_presets.begin();
+    const std::string file = it->file;
+
+    // One transaction: the preset file, its children and every referrer in other collections.
+    PresetFileTransaction transaction;
+    if (boost::filesystem::exists(file))
+        transaction.stage_remove(file);
+    const auto update_children = flatten_children ? this->stage_user_preset_migration(flatten_children, transaction) : std::function<void()>();
+    const auto update_others = stage_extra ? stage_extra(transaction) : std::function<void()>();
+    transaction.commit();
+
+    if (update_children) update_children();
+    if (update_others) update_others();
+    m_presets.erase(m_presets.begin() + index);
+    if (index == m_idx_selected) {
+        size_t new_selected_idx = std::min(index, m_presets.size() - 1);
+        for (; new_selected_idx < m_presets.size() && !m_presets[new_selected_idx].is_visible; ++new_selected_idx) ;
+        if (new_selected_idx == m_presets.size())
+            for (--new_selected_idx; new_selected_idx > 0 && !m_presets[new_selected_idx].is_visible; --new_selected_idx);
+        this->select_preset(new_selected_idx);
+    } else if (index < m_idx_selected) {
+        // Keep the selection and its unsaved draft; only the index moved.
+        --m_idx_selected;
+    }
     return true;
 }
 
@@ -1623,6 +1917,10 @@ Preset& PresetCollection::select_preset(size_t idx)
     if (m_type == Preset::TYPE_PRINTER && m_num_default_presets > 1 &&
         m_presets[idx].printer_technology() != ptSLA)
         idx = first_visible_idx();
+    // Slot 0 is the legacy "- default FFF -" printer kept only so stored selections still resolve;
+    // the SLA-only UI must show "- default SLA -" (slot 1) instead (e.g. after a cancelled first-run wizard).
+    if (m_type == Preset::TYPE_PRINTER && m_num_default_presets > 1 && idx == 0)
+        idx = 1;
 #endif
     m_idx_selected = idx;
     if (!m_presets[idx].is_visible)
@@ -1633,6 +1931,10 @@ Preset& PresetCollection::select_preset(size_t idx)
     bool default_visible = ! m_default_suppressed || m_idx_selected < m_num_default_presets;
     for (size_t i = 0; i < m_num_default_presets; ++i)
         m_presets[i].is_visible = default_visible;
+#ifdef SLIC3R_SLA_ONLY
+    if (m_type == Preset::TYPE_PRINTER && m_num_default_presets > 1)
+        m_presets[0].is_visible = false;
+#endif
     return m_presets[idx];
 }
 
@@ -1870,6 +2172,11 @@ std::vector<std::string> PhysicalPrinter::presets_with_print_host_information(co
 
 bool PhysicalPrinter::has_print_host_information(const DynamicPrintConfig& config)
 {
+#ifdef SLIC3R_OFFLINE_ONLY
+    // Offline printer presets do not carry the legacy print host keys (opt_string() would throw).
+    (void) config;
+    return false;
+#endif
     for (const char *opt : legacy_print_host_options)
         if (!config.opt_string(opt).empty())
             return true;
@@ -2128,6 +2435,11 @@ void PhysicalPrinterCollection::load_printer(const std::string& path, const std:
 // Note! "Print Host upload" options will be cleared after physical printer creations
 void PhysicalPrinterCollection::load_printers_from_presets(PrinterPresetCollection& printer_presets)
 {
+#ifdef SLIC3R_OFFLINE_ONLY
+    // No physical printers offline, nothing to migrate.
+    (void) printer_presets;
+    return;
+#endif
     int cnt=0;
     for (Preset& preset: printer_presets) {
         DynamicPrintConfig& config = preset.config;

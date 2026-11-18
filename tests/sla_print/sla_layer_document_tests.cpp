@@ -23,6 +23,24 @@
 #include <nlohmann/json.hpp>
 using namespace Slic3r;
 
+TEST_CASE("Truncated Anycubic archives are reported as truncated, not as exceeding limits",
+          "[sla_layers][sla_import_errors]")
+{
+    struct File {
+        boost::filesystem::path path = boost::filesystem::unique_path("truncated-anycubic-%%%%.pwc");
+        ~File() { boost::system::error_code ec; boost::filesystem::remove(path, ec); }
+    } file;
+    {
+        std::ofstream out(file.path.string(), std::ios::binary);
+        const char header[16] = {'A','N','Y','C','U','B','I','C'};
+        out.write(header, sizeof(header));
+    }
+    using Catch::Matchers::ContainsSubstring;
+    REQUIRE_THROWS_WITH(sla::LayerDocument::load_archive(file.path.string()),
+                        ContainsSubstring("truncated") && ContainsSubstring("16 bytes") &&
+                        !ContainsSubstring("limit"));
+}
+
 TEST_CASE("Pending model saves refresh automatic schedules without changing masks or explicit edits",
           "[sla_layers][sla_project][sla_pending_project_metadata]")
 {

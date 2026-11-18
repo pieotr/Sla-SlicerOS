@@ -6,6 +6,10 @@
 #include "WindowGeometry.hpp"
 #include "GUI_App.hpp"
 #include "format.hpp"
+#include "Widgets/ComboBox.hpp"
+#include <wx/dialog.h>
+#include <wx/stattext.h>
+#include <wx/button.h>
 
 #include <algorithm>
 #include <boost/lexical_cast.hpp>
@@ -26,8 +30,59 @@
 
 #include "libslic3r/Config.hpp"
 
+#ifdef __WXGTK__
+    #include <gtk/gtk.h>
+#endif
+
 namespace Slic3r {
 namespace GUI {
+
+#ifdef __WXGTK__
+static AtkObject *accessible_of(wxWindow *window, bool descend)
+{
+    GtkWidget *widget = window ? window->GetHandle() : nullptr;
+    if (widget && descend && GTK_IS_BIN(widget)) widget = gtk_bin_get_child(GTK_BIN(widget));
+    return widget ? gtk_widget_get_accessible(widget) : nullptr;
+}
+#endif
+
+void set_accessible_name(wxWindow *window, const wxString &name, const wxString &description, AccessibleRole role, bool descend)
+{
+    if (!window) return;
+    const bool has_name = !name.empty() && name != wxS("window") && name != wxS("panel");
+#ifdef __WXGTK__
+    AtkObject *a = accessible_of(window, descend);
+    if (!a) return;
+    if (has_name) atk_object_set_name(a, name.utf8_str());
+    if (!description.empty()) atk_object_set_description(a, description.utf8_str());
+    AtkRole r = ATK_ROLE_INVALID;
+    switch (role) {
+    case AccessibleRole::Slider:       r = ATK_ROLE_SLIDER; break;
+    case AccessibleRole::ComboBox:     r = ATK_ROLE_COMBO_BOX; break;
+    case AccessibleRole::PushButton:   r = ATK_ROLE_PUSH_BUTTON; break;
+    case AccessibleRole::CheckBox:     r = ATK_ROLE_CHECK_BOX; break;
+    case AccessibleRole::SpinButton:   r = ATK_ROLE_SPIN_BUTTON; break;
+    case AccessibleRole::Text:         r = ATK_ROLE_TEXT; break;
+    case AccessibleRole::Image:        r = ATK_ROLE_IMAGE; break;
+    case AccessibleRole::ToggleButton: r = ATK_ROLE_TOGGLE_BUTTON; break;
+    case AccessibleRole::Label:        r = ATK_ROLE_LABEL; break;
+    case AccessibleRole::Canvas:       r = ATK_ROLE_CANVAS; break;
+    default: break;
+    }
+    if (r != ATK_ROLE_INVALID) atk_object_set_role(a, r);
+#else
+    (void) description; (void) role; (void) descend;
+#endif
+}
+
+void set_accessible_description(wxWindow *window, const wxString &description, bool descend)
+{
+#ifdef __WXGTK__
+    if (AtkObject *a = accessible_of(window, descend)) atk_object_set_description(a, description.utf8_str());
+#else
+    (void) window; (void) description; (void) descend;
+#endif
+}
 
 #ifdef _WIN32
 wxDEFINE_EVENT(EVT_HID_DEVICE_ATTACHED, HIDDeviceAttachedEvent);
@@ -230,6 +285,80 @@ bool CheckboxFileDialog::get_checkbox_value() const
     return extra_panel != nullptr ? extra_panel->cbox->GetValue() : false;
 }
 
+
+bool confirm_export_adjustments(wxWindow *parent, const wxString &format_name,
+                                const std::vector<sla::RepresentationAdjustment> &adjustments)
+{
+    wxDialog dialog(parent, wxID_ANY, "Adjust values for export", wxDefaultPosition, wxDefaultSize, wxDEFAULT_DIALOG_STYLE);
+    dialog.SetName("Adjust values for export");
+    dialog.SetFont(wxGetApp().normal_font());
+    auto *layout = new wxBoxSizer(wxVERTICAL);
+    const int em = wxGetApp().em_unit();
+    auto *intro = new wxStaticText(&dialog, wxID_ANY, format_name + " cannot store these settings exactly. "
+        "Export with the adjusted values below? Your printer and material profiles stay unchanged; only the exported file uses them.");
+    intro->SetName("Export adjustment explanation");
+    intro->Wrap(60 * em);
+    layout->Add(intro, 0, wxEXPAND | wxALL, 12);
+    for (const auto &adjustment : adjustments) {
+        auto *row = new wxStaticText(&dialog, wxID_ANY, wxString::FromUTF8("\u2022 " + adjustment.describe()));
+        row->SetName("Adjustment: " + wxString::FromUTF8(adjustment.label));
+        row->Wrap(60 * em);
+        layout->Add(row, 0, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, 12);
+    }
+    auto *buttons = dialog.CreateButtonSizer(wxOK | wxCANCEL);
+    if (auto *ok = dynamic_cast<wxButton *>(dialog.FindWindow(wxID_OK))) { ok->SetLabel("Export adjusted values"); ok->SetName("Export adjusted values"); }
+    if (auto *cancel = dynamic_cast<wxButton *>(dialog.FindWindow(wxID_CANCEL))) { cancel->SetLabel("Cancel"); cancel->SetName("Cancel export"); }
+    layout->Add(buttons, 0, wxEXPAND | wxALL, 12);
+    dialog.SetSizerAndFit(layout);
+    dialog.SetEscapeId(wxID_CANCEL);
+    dialog.CentreOnParent();
+    return dialog.ShowModal() == wxID_OK;
+}
+
+int choose_export_format(wxWindow *parent, const wxString &title, const std::vector<ExportFormatOption> &options, int preselected)
+{
+    if (options.empty()) return -1;
+    if (options.size() == 1) return 0;
+    wxDialog dialog(parent, wxID_ANY, "Export format", wxDefaultPosition, wxDefaultSize, wxDEFAULT_DIALOG_STYLE);
+    dialog.SetFont(wxGetApp().normal_font());
+    auto *layout = new wxBoxSizer(wxVERTICAL);
+    layout->Add(new wxStaticText(&dialog, wxID_ANY, title.empty() ? wxString("Choose the output format") : title), 0, wxEXPAND | wxALL, 12);
+    wxArrayString labels;
+    for (const auto &option : options) labels.Add(option.label);
+    auto *combo = create_readonly_combo(&dialog, "Export format", "Output file format; the file name extension follows this choice",
+                                        labels, std::clamp(preselected, 0, int(options.size()) - 1));
+    combo->SetMinSize(wxSize(30 * wxGetApp().em_unit(), -1));
+    layout->Add(combo, 0, wxEXPAND | wxLEFT | wxRIGHT, 12);
+    layout->Add(dialog.CreateButtonSizer(wxOK | wxCANCEL), 0, wxEXPAND | wxALL, 12);
+    dialog.SetSizerAndFit(layout);
+    dialog.CentreOnParent();
+    if (dialog.ShowModal() != wxID_OK) return -1;
+    return std::max(0, combo->GetSelection());
+}
+
+int export_format_for_typed_name(const std::vector<ExportFormatOption> &options, int chosen, const std::string &file_name)
+{
+    // Compound extensions exist ("v2.cxdlp", "rgb.zip"): compare whole suffixes and let the longest match win; on a tie the
+    // chosen format stays.
+    std::string lower = file_name;
+    std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char c) { return char(std::tolower(c)); });
+    auto matches = [&](const ExportFormatOption &option) {
+        const std::string suffix = "." + option.ext;
+        return !option.ext.empty() && lower.size() > suffix.size() &&
+               lower.compare(lower.size() - suffix.size(), suffix.size(), suffix) == 0;
+    };
+    size_t best_length = 0;
+    int best = chosen;
+    if (chosen >= 0 && size_t(chosen) < options.size() && matches(options[size_t(chosen)])) {
+        best_length = options[size_t(chosen)].ext.size();
+    }
+    for (size_t i = 0; i < options.size(); ++i)
+        if (matches(options[i]) && options[i].ext.size() > best_length) {
+            best_length = options[i].ext.size();
+            best        = int(i);
+        }
+    return best;
+}
 
 WindowMetrics WindowMetrics::from_window(wxTopLevelWindow *window)
 {

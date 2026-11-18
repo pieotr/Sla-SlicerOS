@@ -1,4 +1,5 @@
 ///|/ Native port of UVtools.Core/FileFormats/PHZFile.cs (AGPLv3).
+#include "HeaderMirror.hpp"
 #include "PhrozenArchive.hpp"
 #include "ChituboxPreview.hpp"
 #include "libslic3r/SLAPrint.hpp"
@@ -174,7 +175,7 @@ void PhrozenPHZArchive::export_print(const std::string fname,const SLAPrint &pri
     u32(header,20,bottom);u32(header,24,cols);u32(header,28,rows);
     u32(header,32,large_offset);u32(header,36,table_offset);u32(header,40,uint32_t(m_layers.size()));
     u32(header,44,small_offset);u32(header,48,sla::lcd_print_time(print));
-    u32(header,52,(m_cfg.display_mirror_x.value||m_cfg.display_mirror_y.value)?1:0);u32(header,56,1);
+    u32(header,52,resolve_header_mirror(m_cfg,m_cfg.display_mirror_x.value,m_cfg.display_mirror_y.value).any()?1:0);u32(header,56,1);
     header[60]=uint8_t(sla::motion_parameter(print,"light_pwm",false));
     header[62]=uint8_t(sla::motion_parameter(print,"light_pwm",true));
     f32(header,72,sla::layer_z(print,m_layers.size()-1));

@@ -35,7 +35,8 @@ void validate_chitubox_v3_job(const LayerJobParameters &job, size_t layer_count)
         for (const auto field : {F::LiftDistance2, F::LiftSpeed2, F::RetractDistance2,
                 F::RetractSpeed2, F::WaitBefore, F::WaitAfter, F::WaitAfterLift})
             if (row->at(field) != 0)
-                throw RuntimeError("CTB v3 cannot preserve second-phase motion or explicit waits");
+                throw RuntimeError("CTB v3 cannot store second-phase lift/retract motion or wait times (wait before/after cure, after lift). "
+                                   "Set them to 0 in the material settings, or export to CTB v4/v5 which store them.");
     if (job.normal.at(F::RetractSpeed) != job.bottom.at(F::RetractSpeed))
         throw RuntimeError("CTB v3 requires the same normal and bottom retract speed");
 }

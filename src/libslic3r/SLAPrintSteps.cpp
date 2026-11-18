@@ -5,6 +5,7 @@
 #include <libslic3r/Exception.hpp>
 #include <libslic3r/SLAPrintSteps.hpp>
 #include <libslic3r/SLA/GeneratedLayerOwnership.hpp>
+#include <libslic3r/SLA/SL1FreshExportPlan.hpp>
 #include <libslic3r/SLA/ProjectedPNGMaskEncoder.hpp>
 #include <libslic3r/SLA/LayerPolygonComposition.hpp>
 #include <libslic3r/MeshBoolean.hpp>
@@ -1642,11 +1643,18 @@ void SLAPrint::Steps::rasterize()
     // Print all the layers in parallel
     const auto pixels = uint64_t(m_print->m_printer_config.display_pixels_x.value) *
                         uint64_t(m_print->m_printer_config.display_pixels_y.value);
-    const int workers = int(std::clamp<uint64_t>((uint64_t(512) << 20) / std::max<uint64_t>(1, pixels * ((owned_job && owned_job->mask_precision != sla::LayerMaskPrecision::Gray8) || independent_precision ? 5 : 4)), 1, 8));
+    // In-flight rasters are bounded by physical RAM (<=25%, cap 6 GiB) and the
+    // hardware thread count instead of a fixed 512 MiB budget (which gave only
+    // 3 workers at 8K and 2 at 12K on a many-core machine).
+    const int workers = int(sla::memory_bounded_workers(
+        std::max<uint64_t>(1, pixels * ((owned_job && owned_job->mask_precision != sla::LayerMaskPrecision::Gray8) || independent_precision ? 5 : 4)),
+        std::max<size_t>(1, m_print->m_printer_input.size())));
     tbb::task_arena arena(workers);
+    std::vector<size_t> lit_counts;
     arena.execute([&] {
         m_print->m_archiver->draw_layers(m_print->m_printer_input.size(), lvlfn,
-                                        [this]() { return canceled(); }, ex_tbb, &masks, &representatives, canonical_encoder);
+                                        [this]() { return canceled(); }, ex_tbb, &masks, &representatives, canonical_encoder,
+                                        &lit_counts);
     });
     if (!canceled()) {
         report_status(99, _u8L("Finalizing layers"));
@@ -1672,6 +1680,14 @@ void SLAPrint::Steps::rasterize()
         m_print->throw_if_canceled();
         // Retire requests before replacing the storage they describe.
         m_print->advance_export_generation(false);
+        // Counts exist only for the plain Gray8 PNG path (see draw_layers) and
+        // are certified against the exact encoded bytes of the new document.
+        m_print->m_raster_lit_ledger.reset();
+        if (document && lit_counts.size() == document->layer_count()) {
+            const auto first = document->image(0);
+            m_print->m_raster_lit_ledger = std::make_shared<const sla::MaskLitLedger>(
+                *document, first.cols, first.rows, std::move(lit_counts));
+        }
         m_print->m_layer_document = std::move(document);
         m_print->m_encoded_revision = 0;
         m_print->remember_completed_cxdlpv4_encoding();

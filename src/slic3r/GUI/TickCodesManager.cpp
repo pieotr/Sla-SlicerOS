@@ -9,11 +9,15 @@
 #include <cmath>
 
 #include "I18N.hpp"
+#ifndef SLIC3R_SLA_ONLY
 #include "libslic3r/Print.hpp"
+#endif // SLIC3R_SLA_ONLY
 #include "libslic3r/Color.hpp"
 #include "libslic3r/ExPolygon.hpp"
+#ifndef SLIC3R_SLA_ONLY
 #include "libslic3r/GCode/ToolOrdering.hpp"
 #include "libslic3r/Layer.hpp"
+#endif // SLIC3R_SLA_ONLY
 #include "libslic3r/PrintConfig.hpp"
 #include "libslic3r/libslic3r.h"
 
@@ -41,6 +45,8 @@ TickCodeManager::TickCodeManager()
 
 std::string TickCodeManager::gcode(CustomGCode::Type type)
 {
+#ifndef SLIC3R_SLA_ONLY
+    // SLA layer slider has no FFF print: colour-change/pause G-code templates are FFF-only.
     if (m_print) {
         const Slic3r::PrintConfig& config = m_print->config();
         switch (type) {
@@ -50,6 +56,9 @@ std::string TickCodeManager::gcode(CustomGCode::Type type)
         default:          return std::string();
         }
     }
+#else
+    (void)type;
+#endif
     return std::string();
 }
 
@@ -111,6 +120,7 @@ std::array<int, 2> TickCodeManager::get_active_extruders_for_tick(int tick, Mode
     return extruders;
 }
 
+#ifndef SLIC3R_SLA_ONLY
 bool check_color_change(const PrintObject* object, size_t frst_layer_id, size_t layers_cnt, bool check_overhangs, std::function<bool(const Layer*)> break_condition)
 {
     double prev_area = area(object->get_layer(frst_layer_id)->lslices);
@@ -136,9 +146,15 @@ bool check_color_change(const PrintObject* object, size_t frst_layer_id, size_t 
     }
     return detected;
 }
+#endif // SLIC3R_SLA_ONLY
 
 bool TickCodeManager::auto_color_change(Mode main_mode)
 {
+#ifdef SLIC3R_SLA_ONLY
+    // Auto colour change inspects FFF PrintObject layers; the SLA slider never has them.
+    (void)main_mode;
+    return false;
+#else
     if (!m_print)
         return false;
 
@@ -188,6 +204,7 @@ bool TickCodeManager::auto_color_change(Mode main_mode)
         m_cb_notify_empty_color_change();
 
     return true;
+#endif
 }
 
 std::string TickCodeManager::get_new_color(const std::string& color)
@@ -339,6 +356,11 @@ bool TickCodeManager::check_ticks_changed_event(Type type, Mode main_mode)
 // Means all extruders(tools) which will be used during printing from current tick to the end
 std::set<int> TickCodeManager::get_used_extruders_for_tick(int tick, double print_z, Mode force_mode/* = Undef*/) const
 {
+#ifdef SLIC3R_SLA_ONLY
+    // Needs the FFF ToolOrdering; without a print this is always empty.
+    (void)tick; (void)print_z; (void)force_mode;
+    return {};
+#else
     if (!m_print)
         return {};
 
@@ -395,6 +417,7 @@ std::set<int> TickCodeManager::get_used_extruders_for_tick(int tick, double prin
             used_extruders.emplace(it->extruder);
 
     return used_extruders;
+#endif
 }
 
 std::string TickCodeManager::get_color_for_tick(TickCode tick, Type type, const int extruder)

@@ -6,6 +6,7 @@
 #include "libslic3r/SLAPrint.hpp"
 #include "libslic3r/SLA/PrinterRaster.hpp"
 #include "libslic3r/SLA/PrintParameters.hpp"
+#include "libslic3r/SLA/RepresentationAdjustment.hpp"
 #include <boost/nowide/fstream.hpp>
 #include <algorithm>
 #include <array>
@@ -26,7 +27,7 @@ uint32_t read32(const uint8_t *bytes) {
 }
 uint16_t integer(double value,const char *name,bool positive=false) {
     if(!std::isfinite(value) || value<(positive?1.:0.) || value>UINT16_MAX || std::abs(value-std::round(value))>1e-6)
-        throw ExportError(std::string("CXDLPv1 requires a ")+(positive?"positive ":"")+"16-bit integer for "+name);
+        throw ExportError(std::string("CXDLPv1 stores ")+name+" as a "+(positive?"positive ":"")+"whole number up to 65535, but the job has "+std::to_string(value)+". Change it in the material settings (Printer/Material Settings), then export again.");
     return uint16_t(std::llround(value));
 }
 void number_string(std::ostream &output,double value) {
@@ -89,6 +90,11 @@ void CrealityCXDLPv1Archive::export_print(const std::string     fname,
 {
     // UVtools CrealityCXDLPv1File: sequential big-endian tables, vertical
     // inclusive grayscale runs, three RGB565 previews and a validated footer.
+    {
+        DynamicPrintConfig effective;effective.apply(print.material_config());effective.apply(m_cfg);
+        const auto representation=sla::plan_representation("cxdlpv1",effective);
+        if(!representation.empty()) throw ExportError(representation.strict_message("CXDLP v1"));
+    }
     size_t columns=m_cfg.display_pixels_x.value,rows=m_cfg.display_pixels_y.value;
     double width=m_cfg.display_width.value,height=m_cfg.display_height.value;
     if(m_cfg.display_orientation.value==sladoPortrait){std::swap(columns,rows);std::swap(width,height);}

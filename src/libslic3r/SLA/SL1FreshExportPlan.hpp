@@ -6,14 +6,206 @@
 #include <boost/log/trivial.hpp>
 #include <algorithm>
 #include <array>
+#include <atomic>
+#include <condition_variable>
+#include <exception>
+#include <mutex>
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <functional>
+#include <optional>
 #include <string>
+#include <string_view>
 #include <utility>
+#include <vector>
+#if defined(_WIN32)
+#include <windows.h>
+#elif defined(__unix__) || defined(__APPLE__)
+#include <unistd.h>
+#endif
 
 namespace Slic3r::sla {
+// ---------------------------------------------------------------------------
+// Memory-aware worker sizing shared by every full-resolution mask loop
+// (raster, statistics, planning, encoding, readback verification).
+//
+// WHY: a fixed "512 MiB / (pixels*4)" budget gave 3 workers at 8K and 2 at 12K
+// on a 31 GB / 14-core machine, leaving most cores idle during PNG inflation.
+// RAM budget policy: in-flight full-resolution buffers may use at most 25% of
+// physical memory, additionally capped at 6 GiB so a huge-RAM host does not
+// over-allocate for diminishing returns. 8 GB host -> 2 GiB, 16 GB -> 4 GiB.
+inline uint64_t physical_memory_bytes() {
+    static const uint64_t bytes = [] () -> uint64_t {
+#if defined(_WIN32)
+        MEMORYSTATUSEX status{}; status.dwLength = sizeof(status);
+        return GlobalMemoryStatusEx(&status) ? uint64_t(status.ullTotalPhys) : 0;
+#elif defined(__unix__) || defined(__APPLE__)
+        const long pages = sysconf(_SC_PHYS_PAGES), page = sysconf(_SC_PAGE_SIZE);
+        return pages > 0 && page > 0 ? uint64_t(pages) * uint64_t(page) : 0;
+#else
+        return 0;
+#endif
+    }();
+    return bytes;
+}
+inline uint64_t inflight_raster_budget(uint64_t physical = physical_memory_bytes()) {
+    // Unknown RAM is treated as a small 4 GiB machine (1 GiB budget).
+    if (physical == 0) physical = uint64_t(4) << 30;
+    return std::min<uint64_t>(physical / 4, uint64_t(6) << 30);
+}
+// Pure sizing rule (unit-testable): as many workers as the budget fits, never
+// more than the hardware threads or remaining items, never fewer than 1
+// (except when nothing remains).
+inline size_t memory_bounded_workers(uint64_t budget, uint64_t bytes_per_worker, size_t remaining, size_t hardware) {
+    const uint64_t fit = std::max<uint64_t>(1, budget / std::max<uint64_t>(1, bytes_per_worker));
+    return std::min<size_t>({size_t(std::min<uint64_t>(fit, SIZE_MAX)), std::max<size_t>(hardware, 1), remaining});
+}
+inline size_t memory_bounded_workers(uint64_t bytes_per_worker, size_t remaining) {
+    return memory_bounded_workers(inflight_raster_budget(), bytes_per_worker, remaining,
+        size_t(std::max(1, tbb::this_task_arena::max_concurrency())));
+}
+// Run body(i) on `workers` threads in batches of 4*workers. `before(first)` and
+// `after(first,end)` run on the CALLING thread only (user callbacks must never
+// run on workers), so cancellation latency is one batch. Dynamic scheduling
+// inside a batch keeps the barrier tail to at most one task per batch.
+// In-flight memory is bounded by `workers`, not by the batch size, as long as
+// body() keeps no per-layer result larger than a few bytes.
+template<class Body, class Before, class After>
+void for_each_in_batches(size_t count, size_t workers, Body &&body, Before &&before, After &&after) {
+    workers = std::max<size_t>(workers, 1);
+    const size_t batch = workers * 4;
+    tbb::task_arena arena{int(workers)};
+    for (size_t first = 0; first < count; first += batch) {
+        before(first);
+        const size_t end = std::min(first + batch, count);
+        if (workers == 1) for (size_t i = first; i < end; ++i) body(i);
+        else arena.execute([&] { execution::for_each(ExecutionTBB{}, first, end, body); });
+        after(first, end);
+    }
+}
+
+// Barrier-free bounded parallel loop. body(i) runs on at most `workers`
+// threads; items are handed out dynamically, so there is no per-batch tail
+// where every thread but one idles (for_each_in_batches wastes about half an
+// item per worker per batch, roughly 10% of an inflate-bound loop).
+//
+// on_progress(completed) runs ONLY on the calling thread: once before any work
+// (completed == 0) and once after each finished item (1..count), so the number
+// of checkpoints is deterministic and cancellation latency is one item. If it
+// throws, remaining items are not started, in-flight items finish, and the
+// exception is rethrown after all workers have stopped (never leaves a worker
+// touching the caller's frame). A body exception is handled the same way and
+// the first one is rethrown with its original type.
+// In-flight memory is bounded by `workers`, exactly like for_each_in_batches.
+template<class Body, class OnProgress>
+void for_each_streaming(size_t count, size_t workers, Body &&body, OnProgress &&on_progress) {
+    on_progress(size_t(0));
+    workers = std::min(std::max<size_t>(workers, 1), count);
+    if (workers <= 1) {
+        for (size_t i = 0; i < count; ++i) { body(i); on_progress(i + 1); }
+        return;
+    }
+    std::atomic<size_t> next{0};
+    std::atomic<bool> stop{false};
+    std::mutex mutex;
+    std::condition_variable wake;
+    size_t completed = 0, running = workers;
+    std::exception_ptr body_error;
+    // No slot is reserved for the calling thread: it only waits and polls.
+    tbb::task_arena arena{int(workers), 0};
+    for (size_t w = 0; w < workers; ++w)
+        arena.enqueue([&] {
+            while (!stop.load(std::memory_order_relaxed)) {
+                const size_t i = next.fetch_add(1, std::memory_order_relaxed);
+                if (i >= count) break;
+                try { body(i); }
+                catch (...) {
+                    std::lock_guard<std::mutex> lock(mutex);
+                    if (!body_error) body_error = std::current_exception();
+                    stop = true;
+                    break;
+                }
+                std::lock_guard<std::mutex> lock(mutex);
+                ++completed;
+                wake.notify_one();
+            }
+            // Notify under the lock: the caller may destroy this frame the
+            // moment it observes running == 0, so nothing is touched after.
+            std::lock_guard<std::mutex> lock(mutex);
+            --running;
+            wake.notify_all();
+        });
+    std::exception_ptr callback_error;
+    size_t reported = 0;
+    std::unique_lock<std::mutex> lock(mutex);
+    for (;;) {
+        wake.wait(lock, [&] { return completed > reported || running == 0 || body_error; });
+        while (reported < completed && !callback_error && !body_error) {
+            ++reported;
+            lock.unlock();
+            try { on_progress(reported); }
+            catch (...) { callback_error = std::current_exception(); stop = true; }
+            lock.lock();
+        }
+        if (callback_error || body_error) {
+            stop = true;
+            wake.wait(lock, [&] { return running == 0; });
+            break;
+        }
+        if (running == 0 && reported == completed) break;
+    }
+    lock.unlock();
+    if (callback_error) std::rethrow_exception(callback_error);
+    if (body_error) std::rethrow_exception(body_error);
+}
+
+// ---------------------------------------------------------------------------
+// Lit-pixel counts taken while the rasterizer still holds the pixel buffer.
+//
+// WHY: statistics and the SL1 plan each inflated every full-resolution PNG
+// only to count non-zero bytes (about 5.5 s wall / 76 CPU-s for 1100 8K layers),
+// although the rasterizer had those pixels in memory a moment earlier.
+// The ledger certifies "these exact PNG bytes were produced by our own encoder
+// from a buffer with N lit pixels". It stores the byte length and a 64-bit
+// hash of every encoded layer, so a layer that was edited, restored from a
+// project or replaced afterwards no longer matches and takes the normal
+// decode-and-count path. A PNG that did not come from the rasterizer (loaded
+// archive, tampered bytes) has no entry and is always decoded and CRC-checked.
+class MaskLitLedger {
+public:
+    MaskLitLedger(const LayerDocument &document, size_t columns, size_t rows,
+                  std::vector<size_t> lit_counts)
+        : m_columns(columns), m_rows(rows), m_entries(lit_counts.size())
+    {
+        if (lit_counts.size() != document.layer_count())
+            throw RuntimeError("Lit-pixel ledger does not match the layer count");
+        for (size_t i = 0; i < m_entries.size(); ++i) {
+            if (lit_counts[i] == SIZE_MAX) continue; // not counted: always decoded later
+            const auto png = document.encoded_layer(i);
+            m_entries[i] = {png.sz, fingerprint(png), lit_counts[i]};
+        }
+    }
+    size_t columns() const { return m_columns; }
+    size_t rows() const { return m_rows; }
+    // Count for `layer` only if `png` is byte-for-byte what was recorded.
+    std::optional<size_t> lit_pixels(size_t layer, png::ReadBuf png) const {
+        if (layer >= m_entries.size()) return std::nullopt;
+        const auto &entry = m_entries[layer];
+        if (!entry.bytes || entry.bytes != png.sz || entry.hash != fingerprint(png)) return std::nullopt;
+        return entry.lit;
+    }
+private:
+    struct Entry { size_t bytes = 0; uint64_t hash = 0; size_t lit = 0; };
+    static uint64_t fingerprint(png::ReadBuf png) {
+        return uint64_t(std::hash<std::string_view>{}(
+            std::string_view(static_cast<const char *>(png.buf), png.sz)));
+    }
+    size_t m_columns, m_rows;
+    std::vector<Entry> m_entries;
+};
+
 struct SL1FreshExportPlan {
     LayerJobParameters globals;
     std::vector<LayerParameters> rows;
@@ -234,10 +426,9 @@ inline size_t mask_batch_width(size_t columns, size_t rows, size_t remaining) {
     if (!columns || !rows || columns > 32768 || rows > 32768 || columns > maximum_mask / rows)
         throw RuntimeError("Layer dimensions exceed the editor memory budget");
     const size_t pixels = columns * rows;
-    constexpr size_t decoder_budget = size_t(512) << 20;
-    const size_t workers = pixels < (size_t(1) << 20) ? 1 :
-        std::clamp(decoder_budget / (pixels * 4), size_t(1), size_t(4));
-    return std::min(workers, remaining);
+    // One decoded Gray8 image plus inflate/filter scratch is about 4 bytes/pixel.
+    return pixels < (size_t(1) << 20) ? std::min<size_t>(1, remaining) :
+        memory_bounded_workers(uint64_t(pixels) * 4, remaining);
 }
 
 // Check the actual header before allocating a batch. A forged larger PNG must
@@ -269,7 +460,8 @@ inline SL1ExposureTransitionPreview sl1_exposure_transition_preview(const LayerD
 // Fresh intent is explicit and immutable. No per-layer metadata is invented
 // for SL1: every row must equal the schedule its reference reader executes.
 inline SL1FreshExportPlan sl1_fresh_export_plan(const LayerDocument &document,
-                                              const LayerProgress &progress = {}) {
+                                              const LayerProgress &progress = {},
+                                              const MaskLitLedger *rasterized = nullptr) {
     auto schedule = sl1_fresh_detail::document_schedule(document, progress);
     SL1FreshExportPlan plan;
     plan.globals = std::move(schedule.globals);
@@ -296,23 +488,7 @@ inline SL1FreshExportPlan sl1_fresh_export_plan(const LayerDocument &document,
         BOOST_LOG_TRIVIAL(info) << "SL1 mask accounting: batched=" << (batched ? 1 : 0)
             << "; width=" << workers << "; layers=" << count;
     double volume = 0., previous_z = 0.;
-    const auto account = [&](size_t i, const png::ImageGreyscale &mask) {
-        if (mask.cols != plan.geometry.columns || mask.rows != plan.geometry.rows)
-            throw RuntimeError("SL1 pixels do not match owned raster geometry");
-        // Ordered physical accumulation and every 1MiB checkpoint stay on the
-        // coordinator. User callbacks never execute on decoder worker threads.
-        size_t lit = 0;
-        constexpr size_t chunk_size = size_t(1) << 20;
-        for (size_t offset = 0; offset < mask.buf.size(); offset += chunk_size) {
-            check_layer_progress(progress, i, count);
-            const size_t size = std::min(mask.buf.size() - offset, chunk_size);
-            if (batched)
-                lit += validate_and_count_mask_chunk(mask.buf.data() + offset, size,
-                    LayerMaskPrecision::Gray8).nonzero_pixels;
-            else
-                lit += size_t(std::count_if(mask.buf.begin() + offset, mask.buf.begin() + offset + size,
-                    [](uint8_t p) { return p != 0; }));
-        }
+    const auto account = [&](size_t i, size_t lit) {
         const double z = plan.rows[i].at(LayerParameter::PositionZ);
         volume += lit * pixel_area * (z - previous_z); previous_z = z;
     };
@@ -320,30 +496,68 @@ inline SL1FreshExportPlan sl1_fresh_export_plan(const LayerDocument &document,
         for (size_t i = 0; i < count; ++i) {
             check_layer_progress(progress, i, count);
             const auto mask = document.image(i);
-            account(i, mask);
+            if (mask.cols != plan.geometry.columns || mask.rows != plan.geometry.rows)
+                throw RuntimeError("SL1 pixels do not match owned raster geometry");
+            size_t lit = 0;
+            constexpr size_t chunk_size = size_t(1) << 20;
+            for (size_t offset = 0; offset < mask.buf.size(); offset += chunk_size) {
+                check_layer_progress(progress, i, count);
+                const size_t size = std::min(mask.buf.size() - offset, chunk_size);
+                lit += size_t(std::count_if(mask.buf.begin() + offset, mask.buf.begin() + offset + size,
+                    [](uint8_t p) { return p != 0; }));
+            }
+            account(i, lit);
         }
     } else {
-        tbb::task_arena arena{int(workers)};
-        for (size_t first = 0; first < count; first += workers) {
-            check_layer_progress(progress, first, count);
-            const size_t end = std::min(first + workers, count);
-            for (size_t i = first; i < end; ++i)
+        // Each task decodes one PNG (full CRC/IEND validation inside image()),
+        // validates its dimensions and stores only the lit-pixel count, so the
+        // decoded image dies on the worker and memory is bounded by `workers`.
+        // The ordered volume accumulation and progress callbacks stay on the
+        // coordinator after each batch, preserving float-identical sums.
+        std::vector<size_t> lit_counts(count);
+        // Layers the rasterizer counted, and whose bytes still match the
+        // ledger, need no inflate; their header geometry is still checked.
+        std::vector<size_t> pending;
+        std::vector<std::atomic<char>> ready(count);
+        for (auto &flag : ready) flag.store(0, std::memory_order_relaxed);
+        pending.reserve(count);
+        const bool ledger_fits = rasterized && rasterized->columns() == plan.geometry.columns &&
+                                 rasterized->rows() == plan.geometry.rows;
+        for (size_t i = 0; i < count; ++i) {
+            const auto png = document.encoded_layer(i);
+            if (const auto lit = ledger_fits ? rasterized->lit_pixels(i, png) : std::nullopt) {
+                sl1_fresh_detail::require_mask_dimensions(png, plan.geometry.columns, plan.geometry.rows);
+                lit_counts[i] = *lit;
+                ready[i].store(1, std::memory_order_relaxed);
+            } else pending.push_back(i);
+        }
+        // Account strictly in layer order as soon as a layer's count exists, so
+        // the sums stay float-identical to the serial path and progress is monotonic.
+        size_t next = 0;
+        const auto drain = [&] {
+            for (; next < count && ready[next].load(std::memory_order_acquire); ++next) {
+                check_layer_progress(progress, next, count);
+                account(next, lit_counts[next]);
+            }
+        };
+        drain();
+        for_each_streaming(pending.size(), pending.empty() ? 1 : std::min(workers, pending.size()),
+            [&](size_t index) {
+                const size_t i = pending[index];
                 sl1_fresh_detail::require_mask_dimensions(document.encoded_layer(i),
                     plan.geometry.columns, plan.geometry.rows);
-            std::vector<png::ImageGreyscale> masks(end - first);
-            // No caller callback runs while workers borrow document bytes.
-            // A decoding error unwinds the batch before any counts are consumed.
-            if (workers == 1) masks[0] = document.image(first);
-            else arena.execute([&] {
-                execution::for_each(ExecutionTBB{}, first, end, [&](size_t i) {
-                    masks[i - first] = document.image(i);
-                });
+                const auto mask = document.image(i);
+                if (mask.cols != plan.geometry.columns || mask.rows != plan.geometry.rows)
+                    throw RuntimeError("SL1 pixels do not match owned raster geometry");
+                lit_counts[i] = validate_and_count_mask_chunk(mask.buf.data(), mask.buf.size(),
+                    LayerMaskPrecision::Gray8).nonzero_pixels;
+                ready[i].store(1, std::memory_order_release);
+            },
+            [&](size_t) {
+                check_layer_progress(progress, next, count);
+                drain();
             });
-            for (size_t i = first; i < end; ++i) {
-                check_layer_progress(progress, i, count);
-                account(i, masks[i - first]);
-            }
-        }
+        drain();
     }
     check_layer_progress(progress, count, count);
     plan.material_ml = volume / 1000.;

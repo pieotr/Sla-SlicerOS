@@ -1,6 +1,7 @@
 #include "SwitchButton.hpp"
 
 #include "../wxExtensions.hpp"
+#include "../GUI_Utils.hpp"
 #include "../../Utils/MacDarkMode.hpp"
 
 #include <wx/dcgraph.h>
@@ -15,6 +16,7 @@ SwitchButton::SwitchButton(wxWindow* parent, const wxString& name, wxWindowID id
 	, track_color(0xD9D9D9)
     , thumb_color(std::pair{0x00AE42, (int) StateColor::Checked}, std::pair{0xD9D9D9, (int) StateColor::Normal})
 {
+    Slic3r::GUI::set_accessible_name(this, name, wxString(), Slic3r::GUI::AccessibleRole::ToggleButton);
 	Rescale();
 }
 

@@ -43,7 +43,9 @@
 
 #include "libslic3r/libslic3r.h"
 #include "libslic3r/Model.hpp"
+#ifndef SLIC3R_SLA_ONLY
 #include "libslic3r/Print.hpp"
+#endif // SLIC3R_SLA_ONLY
 #include "libslic3r/SLAPrint.hpp"
 #include "libslic3r/PresetBundle.hpp"
 #include "libslic3r/ModelProcessing.hpp"
@@ -563,6 +565,8 @@ Sidebar::Sidebar(Plater *parent)
     };
     sizer->Add(m_btns_sizer, 0, buttons_sizer_flags, margin_5);
 
+#ifndef SLIC3R_SLA_ONLY
+    // Bulk (multi-bed autoslicing) buttons exist only in the FFF build.
     m_autoslicing_btns_sizer = new wxBoxSizer(wxHORIZONTAL);
 
 	init_scalable_btn(&m_btn_export_all_gcode_removable, "export_to_sd", _L("Export all to SD card / Flash drive") + " " + GUI::shortkey_ctrl_prefix() + "U");
@@ -576,6 +580,7 @@ Sidebar::Sidebar(Plater *parent)
     m_autoslicing_btns_sizer->Show(false);
 
     sizer->Add(m_autoslicing_btns_sizer, 0, buttons_sizer_flags | wxTOP, margin_5);
+#endif // SLIC3R_SLA_ONLY
     SetSizer(sizer);
 
     // Events
@@ -617,6 +622,7 @@ Sidebar::Sidebar(Plater *parent)
 
     this->Bind(wxEVT_COMBOBOX, &Sidebar::on_select_preset, this);
 
+#ifndef SLIC3R_SLA_ONLY
     m_btn_export_all_gcode->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) {
         this->m_plater->export_all_gcodes(false);
     });
@@ -628,6 +634,7 @@ Sidebar::Sidebar(Plater *parent)
     m_btn_connect_gcode_all->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) {
         this->m_plater->connect_gcode_all();
     });
+#endif // SLIC3R_SLA_ONLY
 }
 
 Sidebar::~Sidebar() {}
@@ -1207,7 +1214,8 @@ void Sidebar::show_btns_sizer(const bool show)
 void Sidebar::show_bulk_btns_sizer(const bool show)
 {
     wxWindowUpdateLocker freeze_guard(this);
-    m_autoslicing_btns_sizer->Show(show);
+    if (m_autoslicing_btns_sizer)
+        m_autoslicing_btns_sizer->Show(show);
 
     Layout();
     m_scrolled_panel->Refresh();
@@ -1225,9 +1233,13 @@ void Sidebar::enable_buttons(bool enable)
 
 void Sidebar::enable_bulk_buttons(bool enable)
 {
+#ifndef SLIC3R_SLA_ONLY
     m_btn_export_all_gcode->Enable(enable);
     m_btn_export_all_gcode_removable->Enable(enable);
     m_btn_connect_gcode_all->Enable(enable);
+#else
+    (void)enable; // bulk buttons are not created in the SLA-only build
+#endif
 }
 
 void Sidebar::show_cancel_slicing(bool show)
@@ -1271,13 +1283,28 @@ bool Sidebar::show_connect(bool show) const {
 }
 
 bool Sidebar::show_export_all(bool show) const {
+#ifndef SLIC3R_SLA_ONLY
     return m_btn_export_all_gcode->Show(show);
+#else
+    (void)show;
+    return false;
+#endif
 };
 bool Sidebar::show_export_removable_all(bool show) const {
+#ifndef SLIC3R_SLA_ONLY
     return m_btn_export_all_gcode_removable->Show(show);
+#else
+    (void)show;
+    return false;
+#endif
 };
 bool Sidebar::show_connect_all(bool show) const {
+#ifndef SLIC3R_SLA_ONLY
     return m_btn_connect_gcode_all->Show(show);
+#else
+    (void)show;
+    return false;
+#endif
 };
 
 void Sidebar::switch_to_autoslicing_mode() {

@@ -47,6 +47,7 @@
 #include "libslic3r/SLA/Pad.hpp"
 #include "libslic3r/SLA/SupportPoint.hpp"
 #include "libslic3r/SLA/LayerDocument.hpp"
+#include "libslic3r/SLA/RepresentationAdjustment.hpp"
 #include "libslic3r/TriangleMesh.hpp"
 #include "libslic3r/libslic3r.h"
 
@@ -60,6 +61,7 @@ class SlicedResultSession;
 struct ProjectRasterState;
 struct JobController;
 struct LayerConversionPlan;
+class MaskLitLedger;
 }  // namespace sla
 
 enum SLAPrintStep : unsigned int {
@@ -617,6 +619,9 @@ public:
     const std::shared_ptr<const sla::CalibrationRecipe> &calibration_recipe() const { return m_calibration_recipe; }
     void set_calibration_recipe(std::shared_ptr<const sla::CalibrationRecipe> recipe);
     const sla::LayerDocument *layer_document() const { return m_layer_document.get(); }
+    // Lit-pixel counts taken by the rasterizer, valid only for PNG bytes that
+    // still match (checked per layer by the ledger). Null when not rasterized.
+    const sla::MaskLitLedger *raster_lit_ledger() const { return m_raster_lit_ledger.get(); }
     // Distinguishes replacements with equal document revisions and config-only
     // changes. A queued export must belong to the generation it captured.
     uint64_t export_generation() const { return m_export_generation->generation.load(std::memory_order_acquire); }
@@ -643,7 +648,8 @@ public:
                                const std::string &path, const ThumbnailsList &thumbnails = {},
                                const std::string &projectname = "",
                                const std::function<void()> &checkpoint = {},
-                               const sla::ExportGenerationGuard *request_generation = nullptr) const;
+                               const sla::ExportGenerationGuard *request_generation = nullptr,
+                               const sla::RepresentationApproval *approval = nullptr) const;
 
     // Synchronous export of an explicit edited document, captured without its
     // Undo/Redo history. Output arguments are owned before any checkpoint.
@@ -654,7 +660,8 @@ public:
                                std::string path, ThumbnailsList thumbnails = {},
                                std::string projectname = "",
                                const std::function<void()> &checkpoint = {},
-                               const sla::ExportGenerationGuard *request_generation = nullptr) const;
+                               const sla::ExportGenerationGuard *request_generation = nullptr,
+                               const sla::RepresentationApproval *approval = nullptr) const;
 
     void export_print(const std::string &fname, const std::string &projectname = "")
     {
@@ -669,13 +676,14 @@ public:
     static bool is_prusa_print(const std::string& printer_model);
     
 private:
-    // Only export_layer_document_snapshot may grant this capability after
-    // constructing its own const document. Public arguments remain caller-owned.
-    enum class LayerExportInput { CallerOwned, PrivateSnapshot };
+    // PrivateSnapshot: only export_layer_document_snapshot grants it after
+    // constructing its own const document. OwnedResult: only export_print, for
+    // this context's own m_layer_document. Public arguments remain caller-owned.
+    enum class LayerExportInput { CallerOwned, PrivateSnapshot, OwnedResult };
     void export_layer_document_impl(const sla::LayerDocument &document, const std::string &format,
         const std::string &path, const ThumbnailsList &thumbnails, const std::string &projectname,
         const std::function<void()> &checkpoint, const sla::ExportGenerationGuard *request_generation,
-        LayerExportInput input) const;
+        LayerExportInput input, const sla::RepresentationApproval *approval = nullptr) const;
     // Encoding contexts exist only inside export after a complete typed fresh
     // plan has validated its source. They deliberately have no job statistics;
     // their writer consumes the plan's exact native metrics instead.
@@ -712,18 +720,20 @@ private:
         const sla::LayerConversionPlan *plan,
         const sla::ExportGenerationGuard *request_generation = nullptr,
         const std::function<void()> &checkpoint = {},
-        LayerExportInput input = LayerExportInput::CallerOwned) const;
+        LayerExportInput input = LayerExportInput::CallerOwned,
+        const sla::RepresentationApproval *approval = nullptr) const;
 
     friend class sla::ExportRequest;
     friend class sla::NativeArchiveConversionRequest;
     friend class sla::SlicedResultSession;
     static void convert_layer_archive_owned(const DynamicPrintConfig &configuration,
         const sla::LayerDocument &document, const std::string &format, const std::string &path,
-        const sla::ExportGenerationGuard &generation, const sla::LayerProgress &progress);
+        const sla::ExportGenerationGuard &generation, const sla::LayerProgress &progress,
+        const sla::RepresentationApproval *approval = nullptr);
     static void write_export_snapshot(const sla::ExportSnapshot &snapshot,
         const sla::ExportGenerationGuard &generation, const std::string &format,
         const std::string &path, const std::string &projectname, bool palette_approved,
-        const std::function<void()> &checkpoint);
+        const std::function<void()> &checkpoint, const sla::RepresentationApproval *approval = nullptr);
 
     // Implement same logic as in SLAPrintObject
     bool invalidate_step(SLAPrintStep st);
@@ -745,6 +755,7 @@ private:
     std::unique_ptr<SLAArchiveWriter>     m_archiver;
     std::unique_ptr<sla::LayerDocument>    m_layer_document;
     uint64_t                             m_encoded_revision = 0;
+    std::shared_ptr<const sla::MaskLitLedger> m_raster_lit_ledger;
     struct CompletedCXDLPv4Encoding {
         sla::ExportGenerationGuard document_generation;
         uint64_t revision;

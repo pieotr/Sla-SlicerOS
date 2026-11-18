@@ -20,7 +20,9 @@
 #include "libslic3r/KDTreeIndirect.hpp"
 #include "libslic3r/Polyline.hpp"
 #include "libslic3r/libslic3r.h"
+#ifndef SLIC3R_SLA_ONLY
 #include "libslic3r/Layer.hpp"
+#endif // SLIC3R_SLA_ONLY
 
 //#define DEBUG_FILES
 #ifdef DEBUG_FILES
@@ -208,6 +210,7 @@ void JPSPathFinder::add_obstacles(const Lines &obstacles)
     }
 }
 
+#ifndef SLIC3R_SLA_ONLY
 void JPSPathFinder::add_obstacles(const Layer *layer, const Point &global_origin)
 {
     if (layer == nullptr) return;
@@ -218,6 +221,7 @@ void JPSPathFinder::add_obstacles(const Layer *layer, const Point &global_origin
     for (const Line &l : layer->curled_lines) { obstacles.push_back(Line{l.a + global_origin, l.b + global_origin}); }
     add_obstacles(obstacles);
 }
+#endif // SLIC3R_SLA_ONLY
 
 Polyline JPSPathFinder::find_path(const Point &p0, const Point &p1)
 {

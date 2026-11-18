@@ -11,15 +11,18 @@ class ExportRequest {
     ExportGenerationGuard m_generation;
     std::string m_format, m_path, m_projectname;
     bool m_palette_approved;
+    RepresentationApproval m_approval;
 public:
     ExportRequest(std::shared_ptr<const ExportSnapshot> snapshot, std::string format,
-                  std::string path, std::string projectname = {}, bool palette_approved = false);
+                  std::string path, std::string projectname = {}, bool palette_approved = false,
+                  RepresentationApproval approval = {});
     const ExportSnapshot &snapshot() const { return *m_snapshot; }
     const std::string &format() const { return m_format; }
     const std::string &path() const { return m_path; }
     const std::string &projectname() const { return m_projectname; }
     const ExportGenerationGuard &generation() const { return m_generation; }
     bool palette_approved() const { return m_palette_approved; }
+    const RepresentationApproval &representation_approval() const { return m_approval; }
     bool cancelled() const { return m_generation.cancelled(); }
     void cancel() const { m_generation.cancel(); }
     // Optional worker checkpoints may cancel/throw, but are never called
@@ -54,9 +57,11 @@ class NativeArchiveConversionRequest {
     ExportGenerationGuard m_generation;
     DynamicPrintConfig m_configuration;
     std::string m_format, m_path;
+    RepresentationApproval m_approval;
 public:
     NativeArchiveConversionRequest(const LayerDocument &source, DynamicPrintConfig configuration,
-        std::string format, std::string path, const LayerProgress &progress = {});
+        std::string format, std::string path, const LayerProgress &progress = {},
+        RepresentationApproval approval = {});
     const LayerDocument &document() const { return *m_document; }
     const DynamicPrintConfig &configuration() const { return m_configuration; }
     const std::string &format() const { return m_format; }
@@ -84,6 +89,7 @@ public:
     void check() const;
     void cancel() const;
     bool cancelled() const;
-    ExportRequest bind(std::shared_ptr<const ExportSnapshot> snapshot, bool palette_approved = false) const;
+    ExportRequest bind(std::shared_ptr<const ExportSnapshot> snapshot, bool palette_approved = false,
+                       RepresentationApproval approval = {}) const;
 };
 } // namespace Slic3r::sla

@@ -3,6 +3,7 @@
 #include "CTBEncryptedCrypto.hpp"
 #include "ChituboxRasterEncoder.hpp"
 #include "libslic3r/SLA/LayerProgress.hpp"
+#include "libslic3r/SLA/NativeBytes.hpp"
 #include <cmath>
 #include <cstring>
 
@@ -11,7 +12,7 @@ namespace Slic3r::sla {
 // Settings use AES-CBC; mask data uses XOR followed by optional partial AES.
 struct CTBEncryptedLayerLayout {
     struct Range { size_t begin,end; };
-    const std::vector<uint8_t> &bytes;
+    NativeBytes bytes;
     std::vector<uint8_t> settings;
     uint32_t version,columns,rows,count,seed,table,settings_offset,signature_offset;
     std::vector<Range> metadata;
@@ -19,19 +20,22 @@ struct CTBEncryptedLayerLayout {
         if (at>data.size() || data.size()-at<4) throw RuntimeError("Truncated CTBEncrypted field");
         return uint32_t(data[at])|uint32_t(data[at+1])<<8|uint32_t(data[at+2])<<16|uint32_t(data[at+3])<<24;
     }
-    uint32_t integer(size_t at) const { return integer(bytes,at); }
+    uint32_t integer(size_t at) const {
+        if (at>bytes.size() || bytes.size()-at<4) throw RuntimeError("Truncated CTBEncrypted field");
+        return uint32_t(bytes[at])|uint32_t(bytes[at+1])<<8|uint32_t(bytes[at+2])<<16|uint32_t(bytes[at+3])<<24;
+    }
     uint32_t setting(size_t at) const { return integer(settings,at); }
     static float number(const std::vector<uint8_t> &data,size_t at) {
         const auto bits=integer(data,at);float value;std::memcpy(&value,&bits,4);return value;
     }
-    float number(size_t at) const { return number(bytes,at); }
+    float number(size_t at) const { const auto bits=integer(at);float value;std::memcpy(&value,&bits,4);return value; }
     float parameter(size_t at) const { return number(settings,at); }
     void require(size_t at,uint64_t length) const {
         if (at>bytes.size() || length>bytes.size()-at) throw RuntimeError("CTBEncrypted section outside file");
     }
     void section(size_t at,uint64_t length) { require(at,length);metadata.push_back({at,at+size_t(length)}); }
     size_t record(size_t layer) const { return integer(table+16*layer); }
-    explicit CTBEncryptedLayerLayout(const std::vector<uint8_t> &source,const std::function<void()> &check={}) : bytes(source) {
+    explicit CTBEncryptedLayerLayout(const NativeBytes &source,const std::function<void()> &check={}) : bytes(source) {
         if (check) check();
         section(0,48);
         version=integer(16);
@@ -39,13 +43,13 @@ struct CTBEncryptedLayerLayout {
         const auto settings_size=integer(4);settings_offset=integer(8);
         if (settings_size<288 || settings_size%16 || settings_size>(1u<<20)) throw RuntimeError("Invalid CTBEncrypted settings size");
         section(settings_offset,settings_size);
-        settings=ctb_encrypted::aes_cbc({bytes.begin()+settings_offset,bytes.begin()+settings_offset+settings_size},false,check);
+        settings=ctb_encrypted::aes_cbc(bytes.read(settings_offset,settings_size),false,check);
         signature_offset=integer(24);
         if (integer(20)!=32) throw RuntimeError("Invalid CTBEncrypted signature size");
         section(signature_offset,32);
         const uint64_t checksum=setting(0)|(uint64_t(setting(4))<<32);
         const auto signature=ctb_encrypted::signature(checksum);
-        if (!std::equal(signature.begin(),signature.end(),bytes.begin()+signature_offset)) throw RuntimeError("CTBEncrypted signature mismatch");
+        {const auto stored_signature=bytes.read(signature_offset,32);if (!std::equal(signature.begin(),signature.end(),stored_signature.begin())) throw RuntimeError("CTBEncrypted signature mismatch");}
         // Keep the original protocol trailer and optional v5 prefix when moving
         // the signature to the end after appended replacement layer records.
         section(signature_offset+32,4);
@@ -112,7 +116,7 @@ struct CTBEncryptedLayerLayout {
         if(layer>=count)throw RuntimeError("CTBEncrypted layer index outside document");
         if(check)check();
         const auto at=record(layer);const auto address=integer(at+16),length=integer(at+24);
-        std::vector<uint8_t> payload(bytes.begin()+address,bytes.begin()+address+length);
+        std::vector<uint8_t> payload=bytes.read(address,length);
         if(const auto size=integer(at+36)) {
             const auto offset=integer(at+32);
             const auto decrypted=ctb_encrypted::aes_cbc({payload.begin()+offset,payload.begin()+offset+size},false,check);

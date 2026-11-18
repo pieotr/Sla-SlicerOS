@@ -169,6 +169,9 @@ protected:
     /// Finish constructing the Field's wxWidget-related properties, including setting its own sizer, etc.
     virtual void	BUILD() = 0;
 
+    /// Publish the option label (name) and tooltip (description) to assistive technologies.
+    void			publish_accessible_name();
+
     /// Call the attached on_kill_focus method. 
 	//! It's important to use wxEvent instead of wxFocusEvent,
 	//! in another case we can't unfocused control at all

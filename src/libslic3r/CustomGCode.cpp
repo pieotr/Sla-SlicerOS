@@ -7,7 +7,6 @@
 #include <cassert>
 
 #include "Config.hpp"
-#include "GCode.hpp"
 #include "libslic3r/PrintConfig.hpp"
 
 namespace Slic3r {

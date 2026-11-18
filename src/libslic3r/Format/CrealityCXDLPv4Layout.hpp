@@ -2,6 +2,7 @@
 #pragma once
 #include "CrealityChecksum.hpp"
 #include "libslic3r/Exception.hpp"
+#include "libslic3r/SLA/NativeBytes.hpp"
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -14,7 +15,7 @@ namespace Slic3r::sla {
 struct CrealityCXDLPv4Layout {
     struct Range {size_t start,end;};
     struct Layer {uint32_t data,length;float z;};
-    const std::vector<uint8_t> &bytes;
+    NativeBytes bytes;
     size_t base=0,table=0;
     uint32_t columns=0,rows=0,seed=0;
     double width=0,height=0;
@@ -26,8 +27,8 @@ struct CrealityCXDLPv4Layout {
             throw RuntimeError("CXDLPv4 section lies outside the file");
     }
     uint32_t integer(size_t offset) const {
-        require(offset,4);const auto *p=bytes.data()+offset;
-        return uint32_t(p[0])|(uint32_t(p[1])<<8)|(uint32_t(p[2])<<16)|(uint32_t(p[3])<<24);
+        require(offset,4);
+        return uint32_t(bytes[offset])|(uint32_t(bytes[offset+1])<<8)|(uint32_t(bytes[offset+2])<<16)|(uint32_t(bytes[offset+3])<<24);
     }
     float number(size_t offset) const {
         const uint32_t bits=integer(offset);float value;std::memcpy(&value,&bits,4);return value;
@@ -35,11 +36,13 @@ struct CrealityCXDLPv4Layout {
     void section(size_t offset,uint64_t length) {
         require(offset,length);sections.push_back({offset,offset+size_t(length)});
     }
-    explicit CrealityCXDLPv4Layout(const std::vector<uint8_t> &source):bytes(source) {
+    // `verify_checksum` reads the whole file once (streaming); documents that already verified their
+    // source (and re-read it only through a size/mtime-checked store) skip it.
+    explicit CrealityCXDLPv4Layout(const NativeBytes &source,bool verify_checksum=true):bytes(source) {
         require(0,19);
-        if(std::memcmp(bytes.data(),"\0\0\0\x09" "CXSW3DV2\0\0\x04",15)!=0)
+        if(!bytes.equals(0,"\0\0\0\x09" "CXSW3DV2\0\0\x04",15))
             throw RuntimeError("Not a CXDLPv4 header");
-        const auto *model=bytes.data()+15;
+        const auto model=bytes.read(15,4);
         const uint32_t length=(uint32_t(model[0])<<24)|(uint32_t(model[1])<<16)|(uint32_t(model[2])<<8)|model[3];
         if(!length || length>256)throw RuntimeError("Invalid CXDLPv4 printer model length");
         require(19,length+80);
@@ -52,9 +55,18 @@ struct CrealityCXDLPv4Layout {
         width=number(base+4);height=number(base+8);
         if(!std::isfinite(width) || !std::isfinite(height) || width<=0 || height<=0)
             throw RuntimeError("Invalid CXDLPv4 physical screen dimensions");
-        const auto *checksum=bytes.data()+bytes.size()-4;
-        const uint32_t stored=(uint32_t(checksum[0])<<24)|(uint32_t(checksum[1])<<16)|(uint32_t(checksum[2])<<8)|checksum[3];
-        if(creality_checksum(bytes.data(),bytes.size()-4,4)!=stored)throw RuntimeError("CXDLPv4 checksum mismatch");
+        if(verify_checksum) {
+            const auto checksum=bytes.read(bytes.size()-4,4);
+            const uint32_t stored=(uint32_t(checksum[0])<<24)|(uint32_t(checksum[1])<<16)|(uint32_t(checksum[2])<<8)|checksum[3];
+            uint32_t computed=0;
+            if(const auto *whole=bytes.vector())computed=creality_checksum(whole->data(),whole->size()-4,4);
+            else for(size_t at=0;at<bytes.size()-4;) {
+                const auto part=bytes.read(at,std::min<size_t>(bytes.size()-4-at,size_t(4)<<20));
+                for(const auto byte:part)computed=creality_checksum_update(computed,byte,4);
+                at+=part.size();
+            }
+            if(computed!=stored)throw RuntimeError("CXDLPv4 checksum mismatch");
+        }
         table=integer(base+32);const uint32_t count=integer(base+36);seed=integer(base+68);
         if(!count || count>100000)throw RuntimeError("Invalid CXDLPv4 layer count");
         section(table,uint64_t(count)*40);

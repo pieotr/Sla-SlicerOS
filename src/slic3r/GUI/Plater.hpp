@@ -26,7 +26,9 @@
 #include "Sidebar.hpp"
 #include "Selection.hpp"
 
+#ifndef SLIC3R_SLA_ONLY
 #include "libslic3r/GCode/GCodeProcessor.hpp"
+#endif // SLIC3R_SLA_ONLY
 #include "Jobs/Job.hpp"
 #include "Jobs/Worker.hpp"
 #include "libslic3r/GCode/ThumbnailData.hpp"
@@ -42,6 +44,7 @@ class Model;
 class ModelObject;
 class ModelInstance;
 class Print;
+struct GCodeProcessorResult;
 class SLAPrint;
 enum PrintObjectStep : unsigned int;
 enum SLAPrintObjectStep : unsigned int;
@@ -123,7 +126,9 @@ public:
 #ifndef SLIC3R_SLA_ONLY
     std::vector<std::unique_ptr<Print>>& get_fff_prints();
 #endif
+#ifndef SLIC3R_SLA_ONLY
     const std::vector<GCodeProcessorResult>& get_gcode_results() const;
+#endif
 
     void new_project();
     void load_project();
@@ -132,11 +137,10 @@ public:
     void import_zip_archive();
     void import_sl1_archive();
     void extract_config_from_project();
-    void load_gcode();
-    void load_gcode(const wxString& filename);
-    void reload_gcode_from_disk();
+#ifndef SLIC3R_SLA_ONLY
     void convert_gcode_to_ascii();
     void convert_gcode_to_binary();
+#endif
     void reload_print();
     void object_list_changed();
     void generate_thumbnail(ThumbnailData& data, unsigned int w, unsigned int h, const ThumbnailsParams& thumbnail_params, Camera::EType camera_type);
@@ -237,14 +241,18 @@ public:
 
     void apply_cut_object_to_model(size_t init_obj_idx, const ModelObjectPtrs& cut_objects);
 
+#ifndef SLIC3R_SLA_ONLY
     void with_mocked_fff_background_process(
         Print &print,
         GCodeProcessorResult &result,
         const int bed_index,
         const std::function<void()> &callable
     );
+#endif
     void export_gcode(bool prefer_removable);
+#ifndef SLIC3R_SLA_ONLY
     void export_all_gcodes(bool prefer_removable);
+#endif
     void export_stl_obj(bool extended = false, bool selection_only = false);
     bool export_3mf(const boost::filesystem::path& output_path = boost::filesystem::path());
     void reload_from_disk();
@@ -275,7 +283,9 @@ public:
 
     std::optional<PrintHostJob> get_connect_print_host_job(bool multiple_beds);
     void connect_gcode();
+#ifndef SLIC3R_SLA_ONLY
     void connect_gcode_all();
+#endif
     void printables_to_connect_gcode(const std::string& url);
     std::string get_upload_filename();
 
@@ -393,8 +403,10 @@ public:
 
     void set_preview_layers_slider_values_range(int bottom, int top);
 
+#ifndef SLIC3R_SLA_ONLY
     void update_preview_moves_slider(std::optional<int> visible_range_min = std::nullopt, std::optional<int> visible_range_max = std::nullopt);
     void enable_preview_moves_slider(bool enable);
+#endif // SLIC3R_SLA_ONLY
 
 #ifndef SLIC3R_SLA_ONLY
     void reset_gcode_toolpaths();

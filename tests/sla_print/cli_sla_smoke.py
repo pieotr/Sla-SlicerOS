@@ -157,6 +157,19 @@ hollowing_enable = 0
     run('slice-unicode', ['--load', settings, '--sla-archive-format', 'genericzip', '--scale', '0.1',
         '--slice', '--output', unicode_directory, unicode_model])
     assert (unicode_directory / (unicode_model.stem+'.zip')).is_file()
+    # Regression: the final name differs from the requested one because the stem holds a
+    # print-statistics placeholder. The export must succeed, land at the finalized path and
+    # leave neither the unexpanded name nor a '.sla-export-*' temporary behind.
+    template_directory = output / 'template'
+    template_directory.mkdir(exist_ok=True)
+    template_output = template_directory / 'job-{int(0*objects_used_material)}.zip'
+    stdout = run('slice-finalized-name', ['--load', settings, '--sla-archive-format', 'genericzip', '--scale', '0.1',
+        '--slice', '--output', template_output, model])
+    assert 'Renaming file' not in stdout, stdout
+    leftovers = sorted(path.name for path in template_directory.iterdir())
+    assert leftovers == ['job-0.zip'], leftovers
+    assert (template_directory / 'job-0.zip').stat().st_size > 0
+    assert not list(template_directory.glob('.sla-export-*')) and not list(template_directory.glob('*sla-export*'))
     run('reject-output', ['--load', settings, '--sla-archive-format', 'uvj', '--scale', '0.1',
         '--slice', '--output', output / 'missing-parent/job.uvj', model], success=False)
     report = {'status': 'passed', 'checks': checks}

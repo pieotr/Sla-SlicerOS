@@ -4,6 +4,7 @@
 #include "ChituboxFormat.hpp"
 #include "ChituboxRasterEncoder.hpp"
 #include "libslic3r/SLA/LayerProgress.hpp"
+#include "libslic3r/SLA/NativeBytes.hpp"
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -17,7 +18,7 @@ struct ChituboxLayerLayout {
     struct Range {
         size_t begin, end;
     };
-    const std::vector<uint8_t> &bytes;
+    NativeBytes bytes;
     uint32_t magic, version, columns, rows, count, planes, seed, table, parameters;
     bool binary;
     std::vector<Range> metadata;
@@ -49,7 +50,7 @@ struct ChituboxLayerLayout {
         if (data < 84) throw RuntimeError("Truncated Chitubox extended layer record");
         return size_t(data) - 84;
     }
-    explicit ChituboxLayerLayout(const std::vector<uint8_t> &source, const std::function<void()> &check = {}) : bytes(source) {
+    explicit ChituboxLayerLayout(const NativeBytes &source, const std::function<void()> &check = {}) : bytes(source) {
         if(check)check();
         section(0, 112);
         magic = integer(0);
@@ -197,17 +198,18 @@ struct ChituboxLayerLayout {
         if (layer >= count) throw RuntimeError("Chitubox layer index outside the table");
         if (!binary) {
             const auto at=record(layer);const auto data=integer(at+12),length=integer(at+16);
-            std::vector<uint8_t> payload(bytes.begin()+data,bytes.begin()+data+length);
+            std::vector<uint8_t> payload=bytes.read(data,length);
             ctb_encrypted::xor_layer(payload,uint32_t(layer),seed,check);
             return chitubox::decode_gray7(payload,size_t(columns)*rows,check);
         }
         std::vector<uint8_t> output(size_t(columns)*rows,0);
         for (unsigned plane=0;plane<planes;++plane) {
             const auto at=record(layer,plane);const auto data=integer(at+12),length=integer(at+16);
-            size_t pixel=0,next_check=data;
-            for (size_t cursor=data;cursor<size_t(data)+length;++cursor) {
+            size_t pixel=0,next_check=0;
+            const auto payload=bytes.read(data,length);
+            for (size_t cursor=0;cursor<payload.size();++cursor) {
                 if (check && cursor>=next_check) {check();next_check=cursor+65536;}
-                const auto token=bytes[cursor];const unsigned run=token&127;
+                const auto token=payload[cursor];const unsigned run=token&127;
                 if (!run || run>output.size()-pixel) throw RuntimeError("Chitubox AA run exceeds raster dimensions");
                 if (token&128) for (size_t n=0;n<run;++n) ++output[pixel+n];
                 pixel+=run;

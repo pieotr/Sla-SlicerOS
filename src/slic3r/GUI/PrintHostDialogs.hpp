@@ -22,6 +22,7 @@ class wxButton;
 class wxTextCtrl;
 class wxChoice;
 class wxComboBox;
+class ComboBox;
 class wxDataViewListCtrl;
 
 namespace Slic3r {
@@ -40,8 +41,8 @@ public:
     virtual void EndModal(int ret) override;
 private:
     wxTextCtrl *txt_filename;
-    wxComboBox *combo_groups;
-    wxComboBox* combo_storage;
+    ComboBox *combo_groups;
+    ComboBox* combo_storage;
     PrintHostPostUploadAction post_upload_action;
     wxString    m_valid_suffix;
     wxString    m_preselected_storage;

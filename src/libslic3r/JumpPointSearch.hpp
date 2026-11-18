@@ -10,7 +10,9 @@
 
 #include "BoundingBox.hpp"
 #include "Polygon.hpp"
+#ifndef SLIC3R_SLA_ONLY
 #include "libslic3r/Layer.hpp"
+#endif // SLIC3R_SLA_ONLY
 #include "libslic3r/Point.hpp"
 #include "libslic3r/Polyline.hpp"
 #include "libslic3r/libslic3r.h"
@@ -36,7 +38,9 @@ public:
     void     init_bed_shape(const Points &bed_shape) { this->bed_shape = (to_lines(Polygon{bed_shape})); };
     void     clear();
     void     add_obstacles(const Lines &obstacles);
+#ifndef SLIC3R_SLA_ONLY
     void     add_obstacles(const Layer *layer, const Point &global_origin);
+#endif // SLIC3R_SLA_ONLY
     Polyline find_path(const Point &start, const Point &end);
 };
 

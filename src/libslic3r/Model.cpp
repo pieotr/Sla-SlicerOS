@@ -34,7 +34,6 @@
 
 #include "SVG.hpp"
 #include <Eigen/Dense>
-#include "libslic3r/GCode/GCodeWriter.hpp"
 
 namespace Slic3r {
 

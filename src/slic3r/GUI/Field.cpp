@@ -127,6 +127,8 @@ void Field::PostInitialize()
 
 	BUILD();
 
+	publish_accessible_name();
+
 	// For the mode, when settings are in non-modal dialog, neither dialog nor tabpanel doesn't receive wxEVT_KEY_UP event, when some field is selected.
 	// So, like a workaround check wxEVT_KEY_UP event for the Filed and switch between tabs if Ctrl+(1-4) was pressed
 	if (getWindow())
@@ -192,6 +194,32 @@ void Field::on_edit_value()
 {
 	if (m_fn_edit_value)
 		m_fn_edit_value(m_opt_id);
+}
+
+// Every option widget gets the option label as AT-SPI name (tooltip stays the description). Compound widgets
+// (TextInput/SpinInput/ComboBox wrap an inner wxTextCtrl) publish it on the inner text control too.
+static void publish_to_text_children(wxWindow* win, const wxString& name, const wxString& description)
+{
+	for (wxWindow* child : win->GetChildren()) {
+		if (dynamic_cast<wxTextCtrl*>(child))
+			set_accessible_name(child, name, description);
+		publish_to_text_children(child, name, description);
+	}
+}
+
+void Field::publish_accessible_name()
+{
+	wxWindow* win = getWindow();
+	if (!win)
+		return;
+	std::string label = !m_opt.full_label.empty() ? m_opt.full_label : m_opt.label;
+	if (label.empty())
+		label = m_opt_id;
+	const wxString name = from_u8(label);
+	// The description is left to GTK: it derives it from the widget tooltip (get_tooltip_text), which includes
+	// the "parameter name" line that GUI tests and screen readers rely on.
+	set_accessible_name(win, name);
+	publish_to_text_children(win, name, wxString());
 }
 
 wxString Field::get_tooltip_text(const wxString& default_string)
@@ -1036,6 +1064,15 @@ using choice_ctrl = wxComboBox;
 #endif // __WXOSX__
 #endif
 
+// Text shown in the combo for item i. Only real labels are translated; when the enum has no labels
+// the raw values are shown as-is. Every place that builds or compares item text must use this,
+// otherwise the displayed text and the text compared in get_value() diverge.
+static wxString choice_item_text(const ConfigOptionEnumDef& def, size_t i)
+{
+    const std::string& label = def.labels()[i];
+    return def.has_labels() ? _(from_u8(label)) : from_u8(label);
+}
+
 void Choice::BUILD() {
     wxSize size(def_width_wider() * m_em_unit, wxDefaultCoord);
     if (m_opt.height >= 0) size.SetHeight(m_opt.height*m_em_unit);
@@ -1075,9 +1112,8 @@ void Choice::BUILD() {
 
     if (m_opt.enum_def) {
         if (auto& labels = m_opt.enum_def->labels(); !labels.empty()) {
-            bool localized = m_opt.enum_def->has_labels();
-            for (const std::string& el : labels)
-                temp->Append(localized ? _(from_u8(el)) : from_u8(el));
+            for (size_t i = 0; i < labels.size(); ++i)
+                temp->Append(choice_item_text(*m_opt.enum_def, i));
             set_selection();
         }
 	}
@@ -1162,12 +1198,15 @@ void Choice::set_selection()
 
     choice_ctrl* field = dynamic_cast<choice_ctrl*>(window);
 	switch (m_opt.type) {
-	case coEnum:{
-        field->SetSelection(m_opt.default_value->getInt());
-		break;
-	}
-	case coEnums:{
-        field->SetSelection(m_opt.default_value->getInts()[m_opt_idx]);
+	case coEnum:
+	case coEnums: {
+        // The default is an enum value, not a combo index: map it, they differ for
+        // non-contiguous / reordered enums.
+        const int enum_val = m_opt.type == coEnum ? m_opt.default_value->getInt()
+                                                  : m_opt.default_value->getInts()[m_opt_idx];
+        if (m_opt.enum_def && enum_val >= 0)
+            if (auto idx = m_opt.enum_def->enum_to_index(enum_val); idx.has_value())
+                field->SetSelection(*idx);
 		break;
 	}
 	case coFloat:
@@ -1198,7 +1237,7 @@ void Choice::set_selection()
 	}
 
 	if (!text_value.IsEmpty()) {
-		if (auto opt = m_opt.enum_def->value_to_index(into_u8(text_value)); opt.has_value())
+		if (auto opt = m_opt.enum_def ? m_opt.enum_def->value_to_index(into_u8(text_value)) : std::nullopt; opt.has_value())
             // This enum has a value field of the same content as text_value. Select it.
             field->SetSelection(*opt);
         else
@@ -1210,11 +1249,11 @@ void Choice::set_value(const std::string& value, bool change_event)  //! Redunda
 {
 	m_disable_change_event = !change_event;
     choice_ctrl* field = dynamic_cast<choice_ctrl*>(window);
-    if (auto opt = m_opt.enum_def->value_to_index(value); opt.has_value())
+    if (auto opt = m_opt.enum_def ? m_opt.enum_def->value_to_index(value) : std::nullopt; opt.has_value())
         // This enum has a value field of the same content as text_value. Select it.
         field->SetSelection(*opt);
     else
-        field->SetValue(value);
+        field->SetValue(from_u8(value));
     m_disable_change_event = false;
 }
 
@@ -1263,7 +1302,9 @@ void Choice::set_value(const boost::any& value, bool change_event)
 	}
 	case coEnum:
 	case coEnums: {
-		auto val = m_opt.enum_def->enum_to_index(boost::any_cast<int>(value));
+		std::optional<int> val;
+		if (m_opt.enum_def)
+			val = m_opt.enum_def->enum_to_index(boost::any_cast<int>(value));
         assert(val.has_value());
 		field->SetSelection(val.has_value() ? *val : 0);
 		break;
@@ -1279,14 +1320,18 @@ void Choice::set_enum_values(std::vector<std::string> values, std::vector<std::s
 {
     // Repeated tab updates must not clear an open popup. Keep the stable value
     // mapping and displayed labels together, including unknown imported text.
-    if (m_opt.enum_def && m_opt.enum_def->values() == values && m_opt.enum_def->labels() == labels)
-        return;
-    m_opt.set_enum_values(std::move(values), std::move(labels));
-    m_disable_change_event = true;
-    auto *field = dynamic_cast<choice_ctrl*>(window);
-    field->Clear();
-    for (const auto &label : m_opt.enum_def->labels()) field->Append(_(label));
-    m_disable_change_event = false;
+    const bool unchanged = m_opt.enum_def && m_opt.enum_def->values() == values && m_opt.enum_def->labels() == labels;
+    if (!unchanged) {
+        m_opt.set_enum_values(std::move(values), std::move(labels));
+        m_disable_change_event = true;
+        auto *field = dynamic_cast<choice_ctrl*>(window);
+        field->Clear();
+        for (size_t i = 0; i < m_opt.enum_def->labels().size(); ++i)
+            field->Append(choice_item_text(*m_opt.enum_def, i));
+        m_disable_change_event = false;
+    }
+    // Always re-apply the requested selection (even when the list is unchanged), otherwise the
+    // combo keeps showing a stale value after a preset switch.
     set_value(boost::any(from_u8(selected)), false);
 }
 
@@ -1353,7 +1398,7 @@ boost::any& Choice::get_value()
         auto index = m_opt.enum_def->value_to_index(into_u8(ret_str));
         if (!index)
             for (size_t i = 0; i < m_opt.enum_def->labels().size(); ++i)
-                if (ret_str == _(from_u8(m_opt.enum_def->label(i)))) {
+                if (ret_str == choice_item_text(*m_opt.enum_def, i)) {
                     index = int(i);
                     break;
                 }
@@ -1366,7 +1411,7 @@ boost::any& Choice::get_value()
         // Open enum: The combo box item index returned by the field 
         const int ret_enum = field->GetSelection();
         if (ret_enum < 0 || ! m_opt.enum_def->has_values() || m_opt.type == coStrings ||
-            (into_u8(ret_str) != m_opt.enum_def->value(ret_enum) && ret_str != _(m_opt.enum_def->label(ret_enum))))
+            (into_u8(ret_str) != m_opt.enum_def->value(ret_enum) && ret_str != choice_item_text(*m_opt.enum_def, ret_enum)))
 			// modifies ret_string!
             get_value_by_opt_type(ret_str);
         else if (m_opt.type == coFloatOrPercent)

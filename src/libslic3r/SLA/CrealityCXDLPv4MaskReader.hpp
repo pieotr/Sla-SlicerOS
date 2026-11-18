@@ -14,14 +14,10 @@ inline png::ImageGreyscale cxdlpv4_layer_image(const CrealityCXDLPv4Layout &layo
 {
     if (checkpoint) checkpoint();
     const auto &layer=layout.layers.at(index);
-    const auto *payload=layout.bytes.data()+layer.data+44;
     const size_t length=layer.length-44;
-    std::vector<uint8_t> decrypted;
-    if(layout.seed) {
-        decrypted.assign(payload,payload+length);
-        CrealityCXDLPv4Archive::crypt_mask(decrypted,layout.seed,uint32_t(index));
-        payload=decrypted.data();
-    }
+    auto decrypted=layout.bytes.read(size_t(layer.data)+44,length);
+    if(layout.seed)CrealityCXDLPv4Archive::crypt_mask(decrypted,layout.seed,uint32_t(index));
+    const auto *payload=decrypted.data();
     png::ImageGreyscale image;
     image.cols=layout.columns;image.rows=layout.rows;
     image.buf=CrealityCXDLPv4Archive::decode_mask(payload,length,image.cols,image.rows);

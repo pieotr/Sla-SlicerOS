@@ -309,7 +309,7 @@ void HintDatabase::uninit()
 }
 void HintDatabase::init()
 {
-#ifdef SLIC3R_OFFLINE_ONLY
+#if defined(SLIC3R_OFFLINE_ONLY) || defined(SLIC3R_SLA_ONLY)
 	// Local SLA workflows only; the existing renderer omits documentation actions
 	// when the selected catalog has no links.
 	const char *catalog = "sla_hints.ini";

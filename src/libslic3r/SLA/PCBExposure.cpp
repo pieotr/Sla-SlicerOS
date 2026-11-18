@@ -109,6 +109,30 @@ Polygon outline(const Aperture &a, const Vec2d &p, double tolerance) {
   }
   return Polygon{std::move(points)};
 }
+// LM/LR/LS graphics state. Applied about the aperture origin in the order
+// mirror -> rotate -> scale (RS-274X 4.9), then the shape is moved to the
+// flash/draw point. Persistent until changed by the next LM/LR/LS command.
+struct ApertureTransform {
+  bool mirror_x = false, mirror_y = false;
+  double rotation_deg = 0., scale = 1.;
+  bool identity() const {
+    return !mirror_x && !mirror_y && rotation_deg == 0. && scale == 1.;
+  }
+};
+ExPolygons transform_shapes(ExPolygons shapes, const ApertureTransform &t) {
+  if (t.identity())
+    return shapes;
+  for (auto &shape : shapes) {
+    if (t.mirror_x || t.mirror_y)
+      shape.scale(t.mirror_x ? -1. : 1., t.mirror_y ? -1. : 1.);
+    if (t.rotation_deg != 0.)
+      shape.rotate(t.rotation_deg * pi / 180.);
+    if (t.scale != 1.)
+      shape.scale(t.scale, t.scale);
+  }
+  // Mirroring flips winding; a union restores canonical contour/hole winding.
+  return union_ex(shapes);
+}
 ExPolygons flash(const Aperture &a, const Vec2d &p, double tolerance) {
   if (a.shape == 'M') {
     auto geometry = a.macro_shape;
@@ -124,13 +148,35 @@ ExPolygons flash(const Aperture &a, const Vec2d &p, double tolerance) {
   }
   return {std::move(shape)};
 }
+ExPolygons flash(const Aperture &a, const Vec2d &p, double tolerance,
+                 const ApertureTransform &transform) {
+  if (transform.identity())
+    return flash(a, p, tolerance);
+  auto shapes = transform_shapes(flash(a, Vec2d{0., 0.}, tolerance), transform);
+  for (auto &shape : shapes)
+    shape.translate(point(p));
+  return shapes;
+}
 ExPolygons stroke(const Aperture &a, const Vec2d &from, const Vec2d &to,
-                  double tolerance) {
+                  double tolerance, const ApertureTransform &transform = {}) {
   if (a.shape == 'M')
     invalid("drawing with macro apertures is not supported; use flashes or "
             "regions");
   if (a.hole > 0.)
     invalid("drawing with holed apertures is not supported");
+  if (!transform.identity()) {
+    // Hull of the transformed aperture placed at both end points.
+    const auto base = transform_shapes(flash(a, Vec2d{0., 0.}, tolerance), transform);
+    Points points;
+    for (const auto &shape : base)
+      for (const Point &vertex : shape.contour.points) {
+        points.push_back(vertex + point(from));
+        points.push_back(vertex + point(to));
+      }
+    if (points.size() < 3)
+      invalid("transformed aperture has no area");
+    return {ExPolygon{Geometry::convex_hull(points)}};
+  }
   auto points = outline(a, from, tolerance).points;
   auto end = outline(a, to, tolerance).points;
   points.insert(points.end(), end.begin(), end.end());
@@ -531,6 +577,63 @@ std::vector<Vec2d> arc_points(Vec2d from, Vec2d to, Vec2d center,
   result.push_back(to);
   return result;
 }
+// Angle (rad, in (0, 2pi]) travelled from `from` to `to` around `center`.
+double arc_sweep(const Vec2d &from, const Vec2d &to, const Vec2d &center,
+                 bool clockwise) {
+  const double a0 = std::atan2(from.y() - center.y(), from.x() - center.x()),
+               a1 = std::atan2(to.y() - center.y(), to.x() - center.x());
+  double sweep = clockwise ? a0 - a1 : a1 - a0;
+  while (sweep <= 0.)
+    sweep += 2. * pi;
+  while (sweep > 2. * pi)
+    sweep -= 2. * pi;
+  return sweep;
+}
+// G74 single-quadrant mode: I/J are unsigned, so try the four sign
+// combinations and keep the centre that is equidistant from both end points
+// and yields an arc of at most 90 degrees in the requested direction.
+Vec2d single_quadrant_center(const Vec2d &from, const Vec2d &to, double i,
+                             double j, bool clockwise, double tolerance) {
+  bool found = false;
+  Vec2d best{0., 0.};
+  double best_error = 0.;
+  for (double sx : {-1., 1.})
+    for (double sy : {-1., 1.}) {
+      const Vec2d center = from + Vec2d{sx * i, sy * j};
+      const double radius = (from - center).norm(),
+                   error = std::abs(radius - (to - center).norm());
+      if (radius <= 0. || error > std::max(tolerance * 2., radius * .00001))
+        continue;
+      if (arc_sweep(from, to, center, clockwise) > pi * .5 + 1e-6)
+        continue;
+      if (!found || error < best_error) {
+        found = true;
+        best = center;
+        best_error = error;
+      }
+    }
+  if (!found)
+    invalid("G74 arc has no centre giving an arc of at most 90 degrees");
+  return best;
+}
+// Operations recorded between %SR..%/%SR*% or %ABDnn*%/%AB*%. Each keeps its
+// polarity so a block replays exactly like the original command sequence.
+struct BlockOp {
+  bool dark;
+  ExPolygons geometry;
+};
+struct BlockFrame {
+  bool aperture_block = false; // false: step-and-repeat
+  int aperture_code = 0;
+  unsigned repeat_x = 1, repeat_y = 1;
+  Vec2d step{0., 0.};
+  std::vector<BlockOp> ops;
+  // Graphics state restored when an aperture block closes.
+  bool saved_dark = true;
+  ApertureTransform saved_transform;
+  int saved_selected = 0;
+};
+constexpr size_t block_depth_limit = 16, repeat_limit = 100000;
 } // namespace
 PCBArtwork parse_gerber(const std::string &text, double tolerance,
                         const std::function<void()> &check_cancel) {
@@ -544,7 +647,28 @@ PCBArtwork parse_gerber(const std::string &text, double tolerance,
   Vec2d position{0., 0.};
   int selected = 0, modal = 2, interpolation = 1;
   bool region = false, ended = false, units = false, format = false,
-       multiquadrant = false;
+       dark = true;
+  enum class Quadrant { unset, single, multi } quadrant = Quadrant::unset;
+  ApertureTransform transform;
+  std::vector<BlockFrame> frames;
+  size_t recorded_vertices = 0;
+  // Route finished geometry to the innermost open SR/AB block, or the board.
+  auto emit_as = [&](bool polarity, ExPolygons geometry) {
+    if (frames.empty()) {
+      painter.polarity(polarity);
+      painter.draw(std::move(geometry));
+      return;
+    }
+    for (const auto &shape : geometry) {
+      recorded_vertices += shape.contour.points.size();
+      for (const auto &hole : shape.holes)
+        recorded_vertices += hole.points.size();
+    }
+    if (recorded_vertices > 12000000)
+      invalid("block geometry exceeds the 12 million vertex budget");
+    frames.back().ops.push_back({polarity, std::move(geometry)});
+  };
+  auto emit = [&](ExPolygons geometry) { emit_as(dark, std::move(geometry)); };
   Polygons contours;
   Points contour;
   size_t operations = 0;
@@ -583,6 +707,115 @@ PCBArtwork parse_gerber(const std::string &text, double tolerance,
       return;
     }
 
+    if (cmd.rfind("AB", 0) == 0) {
+      if (!extended || region || !units)
+        invalid("aperture block outside units declaration or inside a region");
+      if (cmd == "AB") {
+        // Close: render the block to its own image (own polarity) and store
+        // it as a flashable aperture. Outer graphics state is restored.
+        if (frames.empty() || !frames.back().aperture_block)
+          invalid("%AB*% without an open aperture block");
+        BlockFrame frame = std::move(frames.back());
+        frames.pop_back();
+        Painter block_painter;
+        for (auto &op : frame.ops) {
+          block_painter.polarity(op.dark);
+          block_painter.draw(std::move(op.geometry));
+        }
+        Aperture block;
+        block.shape = 'M';
+        block.macro_shape = block_painter.finish();
+        apertures.emplace(frame.aperture_code, std::move(block));
+        dark = frame.saved_dark;
+        transform = frame.saved_transform;
+        selected = frame.saved_selected;
+        return;
+      }
+      std::smatch match;
+      if (!std::regex_match(cmd, match, std::regex("ABD([0-9]+)")))
+        invalid("invalid aperture block command: " + cmd);
+      const int code = int(integer(match[1]));
+      if (code < 10 || apertures.count(code) || frames.size() >= block_depth_limit)
+        invalid("invalid or duplicate aperture block number, or nesting too deep");
+      for (const auto &open : frames)
+        if (open.aperture_block && open.aperture_code == code)
+          invalid("aperture block references itself");
+      BlockFrame frame;
+      frame.aperture_block = true;
+      frame.aperture_code = code;
+      frame.saved_dark = dark;
+      frame.saved_transform = transform;
+      frame.saved_selected = selected;
+      frames.push_back(std::move(frame));
+      // A block starts from the default graphics state.
+      dark = true;
+      transform = {};
+      return;
+    }
+    if (cmd.rfind("SR", 0) == 0) {
+      if (!extended || region || !units)
+        invalid("step-and-repeat outside units declaration or inside a region");
+      if (cmd == "SR") {
+        if (frames.empty() || frames.back().aperture_block)
+          invalid("%SR*% without an open step-and-repeat block");
+        BlockFrame frame = std::move(frames.back());
+        frames.pop_back();
+        for (unsigned row = 0; row < frame.repeat_y; ++row)
+          for (unsigned column = 0; column < frame.repeat_x; ++column) {
+            const Point shift =
+                point(Vec2d{column * frame.step.x(), row * frame.step.y()});
+            for (const auto &op : frame.ops) {
+              if (check_cancel)
+                check_cancel();
+              auto copy = op.geometry;
+              for (auto &shape : copy)
+                shape.translate(shift);
+              emit_as(op.dark, std::move(copy));
+            }
+          }
+        return;
+      }
+      for (const auto &open : frames)
+        if (!open.aperture_block)
+          invalid("nested step-and-repeat blocks are not allowed");
+      const auto sr = fields(cmd.substr(2));
+      if (sr.size() != 4 || !sr.count('X') || !sr.count('Y') || !sr.count('I') ||
+          !sr.count('J'))
+        invalid("step-and-repeat needs X, Y, I and J: " + cmd);
+      BlockFrame frame;
+      frame.repeat_x = integer(sr.at('X'));
+      frame.repeat_y = integer(sr.at('Y'));
+      if (frame.repeat_x < 1 || frame.repeat_y < 1 ||
+          size_t(frame.repeat_x) * frame.repeat_y > repeat_limit ||
+          frames.size() >= block_depth_limit)
+        invalid("step-and-repeat counts out of range");
+      frame.step = Vec2d{number(sr.at('I')) * coordinates.unit,
+                         number(sr.at('J')) * coordinates.unit};
+      bounded(frame.step.x());
+      bounded(frame.step.y());
+      frames.push_back(std::move(frame));
+      return;
+    }
+    if (cmd.rfind("LM", 0) == 0 || cmd.rfind("LR", 0) == 0 ||
+        cmd.rfind("LS", 0) == 0) {
+      if (region)
+        invalid("aperture transformation inside a region");
+      const std::string value = cmd.substr(2);
+      if (cmd[1] == 'M') {
+        if (value != "N" && value != "X" && value != "Y" && value != "XY")
+          invalid("invalid mirroring command: " + cmd);
+        transform.mirror_x = value.find('X') != std::string::npos;
+        transform.mirror_y = value.find('Y') != std::string::npos;
+      } else if (cmd[1] == 'R') {
+        transform.rotation_deg = number(value);
+        bounded(transform.rotation_deg);
+      } else {
+        transform.scale = number(value);
+        if (transform.scale <= 0. || transform.scale > 1000.)
+          invalid("aperture scale must be positive");
+      }
+      return;
+    }
     if (cmd.rfind("G04", 0) == 0 || cmd.rfind("G4", 0) == 0 ||
         cmd.rfind("TF", 0) == 0 || cmd.rfind("TA", 0) == 0 ||
         cmd.rfind("TO", 0) == 0 || cmd.rfind("TD", 0) == 0)
@@ -591,8 +824,12 @@ PCBArtwork parse_gerber(const std::string &text, double tolerance,
       std::smatch match;
       if (!std::regex_match(
               cmd, match,
-              std::regex("FS([LT])AX([1-6])([1-7])Y([1-6])([1-7])")))
-        invalid("only absolute FS coordinate formats are supported");
+              std::regex("FS([LT])AX([1-6])([1-7])Y([1-6])([1-7])"))) {
+        if (cmd.size() > 4 && cmd[3] == 'I')
+          invalid("incremental (relative) coordinates are not supported; "
+                  "export the Gerber with absolute coordinates (FSxA)");
+        invalid("unsupported FS coordinate format: " + cmd);
+      }
       coordinates.trailing = match[1] == "T";
       coordinates.xi = std::stoul(match[2]);
       coordinates.xf = std::stoul(match[3]);
@@ -609,7 +846,8 @@ PCBArtwork parse_gerber(const std::string &text, double tolerance,
     if (cmd == "LPD" || cmd == "LPC") {
       if (region)
         invalid("polarity change inside a region");
-      painter.polarity(cmd == "LPD");
+      dark = cmd == "LPD";
+      painter.polarity(dark);
       return;
     }
     if (cmd.rfind("ADD", 0) == 0) {
@@ -691,8 +929,13 @@ PCBArtwork parse_gerber(const std::string &text, double tolerance,
       cmd.erase(0, i);
       if (code == 1 || code == 2 || code == 3)
         interpolation = code;
+      else if (code == 74)
+        quadrant = Quadrant::single;
       else if (code == 75)
-        multiquadrant = true;
+        quadrant = Quadrant::multi;
+      else if (code == 91)
+        invalid("relative coordinates (G91) are not supported; export the "
+                "Gerber with absolute coordinates (G90)");
       else if (code == 90 || code == 54) {
       } else if (code == 70 || code == 71) {
         coordinates.unit = code == 70 ? 25.4 : 1.;
@@ -707,7 +950,7 @@ PCBArtwork parse_gerber(const std::string &text, double tolerance,
         if (!region)
           invalid("region end without start");
         finish_contour();
-        painter.draw(union_ex(contours, ClipperLib::pftEvenOdd));
+        emit(union_ex(contours, ClipperLib::pftEvenOdd));
         region = false;
       } else
         invalid("unsupported Gerber G command: " + std::to_string(code));
@@ -717,6 +960,8 @@ PCBArtwork parse_gerber(const std::string &text, double tolerance,
     if (cmd == "M02" || cmd == "M2") {
       if (region)
         invalid("unterminated region");
+      if (!frames.empty())
+        invalid("unterminated step-and-repeat or aperture block");
       ended = true;
       return;
     }
@@ -756,7 +1001,7 @@ PCBArtwork parse_gerber(const std::string &text, double tolerance,
     if (!region && !apertures.count(selected))
       invalid("draw without selected aperture");
     if (modal == 3)
-      painter.draw(flash(apertures.at(selected), target, tolerance));
+      emit(flash(apertures.at(selected), target, tolerance, transform));
     else {
       std::vector<Vec2d> path;
       if (interpolation == 1) {
@@ -764,15 +1009,25 @@ PCBArtwork parse_gerber(const std::string &text, double tolerance,
           invalid("arc offsets with linear interpolation");
         path.push_back(target);
       } else {
-        if (!multiquadrant)
-          invalid("declare G75 before circular interpolation");
+        if (quadrant == Quadrant::unset)
+          invalid("declare G74 or G75 before circular interpolation");
         Vec2d offset{0., 0.};
         if (tokens.count('I'))
           offset.x() = coordinates.read(tokens.at('I'), true);
         if (tokens.count('J'))
           offset.y() = coordinates.read(tokens.at('J'), false);
-        path = arc_points(position, target, position + offset,
-                          interpolation == 2, tolerance);
+        if (quadrant == Quadrant::multi)
+          path = arc_points(position, target, position + offset,
+                            interpolation == 2, tolerance);
+        else if (position == target)
+          path = {target}; // G74 has no full circles: a null arc.
+        else
+          path = arc_points(
+              position, target,
+              single_quadrant_center(position, target, std::abs(offset.x()),
+                                     std::abs(offset.y()), interpolation == 2,
+                                     tolerance),
+              interpolation == 2, tolerance);
       }
       if (region && contour.empty())
         contour.push_back(point(position));
@@ -781,7 +1036,7 @@ PCBArtwork parse_gerber(const std::string &text, double tolerance,
         if (region)
           contour.push_back(point(to));
         else
-          painter.draw(stroke(apertures.at(selected), from, to, tolerance));
+          emit(stroke(apertures.at(selected), from, to, tolerance, transform));
         from = to;
       }
     }
@@ -828,6 +1083,10 @@ void subtract_excellon(PCBArtwork &board, const std::string &text,
   std::map<int, double> tools;
   int selected = 0;
   Vec2d position{0., 0.};
+  // Excellon routing state: G00 enters rout mode (until G05), M15/M16 lower or
+  // raise the tool, and G01/G02/G03 choose the interpolation while it is down.
+  bool routing = false, tool_down = false;
+  int rout_code = 0;
   ExPolygons holes;
   size_t hole_vertices = 0;
   auto add_holes = [&](ExPolygons geometry) {
@@ -875,9 +1134,34 @@ void subtract_excellon(PCBArtwork &board, const std::string &text,
       ended = true;
       continue;
     }
-    if (line == "G90" || line == "G05" || line == "G5" || line == "FMAT,2" ||
-        line == "FMAT,1" || line == "VER,1")
+    if (line == "G05" || line == "G5") {
+      routing = tool_down = false; // back to drill mode
       continue;
+    }
+    if (line == "G91" || line.rfind("ICI,ON", 0) == 0)
+      invalid("incremental drill coordinates are not supported; export "
+              "absolute coordinates");
+    if (line == "G90" || line == "G40" || line.rfind("FMAT,", 0) == 0 ||
+        line.rfind("VER,", 0) == 0 || line.rfind("DETECT,", 0) == 0 ||
+        line.rfind("ATC,", 0) == 0 || line.rfind("ICI,OFF", 0) == 0)
+      continue;
+    if (line == "M71" || line == "M72") {
+      // Unit switch used instead of the METRIC/INCH header line by some CAMs.
+      const bool inches = line == "M72";
+      coordinates.unit = inches ? 25.4 : 1.;
+      units = true;
+      if (!explicit_format) {
+        coordinates.xi = coordinates.yi = inches ? 2 : 3;
+        coordinates.xf = coordinates.yf = inches ? 4 : 3;
+      }
+      continue;
+    }
+    if (line == "M15" || line == "M16" || line == "M17") {
+      if (!routing)
+        invalid("tool up/down command outside routing mode (missing G00)");
+      tool_down = line == "M15";
+      continue;
+    }
     if (line.rfind("METRIC", 0) == 0 || line.rfind("INCH", 0) == 0) {
       const bool inches = line.rfind("INCH", 0) == 0;
       coordinates.unit = inches ? 25.4 : 1.;
@@ -907,8 +1191,12 @@ void subtract_excellon(PCBArtwork &board, const std::string &text,
     }
     if (line[0] == 'T') {
       const auto tokens = fields(line);
-      if (!tokens.count('T') || tokens.size() > 2 ||
-          (tokens.size() == 2 && !tokens.count('C')))
+      // Besides C (diameter) a declaration may carry feed/speed/retract/hit
+      // count/depth parameters, which do not affect the exposed geometry.
+      for (const auto &field : tokens)
+        if (std::string("TCFSBHZ").find(field.first) == std::string::npos)
+          invalid("unsupported drill tool command: " + line);
+      if (!tokens.count('T') || (tokens.size() > 1 && !tokens.count('C')))
         invalid("unsupported drill tool command: " + line);
       const int tool = int(integer(tokens.at('T')));
       if (tool < 0 || tool > 999999)
@@ -931,7 +1219,98 @@ void subtract_excellon(PCBArtwork &board, const std::string &text,
       }
       continue;
     }
-    if (!units || header || !tools.count(selected))
+    if (!units || header)
+      invalid("drill hit without units or tool");
+    // Leading G codes select drill or routing modes; any M15/M16 suffix is
+    // applied after the move on the same line.
+    while (line.size() > 1 && line[0] == 'G' && line.find("G85") != 0) {
+      size_t digits = 1;
+      while (digits < line.size() && std::isdigit(static_cast<unsigned char>(line[digits])))
+        ++digits;
+      const int code = int(integer(line.substr(1, digits - 1)));
+      line.erase(0, digits);
+      if (code == 0 || code == 1 || code == 2 || code == 3) {
+        if (code != 0 && !routing)
+          invalid("G01/G02/G03 routing requires a preceding G00 rout move");
+        routing = true;
+        rout_code = code;
+        if (code == 0)
+          tool_down = false;
+      } else if (code == 5) {
+        routing = tool_down = false;
+      } else if (code != 90)
+        invalid("unsupported drill G command: " + std::to_string(code));
+    }
+    int after_move = 0; // 15 lowers, 16 raises the tool after the move
+    if (line.size() >= 3 && (line.compare(line.size() - 3, 3, "M15") == 0 ||
+                             line.compare(line.size() - 3, 3, "M16") == 0)) {
+      after_move = line[line.size() - 1] == '5' ? 15 : 16;
+      line.erase(line.size() - 3);
+      if (!routing)
+        invalid("tool up/down command outside routing mode (missing G00)");
+    }
+    if (line.empty()) {
+      if (after_move)
+        tool_down = after_move == 15;
+      continue;
+    }
+    if (routing && line.find("G85") == std::string::npos) {
+      const auto values = fields(line);
+      for (const auto &field : values)
+        if (std::string("XYIJA").find(field.first) == std::string::npos ||
+            (rout_code < 2 && std::string("IJA").find(field.first) != std::string::npos))
+          invalid("unsupported drill routing command: " + line);
+      Vec2d target = position;
+      if (values.count('X'))
+        target.x() = coordinates.read(values.at('X'), true);
+      if (values.count('Y'))
+        target.y() = coordinates.read(values.at('Y'), false);
+      if (tool_down && rout_code != 0) {
+        if (!tools.count(selected))
+          invalid("routing without a selected tool");
+        Aperture cutter;
+        cutter.width = tools.at(selected);
+        std::vector<Vec2d> path;
+        if (rout_code == 1) {
+          path.push_back(target);
+        } else {
+          const bool clockwise = rout_code == 2;
+          Vec2d center;
+          if (values.count('A')) {
+            // Radius form: the centre giving the smaller (<= 180 degree) arc.
+            const double radius = std::abs(coordinates.read(values.at('A'), true));
+            const Vec2d chord = target - position;
+            const double half = chord.norm() * .5;
+            if (half <= 0. || radius < half * (1. - 1e-6))
+              invalid("invalid routed arc radius");
+            const Vec2d middle = (position + target) * .5,
+                        normal = Vec2d{-chord.y(), chord.x()}.normalized();
+            const double offset = std::sqrt(std::max(0., radius * radius - half * half));
+            center = middle + normal * offset;
+            if (arc_sweep(position, target, center, clockwise) > pi + 1e-6)
+              center = middle - normal * offset;
+          } else {
+            Vec2d offset{0., 0.};
+            if (values.count('I'))
+              offset.x() = coordinates.read(values.at('I'), true);
+            if (values.count('J'))
+              offset.y() = coordinates.read(values.at('J'), false);
+            center = position + offset;
+          }
+          path = arc_points(position, target, center, clockwise, tolerance);
+        }
+        Vec2d from = position;
+        for (const auto &to : path) {
+          add_holes(stroke(cutter, from, to, tolerance));
+          from = to;
+        }
+      }
+      position = target;
+      if (after_move)
+        tool_down = after_move == 15;
+      continue;
+    }
+    if (!tools.count(selected))
       invalid("drill hit without units or tool");
     const auto slot = line.find("G85");
     if (slot != std::string::npos) {
@@ -974,16 +1353,17 @@ void subtract_excellon(PCBArtwork &board, const std::string &text,
   board.copper = std::move(result);
 }
 namespace {
-EncodedRaster rasterize_pcb_geometry(ExPolygons geometry,
-                                    const BoundingBox &reference_bounds,
-                                    const SLAPrinterConfig &printer,
-                                    const PCBPlacement &placement,
-                                    const std::function<void()> &check_cancel, bool invert) {
+// Mirrors, centers and offsets the artwork in physical LCD millimetres. Shared by
+// the final rasterizer and the preview so both show exactly the same placement.
+ExPolygons place_pcb_geometry(ExPolygons geometry, const BoundingBox &reference_bounds,
+                              const SLAPrinterConfig &printer, const PCBPlacement &placement) {
   for (double value :
        {placement.offset_x, placement.offset_y, placement.margin})
     bounded(value);
   if (placement.margin < 0.)
     invalid("margin cannot be negative");
+  if (!std::isfinite(placement.scale) || placement.scale < .1 || placement.scale > 10.)
+    invalid("size scale must be between 0.1 and 10");
   auto bounds = reference_bounds;
   const double width = printer.display_width.value,
                height = printer.display_height.value;
@@ -991,13 +1371,14 @@ EncodedRaster rasterize_pcb_geometry(ExPolygons geometry,
       height <= 0.)
     invalid("invalid printer display dimensions");
   const Vec2d size = unscaled(bounds.size());
-  if (size.x() + placement.margin * 2. > width ||
-      size.y() + placement.margin * 2. > height)
+  if (size.x() * placement.scale + placement.margin * 2. > width ||
+      size.y() * placement.scale + placement.margin * 2. > height)
     invalid("board does not fit the selected printer display");
   const Vec2d center = unscaled(bounds.min) + (size * .5);
   for (auto &polygon : geometry) {
     polygon.translate(point(-center));
-    polygon.scale(placement.mirror_x ? -1. : 1., placement.mirror_y ? -1. : 1.);
+    polygon.scale((placement.mirror_x ? -1. : 1.) * placement.scale,
+                  (placement.mirror_y ? -1. : 1.) * placement.scale);
     polygon.translate(point(center));
   }
   const Vec2d offset =
@@ -1012,6 +1393,18 @@ EncodedRaster rasterize_pcb_geometry(ExPolygons geometry,
       high.x() > width - placement.margin + 1e-6 ||
       high.y() > height - placement.margin + 1e-6)
     invalid("placement would clip the board at the LCD edge");
+  return geometry;
+}
+EncodedRaster rasterize_pcb_geometry(ExPolygons geometry,
+                                    const BoundingBox &reference_bounds,
+                                    const SLAPrinterConfig &requested_printer,
+                                    const PCBPlacement &placement,
+                                    const std::function<void()> &check_cancel, bool invert) {
+  geometry = place_pcb_geometry(std::move(geometry), reference_bounds, requested_printer, placement);
+  // Gamma 0 makes the AGG rasterizer threshold, i.e. disables anti-aliasing.
+  SLAPrinterConfig printer = requested_printer;
+  if (!placement.antialiasing)
+    printer.gamma_correction.value = 0.;
   auto raster = create_printer_raster(printer);
   for (const auto &polygon : geometry) {
     if (check_cancel)
@@ -1029,10 +1422,10 @@ EncodedRaster rasterize_pcb_geometry(ExPolygons geometry,
       : RasterEncoder(PNGRasterEncoder{});
   return raster->encode(encoder);
 }
-LayerDocument rasterize_pcb_layers_impl(const std::vector<PCBArtwork> &boards,
-                                   const SLAPrinterConfig &printer, bool merge,
-                                   const PCBPlacement &placement,
-                                   const std::function<void()> &check_cancel, bool invert) {
+// Validates the inputs and concatenates all copper; every file keeps the same
+// physical coordinates, so the combined bounds define the shared registration.
+ExPolygons combine_boards(const std::vector<PCBArtwork> &boards,
+                          const std::function<void()> &check_cancel) {
   if (boards.empty() || boards.size() > 1000)
     invalid("choose 1–1000 copper files");
   ExPolygons combined;
@@ -1047,6 +1440,13 @@ LayerDocument rasterize_pcb_layers_impl(const std::vector<PCBArtwork> &boards,
     if (vertices > 12000000) invalid("combined copper exceeds the geometry budget");
     combined.insert(combined.end(),board.copper.begin(),board.copper.end());
   }
+  return combined;
+}
+LayerDocument rasterize_pcb_layers_impl(const std::vector<PCBArtwork> &boards,
+                                   const SLAPrinterConfig &printer, bool merge,
+                                   const PCBPlacement &placement,
+                                   const std::function<void()> &check_cancel, bool invert) {
+  const ExPolygons combined = combine_boards(boards, check_cancel);
   const auto bounds = get_extents(combined);
   std::vector<EncodedRaster> masks;
   if (merge) {
@@ -1137,5 +1537,61 @@ std::unique_ptr<SLAPrint> create_pcb_exposure_job(
       generated_layer_ownership(config.opt_string("sla_archive_format"),
                                 FreshLayerProducer::PCB,
                                 config.option("sla_anycubic_version")?config.opt_string("sla_anycubic_version"):"auto"));
+}
+
+PCBPreview render_pcb_preview(const std::vector<PCBArtwork> &boards,
+                              const SLAPrinterConfig &printer, bool merge,
+                              const PCBPlacement &placement, bool invert,
+                              size_t max_dimension_px, size_t layer_index,
+                              const std::function<void()> &check_cancel) {
+  if (max_dimension_px < 16 || max_dimension_px > 4096)
+    invalid("preview size must be between 16 and 4096 px");
+  const ExPolygons combined = combine_boards(boards, check_cancel);
+  const auto bounds = get_extents(combined);
+  PCBPreview preview;
+  preview.layer_count = merge ? 1 : boards.size();
+  preview.shown_layer = merge ? 0 : std::min(layer_index, boards.size() - 1);
+  // Same LCD, fewer pixels: the pitch grows, so the physical placement is unchanged.
+  SLAPrinterConfig small = printer;
+  const double cols = std::max(1, printer.display_pixels_x.value),
+               rows = std::max(1, printer.display_pixels_y.value);
+  const double scale = std::min(1., double(max_dimension_px) / std::max(cols, rows));
+  small.display_pixels_x.value = std::max(1, int(std::lround(cols * scale)));
+  small.display_pixels_y.value = std::max(1, int(std::lround(rows * scale)));
+  small.gamma_correction.value = 1.;
+  ExPolygons shown = merge ? union_ex(combined) : boards[preview.shown_layer].copper;
+  const auto placed = place_pcb_geometry(std::move(shown), bounds, small, placement);
+  auto raster = create_printer_raster(small);
+  for (const auto &polygon : placed) {
+    if (check_cancel) check_cancel();
+    raster->draw(polygon);
+  }
+  raster->encode([&](const void *data, size_t width, size_t height, size_t) {
+    const auto *bytes = static_cast<const uint8_t *>(data);
+    preview.width_px = width;
+    preview.height_px = height;
+    preview.pixels.assign(bytes, bytes + width * height);
+    return EncodedRaster(std::vector<uint8_t>{0}, "raw");
+  });
+  if (invert)
+    for (auto &value : preview.pixels) value = uint8_t(255 - value);
+  return preview;
+}
+
+const std::vector<PCBExposureRecipe> &pcb_exposure_presets() {
+  // Starting points for 405 nm MSLA screens; real doses depend on the LED power,
+  // film and resist batch, so the dialog tells the user to run a step test first.
+  static const std::vector<PCBExposureRecipe> presets{
+      {"Dry film resist (negative)", 45., false,
+       "Photoresist film laminated on copper: light hardens the film, so copper tracks stay lit. "
+       "Typical 405 nm dose 30-90 s; develop in sodium carbonate, then etch."},
+      {"UV solder mask (negative)", 60., true,
+       "Solder mask is cured where it must stay, i.e. everywhere except pads: the copper layer is inverted. "
+       "Typical 405 nm dose 40-120 s; develop in the manufacturer's solvent, then post-cure."},
+      {"Positive photoresist board", 120., true,
+       "Presensitised positive board: light removes the resist, so lit areas must be the gaps between "
+       "copper (inverted polarity). Typical 405 nm dose 90-240 s; develop in NaOH solution."},
+  };
+  return presets;
 }
 } // namespace Slic3r::sla

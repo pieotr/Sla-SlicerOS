@@ -129,7 +129,7 @@ namespace instance_check_internal
 			return true;
 		std::wstring classNameString(className);
 		std::wstring wndTextString(wndText);
-		if (wndTextString.find(L"PrusaSlicer") != std::wstring::npos && classNameString == L"wxWindowNR") {
+		if (wndTextString.find(boost::nowide::widen(SLIC3R_APP_NAME)) != std::wstring::npos && classNameString == L"wxWindowNR") {
 			//check if other instances has same instance hash
 			//if not it is not same version(binary) as this version 
 			HANDLE   handle = GetProp(hwnd, L"Instance_Hash_Minor");
@@ -195,7 +195,7 @@ namespace instance_check_internal
 			return true;
 		std::wstring classNameString(className);
 		std::wstring wndTextString(wndText);
-		if (wndTextString.find(L"PrusaSlicer") != std::wstring::npos && classNameString == L"wxWindowNR") {
+		if (wndTextString.find(boost::nowide::widen(SLIC3R_APP_NAME)) != std::wstring::npos && classNameString == L"wxWindowNR") {
 			//check if other instances has same instance hash
 			//if not it is not same version(binary) as this version 
 			HANDLE   handle = GetProp(hwnd, L"Instance_Hash_Minor");
@@ -891,7 +891,7 @@ namespace InstanceCheckMessageHandlerDBusInternal
 	    dbus_message_unref(reply);
 	}
 
-	//method AnotherInstance receives message from another PrusaSlicer instance 
+	//method AnotherInstance receives message from another instance
 	static void handle_method_another_instance(DBusConnection *connection, DBusMessage *request)
 	{
 	    DBusError     err;
@@ -970,7 +970,7 @@ void OtherInstanceMessageHandler::listen_instance_check()
 	    return;
 	}
 	if (DBUS_REQUEST_NAME_REPLY_PRIMARY_OWNER != name_req_val) {
-		BOOST_LOG_TRIVIAL(error) << "Not primary owner of DBus name - probably another PrusaSlicer instance is running.";
+		BOOST_LOG_TRIVIAL(error) << "Not primary owner of DBus name - probably another " SLIC3R_APP_NAME " instance is running.";
 	    BOOST_LOG_TRIVIAL(error) << "Dbus Messages listening terminating.";
 	    dbus_connection_unref(conn);
 	    return;
@@ -1046,7 +1046,7 @@ namespace MulticastMessageHandlerDBusInternal
 	    dbus_message_unref(reply);
 	}
 
-	//method Message receives message from another PrusaSlicer instance 
+	//method Message receives message from another instance
 	static void handle_method_message(DBusConnection *connection, DBusMessage *request)
 	{
 		BOOST_LOG_TRIVIAL(debug) << __FUNCTION__;
@@ -1121,7 +1121,7 @@ void OtherInstanceMessageHandler::listen_multicast()
 	    return;
 	}
 	if (DBUS_REQUEST_NAME_REPLY_PRIMARY_OWNER != name_req_val) {
-		BOOST_LOG_TRIVIAL(error) << "listen_multicast: Not primary owner of DBus name - probably another PrusaSlicer instance is running.";
+		BOOST_LOG_TRIVIAL(error) << "listen_multicast: Not primary owner of DBus name - probably another " SLIC3R_APP_NAME " instance is running.";
 	    BOOST_LOG_TRIVIAL(error) << "listen_multicast: Dbus Messages listening terminating.";
 	    dbus_connection_unref(conn);
 	    return;

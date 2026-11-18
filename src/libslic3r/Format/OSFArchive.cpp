@@ -1,4 +1,5 @@
 // Native Vlare OSF v4, based on the OSFFile schema in UVtools (AGPLv3).
+#include "HeaderMirror.hpp"
 #include "UVToolsCompatArchive.hpp"
 #include "libslic3r/SLA/LayerDocument.hpp"
 #include "libslic3r/SLA/PrintParameters.hpp"
@@ -158,7 +159,7 @@ void UVToolsOSFArchive::export_print(const std::string filename,
   settings.put(columns, 2);
   settings.put(rows, 2);
   settings.put(pitch, 2);
-  settings.put(0, 1); // Canonical masks already contain printer mirroring.
+  settings.put(resolve_header_mirror(m_cfg, false, false).bits(), 1); // auto: 0, canonical masks already contain printer mirroring.
   settings.put(scaled(parameter("light_pwm", true), 1, 255, "bottom PWM"), 1);
   settings.put(scaled(parameter("light_pwm", false), 1, 255, "normal PWM"), 1);
   settings.put(1, 1);

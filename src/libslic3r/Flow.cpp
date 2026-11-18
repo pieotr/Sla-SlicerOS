@@ -15,7 +15,9 @@
 #include <cmath>
 
 #include "I18N.hpp"
+#ifndef SLIC3R_SLA_ONLY
 #include "Print.hpp"
+#endif // SLIC3R_SLA_ONLY
 #include "libslic3r/Config.hpp"
 #include "libslic3r/Exception.hpp"
 #include "libslic3r/PrintConfig.hpp"
@@ -230,6 +232,7 @@ double Flow::mm3_per_mm() const
     return res;
 }
 
+#ifndef SLIC3R_SLA_ONLY
 static float min_nozzle_diameter(const PrintObject &print_object)
 {
     const ConfigOptionFloats &nozzle_diameters    = print_object.print()->config().nozzle_diameter;
@@ -290,5 +293,6 @@ Flow support_material_interface_flow(const PrintObject *object, float layer_heig
         nozzle_diameter,
         (layer_height > 0.f) ? layer_height : float(object->config().layer_height.value));
 }
+#endif // SLIC3R_SLA_ONLY
 
 }

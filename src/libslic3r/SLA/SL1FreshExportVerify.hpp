@@ -19,6 +19,44 @@ namespace Slic3r::sla {
 // schedule, so private project metadata cannot stand in for executable rows.
 // Only the export implementation may select encoded equality after its
 // private owned-document gate. No public "already validated" switch exists.
+namespace sl1_fresh_verify_detail {
+// Compare every exported layer against the source in parallel (bounded workers,
+// no batch barriers; see for_each_streaming).
+// Tamper detection is unchanged: every layer of the OUTPUT is fully decoded
+// (all chunk CRCs, IEND, dimensions) and compared pixel-exact with the source.
+// Speed-up: when the output PNG bytes equal the source PNG bytes (the normal
+// SL1 case, whose writer copies the document's PNGs verbatim) identical bytes
+// decode to identical pixels, so the source is not inflated a second time.
+// Any byte difference falls back to decoding both and comparing pixels.
+// RAM budget: <= 25% of physical RAM (cap 6 GiB) at ~6 bytes/pixel/worker
+// (two Gray8 images + inflate scratch in the fallback path).
+inline void verify_layer_pixels(const LayerDocument &decoded, const LayerDocument &source,
+    const LayerRasterGeometry &geometry, size_t count, const std::function<void()> &checkpoint,
+    size_t workers = 0)
+{
+    const auto check = [&] { if (checkpoint) checkpoint(); };
+    const auto fail = [](const char *what) { throw RuntimeError(std::string("SL1 export verification failed: ")+what); };
+    if (!workers)
+        workers = memory_bounded_workers(uint64_t(geometry.columns) * geometry.rows * 6, count);
+    for_each_streaming(count, workers,
+        [&](size_t i) {
+            const auto actual_png = decoded.encoded_layer(i), expected_png = source.encoded_layer(i);
+            // Header preflight before any allocation (forged dimensions).
+            sl1_fresh_detail::require_mask_dimensions(actual_png, geometry.columns, geometry.rows);
+            const auto actual = decoded.image(i);
+            if (actual.cols != geometry.columns || actual.rows != geometry.rows) fail("pixels");
+            if (actual_png.sz == expected_png.sz &&
+                std::memcmp(actual_png.buf, expected_png.buf, actual_png.sz) == 0)
+                return;
+            const auto expected = source.image(i);
+            if (actual.cols != expected.cols || actual.rows != expected.rows || actual.buf != expected.buf)
+                fail("pixels");
+        },
+        [&](size_t) { check(); });
+    check();
+}
+} // namespace sl1_fresh_verify_detail
+
 class SL1FreshArchiveVerifier {
     friend class ::Slic3r::SLAPrint;
     static void verify(const std::string &path,
@@ -123,12 +161,14 @@ class SL1FreshArchiveVerifier {
              (metadata.at(key).is_string() && metadata.at(key).get<std::string>()==config.at(key))),"config.json");
     const auto decoded=LayerDocument::load_archive(path, [&](size_t,size_t) {check();return true;});
     require(decoded.layer_count()==plan.rows.size(),"layer count");
-    for (size_t i=0;i<plan.rows.size();++i) {
-        check();
-        if (compare_encoded) {
-            // The complete planner decoded/CRC-checked this exact immutable
-            // owned source. Equality includes every PNG byte, so it also
-            // proves dimensions/pixels while preserving ZIP readback above.
+    if (compare_encoded) {
+        // The complete planner decoded/CRC-checked this exact immutable
+        // owned source. Equality includes every PNG byte, so it also
+        // proves dimensions/pixels while preserving ZIP readback above.
+        // Read the trace switch once, not once per 1 MiB chunk.
+        const bool trace = std::getenv("SLA_TRACE_EXPORT_STAGES") != nullptr;
+        for (size_t i=0;i<plan.rows.size();++i) {
+            check();
             const auto actual = decoded.encoded_layer(i), expected = source.encoded_layer(i);
             require(actual.sz == expected.sz, "PNG bytes");
             const auto *actual_bytes = static_cast<const uint8_t *>(actual.buf);
@@ -139,17 +179,14 @@ class SL1FreshArchiveVerifier {
                 const size_t length = std::min(chunk_size, expected.sz - offset);
                 require(std::memcmp(actual_bytes + offset, expected_bytes + offset, length) == 0, "PNG bytes");
                 offset += length;
-                if (std::getenv("SLA_TRACE_EXPORT_STAGES"))
+                if (trace)
                     BOOST_LOG_TRIVIAL(info) << "SL1 encoded readback chunk: layer=" << i
                         << "; bytes=" << offset << "/" << expected.sz;
                 check();
             }
-        } else {
-            const auto actual=decoded.image(i), expected=source.image(i);
-            require(actual.cols==plan.geometry.columns && actual.rows==plan.geometry.rows &&
-                actual.cols==expected.cols && actual.rows==expected.rows && actual.buf==expected.buf,"pixels");
         }
-    }
+    } else
+        sl1_fresh_verify_detail::verify_layer_pixels(decoded, source, plan.geometry, plan.rows.size(), check);
     check();
 }
 };

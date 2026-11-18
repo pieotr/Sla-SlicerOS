@@ -3,6 +3,7 @@
 #define slic3r_GUI_LayerRangeSlider_hpp_
 
 #include "LayerRangeSelection.hpp"
+#include "GUI_Utils.hpp"
 #include <wx/control.h>
 #include <wx/dcbuffer.h>
 #include <wx/settings.h>
@@ -64,6 +65,7 @@ public:
             if (steps) { m_selection.step_handle(m_active, steps); defer_keys(); }
         });
         Bind(wxEVT_TIMER, [this](wxTimerEvent &) { commit_keys(); }, m_key_timer.GetId());
+        publish_accessible();
     }
     ~LayerRangeSlider() override
     {
@@ -74,6 +76,7 @@ public:
     void set_selection(const LayerRangeSelection &selection)
     {
         m_selection = selection;
+        publish_accessible();
         Refresh(false);
     }
 
@@ -89,8 +92,18 @@ private:
     int margin() const { return FromDIP(22); }
     int travel() const { return std::max(1, GetClientSize().y - 2 * margin()); }
     int y(int layer) const { return margin() + layer_range_offset(layer, m_selection.count(), travel()); }
+    // Custom-drawn: expose role slider, a name and the current layer(s) as description to assistive technologies.
+    void publish_accessible()
+    {
+        const wxString value = m_selection.range_mode() ?
+            wxString::Format("Layers %d to %d of %d, active handle %s", m_selection.first(), m_selection.last(),
+                             m_selection.count(), m_active == LayerRangeHandle::First ? "first" : "last") :
+            wxString::Format("Layer %d of %d", m_selection.current(), m_selection.count());
+        set_accessible_name(this, "Layer range slider", value, AccessibleRole::Slider);
+    }
     void notify(bool committed)
     {
+        publish_accessible();
         Refresh(false);
         if (m_changed) m_changed(m_selection, committed);
     }
@@ -132,8 +145,8 @@ private:
             return;
         }
         switch (event.GetKeyCode()) {
-        case WXK_LEFT: m_active = LayerRangeHandle::First; Refresh(false); return;
-        case WXK_RIGHT: m_active = LayerRangeHandle::Last; Refresh(false); return;
+        case WXK_LEFT: m_active = LayerRangeHandle::First; publish_accessible(); Refresh(false); return;
+        case WXK_RIGHT: m_active = LayerRangeHandle::Last; publish_accessible(); Refresh(false); return;
         case WXK_UP: m_selection.step_handle(m_active, 1); break;
         case WXK_DOWN: m_selection.step_handle(m_active, -1); break;
         case WXK_PAGEUP: m_selection.step_handle(m_active, 10); break;

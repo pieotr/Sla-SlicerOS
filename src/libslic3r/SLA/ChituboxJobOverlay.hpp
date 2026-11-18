@@ -13,17 +13,17 @@ void apply_chitubox_container_baseline(const LayerJobParameters &job, size_t lay
 
 // These writes change typed global defaults only. Raster pointers, statistics,
 // opaque metadata, signatures and the per-layer table retain their ownership.
-inline void job_u32(std::vector<uint8_t> &bytes, size_t at, uint32_t value)
+template<class Bytes> inline void job_u32(Bytes &&bytes, size_t at, uint32_t value)
 {
     for (unsigned i = 0; i < 4; ++i) bytes.at(at + i) = uint8_t(value >> (8 * i));
 }
-inline void job_float(std::vector<uint8_t> &bytes, size_t at, double value)
+template<class Bytes> inline void job_float(Bytes &&bytes, size_t at, double value)
 {
     const float native = float(value);
     if (!std::isfinite(native)) throw RuntimeError("Native global float overflow");
     uint32_t bits; std::memcpy(&bits, &native, sizeof(bits)); job_u32(bytes, at, bits);
 }
-inline void job_pwm(std::vector<uint8_t> &bytes, size_t at, double value)
+template<class Bytes> inline void job_pwm(Bytes &&bytes, size_t at, double value)
 {
     const auto native = uint16_t(value);
     bytes.at(at) = uint8_t(native); bytes.at(at + 1) = uint8_t(native >> 8);
@@ -51,7 +51,7 @@ inline void overlay_encrypted_job(std::vector<uint8_t> &settings, const LayerJob
     // AES v4 and v5 both use the 0x40 enabled-table mode in UVtools.
     settings.at(171) = 0x40;
 }
-inline void overlay_chitubox_job(std::vector<uint8_t> &bytes, const ChituboxLayerLayout &layout,
+template<class Bytes> inline void overlay_chitubox_job(Bytes &&bytes, const ChituboxLayerLayout &layout,
                                 const LayerJobParameters &job)
 {
     using F = LayerParameter;
@@ -73,7 +73,7 @@ inline void overlay_chitubox_job(std::vector<uint8_t> &bytes, const ChituboxLaye
         }
         job_float(bytes, params + 16, job.normal.at(F::RetractSpeed));
         job_float(bytes, 44, job.normal.at(F::LightOff));
-        bytes.at(slicer + 39) = 0x30;
+        bytes.at(slicer + 39) = uint8_t(0x30);
         return;
     }
     const size_t v4 = layout.integer(slicer + 64);

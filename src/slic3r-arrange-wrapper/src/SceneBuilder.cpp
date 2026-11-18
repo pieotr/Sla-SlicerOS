@@ -13,7 +13,9 @@
 
 #include <libslic3r/Model.hpp>
 #include <libslic3r/MultipleBeds.hpp>
+#ifndef SLIC3R_SLA_ONLY
 #include <libslic3r/Print.hpp>
+#endif // SLIC3R_SLA_ONLY
 #include <libslic3r/SLAPrint.hpp>
 #include <libslic3r/Geometry/ConvexHull.hpp>
 #include <libslic3r/ClipperUtils.hpp>
@@ -31,6 +33,7 @@
 
 namespace Slic3r { namespace arr2 {
 
+#ifndef SLIC3R_SLA_ONLY
 coord_t get_skirt_inset(const Print &fffprint)
 {
     float skirt_inset = 0.f;
@@ -57,6 +60,7 @@ coord_t brim_offset(const PrintObject &po)
     // How wide is the brim? (in scaled units)
     return has_outer_brim ? scaled(brim_width + brim_separation) : 0;
 }
+#endif // SLIC3R_SLA_ONLY
 
 size_t model_instance_count (const Model &m)
 {
@@ -165,6 +169,7 @@ inline static bool is_infinite_bed(const ExtendedBed &ebed) noexcept
     return ret;
 }
 
+#ifndef SLIC3R_SLA_ONLY
 void SceneBuilder::set_brim_and_skirt()
 {
     if (!m_fff_print)
@@ -180,9 +185,17 @@ void SceneBuilder::set_brim_and_skirt()
 
     m_skirt_offs = get_skirt_inset(*m_fff_print);
 }
+#endif // SLIC3R_SLA_ONLY
 
 void SceneBuilder::build_scene(Scene &sc) &&
 {
+#ifdef SLIC3R_SLA_ONLY
+    if (m_sla_print) {
+        m_arrangeable_model = std::make_unique<ArrangeableSLAPrint>(m_sla_print.get(), *this);
+    } else {
+        m_arrangeable_model = std::make_unique<ArrangeableSlicerModel>(*this);
+    }
+#else
     if (m_sla_print && !m_fff_print) {
         m_arrangeable_model = std::make_unique<ArrangeableSLAPrint>(m_sla_print.get(), *this);
     } else {
@@ -196,6 +209,7 @@ void SceneBuilder::build_scene(Scene &sc) &&
             set_brim_and_skirt();
         }
     }
+#endif
 
     // Call the parent class implementation of build_scene to finish constructing of the scene
     std::move(*this).SceneBuilderBase<SceneBuilder>::build_scene(sc);
@@ -213,8 +227,10 @@ void SceneBuilder::build_arrangeable_slicer_model(ArrangeableSlicerModel &amodel
         m_vbed_handler = VirtualBedHandler::create(m_bed);
     }
 
+#ifndef SLIC3R_SLA_ONLY
     if (m_fff_print && !m_xl_printer)
         m_xl_printer = is_XL_printer(m_fff_print->config());
+#endif // SLIC3R_SLA_ONLY
 
     const bool has_wipe_tower{std::any_of(
         m_wipetower_handlers.begin(),
@@ -444,11 +460,13 @@ SceneBuilder &&SceneBuilder::set_model(Model &mdl)
     return std::move(*this);
 }
 
+#ifndef SLIC3R_SLA_ONLY
 SceneBuilder &&SceneBuilder::set_fff_print(AnyPtr<const Print> mdl_print)
 {
     m_fff_print = std::move(mdl_print);
     return std::move(*this);
 }
+#endif // SLIC3R_SLA_ONLY
 
 SceneBuilder &&SceneBuilder::set_sla_print(AnyPtr<const SLAPrint> mdl_print)
 {
@@ -470,6 +488,7 @@ SceneBuilder &&SceneBuilder::set_bed(const DynamicPrintConfig &cfg, const Vec2cr
     return std::move(*this);
 }
 
+#ifndef SLIC3R_SLA_ONLY
 SceneBuilder &&SceneBuilder::set_bed(const Print &print, const Vec2crd &gap)
 {
     Points bedpts = get_bed_shape(print.config());
@@ -484,6 +503,7 @@ SceneBuilder &&SceneBuilder::set_bed(const Print &print, const Vec2crd &gap)
 
     return std::move(*this);
 }
+#endif // SLIC3R_SLA_ONLY
 
 SceneBuilder &&SceneBuilder::set_sla_print(const SLAPrint *slaprint)
 {

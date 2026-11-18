@@ -18,7 +18,6 @@
 #include "libslic3r/libslic3r.h"
 #include "libslic3r/Exception.hpp"
 #include "libslic3r/Model.hpp"
-#include "libslic3r/GCode.hpp"
 #include "libslic3r/PrintConfig.hpp"
 #include "libslic3r/Utils.hpp"
 #include "libslic3r/I18N.hpp"

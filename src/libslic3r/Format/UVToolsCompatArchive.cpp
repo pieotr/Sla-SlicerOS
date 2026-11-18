@@ -1,3 +1,4 @@
+#include "HeaderMirror.hpp"
 #include "libslic3r/SLA/PrinterRaster.hpp"
 #include "libslic3r/SLA/ColorMask.hpp"
 ///|/ Copyright (c) Prusa Research 2026
@@ -33,6 +34,7 @@
 #include "libslic3r/PrintConfig.hpp"
 #include "libslic3r/SLAPrint.hpp"
 #include "libslic3r/SLA/PrintParameters.hpp"
+#include "libslic3r/SLA/RepresentationAdjustment.hpp"
 #include "libslic3r/SLA/RasterBase.hpp"
 #include "libslic3r/Zipper.hpp"
 
@@ -322,7 +324,8 @@ void UVToolsCWSArchive::export_print_impl(const std::string &fname, const SLAPri
     header("Platform X Size", dims.display_width_mm); header("Platform Y Size", dims.display_height_mm);
     header("Platform Z Size", m_cfg.max_print_height.value);
     header("Layer Light PWM", parameter("light_pwm")); header("Bottom Layer Light PWM", parameter("light_pwm", true));
-    header("Flip X", "False"); header("Flip Y", "False"); // Masks already have the printer transform.
+    const auto flip = resolve_header_mirror(m_cfg, false, false);
+    header("Flip X", flip.x ? "True" : "False"); header("Flip Y", flip.y ? "True" : "False"); // Masks already have the printer transform.
     if(!fresh) {
     commands << ";Number of Slices = " << count << "\nG21\nG91\nM17\nM106 S0\n;<Slice> Blank\nG28 Z\nM400\n";
     double previous_z = 0;
@@ -431,6 +434,13 @@ void UVToolsCXDLPArchive::export_print(const std::string fname, const SLAPrint &
     const uint16_t version=m_cfg.sla_archive_format.value=="cxdlpv2"?2:3;
     const auto dimensions=get_display_dimensions(m_cfg);
     const auto &material=print.material_config();
+    {
+        // Every setting this container cannot store exactly, in one message. The GUI shows the
+        // adjustable ones in a confirmation and writes them through an approved configuration.
+        DynamicPrintConfig effective;effective.apply(material);effective.apply(m_cfg);
+        const auto representation=sla::plan_representation(m_cfg.sla_archive_format.value,effective);
+        if(!representation.empty()) throw ExportError(representation.strict_message("CXDLP v2/v3"));
+    }
     const size_t count=m_layers.size();
     if(!count || count>UINT16_MAX || count!=print.print_layers().size() ||
        !dimensions.resolution_x || !dimensions.resolution_y || dimensions.resolution_x>16384 || dimensions.resolution_y>8192)
@@ -447,7 +457,7 @@ void UVToolsCXDLPArchive::export_print(const std::string fname, const SLAPrint &
     auto parameter=[&](const char *key,bool bottom=false){return double(sla::motion_parameter(print,key,bottom));};
     auto integer=[](double value,const char *name,bool positive=false) {
         if(!std::isfinite(value) || value<(positive?1.:0.) || value>UINT16_MAX || std::abs(value-std::round(value))>1e-6)
-            throw ExportError(std::string("CXDLP v2/v3 requires a ")+(positive?"positive ":"")+"16-bit integer for "+name);
+            throw ExportError(std::string("CXDLP v2/v3 stores ")+name+" as a "+(positive?"positive ":"")+"whole number up to 65535, but the job has "+std::to_string(value)+". Change it in the material settings (Printer/Material Settings), then export again.");
         return uint16_t(std::llround(value));
     };
     if(parameter("wait_before_cure")!=parameter("wait_before_cure",true))
@@ -559,7 +569,8 @@ void UVToolsChituboxZIPArchive::export_print(const std::string fname, const SLAP
     header("layerHeight",print.default_object_config().layer_height.value);
     header("resolutionX",screen.resolution_x); header("resolutionY",screen.resolution_y);
     header("machineX",screen.display_width_mm); header("machineY",screen.display_height_mm);
-    header("machineZ",m_cfg.max_print_height.value); header("projectType","Normal"); header("mirror",0);
+    header("machineZ",m_cfg.max_print_height.value); const bool lcd_mirror=resolve_header_mirror(m_cfg,false,false).any();
+    header("projectType",lcd_mirror?"LCD_mirror":"Normal"); header("mirror",lcd_mirror?1:0);
     header("normalExposureTime",material.exposure_time.value);
     header("bottomLayExposureTime",material.initial_exposure_time.value); header("bottomLayerExposureTime",material.initial_exposure_time.value);
     header("bottomLayCount",bottom); header("bottomLayerCount",bottom); header("totalLayer",count);
@@ -759,93 +770,90 @@ std::unique_ptr<sla::RasterBase> UVToolsPackedPixelBase::create_raster() const
     return make_common_raster(m_cfg);
 }
 
-// GOO RLE Encoder - encodes grayscale image to RLE compression
-// Based on UVtools format
+// GOO RLE encoder, wire format per UVtools GooFile.cs (EncodeImage/DecodeImage).
+//
+// The longest run a single chunk can carry is 28 bits (0xFFFFFFF pixels).
+constexpr uint32_t goo_max_chunk_run = 0xFFFFFFFu;
+
+// Appends one chunk. `stride` must be in [1, goo_max_chunk_run]. `previous` is
+// the colour the decoder currently holds, which difference chunks are relative to.
+static void goo_append_chunk(std::vector<uint8_t> &rle, uint8_t current, uint8_t previous, uint32_t stride)
+{
+    const size_t first = rle.size();
+    rle.push_back(0);
+
+    const uint8_t diff = current > previous ? uint8_t(current - previous) : uint8_t(previous - current);
+    if (diff <= 0x0F && stride <= 0xFF && current > 0 && current < 0xFF) {
+        // Difference chunk: 0b10, bit5 = negative, bit4 = explicit run byte follows.
+        rle[first] = uint8_t(0x80 | diff);
+        if (stride > 1) {
+            rle[first] |= 0x10;
+            rle.push_back(uint8_t(stride));
+        }
+        if (current < previous) rle[first] |= 0x20;
+        return;
+    }
+
+    // Plain chunk: 0b00 black, 0b01 gray (value byte follows), 0b11 white.
+    if (current == 0xFF) {
+        rle[first] = 0xC0;
+    } else if (current > 0) {
+        rle[first] = 0x40;
+        rle.push_back(current);
+    }
+    rle[first] |= uint8_t(stride & 0x0F);
+    // Bits 5:4 select how many extra length bytes (8 bits each) follow.
+    if (stride <= 0x0F) return;
+    if (stride <= 0xFFF) {
+        rle[first] |= 0x10;
+        rle.push_back(uint8_t(stride >> 4));
+    } else if (stride <= 0xFFFFF) {
+        rle[first] |= 0x20;
+        rle.push_back(uint8_t(stride >> 12));
+        rle.push_back(uint8_t(stride >> 4));
+    } else {
+        rle[first] |= 0x30;
+        rle.push_back(uint8_t(stride >> 20));
+        rle.push_back(uint8_t(stride >> 12));
+        rle.push_back(uint8_t(stride >> 4));
+    }
+}
+
+// Appends a run of any length, splitting it into valid chunks. Without the
+// split, a run over 28 bits would silently lose its high bits.
+void goo_append_run(std::vector<uint8_t> &rle, uint8_t current, uint8_t previous, uint64_t run)
+{
+    while (run > 0) {
+        const uint32_t part = uint32_t(std::min<uint64_t>(run, goo_max_chunk_run));
+        goo_append_chunk(rle, current, previous, part);
+        run -= part;
+        // The decoder now holds `current`, so a continuation chunk has zero difference.
+        previous = current;
+    }
+}
+
 std::vector<uint8_t> encode_goo_rle(const uint8_t* src, size_t pixel_count)
 {
     std::vector<uint8_t> rle;
     rle.push_back(0x55);  // Layer magic
-    
+
     uint8_t previous_color = 0;
     uint8_t current_color = 0;
-    uint32_t stride = 0;
-
-    auto add_rep = [&rle, &current_color, &previous_color, &stride]() {
-        if (stride == 0) return;
-        
-        size_t first_byte_idx = rle.size();
-        rle.push_back(0);
-
-        // Try color difference compression
-        uint8_t color_diff = (current_color > previous_color) 
-            ? (current_color - previous_color) 
-            : (previous_color - current_color);
-        
-        if (color_diff <= 0x0F && stride <= 0xFF && current_color > 0 && current_color < 0xFF) {
-            // Use difference mode (0x2)
-            rle[first_byte_idx] = 0x80;  // 0b10 << 6
-            rle[first_byte_idx] |= (color_diff & 0x0F);
-            
-            if (stride > 1) {
-                rle[first_byte_idx] |= 0x10;  // 0b01 << 4 (extended run length)
-                rle.push_back(static_cast<uint8_t>(stride));
-            }
-            
-            if (current_color < previous_color) {
-                rle[first_byte_idx] |= 0x20;  // 0b01 << 5 (negative difference)
-            }
-        } else {
-            // Use standard mode
-            uint8_t chunk_type = 0;
-            if (current_color == 0xFF) {
-                chunk_type = 3;  // 0b11
-            } else if (current_color == 0x00) {
-                chunk_type = 0;  // 0b00
-            } else {
-                chunk_type = 1;  // 0b01
-                rle.push_back(current_color);
-            }
-            
-            rle[first_byte_idx] = chunk_type << 6;
-            rle[first_byte_idx] |= (stride & 0x0F);
-            
-            // Determine run length encoding type based on stride value
-            if (stride <= 0x0F) {
-                // Run length in byte0[3:0], no extra bytes
-                // run_len_type = 0b00 (bits [5:4])
-            } else if (stride <= 0xFFF) {
-                // Run length = byte1[7:0] (8 bits) + byte0[3:0] (4 bits) = 12 bits
-                rle[first_byte_idx] |= 0x10;  // 0b01 << 4
-                rle.push_back(static_cast<uint8_t>(stride >> 4));
-            } else if (stride <= 0xFFFFF) {
-                // Run length = byte1[7:0] (8 bits) + byte2[7:0] (8 bits) + byte0[3:0] (4 bits) = 20 bits
-                rle[first_byte_idx] |= 0x20;  // 0b10 << 4
-                rle.push_back(static_cast<uint8_t>(stride >> 12));
-                rle.push_back(static_cast<uint8_t>(stride >> 4));
-            } else if (stride <= 0xFFFFFFF) {
-                // Run length = byte1[7:0] + byte2[7:0] + byte3[7:0] + byte0[3:0] = 28 bits
-                rle[first_byte_idx] |= 0x30;  // 0b11 << 4
-                rle.push_back(static_cast<uint8_t>(stride >> 20));
-                rle.push_back(static_cast<uint8_t>(stride >> 12));
-                rle.push_back(static_cast<uint8_t>(stride >> 4));
-            }
-        }
-    };
+    uint64_t stride = 0;
 
     for (size_t i = 0; i < pixel_count; i++) {
         if (current_color == src[i]) {
             stride++;
         } else {
-            add_rep();
+            goo_append_run(rle, current_color, previous_color, stride);
             stride = 1;
             previous_color = current_color;
             current_color = src[i];
         }
     }
+    goo_append_run(rle, current_color, previous_color, stride);
 
-    add_rep();
-
-    // Calculate and add checksum
+    // Checksum covers every byte after the magic.
     uint8_t checksum = 0;
     for (size_t i = 1; i < rle.size(); i++) {
         checksum += rle[i];
@@ -867,9 +875,47 @@ sla::RasterEncoder UVToolsGOOArchive::get_encoder() const
     };
 }
 
+// Big-endian RGB565 square preview (UVtools DATATYPE_RGB565_BE). Uses the
+// thumbnail whose size is closest to the target and scales it to fit, keeping
+// the aspect ratio on a black background. All zeros when there is no thumbnail.
+static std::vector<uint8_t> encode_goo_preview565(uint32_t side, const ThumbnailsList &thumbnails)
+{
+    std::vector<uint8_t> output(size_t(side) * side * 2, 0);
+
+    const ThumbnailData *source = nullptr;
+    double best = 0.;
+    for (const ThumbnailData &image : thumbnails) {
+        if (!image.is_valid() || image.width > 4096 || image.height > 4096) continue;
+        const double distance = std::abs(double(image.width) * image.height - double(side) * side);
+        if (!source || distance < best) { source = &image; best = distance; }
+    }
+    if (!source) return output;
+
+    const double scale = std::min(double(side) / source->width, double(side) / source->height);
+    const size_t fit_w = std::max<size_t>(1, std::min<size_t>(side, size_t(std::lround(source->width * scale))));
+    const size_t fit_h = std::max<size_t>(1, std::min<size_t>(side, size_t(std::lround(source->height * scale))));
+    const size_t left = (side - fit_w) / 2, top = (side - fit_h) / 2;
+    for (size_t y = 0; y < fit_h; ++y)
+        for (size_t x = 0; x < fit_w; ++x) {
+            const size_t sx = std::min<size_t>(source->width - 1, x * source->width / fit_w);
+            // Rendered thumbnails are stored bottom-up.
+            const size_t sy = source->height - 1 - std::min<size_t>(source->height - 1, y * source->height / fit_h);
+            const uint8_t *rgba = source->pixels.data() + 4 * (sy * source->width + sx);
+            // Composite over black so transparent backgrounds do not show as white.
+            const unsigned r = (unsigned(rgba[0]) * rgba[3] + 127) / 255;
+            const unsigned g = (unsigned(rgba[1]) * rgba[3] + 127) / 255;
+            const unsigned b = (unsigned(rgba[2]) * rgba[3] + 127) / 255;
+            const uint16_t pixel = uint16_t(((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3));
+            const size_t offset = 2 * ((top + y) * side + left + x);
+            output[offset]     = uint8_t(pixel >> 8);
+            output[offset + 1] = uint8_t(pixel);
+        }
+    return output;
+}
+
 void UVToolsGOOArchive::export_print(const std::string     fname,
                                      const SLAPrint       &print,
-                                     const ThumbnailsList &,
+                                     const ThumbnailsList &thumbnails,
                                      const std::string    &)
 {
     const auto  &cfg      = print.full_print_config();
@@ -893,9 +939,15 @@ void UVToolsGOOArchive::export_print(const std::string     fname,
     // Generate current timestamp
     auto now = std::chrono::system_clock::now();
     auto time = std::chrono::system_clock::to_time_t(now);
-    std::tm* timeinfo = std::localtime(&time);
+    // UTC like UVtools, and a private tm copy because gmtime() shares a static buffer between threads.
+    std::tm utc{};
+#ifdef _WIN32
+    gmtime_s(&utc, &time);
+#else
+    gmtime_r(&time, &utc);
+#endif
     char timestamp_buf[24] = {0};
-    std::strftime(timestamp_buf, sizeof(timestamp_buf), "%Y-%m-%d %H:%M:%S", timeinfo);
+    std::strftime(timestamp_buf, sizeof(timestamp_buf), "%Y-%m-%d %H:%M:%S", &utc);
     std::string timestamp(timestamp_buf);
 
     // Get machine name from config, default to "Anycubic Photon Mono"
@@ -936,35 +988,33 @@ void UVToolsGOOArchive::export_print(const std::string     fname,
     out.write(software.c_str(), software.length());
     out.write(std::string(32 - software.length(), '\0').c_str(), 32 - software.length());
     
-    // AntiAliasingLevel, GreyLevel, BlurLevel
+    // AntiAliasingLevel, GreyLevel, BlurLevel. The printer config has no such
+    // settings (layers are always rasterized with 8-bit coverage), so these
+    // keep the UVtools defaults.
     write_u16_be(out, 8u);
     write_u16_be(out, 1u);
     write_u16_be(out, 0u);
     
-    // SmallPreview565 (116×116×2)
-    for (int i = 0; i < 116 * 116; i++) {
-        out.put(0);
-        out.put(0);
-    }
+    // SmallPreview565 (116x116) and BigPreview565 (290x290), each followed by CRLF
+    const auto small_preview = encode_goo_preview565(116, thumbnails);
+    out.write(reinterpret_cast<const char *>(small_preview.data()), std::streamsize(small_preview.size()));
     out.put(0x0D);
     out.put(0x0A);
-    
-    // BigPreview565 (290×290×2)
-    for (int i = 0; i < 290 * 290; i++) {
-        out.put(0);
-        out.put(0);
-    }
+
+    const auto big_preview = encode_goo_preview565(290, thumbnails);
+    out.write(reinterpret_cast<const char *>(big_preview.data()), std::streamsize(big_preview.size()));
     out.put(0x0D);
     out.put(0x0A);
-    
+
     // LayerCount, Resolution
     write_u32_be(out, layer_count);
     write_u16_be(out, dims.resolution_x);
     write_u16_be(out, dims.resolution_y);
     
-    // Mirroring
-    out.put(0);
-    out.put(0);
+    // Mirroring follows the printer display configuration, as in UVtools DisplayMirror.
+    const auto mirror = resolve_header_mirror(m_cfg, m_cfg.display_mirror_x.value, m_cfg.display_mirror_y.value);
+    out.put(mirror.x ? 1 : 0);
+    out.put(mirror.y ? 1 : 0);
     
     // Display dimensions and machine Z
     write_f32_be(out, float(display_width_mm));
@@ -1046,7 +1096,7 @@ void UVToolsGOOArchive::export_print(const std::string     fname,
         const bool is_bottom = i < bottom_count;
         // Write LayerDef metadata
         write_u16_be(out, 0u);  // Pause
-        write_f32_be(out, 0.0f);  // PausePositionZ
+        write_f32_be(out, float(m_cfg.max_print_height.value));  // PausePositionZ: UVtools uses machine Z
         write_f32_be(out, sla::layer_z(print, i));
         write_f32_be(out, sla::layer_exposure(print, i));
         write_f32_be(out, lightoff);  // LightOffDelay
@@ -1306,7 +1356,7 @@ void FDGArchive::export_print(const std::string fname,const SLAPrint &print,
     u32(header,0,0xBD3C7AC8);u32(header,4,2);
     const auto bottom=uint32_t(sla::bottom_layers(print,m_layers.size()));
     u32(header,8,uint32_t(m_layers.size()));u32(header,12,bottom);
-    u32(header,16,m_cfg.display_mirror_x.value?1:0);u32(header,20,bottom);
+    u32(header,16,resolve_header_mirror(m_cfg,m_cfg.display_mirror_x.value,false).any()?1:0);u32(header,20,bottom);
     u32(header,24,cols);u32(header,28,rows);
     f32(header,32,print.default_object_config().layer_height.value);
     f32(header,36,material.exposure_time.value);f32(header,40,material.initial_exposure_time.value);

@@ -135,6 +135,10 @@
     #include <gtk/gtk.h>
 #endif
 
+#if defined(__WXGTK__)
+    #include <glib.h>
+#endif
+
 using namespace std::literals;
 
 namespace Slic3r {
@@ -793,8 +797,8 @@ static void generic_exception_handle()
         BOOST_LOG_TRIVIAL(error) << boost::format("std::bad_alloc exception: %1%") % ex.what();
         std::terminate();
     } catch (const boost::io::bad_format_string& ex) {
-        wxString errmsg = _L("PrusaSlicer has encountered a localization error. "
-                             "Please report to PrusaSlicer team, what language was active and in which scenario "
+        wxString errmsg = _L("SLA-Slicer has encountered a localization error. "
+                             "Please report to the SLA-Slicer team, what language was active and in which scenario "
                              "this issue happened. Thank you.\n\nThe application will now terminate.");
         wxMessageBox(errmsg + "\n\n" + wxString(ex.what()), _L("Critical error"), wxOK | wxICON_ERROR);
         BOOST_LOG_TRIVIAL(error) << boost::format("Uncaught exception: %1%") % ex.what();
@@ -813,11 +817,7 @@ void GUI_App::post_init()
     if (! this->initialized())
         throw Slic3r::RuntimeError("Calling post_init() while not yet initialized");
 
-    if (this->is_gcode_viewer()) {
-        if (! this->init_params->input_files.empty())
-            this->plater()->load_gcode(wxString::FromUTF8(this->init_params->input_files[0].c_str()));
-    }
-    else if (this->init_params->start_downloader) {
+    if (this->init_params->start_downloader) {
         start_download(this->init_params->download_url);
     } else {
         if (! this->init_params->preset_substitutions.empty())
@@ -984,7 +984,16 @@ static boost::optional<Semver> parse_semver_from_ini(const std::string& path)
 
 void GUI_App::init_app_config()
 {
+	// The app name (SLIC3R_APP_FULL_NAME == SLIC3R_APP_KEY) intentionally stays "PrusaSlicer":
+	// wx derives config/data locations from it and existing user presets must keep loading.
+	// Only the user-visible display name is the product name.
 	SetAppName(SLIC3R_APP_FULL_NAME);
+	SetAppDisplayName(SLIC3R_APP_NAME);
+#ifdef __WXGTK__
+	// X11 WM_CLASS instance name and Wayland app_id are derived from the GLib program name
+	// (default: argv[0] == "prusa-slicer"); keep them in line with the product and the .desktop file.
+	g_set_prgname("sla-slicer");
+#endif
 
 	if (!app_config)
         app_config = new AppConfig(is_editor() ? AppConfig::EAppMode::Editor : AppConfig::EAppMode::GCodeViewer);
@@ -1489,7 +1498,7 @@ bool GUI_App::on_init_inner()
             RichMessageDialog
                 dlg(nullptr,
                     wxString::Format(_L("%s\nDo you want to continue?"), msg),
-                    "PrusaSlicer", wxICON_QUESTION | wxYES_NO);
+                    "SLA-Slicer", wxICON_QUESTION | wxYES_NO);
             dlg.ShowCheckBox(_L("Remember my choice"));
             if (dlg.ShowModal() != wxID_YES) return false;
 
@@ -1750,8 +1759,8 @@ bool GUI_App::on_init_inner()
     {
         wxString preferences_item = _L("Restore window position on start");
         InfoDialog dialog(nullptr,
-            _L("PrusaSlicer started after a crash"),
-            format_wxstr(_L("PrusaSlicer crashed last time when attempting to set window position.\n"
+            _L("SLA-Slicer started after a crash"),
+            format_wxstr(_L("SLA-Slicer crashed last time when attempting to set window position.\n"
                 "We are sorry for the inconvenience, it unfortunately happens with certain multiple-monitor setups.\n"
                 "More precise reason for the crash: \"%1%\".\n"
                 "For more information see our GitHub issue tracker: \"%2%\" and \"%3%\"\n\n"
@@ -2186,7 +2195,7 @@ void GUI_App::check_printer_presets()
     for (const std::string& preset_name : preset_names)
         msg_text += "\n    \"" + from_u8(preset_name) + "\",";
     msg_text.RemoveLast();
-    msg_text += "\n\n" + _L("But since this version of PrusaSlicer we don't show this information in Printer Settings anymore.\n"
+    msg_text += "\n\n" + _L("But since this version of SLA-Slicer we don't show this information in Printer Settings anymore.\n"
                             "Settings will be available in physical printers settings.") + "\n\n" +
                          _L("By default new Printer devices will be named as \"Printer N\" during its creation.\n"
                             "Note: This name can be changed later from the physical printers settings");
@@ -2394,6 +2403,7 @@ void GUI_App::import_zip(wxWindow* parent, wxString& input_file) const
         input_file = dialog.GetPath();
 }
 
+#ifndef SLIC3R_SLA_ONLY
 void GUI_App::load_gcode(wxWindow* parent, wxString& input_file) const
 {
     input_file.Clear();
@@ -2405,6 +2415,7 @@ void GUI_App::load_gcode(wxWindow* parent, wxString& input_file) const
     if (dialog.ShowModal() == wxID_OK)
         input_file = dialog.GetPath();
 }
+#endif // SLIC3R_SLA_ONLY
 
 bool GUI_App::switch_language()
 {
@@ -2684,14 +2695,14 @@ bool GUI_App::load_language(wxString language, bool initial)
 
     if (! wxLocale::IsAvailable(language_info->Language)) {
     	// Loading the language dictionary failed.
-    	wxString message = "Switching PrusaSlicer to language " + language_info->CanonicalName + " failed.";
+    	wxString message = "Switching SLA-Slicer to language " + language_info->CanonicalName + " failed.";
 #if !defined(_WIN32) && !defined(__APPLE__)
         // likely some linux system
         message += "\nYou may need to reconfigure the missing locales, likely by running the \"locale-gen\" and \"dpkg-reconfigure locales\" commands.\n";
 #endif
         if (initial)
-        	message + "\n\nApplication will close.";
-        wxMessageBox(message, "PrusaSlicer - Switching language failed", wxOK | wxICON_ERROR);
+        	message += "\n\nApplication will close.";
+        wxMessageBox(message, "SLA-Slicer - Switching language failed", wxOK | wxICON_ERROR);
         if (initial)
 			std::exit(EXIT_FAILURE);
 		else
@@ -3279,19 +3290,7 @@ void GUI_App::MacOpenFiles(const wxArrayString &fileNames)
             non_gcode_files.emplace_back(filename);
         }
     }
-    if (m_app_mode == EAppMode::GCodeViewer) {
-        // Running in G-code viewer.
-        // Load the first G-code into the G-code viewer.
-        // Or if no G-codes, send other files to slicer. 
-        if (! gcode_files.empty()) {
-            if (m_post_initialized)
-                this->plater()->load_gcode(gcode_files.front());
-            else
-                this->init_params->input_files = { into_u8(gcode_files.front()) };
-        }
-        if (!non_gcode_files.empty()) 
-            start_new_slicer(non_gcode_files, true);
-    } else {
+    {
         if (! files.empty()) {
             if (m_post_initialized) {
                 wxArrayString input_files;

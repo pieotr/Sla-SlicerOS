@@ -14,6 +14,7 @@
 #include <functional>
 
 #include "libslic3r/SLA/RasterBase.hpp"
+#include "libslic3r/SLA/LayerMaskValidation.hpp"
 #include "libslic3r/Execution/ExecutionTBB.hpp"
 #include "libslic3r/GCode/ThumbnailData.hpp"
 #include "libslic3r/Execution/Execution.hpp"
@@ -53,7 +54,8 @@ public:
         const EP & ep       = {},
         std::vector<sla::EncodedRaster> *canonical = nullptr,
         const std::vector<size_t> *representatives = nullptr,
-        const sla::RasterEncoder &canonical_encoder = sla::PNGRasterEncoder{})
+        const sla::RasterEncoder &canonical_encoder = sla::PNGRasterEncoder{},
+        std::vector<size_t> *lit_counts = nullptr)
     {
         // The caller establishes exact equality of scene-space geometry.
         // Representatives must precede copies, and may not themselves be copies.
@@ -70,9 +72,19 @@ public:
         std::vector<sla::EncodedRaster> layers(layer_num);
         std::vector<sla::EncodedRaster> captured;
         if (canonical) captured.resize(layer_num);
+        // Count lit pixels while the drawn buffer is still in memory, but only
+        // when the canonical PNG is a verbatim Gray8 copy of that buffer. A
+        // projected palette encoder changes pixel values, so its caller counts
+        // after projection instead.
+        // Only archives whose own encoder is also PNG (SL1) consume the ledger;
+        // for every other format the extra full-raster pass is pure overhead.
+        const bool count_lit = lit_counts && canonical && canonical_encoder.target<sla::PNGRasterEncoder>() &&
+                               get_encoder().template target<sla::PNGRasterEncoder>();
+        // SIZE_MAX marks a layer whose count was not taken (never trusted later).
+        std::vector<size_t> lit(count_lit ? layer_num : 0, SIZE_MAX);
         execution::for_each(
             ep, size_t(0), layers.size(),
-            [this, &drawfn, &cancelfn, canonical, representatives, &canonical_encoder, &layers, &captured](size_t idx) {
+            [this, &drawfn, &cancelfn, canonical, representatives, &canonical_encoder, &layers, &captured, &lit, count_lit](size_t idx) {
                 if (cancelfn() || (representatives && (*representatives)[idx]!=idx)) return;
 
                 sla::EncodedRaster &enc = layers[idx];
@@ -83,6 +95,9 @@ public:
                     // Capture the canonical mask from the same drawn raster.
                     // PNG formats reuse their encoding instead of compressing twice.
                     enc = rst->encode([&](const void *ptr, size_t w, size_t h, size_t n) {
+                        if (count_lit && n == 1 && ptr)
+                            lit[idx] = sla::validate_and_count_mask_chunk(static_cast<const uint8_t *>(ptr), w * h,
+                                sla::LayerMaskPrecision::Gray8).nonzero_pixels;
                         auto mask = canonical_encoder(ptr, w, h, n);
                         const bool same_png = encoder.target<sla::PNGRasterEncoder>() &&
                                               canonical_encoder.target<sla::PNGRasterEncoder>();
@@ -102,6 +117,7 @@ public:
                 if(source!=i) {
                     layers[i]=layers[source];
                     if(canonical) captured[i]=captured[source];
+                    if(count_lit) lit[i]=lit[source];
                 }
             }
         if (cancelfn()) return;
@@ -109,6 +125,7 @@ public:
         // replaced on a cancellation or exception during the parallel work.
         m_layers.swap(layers);
         if (canonical) canonical->swap(captured);
+        if (count_lit) lit_counts->swap(lit);
     }
 
     // Export the print into an archive using the provided filename.

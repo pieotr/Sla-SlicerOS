@@ -17,9 +17,11 @@
 #include "ShortestPath.hpp"
 #include "KDTreeIndirect.hpp"
 #include "MutablePriorityQueue.hpp"
+#ifndef SLIC3R_SLA_ONLY
 #include "Print.hpp"
 #include "libslic3r/ExtrusionEntity.hpp"
 #include "libslic3r/ExtrusionEntityCollection.hpp"
+#endif // SLIC3R_SLA_ONLY
 #include "libslic3r/Line.hpp"
 #include "libslic3r/MultiMaterialSegmentation.hpp"
 #include "libslic3r/Point.hpp"
@@ -1020,6 +1022,9 @@ std::vector<std::pair<size_t, bool>> chain_segments_greedy2(SegmentEndPointFunc 
 	return chain_segments_greedy_constrained_reversals2_<PointType, SegmentEndPointFunc, false, decltype(could_reverse_func)>(end_point_func, could_reverse_func, num_segments, start_near);
 }
 
+#ifndef SLIC3R_SLA_ONLY
+// Extrusion-path ordering belongs to the FFF toolpath generator, which is not
+// part of the SLA-only build (ExtrusionEntity.cpp is not compiled there).
 std::vector<std::pair<size_t, bool>> chain_extrusion_entities(const std::vector<ExtrusionEntity*> &entities, const Point *start_near, const bool reversed)
 {
 	auto segment_end_point = [&entities, reversed](size_t idx, bool first_point) -> const Point& { return first_point == reversed ? entities[idx]->last_point() : entities[idx]->first_point(); };
@@ -1109,6 +1114,7 @@ void chain_and_reorder_extrusion_paths(std::vector<ExtrusionPath> &extrusion_pat
 {
 	reorder_extrusion_paths(extrusion_paths, chain_extrusion_paths(extrusion_paths, start_near));
 }
+#endif // SLIC3R_SLA_ONLY
 
 std::vector<size_t> chain_points(const Points &points, const Point *start_near)
 {
@@ -2030,6 +2036,7 @@ ClipperLib::PolyNodes chain_clipper_polynodes(const Points &points, const Clippe
 	return chain_path_items(points, items);
 }
 
+#ifndef SLIC3R_SLA_ONLY
 std::vector<const PrintInstance*> chain_print_object_instances(const Print &print)
 {
     // Order objects using a nearest neighbor search.
@@ -2053,6 +2060,7 @@ std::vector<const PrintInstance*> chain_print_object_instances(const Print &prin
 	}
 	return out;
 }
+#endif // SLIC3R_SLA_ONLY
 
 Polylines chain_lines(const std::vector<Line> &lines, const double point_distance_epsilon)
 {
@@ -2109,6 +2117,7 @@ Polylines chain_lines(const std::vector<Line> &lines, const double point_distanc
     return out;
 }
 
+#ifndef SLIC3R_SLA_ONLY
 std::vector<size_t> chain_layer_islands(const std::vector<std::reference_wrapper<const LayerIsland>> &islands, const Point *start_near)
 {
     Points ordering_points;
@@ -2137,5 +2146,6 @@ void chain_and_reorder_layer_islands(std::vector<std::reference_wrapper<const La
 {
     reorder_layer_islands(islands, chain_layer_islands(islands, start_near));
 }
+#endif // SLIC3R_SLA_ONLY
 
 } // namespace Slic3r

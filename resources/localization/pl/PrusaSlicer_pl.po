@@ -31025,3 +31025,81 @@ msgstr "Edycja tabeli testu naświetlania\nOkno > ExposureFinder calibration otw
 #: src/libslic3r/SLAPrintSteps.cpp
 msgid "Finalizing layers"
 msgstr "Kończenie przygotowania warstw"
+
+# Offline SLA hints (resources/data/sla_hints.ini), added 2026-11-12
+msgid "Find printing problems\nIn the Sliced editor, open the Issues panel and press Detect issues. It looks for islands, overhangs, resin traps, suction cups, touching bounds and empty layers. Detection runs in the background and can be cancelled."
+msgstr "Znajdź problemy z wydrukiem\nW edytorze Sliced otwórz panel Issues i naciśnij Detect issues. Wykrywane są wyspy, nawisy, pułapki żywicy, przyssawki, dotknięcia krawędzi ekranu i puste warstwy. Wykrywanie działa w tle i można je anulować."
+
+msgid "Detect issues without the GUI\nRun prusa-slicer --sla-detect-issues file.sl1 --output issues.json to get a JSON list of layer issues for a layer archive or a saved layer project. Use --machine-height to also check the print height."
+msgstr "Wykrywanie problemów bez GUI\nUruchom prusa-slicer --sla-detect-issues plik.sl1 --output issues.json, aby otrzymać listę problemów warstw w formacie JSON dla archiwum warstw lub zapisanego projektu warstw. Opcja --machine-height dodatkowo sprawdza wysokość wydruku."
+
+msgid "Issue results can go stale\nAfter you change masks, the Issues panel marks the earlier results as out of date. Press Detect issues again before trusting the list."
+msgstr "Wyniki mogą się zdezaktualizować\nPo zmianie masek panel Issues oznacza wcześniejsze wyniki jako nieaktualne. Zanim zaufasz liście, naciśnij ponownie Detect issues."
+
+msgid "Undo every pixel edit\nIn the Sliced editor, each brush stroke and each Apply to range is one step that Undo and Redo can reverse. A cancelled range operation leaves all layers unchanged."
+msgstr "Każdą edycję pikseli można cofnąć\nW edytorze Sliced każde pociągnięcie pędzla i każde Apply to range to jeden krok, który odwracają Undo i Redo. Anulowana operacja na zakresie pozostawia wszystkie warstwy bez zmian."
+
+msgid "Filter a layer range\nRange filters in the Sliced editor offer Threshold, Invert, mirror, Erode, Dilate, Morphological open and close, blur and more. Set First layer and Last layer, choose a filter and press Apply to range."
+msgstr "Filtruj zakres warstw\nRange filters w edytorze Sliced oferują m.in. Threshold, Invert, odbicie, Erode, Dilate, morfologiczne otwarcie i zamknięcie oraz rozmycie. Ustaw First layer i Last layer, wybierz filtr i naciśnij Apply to range."
+
+msgid "Edit just one layer\nEnable Single layer in the Sliced editor to restrict painting and filters to the layer you are looking at, instead of a First layer to Last layer range."
+msgstr "Edytuj tylko jedną warstwę\nWłącz Single layer w edytorze Sliced, aby malowanie i filtry dotyczyły wyłącznie oglądanej warstwy zamiast zakresu od First layer do Last layer."
+
+msgid "Keep your layer edits\nUse Save layer project in the Sliced editor to store the edited layer pixels. A layer project can be reopened later with Window > Open layer archive."
+msgstr "Zachowaj edycje warstw\nUżyj Save layer project w edytorze Sliced, aby zapisać edytowane piksele warstw. Projekt warstw można później otworzyć przez Window > Open layer archive."
+
+msgid "Remembered export format\nThe export format you choose in the Export sliced layers dialog is remembered separately for each printer profile, so switching printers brings back that printer's usual format."
+msgstr "Zapamiętany format eksportu\nFormat wybrany w oknie Export sliced layers jest zapamiętywany osobno dla każdego profilu drukarki, więc po zmianie drukarki wraca jej zwykły format."
+
+msgid "Expose a PCB\nWindow > PCB exposure builds exposure layers from copper Gerber files and an optional Excellon drill file. Several Gerber files can be merged into one exposure."
+msgstr "Naświetl płytkę PCB\nWindow > PCB exposure tworzy warstwy naświetlania z plików miedzi Gerber i opcjonalnego pliku wierceń Excellon. Kilka plików Gerber można połączyć w jedno naświetlanie."
+
+msgid "Calibrate your printer\nWindow > Printer calibration generates XYZ blocks, grayscale patches, a lift area test, an elephant foot test, a blooming test and a stress tower as ready-to-export layers."
+msgstr "Skalibruj drukarkę\nWindow > Printer calibration generuje bloki XYZ, pola odcieni szarości, test powierzchni podnoszenia, test stopy słonia, test rozmycia światła i wieżę naprężeń jako warstwy gotowe do eksportu."
+
+msgid "Test grayscale response\nIn Printer calibration choose Grayscale patches and set Grayscale steps to see which gray levels your printer cures."
+msgstr "Sprawdź reakcję na odcienie szarości\nW Printer calibration wybierz Grayscale patches i ustaw Grayscale steps, aby zobaczyć, które poziomy szarości utwardza twoja drukarka."
+
+msgid "Plan before you generate\nIn ExposureFinder calibration use Preview plan to check the exposure test before pressing Generate. If you change the table settings, preview the plan again."
+msgstr "Najpierw zaplanuj, potem generuj\nW kalibracji ExposureFinder użyj Preview plan, aby sprawdzić test ekspozycji przed naciśnięciem Generate. Po zmianie ustawień tabeli ponownie wyświetl plan."
+
+msgid "Open an existing sliced file\nWindow > Open layer archive reads many sliced layer formats and layer images. Only formats with a reader can be opened for editing; other formats can still be exported."
+msgstr "Otwórz istniejący plik po slicingu\nWindow > Open layer archive odczytuje wiele formatów warstw i obrazy warstw. Do edycji można otworzyć tylko formaty z czytnikiem; pozostałe formaty nadal można eksportować."
+
+msgid "Edit support points\nUse the SLA Support Points tool on the left toolbar to add, move or remove support points by hand."
+msgstr "Edytuj punkty podpór\nNarzędzie SLA Support Points na lewym pasku pozwala ręcznie dodawać, przesuwać i usuwać punkty podpór."
+
+msgid "Hollow and drain your model\nThe Hollow and drill tool on the left toolbar hollows the object and lets you place drain holes, which saves resin."
+msgstr "Wydrąż model i dodaj otwory\nNarzędzie Hollow and drill na lewym pasku drąży obiekt i pozwala umieścić otwory odpływowe, co oszczędza żywicę."
+
+#: src/libslic3r/PrintConfig.cpp
+msgid "Mirror flag in file header"
+msgstr "Flaga odbicia w nagłówku pliku"
+
+#: src/libslic3r/PrintConfig.cpp
+msgid "Mirror flag written into the output file header"
+msgstr "Flaga odbicia zapisywana w nagłówku pliku wyjściowego"
+
+#: src/libslic3r/PrintConfig.cpp
+msgid "Only the mirror/flip flag stored in the header of the output file (e.g. CTB, CXDLP v4, Chitubox ZIP, OSF, OSLA, CWS, GOO, VDT, Klipper, NanoDLP). The layer images themselves are NOT changed; use the display mirroring options above for that. Automatic keeps the value this slicer has always written for each format. Change it only if your printer shows the print mirrored or double-mirrored. Verify with a small asymmetric test print. Formats with a single yes/no flag store any mirroring as 'yes' (NanoDLP: horizontal only)."
+msgstr "Tylko flaga odbicia zapisywana w nagłówku pliku wyjściowego (np. CTB, CXDLP v4, Chitubox ZIP, OSF, OSLA, CWS, GOO, VDT, Klipper, NanoDLP). Same obrazy warstw NIE są zmieniane; do tego służą opcje odbicia ekranu powyżej. Automatycznie zachowuje wartość, którą program zawsze zapisywał dla danego formatu. Zmień ją tylko wtedy, gdy drukarka drukuje model odbity lub podwójnie odbity. Sprawdź na małym, asymetrycznym wydruku testowym. Formaty z pojedynczą flagą tak/nie zapisują każde odbicie jako „tak” (NanoDLP: tylko poziome)."
+
+#: src/libslic3r/PrintConfig.cpp
+msgid "Automatic (format default)"
+msgstr "Automatycznie (domyślna wartość formatu)"
+
+#: src/libslic3r/PrintConfig.cpp
+msgid "No mirror"
+msgstr "Bez odbicia"
+
+#: src/libslic3r/PrintConfig.cpp
+msgid "Horizontal"
+msgstr "Poziome"
+
+#: src/libslic3r/PrintConfig.cpp
+msgid "Vertical"
+msgstr "Pionowe"
+
+#: src/libslic3r/PrintConfig.cpp
+msgid "Horizontal and vertical"
+msgstr "Poziome i pionowe"

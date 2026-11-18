@@ -404,7 +404,7 @@ def main():
             wait_for(lambda:not visible(settings),'parameters applied')
             report['checks'].append('CTB supported parameters edited with explicit units' if args.save_chitubox else 'Anycubic parameters edited with units; global motion context readonly')
         if args.edit_secondary or args.edit_secondary_range:
-            plane=find(dialog,lambda n:n.get_role_name()=='combo box' and n.get_name() in ('Main mask','SUBIMGS mask'))
+            plane=find(dialog,lambda n:n.get_role_name()=='combo box' and n.get_name() in ('Main mask','SUBIMGS mask','Mask plane'))
             assert plane is not None, 'Missing selectable SUBIMGS plane'
             assert plane.get_selection_iface().select_child(1), 'SUBIMGS selection rejected'
             wait_for(lambda:plane.get_selection_iface().get_selected_child(0).get_name()=='SUBIMGS mask','selected SUBIMGS mask')
@@ -412,7 +412,7 @@ def main():
             assert find(dialog,lambda n:n.get_name().startswith(('Independent masks:','Shared mask:'))) is not None
             report['checks'].append('SUBIMGS selectable; shared/independent behavior explained; selection alone leaves revision clean')
         if args.edit_secondary_range:
-            operation=find(dialog,lambda n:n.get_role_name()=='combo box' and n.get_name()=='Threshold')
+            operation=find(dialog,lambda n:n.get_role_name()=='combo box' and n.get_name() in ('Threshold','Range operation'))
             assert operation.get_selection_iface().select_child(1), 'Missing Invert range operation'
             click(named(dialog,'Apply to range'))
         elif not args.edit_layer_parameters:
@@ -695,7 +695,7 @@ def main():
                     if node.get_role_name() == 'spin button': spins.append(node)
                 for index in range(node.get_child_count()): controls(node.get_child_at_index(index))
             controls(dialog)
-            range_operation=find(dialog,lambda n:n.get_role_name()=='combo box' and n.get_name()=='Threshold')
+            range_operation=find(dialog,lambda n:n.get_role_name()=='combo box' and n.get_name() in ('Threshold','Range operation'))
             assert range_operation.get_selection_iface().select_child(14 if args.cancel_operation=='median' else 7), 'Missing selected filter option'
             assert len(spins) >= 5, 'Missing radius or range controls'
             assert spins[1].get_value_iface().set_current_value(4096), 'Radius rejected test value'

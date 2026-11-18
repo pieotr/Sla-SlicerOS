@@ -18,7 +18,9 @@
 #include "GUI_ObjectLayers.hpp"
 #include "GLSelectionRectangle.hpp"
 #include "MeshUtils.hpp"
+#ifndef SLIC3R_SLA_ONLY
 #include "libslic3r/GCode/GCodeProcessor.hpp"
+#endif // SLIC3R_SLA_ONLY
 #include "3DScene.hpp"
 #include "GLModel.hpp"
 #ifndef SLIC3R_SLA_ONLY
@@ -60,6 +62,7 @@ class ModelObject;
 class ModelInstance;
 class PrintObject;
 class Print;
+struct GCodeProcessorResult;
 class SLAPrint;
 namespace CustomGCode { struct Item; }
 
@@ -857,9 +860,11 @@ public:
 
     void reload_scene(bool refresh_immediately, bool force_full_scene_refresh = false);
 
+#ifndef SLIC3R_SLA_ONLY
     void load_gcode_shells();
     void load_gcode_preview(const GCodeProcessorResult& gcode_result, const std::vector<std::string>& str_tool_colors,
         const std::vector<std::string>& str_color_print_colors);
+#endif
 #ifndef SLIC3R_SLA_ONLY
     void set_gcode_view_type(libvgcode::EViewType type) { return m_gcode_viewer.set_view_type(type); }
     libvgcode::EViewType get_gcode_view_type() const { return m_gcode_viewer.get_view_type(); }
@@ -869,8 +874,10 @@ public:
     bool is_gcode_view_type_cache_write_enabled() const { return m_gcode_viewer.is_view_type_cache_write_enabled(); }
 #endif
 
+#ifndef SLIC3R_SLA_ONLY
     void load_preview(const std::vector<std::string>& str_tool_colors, const std::vector<std::string>& str_color_print_colors,
         const std::vector<CustomGCode::Item>& color_print_values);
+#endif
     void load_sla_preview();
     void bind_event_handlers();
     void unbind_event_handlers();

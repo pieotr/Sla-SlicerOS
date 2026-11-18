@@ -13,6 +13,14 @@
 
 namespace Slic3r {
 
+// Default palette used for color-change ticks (shared by the 3MF/AMF IO and the GUI sliders).
+class ColorPrintColors
+{
+    static const std::vector<std::string> Colors;
+public:
+    static const std::vector<std::string>& get() { return Colors; }
+};
+
 class DynamicPrintConfig;
 
 namespace CustomGCode {

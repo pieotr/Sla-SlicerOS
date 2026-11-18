@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Generate PCB/calibration layers in GTK using an isolated preset seed."""
 import argparse
+import time
 import json
 import os
 from pathlib import Path
@@ -8,7 +9,7 @@ import shutil
 import subprocess
 import tempfile
 import zipfile
-from printer_wizard_smoke import Atspi, find, named, wait_for, click
+from printer_wizard_smoke import Atspi, find, named, wait_for, click, sliced_editor
 
 
 def main():
@@ -42,7 +43,9 @@ def main():
     with (directory / 'application.log').open('w') as log:
         process = subprocess.Popen([str(args.binary.resolve()), '--datadir', str(datadir)],
             stdout=log, stderr=subprocess.STDOUT,
-            env=dict(os.environ, GDK_BACKEND='x11', NO_AT_BRIDGE='0'))
+            env=dict(os.environ, GDK_BACKEND='x11', NO_AT_BRIDGE='0',
+                     **({'LD_PRELOAD': os.environ['SLA_APP_NETWORK_AUDIT_LIBRARY']}   # the audit check below needs it inside the app
+                        if os.environ.get('SLA_APP_NETWORK_AUDIT_LIBRARY') else {})))
     def visible(node): return node.get_state_set().contains(Atspi.StateType.SHOWING)
     def find_visible(node, label): return find(node, lambda n: n.get_name() == label and visible(n))
     def collect(node, role):
@@ -55,15 +58,25 @@ def main():
     def discard_generated(dialog):
         assert named(dialog, 'Apply to sliced result') is None, 'Ephemeral job offers misleading Apply'
         assert named(dialog, 'Export generated layers') is not None
-        click(find(dialog, lambda n: n.get_role_name() == 'button' and n.get_name() == 'Close'))
-        click(wait_for(lambda: find_visible(app, 'Yes'), 'discard generated layers confirmation'))
+        # The question is shown synchronously inside the button handler; an AT-SPI do_action would freeze the
+        # app's accessibility bridge until it is answered, so press the button with a real pointer click.
+        from guilib import mclick
+        from inputlib import Input
+        mclick(Input(), find(dialog, lambda n: n.get_role_name() == 'button' and n.get_name() == 'Back to 3D'))
+        # Leaving the Sliced view no longer asks anything (the generated job stays in the workspace until it is
+        # replaced; that question now comes with the next Generate). Answer it only if it does appear.
+        time.sleep(1.5)
+        confirm = find_visible(app, 'Discard') or find_visible(app, 'Yes')
+        if confirm: click(confirm)   # the question's accept button reads 'Discard' now
+    # NOTE: 'Back to 3D' below was the modal editor's 'Close' button before the editor became a workspace view.
     def export_generated(dialog, name):
         choices = collect(dialog, 'combo box')
         assert len(choices) >= 4, 'Missing brush, zoom, operation or generated export formats'
-        formats = choices[-1].get_selection_iface()
-        option = find(choices[-1], lambda n: n.get_role_name() in ('menu item', 'list item') and
+        format_combo = next((c for c in choices if c.get_name() == 'Layer export format'), choices[-1])
+        formats = format_combo.get_selection_iface()
+        option = find(format_combo, lambda n: n.get_role_name() in ('menu item', 'list item') and
             n.get_name().endswith('(.uvj)'))
-        assert option is not None, 'Missing UVJ export option'
+        assert option is not None, ('Missing UVJ export option', format_combo.get_name(), [c.get_name() for c in choices])
         assert formats.select_child(option.get_index_in_parent()), 'UVJ selection rejected'
         wait_for(lambda: '(.uvj)' in formats.get_selected_child(0).get_name(), 'UVJ format selection')
         click(named(dialog, 'Export generated layers'))
@@ -83,10 +96,10 @@ def main():
         # Atomic rename can make the file visible just before the GUI worker
         # completion callback marks the generated document saved.
         wait_for(lambda: not find(app, lambda n: n.get_name() == 'Export layers' and visible(n)), 'completed export dialog')
-        close = wait_for(lambda: find(dialog, lambda n: n.get_role_name() == 'button' and n.get_name() == 'Close' and
+        close = wait_for(lambda: find(dialog, lambda n: n.get_role_name() == 'button' and n.get_name() == 'Back to 3D' and
             n.get_state_set().contains(Atspi.StateType.SENSITIVE)), 'editor enabled after export')
         click(close)
-        wait_for(lambda: not visible(dialog), 'close exported generated job')
+        wait_for(lambda: not sliced_editor(app), 'close exported generated job')
         return settings
     try:
         app = wait_for(lambda: find(Atspi.get_desktop(0), lambda n:
@@ -104,16 +117,15 @@ def main():
         click(wait_for(lambda: find(app, lambda n: n.get_role_name() == 'menu item' and
             n.get_name() == 'PCB exposure'), 'PCB menu'))
         options = wait_for(lambda: find(app, lambda n: n.get_role_name() in ('dialog', 'frame') and
-            n.get_name() == 'PCB exposure' and visible(n)), 'PCB settings')
+            n.get_name() == 'Expose PCB' and visible(n)), 'PCB settings')
         paths = collect(options, 'text')
         # Spin controls also contain text children. The two file path inputs
         # precede numeric controls and are identified by their explicit names.
         assert len(paths) >= 2, 'Missing Gerber/drill input controls'
         for field, path in zip(paths[:2], (str(gerber) + ('\n' + str(second_gerber) if args.multiple_pcb else ''), drill)):
             assert field.get_editable_text_iface().set_text_contents(str(path)), 'File path rejected'
-        click(named(options, 'Generate PCB layers'))
-        dialog = wait_for(lambda: find(app, lambda n: n.get_role_name() in ('dialog', 'frame') and
-            n.get_name() == 'Layer editor' and visible(n)), 'generated PCB editor')
+        click(named(options, 'Expose PCB (generate layers)'))
+        dialog = wait_for(lambda: sliced_editor(app), 'generated PCB editor')
         report['checks'].append('PCB menu, Gerber + Excellon input and one-layer job in editor')
         if args.advanced_pcb:
             report['checks'].append('moire, thermal and Excellon G85 slot imported through the PCB GUI')
@@ -125,13 +137,13 @@ def main():
         if args.multiple_pcb:
             click(wait_for(lambda: find(app, lambda n: n.get_role_name() == 'menu item' and
                 n.get_name() == 'PCB exposure'), 'second PCB menu'))
-            options = wait_for(lambda: find(app, lambda n: n.get_name() == 'PCB exposure' and visible(n)), 'separate PCB settings')
+            options = wait_for(lambda: find(app, lambda n: n.get_name() == 'Expose PCB' and visible(n)), 'separate PCB settings')
             paths = collect(options, 'text')
             assert paths[0].get_editable_text_iface().set_text_contents(str(gerber)+'\n'+str(second_gerber))
             assert paths[1].get_editable_text_iface().set_text_contents(str(drill))
             click(named(options, 'Merge Gerber files into one exposure'))
-            click(named(options, 'Generate PCB layers'))
-            dialog = wait_for(lambda: find(app, lambda n: n.get_name() == 'Layer editor' and visible(n)), 'separate PCB editor')
+            click(named(options, 'Expose PCB (generate layers)'))
+            dialog = wait_for(lambda: sliced_editor(app), 'separate PCB editor')
             separate = export_generated(dialog, 'pcb-separate')
             assert len(separate['Layers']) == 2
             for index, layer in enumerate(separate['Layers']):
@@ -161,8 +173,7 @@ def main():
         assert spin.get_state_set().contains(Atspi.StateType.SENSITIVE), 'Grayscale controls stay disabled'
         assert spin.get_value_iface().set_current_value(4), 'Grayscale steps rejected value'
         click(named(options, 'Generate calibration layers'))
-        dialog = wait_for(lambda: find(app, lambda n: n.get_role_name() in ('dialog', 'frame') and
-            n.get_name() == 'Layer editor' and visible(n)), 'generated calibration editor')
+        dialog = wait_for(lambda: sliced_editor(app), 'generated calibration editor')
         report['checks'].append('calibration menu, live pattern choice, grayscale controls and native masks')
         discard_generated(dialog)
         report['checks'].append('generated jobs require export or explicit discard; scene Apply is absent')
@@ -175,8 +186,18 @@ def main():
         spins = collect(options, 'spin button')
         assert spins[4].get_value_iface().set_current_value(4)
         click(named(options, 'Generate calibration layers'))
-        dialog = wait_for(lambda: find(app, lambda n: n.get_role_name() in ('dialog', 'frame') and
-            n.get_name() == 'Layer editor' and visible(n)), 'calibration export editor')
+        # The previous generated job was left unsaved on purpose, so replacing it now asks the question that
+        # used to come when leaving the Sliced view. Answer it (modal: press with a real pointer click) and
+        # require that it IS asked: silently replacing an unsaved job would be a data-loss regression.
+        from guilib import mclick
+        from inputlib import Input
+        question = wait_for(lambda: find_visible(app, 'Discard generated layers that have not been saved or exported?'),
+                            'discard question on replacing an unsaved generated job')
+        accept = wait_for(lambda: find(app, lambda n: n.get_role_name() == 'button' and
+            n.get_name() in ('Discard', 'Yes') and visible(n)), 'discard question accept button')
+        mclick(Input(), accept)
+        report['checks'].append('replacing an unsaved generated job asks for confirmation before discarding it')
+        dialog = wait_for(lambda: sliced_editor(app), 'calibration export editor')
         calibration = export_generated(dialog, 'grayscale')
         assert calibration['Properties']['Size']['Layers'] == 20
         assert all(abs(layer['Z'] - (i + 1) * .05) < 1e-6 for i, layer in enumerate(calibration['Layers']))

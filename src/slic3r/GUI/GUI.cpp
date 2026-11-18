@@ -33,7 +33,7 @@
 #include "MsgDialog.hpp"
 #include "format.hpp"
 
-#include "libslic3r/Print.hpp"
+#include "libslic3r/Utils.hpp"
 
 namespace Slic3r {
 

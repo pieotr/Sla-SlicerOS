@@ -25,6 +25,7 @@
 
 #include "GUI.hpp"
 #include "GUI_App.hpp"
+#include "Widgets/ComboBox.hpp"
 #include "Plater.hpp"
 #include "MsgDialog.hpp"
 #include "I18N.hpp"
@@ -47,8 +48,8 @@ PrintHostSendDialog::PrintHostSendDialog(const fs::path &path, PrintHostPostUplo
     : MsgDialog(static_cast<wxWindow*>(wxGetApp().mainframe), _L("Send G-Code to printer host"), _L("Upload to Printer Host with the following filename:"), 0) // Set style = 0 to avoid default creation of the "OK" button. 
                                                                                                                                                                // All buttons will be added later in this constructor 
     , txt_filename(new wxTextCtrl(this, wxID_ANY))
-    , combo_groups(!groups.IsEmpty() ? new wxComboBox(this, wxID_ANY, wxEmptyString, wxDefaultPosition, wxDefaultSize, groups, wxCB_READONLY) : nullptr)
-    , combo_storage(storage_names.GetCount() > 1 ? new wxComboBox(this, wxID_ANY, wxEmptyString, wxDefaultPosition, wxDefaultSize, storage_names, wxCB_READONLY) : nullptr)
+    , combo_groups(!groups.IsEmpty() ? create_readonly_combo(this, "Printer group", wxString(), groups, 0) : nullptr)
+    , combo_storage(storage_names.GetCount() > 1 ? create_readonly_combo(this, "Storage", wxString(), storage_names, 0) : nullptr)
     , post_upload_action(PrintHostPostUploadAction::None)
     , m_paths(storage_paths)
 {

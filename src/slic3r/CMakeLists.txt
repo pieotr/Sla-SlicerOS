@@ -134,6 +134,20 @@ set(SLIC3R_GUI_SOURCES
     GUI/ExposureFinderDialog.hpp
     GUI/LayerEditorDialog.cpp
     GUI/LayerEditorDialog.hpp
+    GUI/LayerEditorInternal.hpp
+    GUI/LayerEditorContent.hpp
+    GUI/LayerEditorCommon.cpp
+    GUI/LayerEditorContent.cpp
+    GUI/LayerEditorContent_Canvas.cpp
+    GUI/LayerEditorContent_Dialogs.cpp
+    GUI/LayerEditorContent_Events.cpp
+    GUI/LayerEditorContent_Export.cpp
+    GUI/LayerEditorContent_Operations.cpp
+    GUI/LayerEditorContent_Issues.cpp
+    GUI/LayerOperationCatalog.cpp
+    GUI/LayerOperationCatalog_Batch2.cpp
+    GUI/LayerCalculatorDialog.cpp
+    GUI/LayerOperationsDialog.cpp
     GUI/MainFrame.cpp
     GUI/MainFrame.hpp
     GUI/UpdatesUIManager.cpp
@@ -404,9 +418,23 @@ list(APPEND SLIC3R_GUI_SOURCES Utils/HttpOffline.cpp)
 
 find_package(NanoSVG REQUIRED)
 
-list(APPEND SLIC3R_GUI_SOURCES
-    GUI/WebViewPlatformUtilsLinux.cpp
-)
+if (NOT SLIC3R_OFFLINE_ONLY)
+    list(APPEND SLIC3R_GUI_SOURCES
+        GUI/WebViewPlatformUtilsLinux.cpp
+    )
+endif ()
+
+# Offline builds do not link wxWebView/webkit/soup, so no webview translation
+# unit may be compiled (their call sites are #ifndef SLIC3R_OFFLINE_ONLY).
+if (SLIC3R_OFFLINE_ONLY)
+    list(REMOVE_ITEM SLIC3R_GUI_SOURCES
+        GUI/WebViewDialog.cpp
+        GUI/WebViewPanel.cpp
+        GUI/ConnectRequestHandler.cpp
+        GUI/WebView.cpp
+        GUI/ConfigWizardWebViewPage.cpp
+    )
+endif ()
 
 if (NOT SLIC3R_SLA_ONLY)
     message(FATAL_ERROR "This branch is SLA-only. Build with SLIC3R_SLA_ONLY=ON.")
@@ -419,6 +447,9 @@ if (SLIC3R_SLA_ONLY)
         GUI/GCodeViewer.cpp
         GUI/LibVGCode/LibVGCodeWrapper.cpp
         GUI/LibVGCode/LibVGCodeWrapper.hpp
+        # Move slider of the G-code preview; GUI_Preview guards its only user.
+        GUI/DoubleSliderForGcode.cpp
+        GUI/DoubleSliderForGcode.hpp
     )
 endif ()
 
@@ -479,10 +510,17 @@ if (UNIX AND NOT APPLE)
     find_package(GTK${SLIC3R_GTK} REQUIRED)
     find_package(PkgConfig REQUIRED)
 
-    # Use a dedicated pkg-config module name to avoid stale cache entries from
-    # previous configure runs that could pin WEBKIT2GTK to 4.0.
-    pkg_search_module(WEBKIT2GTK_LINUX REQUIRED IMPORTED_TARGET webkit2gtk-4.1 webkit2gtk-4.0)
-    target_link_libraries(libslic3r_gui PUBLIC ${GTK${SLIC3R_GTK}_LIBRARIES} fontconfig PkgConfig::WEBKIT2GTK_LINUX)
+    target_link_libraries(libslic3r_gui PUBLIC ${GTK${SLIC3R_GTK}_LIBRARIES} fontconfig)
+    # GTK headers used directly by the GUI (e.g. Widgets/DropDown.cpp); previously they only
+    # arrived transitively through the WebKitGTK target.
+    target_include_directories(libslic3r_gui PUBLIC ${GTK${SLIC3R_GTK}_INCLUDE_DIRS})
+    if (NOT SLIC3R_OFFLINE_ONLY)
+        # Only the online build compiles web view sources that need WebKitGTK.
+        # Use a dedicated pkg-config module name to avoid stale cache entries from
+        # previous configure runs that could pin WEBKIT2GTK to 4.0.
+        pkg_search_module(WEBKIT2GTK_LINUX REQUIRED IMPORTED_TARGET webkit2gtk-4.1 webkit2gtk-4.0)
+        target_link_libraries(libslic3r_gui PUBLIC PkgConfig::WEBKIT2GTK_LINUX)
+    endif ()
 endif ()
 
 # Add a definition so that we can tell we are compiling slic3r.

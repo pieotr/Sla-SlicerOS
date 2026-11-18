@@ -19,6 +19,7 @@
 #include "GUI_App.hpp"
 #include "format.hpp"
 #include "Tab.hpp"
+#include "Widgets/ComboBox.hpp"
 
 using Slic3r::GUI::format_wxstr;
 
@@ -105,16 +106,13 @@ void SavePresetDialog::Item::init_input_name_ctrl(wxBoxSizer *input_name_sizer, 
             values.push_back(preset.name);
         }
 
-        m_combo = new wxComboBox(m_parent, wxID_ANY, from_u8(preset_name), wxDefaultPosition, wxSize(35 * wxGetApp().em_unit(), -1));
+        m_combo = new ComboBox(m_parent, wxID_ANY, from_u8(preset_name), wxDefaultPosition, wxSize(35 * wxGetApp().em_unit(), -1), 0, nullptr, DD_NO_CHECK_ICON);
         for (const std::string&value : values)
             m_combo->Append(from_u8(value));
 
         m_combo->Bind(wxEVT_TEXT, [this](wxCommandEvent&) { update(); });
-#ifdef __WXOSX__
-        // Under OSX wxEVT_TEXT wasn't invoked after change selection in combobox,
-        // So process wxEVT_COMBOBOX too
+        // The owner-drawn ComboBox does not send wxEVT_TEXT when an item is picked from its list.
         m_combo->Bind(wxEVT_COMBOBOX, [this](wxCommandEvent&) { update(); });
-#endif //__WXOSX__
 
         input_name_sizer->Add(m_combo,    1, wxEXPAND, BORDER_W);
     }

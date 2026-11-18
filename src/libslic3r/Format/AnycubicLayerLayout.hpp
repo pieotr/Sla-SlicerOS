@@ -3,6 +3,7 @@
 #pragma once
 #include "AnycubicSLA.hpp"
 #include "libslic3r/Exception.hpp"
+#include "libslic3r/SLA/NativeBytes.hpp"
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -12,7 +13,7 @@
 
 namespace Slic3r {
 struct AnycubicLayerLayout {
-    const std::vector<uint8_t> &bytes;
+    sla::NativeBytes bytes;
     uint32_t version, header, table, count, columns, rows, planes, subtable = 0, model = 0;
     bool binary;
     void require(size_t at, uint64_t length) const {
@@ -29,7 +30,7 @@ struct AnycubicLayerLayout {
     }
     void named(size_t at, const char *name, size_t minimum) const {
         require(at, minimum);
-        if (std::memcmp(bytes.data()+at, name, std::strlen(name)) != 0)
+        if (!bytes.equals(at, name, std::strlen(name)))
             throw RuntimeError("Invalid Anycubic table marker");
     }
     size_t record(size_t i) const { return size_t(table) + 20 + i * 32; }
@@ -54,10 +55,10 @@ struct AnycubicLayerLayout {
         if (!dimensions) throw RuntimeError("Cannot calculate Anycubic resin volume without physical screen dimensions");
         return dimensions->first*dimensions->second/(double(columns)*rows);
     }
-    explicit AnycubicLayerLayout(const std::vector<uint8_t> &source, const std::string &format,
+    explicit AnycubicLayerLayout(const sla::NativeBytes &source, const std::string &format,
                                 const std::function<void()> &check = {}) : bytes(source), binary(format == "pws"), extension(format) {
         require(0, 48);
-        if (std::memcmp(bytes.data(), "ANYCUBIC", 8) != 0) throw RuntimeError("Not an Anycubic archive");
+        if (!bytes.equals(0, "ANYCUBIC", 8)) throw RuntimeError("Not an Anycubic archive");
         version = integer(12);
         const auto &versions = anycubic_available_versions(format);
         if (std::find(versions.begin(), versions.end(), version) == versions.end())
@@ -138,19 +139,21 @@ struct AnycubicLayerLayout {
         return decode_record(subrecord(layer),check);
     }
     std::vector<uint8_t> decode_record(size_t at,const std::function<void()> &check) const {
-        size_t cursor=integer(at),end=cursor+integer(at+4);
+        const size_t first=integer(at),total=integer(at+4);
+        const std::vector<uint8_t> payload=bytes.read(first,total);
+        size_t cursor=0,end=total;
         std::vector<uint8_t> pixels(size_t(columns)*rows, 0);
         for (unsigned plane = 0; plane < (binary ? planes : 1); ++plane) {
             size_t position = 0;
             while (position < pixels.size()) {
                 if (check) check();
                 if (cursor >= end) throw RuntimeError("Truncated Anycubic mask");
-                const uint8_t byte = bytes[cursor++];
+                const uint8_t byte = payload[cursor++];
                 unsigned run = binary ? byte & 127 : byte & 15;
                 const uint8_t color = binary ? byte >> 7 : byte >> 4;
                 if (!binary && (color == 0 || color == 15)) {
                     if (cursor >= end) throw RuntimeError("Truncated Anycubic long run");
-                    run = (run << 8) | bytes[cursor++];
+                    run = (run << 8) | payload[cursor++];
                 }
                 if (!run || run > pixels.size()-position) throw RuntimeError("Anycubic run exceeds the layer");
                 if (binary) {

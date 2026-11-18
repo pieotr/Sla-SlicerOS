@@ -4,6 +4,11 @@
 #include <wx/dcgraph.h>
 
 #include "../GUI_App.hpp"
+#include "../GUI_Utils.hpp"
+
+#if defined(__WXGTK__)
+    #include <gtk/gtk.h>
+#endif
 
 BEGIN_EVENT_TABLE(ComboBox, TextInput)
 
@@ -79,6 +84,20 @@ ComboBox::ComboBox(wxWindow *      parent,
     for (int i = 0; i < n; ++i) Append(choices[i]);
 }
 
+wxSize ComboBox::DoGetBestSize() const
+{
+    wxClientDC dc(const_cast<ComboBox *>(this));
+    dc.SetFont(GetFont());
+    int width = dc.GetTextExtent(wxS("MMMMMMMM")).x / 2;
+    for (const wxString &text : texts)
+        width = std::max(width, dc.GetTextExtent(text).x);
+    int icon_width = 0;
+    for (const wxBitmapBundle &icon : icons)
+        if (icon.IsOk()) icon_width = std::max(icon_width, icon.GetPreferredBitmapSizeFor(m_parent).x + 4);
+    const int height = std::max(GetMinHeight(), dc.GetTextExtent(wxS("Wg")).y + 8);
+    return wxSize(width + icon_width + 5 + 16 + 14, height);
+}
+
 int ComboBox::GetSelection() const
 {
     return drop.GetSelection();
@@ -87,8 +106,9 @@ int ComboBox::GetSelection() const
 void ComboBox::SetSelection(int n)
 {
     drop.SetSelection(n);
-    SetLabel(drop.GetValue());
+    SetLabel(drop.GetValue()); // also refreshes the accessible description
     SetIcon(drop.selection >= 0 ? icons[drop.selection] : wxNullBitmap);
+    update_accessible();
 }
 
 void ComboBox::Rescale()
@@ -109,6 +129,7 @@ void ComboBox::SetValue(const wxString &value)
     drop.SetValue(value);
     SetLabel(value);
     SetIcon(drop.selection >= 0 ? icons[drop.selection] : wxNullBitmap);
+    update_accessible();
 }
 
 void ComboBox::SetLabel(const wxString &value)
@@ -117,6 +138,16 @@ void ComboBox::SetLabel(const wxString &value)
         GetTextCtrl()->ChangeValue(value);
     else
         TextInput::SetLabel(value);
+    update_accessible();
+}
+
+// The widget is custom drawn, so AT-SPI would see only an anonymous panel. When enabled (preset combos), publish the
+// control's name (wxWindow::GetName()) as the accessible name and the shown value, including the "(modified)" suffix
+// of a dirty preset, as the accessible description. Role is combo box.
+void ComboBox::update_accessible()
+{
+    if (!m_publish_accessible) return;
+    Slic3r::GUI::set_accessible_name(this, GetName(), GetLabel(), Slic3r::GUI::AccessibleRole::ComboBox);
 }
 
 wxString ComboBox::GetLabel() const
@@ -190,8 +221,9 @@ int ComboBox::Append(const wxString         &item,
     texts.push_back(item);
     icons.push_back(bitmap);
     datas.push_back(clientData);
-    types.push_back(wxClientData_None);
+    types.push_back(clientData ? wxClientData_Void : wxClientData_None);
     drop.Invalidate();
+    InvalidateBestSize();
     return int(texts.size()) - 1;
 }
 
@@ -213,6 +245,7 @@ int ComboBox::Insert(const wxString& item, const wxBitmapBundle& bitmap,
 
 void ComboBox::DoClear()
 {
+    InvalidateBestSize();
     texts.clear();
     icons.clear();
     datas.clear();
@@ -274,6 +307,7 @@ int ComboBox::DoInsertItems(const wxArrayStringsAdapter &items,
         ++pos;
     }
     drop.Invalidate(true);
+    InvalidateBestSize();
     SetSelection(selected >= int(start) ? selected + int(items.GetCount()) : selected);
     return int(pos) - 1;
 }
@@ -366,6 +400,16 @@ void ComboBox::keyDown(wxKeyEvent& event)
                 sendComboBoxEvent();
             break;
         }
+        case WXK_HOME:
+        case WXK_END: {
+            if (HasFlag(wxCB_READONLY) && !texts.empty()) {
+                SetSelection(key_code == WXK_HOME ? 0 : int(texts.size()) - 1);
+                if (!drop.IsShown()) sendComboBoxEvent();
+                break;
+            }
+            event.Skip();
+            break;
+        }
         case WXK_LEFT: {
             if (HasFlag(wxCB_READONLY)) {
                 if(GetSelection() > 0)
@@ -437,4 +481,17 @@ void ComboBox::sendComboBoxEvent()
     event.SetInt(drop.GetSelection());
     event.SetString(drop.GetValue());
     GetEventHandler()->ProcessEvent(event);
+}
+
+ComboBox *create_readonly_combo(wxWindow *parent, const wxString &name, const wxString &tooltip,
+                                const wxArrayString &items, int selection)
+{
+    auto *combo = new ComboBox(parent, wxID_ANY, wxString(), wxDefaultPosition, wxDefaultSize, 0, nullptr,
+                               wxCB_READONLY | DD_NO_CHECK_ICON);
+    combo->publish_accessible_value();
+    if (!name.empty()) combo->SetName(name);
+    if (!tooltip.empty()) combo->SetToolTip(tooltip);
+    for (const wxString &item : items) combo->Append(item);
+    if (selection >= 0 && selection < int(items.size())) combo->SetSelection(selection);
+    return combo;
 }

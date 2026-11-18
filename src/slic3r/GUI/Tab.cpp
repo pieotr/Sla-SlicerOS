@@ -23,6 +23,7 @@
 ///|/
 // #include "libslic3r/GCodeSender.hpp"
 #include "slic3r/GUI/BedShapeDialog.hpp"
+#include <set>
 #include "Tab.hpp"
 #include "PresetHints.hpp"
 #include "libslic3r/PresetBundle.hpp"
@@ -35,8 +36,14 @@
 #include "libslic3r/Format/AnycubicSLA.hpp"
 #include <nlohmann/json.hpp>
 #include <boost/nowide/fstream.hpp>
+#ifndef SLIC3R_SLA_ONLY
+#ifndef SLIC3R_SLA_ONLY
 #include "libslic3r/GCode/GCodeProcessor.hpp"
+#endif // SLIC3R_SLA_ONLY
+#endif // SLIC3R_SLA_ONLY
+#ifndef SLIC3R_SLA_ONLY
 #include "libslic3r/GCode/GCodeWriter.hpp"
+#endif // SLIC3R_SLA_ONLY
 #include "libslic3r/GCode/Thumbnails.hpp"
 #include "libslic3r/CustomParametersHandling.hpp"
 
@@ -194,6 +201,9 @@ void Tab::create_preset_tab()
     add_scaled_button(panel, &m_btn_save_preset, "save");
     add_scaled_button(panel, &m_btn_rename_preset, "edit");
     add_scaled_button(panel, &m_btn_delete_preset, "cross");
+    // Single-profile exchange is available for the SLA profile types only.
+    add_scaled_button(panel, &m_btn_export_preset, "export_config");
+    add_scaled_button(panel, &m_btn_import_preset, "import_config");
 #ifndef SLIC3R_OFFLINE_ONLY
     if (m_type == Preset::Type::TYPE_PRINTER)
         add_scaled_button(panel, &m_btn_edit_ph_printer, "cog");
@@ -213,6 +223,8 @@ void Tab::create_preset_tab()
     //TRN Settings Tab: tooltip for toolbar button
     m_btn_delete_preset->SetToolTip(_(L("Delete preset")));
     m_btn_delete_preset->Hide();
+    m_btn_export_preset->SetToolTip(_L("Export this preset to an .ini file"));
+    m_btn_import_preset->SetToolTip(_L("Import a preset from an .ini file"));
 
     add_scaled_button(panel, &m_question_btn, "question");
     m_question_btn->SetToolTip(_(L("Hover the cursor over buttons to find more information \n"
@@ -259,6 +271,10 @@ void Tab::create_preset_tab()
     m_h_buttons_sizer->Add(m_btn_rename_preset, 0, wxALIGN_CENTER_VERTICAL);
     m_h_buttons_sizer->AddSpacer(int(4 * scale_factor));
     m_h_buttons_sizer->Add(m_btn_delete_preset, 0, wxALIGN_CENTER_VERTICAL);
+    m_h_buttons_sizer->AddSpacer(int(4 * scale_factor));
+    m_h_buttons_sizer->Add(m_btn_export_preset, 0, wxALIGN_CENTER_VERTICAL);
+    m_h_buttons_sizer->AddSpacer(int(4 * scale_factor));
+    m_h_buttons_sizer->Add(m_btn_import_preset, 0, wxALIGN_CENTER_VERTICAL);
     if (m_btn_edit_ph_printer) {
         m_h_buttons_sizer->AddSpacer(int(4 * scale_factor));
         m_h_buttons_sizer->Add(m_btn_edit_ph_printer, 0, wxALIGN_CENTER_VERTICAL);
@@ -346,6 +362,8 @@ void Tab::create_preset_tab()
     // keyboard/accessibility activation must remain responsive inside it.
     m_btn_save_preset->Bind(wxEVT_BUTTON, ([this](wxCommandEvent e) { CallAfter([this] { save_preset(); }); }));
     m_btn_rename_preset->Bind(wxEVT_BUTTON, ([this](wxCommandEvent e) { CallAfter([this] { rename_preset(); }); }));
+    m_btn_export_preset->Bind(wxEVT_BUTTON, ([this](wxCommandEvent e) { CallAfter([this] { export_preset_ini(); }); }));
+    m_btn_import_preset->Bind(wxEVT_BUTTON, ([this](wxCommandEvent e) { CallAfter([this] { import_preset_ini(); }); }));
     m_btn_delete_preset->Bind(wxEVT_BUTTON, ([this](wxCommandEvent e) { CallAfter([this] { delete_preset(); }); }));
     m_btn_hide_incompatible_presets->Bind(wxEVT_BUTTON, ([this](wxCommandEvent e) {
         toggle_show_hide_incompatible();
@@ -1004,6 +1022,30 @@ void Tab::sys_color_changed()
 
     Layout();
     Refresh();
+}
+
+// Debug guard against options that SLAPrint consumes but no page edits (the fast_tilt_time class of bug).
+// A key must either be registered by some option group of this tab or be whitelisted in
+// Preset::sla_hidden_option_keys(). Release builds skip the scan.
+void Tab::check_options_have_editors(const std::vector<std::string>& option_keys) const
+{
+#ifndef NDEBUG
+    std::set<std::string> registered;
+    for (const PageShp& page : m_pages)
+        for (const ConfigOptionsGroupShp& group : page->m_optgroups)
+            for (const auto& [id, key_and_idx] : group->opt_map())
+                registered.insert(key_and_idx.first);
+
+    const std::vector<std::string>& hidden = Preset::sla_hidden_option_keys();
+    for (const std::string& key : option_keys) {
+        if (registered.count(key) || std::find(hidden.begin(), hidden.end(), key) != hidden.end())
+            continue;
+        BOOST_LOG_TRIVIAL(error) << "SLA option \"" << key << "\" has no editor in the tab and is not in Preset::sla_hidden_option_keys()";
+        assert(false && "SLA option without an editor");
+    }
+#else
+    (void)option_keys;
+#endif
 }
 
 Field* Tab::get_field(const t_config_option_key& opt_key, int opt_index/* = -1*/) const
@@ -1902,6 +1944,11 @@ void TabPrint::clear_pages()
 
 bool Tab::validate_custom_gcode(const wxString& title, const std::string& gcode)
 {
+#ifdef SLIC3R_SLA_ONLY
+    // Custom G-code is FFF-only and the SLA build has no G-code processor to check it against.
+    (void)title; (void)gcode;
+    return true;
+#else
     std::vector<std::string> tags;
     bool invalid = GCodeProcessor::contains_reserved_tags(gcode, 5, tags);
     if (invalid) {
@@ -1918,6 +1965,7 @@ bool Tab::validate_custom_gcode(const wxString& title, const std::string& gcode)
         dialog.ShowModal();
     }
     return !invalid;
+#endif
 }
 
 static void validate_custom_gcode_cb(Tab* tab, const wxString& title, const t_config_option_key& opt_key, const boost::any& value) {
@@ -2848,6 +2896,8 @@ void TabPrinter::build_fff()
                         m_use_silent_mode = val;
                     }
                 }
+#ifndef SLIC3R_SLA_ONLY
+                // G-code flavor capabilities come from the FFF G-code writer.
                 if (opt_key == "gcode_flavor") {
                     const GCodeFlavor flavor = static_cast<GCodeFlavor>(boost::any_cast<int>(value));
                     bool supports_travel_acceleration = GCodeWriter::supports_separate_travel_acceleration(flavor);
@@ -2886,6 +2936,7 @@ void TabPrinter::build_fff()
                         load_config(new_conf);
                     }
                 }
+#endif
                 build_unregular_pages();
                 update_dirty();
                 on_value_change(opt_key, value);
@@ -3055,6 +3106,7 @@ void TabPrinter::build_sla()
     // FIXME: This should be on one line in the UI
     optgroup->append_single_option_line("display_mirror_x");
     optgroup->append_single_option_line("display_mirror_y");
+    optgroup->append_single_option_line("sla_archive_header_mirror");
 
     optgroup = page->new_optgroup(L("Corrections"));
     line = Line{ m_config->def()->get("relative_correction")->full_label, "" };
@@ -3075,6 +3127,11 @@ void TabPrinter::build_sla()
     optgroup->append_single_option_line("min_initial_exposure_time");
     optgroup->append_single_option_line("max_initial_exposure_time");
 
+    // Consumed by SLAPrint for the print-time estimate; previously only editable in the INI.
+    optgroup = page->new_optgroup(L("Tilt timing"));
+    optgroup->append_single_option_line("fast_tilt_time");
+    optgroup->append_single_option_line("slow_tilt_time");
+    optgroup->append_single_option_line("high_viscosity_tilt_time");
 
     optgroup = page->new_optgroup(L("Output"));
     auto model_option = optgroup->get_option("printer_model");
@@ -3182,6 +3239,7 @@ void TabPrinter::build_sla()
     optgroup = page->new_optgroup(L("Profile dependencies"));
 
     build_preset_description_line(optgroup.get());
+    check_options_have_editors(Preset::sla_printer_options());
 }
 
 void TabPrinter::extruders_count_changed(size_t extruders_count)
@@ -4019,6 +4077,9 @@ void Tab::update_btns_enabling()
     m_btn_delete_preset->Show(is_printer_and_selected_physical || (!preset.is_default && !preset.is_system));
 
     m_btn_rename_preset->Show(!is_printer_and_selected_physical && !preset.is_default && !preset.is_system && !preset.is_external);
+    // Export needs a saved, non-default preset; import is always possible (it creates a new user preset).
+    m_btn_export_preset->Show(!is_printer_and_selected_physical && !preset.is_default && !preset.is_external);
+    m_btn_import_preset->Show(!is_printer_and_selected_physical);
 
     if (m_btn_edit_ph_printer)
         m_btn_edit_ph_printer->SetToolTip( m_preset_bundle->physical_printers.has_selection() ?
@@ -4729,6 +4790,27 @@ void Tab::delete_preset()
 
         // TRN "remove/delete"
         msg += from_u8((boost::format(_u8L("Are you sure you want to %1% the selected preset?")) % action).str());
+
+        // Other user presets that point to this one. "No" cancels; "Yes" deletes the preset and updates them
+        // in one all-or-nothing file transaction.
+        if (!current_preset.is_external && !current_preset.is_system && !current_preset.is_default) {
+            const auto dependents = m_preset_bundle->find_preset_dependents(m_type, current_preset.name);
+            if (!dependents.empty()) {
+                msg += "\n\n" + _L("These presets refer to it and will be updated:");
+                for (const PresetDependent &dependent : dependents) {
+                    wxString what;
+                    switch (dependent.kind) {
+                    case PresetDependent::Kind::Inherits:           what = _L("inherits from it; its current values are kept"); break;
+                    case PresetDependent::Kind::CompatiblePrinters: what = _L("compatible printers list; an emptied list becomes \"None\""); break;
+                    case PresetDependent::Kind::CompatiblePrints:   what = _L("compatible print profiles list; an emptied list becomes \"None\""); break;
+                    case PresetDependent::Kind::DefaultSlaPrint:    what = _L("default process profile is cleared"); break;
+                    case PresetDependent::Kind::DefaultSlaMaterial: what = _L("default material profile is cleared"); break;
+                    }
+                    msg += "\n    \"" + from_u8(dependent.name) + "\" (" + (dependent.type == Preset::TYPE_PRINTER ? _L("printer") :
+                                dependent.type == Preset::TYPE_SLA_MATERIAL ? _L("material") : _L("process")) + "): " + what;
+                }
+            }
+        }
     }
 
     action = current_preset.is_external ? _L("Remove") : _L("Delete");
@@ -4825,8 +4907,8 @@ enum class CompatibilityMode { All, Selected, Condition, None };
 
 wxSizer* Tab::compatible_widget_create(wxWindow* parent, PresetDependencies &deps)
 {
-    deps.mode = new wxChoice(parent, wxID_ANY, wxDefaultPosition, wxDefaultSize,
-        wxArrayString{_L("All"), _L("Selected profiles"), _L("Condition"), _L("None")});
+    deps.mode = create_readonly_combo(parent, wxString(), wxString(),
+        wxArrayString{_L("All"), _L("Selected profiles"), _L("Condition"), _L("None")}, -1);
     deps.mode->SetName(deps.type == Preset::TYPE_PRINTER ? "Printer compatibility mode" : "Print compatibility mode");
     deps.mode->SetToolTip(deps.mode->GetName());
     deps.mode->SetFont(wxGetApp().normal_font());
@@ -4900,7 +4982,7 @@ wxSizer* Tab::compatible_widget_create(wxWindow* parent, PresetDependencies &dep
         apply(std::move(selected), rule);
     };
     deps.btn->Bind(wxEVT_BUTTON, [select](wxCommandEvent&) { select(); });
-    deps.mode->Bind(wxEVT_CHOICE, [this, &deps, apply, select](wxCommandEvent&) {
+    deps.mode->Bind(wxEVT_COMBOBOX, [this, &deps, apply, select](wxCommandEvent&) {
         const auto mode = static_cast<CompatibilityMode>(deps.mode->GetSelection());
         if (mode == CompatibilityMode::Selected) {
             select();
@@ -5467,7 +5549,51 @@ bool Tab::save_current_preset(const std::string& new_name, bool detach)
 
 bool Tab::delete_current_preset()
 {
+    const Preset &selected = m_presets->get_selected_preset();
+    if (!selected.is_default && !selected.is_system && !selected.is_external &&
+        (m_type == Preset::TYPE_PRINTER || m_type == Preset::TYPE_SLA_PRINT || m_type == Preset::TYPE_SLA_MATERIAL))
+        // The user has seen the dependents in Tab::delete_preset(); the references are fixed in the same
+        // file transaction as the deletion, so a failure leaves every profile untouched.
+        return m_preset_bundle->delete_preset_with_dependencies(m_type, selected.name);
     return m_presets->delete_current_preset();
+}
+
+void Tab::export_preset_ini()
+{
+    const Preset &preset = m_presets->get_selected_preset();
+    if (preset.is_default || preset.is_external)
+        return;
+    if (m_presets->current_is_dirty() &&
+        wxID_YES != MessageDialog(parent(), _L("The preset has unsaved changes; only the saved version is exported. Continue?"),
+                                  _L("Export preset"), wxYES_NO | wxICON_QUESTION).ShowModal())
+        return;
+    wxFileDialog dlg(this, _L("Export preset as:"), wxGetApp().app_config->get_last_dir(),
+                     from_u8(preset.name) + ".ini", file_wildcards(FT_INI), wxFD_SAVE | wxFD_OVERWRITE_PROMPT);
+    if (dlg.ShowModal() != wxID_OK)
+        return;
+    try {
+        m_preset_bundle->export_preset_ini(m_type, preset.name, into_u8(dlg.GetPath()));
+    } catch (const std::exception &ex) {
+        wxMessageBox(from_u8(ex.what()), _L("Export preset"), wxOK | wxICON_ERROR, this);
+    }
+}
+
+void Tab::import_preset_ini()
+{
+    wxFileDialog dlg(this, _L("Import preset from:"), wxGetApp().app_config->get_last_dir(),
+                     wxEmptyString, file_wildcards(FT_INI), wxFD_OPEN | wxFD_FILE_MUST_EXIST);
+    if (dlg.ShowModal() != wxID_OK)
+        return;
+    try {
+        const auto result = m_preset_bundle->import_preset_ini(m_type, into_u8(dlg.GetPath()));
+        if (result.renamed)
+            show_info(this, format_wxstr(_L("A preset with this name already exists. The imported preset was saved as \"%1%\"."), result.name),
+                      _L("Import preset"));
+        // Selecting the preset goes through the normal path so unsaved edits are handled as usual.
+        select_preset(result.name);
+    } catch (const std::exception &ex) {
+        wxMessageBox(from_u8(ex.what()), _L("Import preset"), wxOK | wxICON_ERROR, this);
+    }
 }
 
 Page::Page(wxWindow* parent, const wxString& title, int iconID) :
@@ -5630,6 +5756,14 @@ void TabSLAMaterial::build()
     optgroup->append_single_option_line("bottle_volume");
     optgroup->append_single_option_line("bottle_weight");
     optgroup->append_single_option_line("material_density");
+    optgroup->append_single_option_line("material_type");
+    {
+        // material_vendor has no label in the option definition; label it here for the editor.
+        Option vendor = optgroup->get_option("material_vendor");
+        vendor.opt.label = L("Vendor");
+        vendor.opt.tooltip = L("Resin manufacturer shown in the material list.");
+        optgroup->append_single_option_line(vendor);
+    }
 
     optgroup->on_change = [this](t_config_option_key opt_key, boost::any value)
     {
@@ -5759,6 +5893,7 @@ void TabSLAMaterial::build()
 #endif
 
     build_tilt_group(page);
+    check_options_have_editors(Preset::sla_material_options());
 }
 
 static void append_tilt_options_line(ConfigOptionsGroupShp optgroup, const std::string opt_key)
@@ -6281,6 +6416,7 @@ void TabSLAPrint::build()
     optgroup->append_single_option_line(option);
 
     build_preset_description_line(optgroup.get());
+    check_options_have_editors(Preset::sla_print_options());
 }
 
 void TabSLAPrint::update_description_lines()

@@ -51,6 +51,7 @@
 #include "wxExtensions.hpp"
 #include "ConfigManipulation.hpp"
 #include "OptionsGroup.hpp"
+#include "Widgets/ComboBox.hpp"
 #include "libslic3r/Preset.hpp"
 
 class CheckBox;
@@ -190,6 +191,8 @@ protected:
 	ScalableButton*		m_btn_save_preset;
 	ScalableButton*		m_btn_rename_preset;
 	ScalableButton*		m_btn_delete_preset;
+	ScalableButton*		m_btn_export_preset { nullptr };	// single preset -> .ini
+	ScalableButton*		m_btn_import_preset { nullptr };	// .ini -> new user preset
 	ScalableButton*		m_btn_edit_ph_printer {nullptr};
 	ScalableButton*		m_btn_hide_incompatible_presets;
 	wxBoxSizer*			m_top_hsizer;
@@ -203,7 +206,7 @@ protected:
 
    	struct PresetDependencies {
 		Preset::Type type	  = Preset::TYPE_INVALID;
-		wxChoice    *mode = nullptr;
+		ComboBox    *mode = nullptr;
 		wxStaticText *status = nullptr;
 		ScalableButton 	*btn  = nullptr;
 		std::string  key_list; // "compatible_printers"
@@ -350,6 +353,8 @@ public:
 	void		save_preset(std::string name = std::string(), bool detach = false);
 	void		rename_preset();
 	void		delete_preset();
+	void		export_preset_ini();
+	void		import_preset_ini();
 	void		toggle_show_hide_incompatible();
 	void		update_compatibility_ui();
 	void		update_ui_from_settings();
@@ -384,6 +389,8 @@ public:
     virtual void    msw_rescale();
     virtual void	sys_color_changed();
 	Field*			get_field(const t_config_option_key& opt_key, int opt_index = -1) const;
+	// Debug-only: every key must be registered by an option group of this tab or whitelisted as hidden.
+	void			check_options_have_editors(const std::vector<std::string>& option_keys) const;
 	Line*			get_line(const t_config_option_key& opt_key);
 	std::pair<OG_CustomCtrl*, bool*> get_custom_ctrl_with_blinking_ptr(const t_config_option_key& opt_key, int opt_index = -1);
 

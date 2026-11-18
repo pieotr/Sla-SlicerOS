@@ -163,6 +163,16 @@ enum SLADisplayOrientation {
     sladoPortrait
 };
 
+// Value of the mirror/flip flag written into the header of an SLA archive.
+// Metadata only: the layer images are never changed by this setting.
+enum SLAArchiveHeaderMirror {
+    slahmAuto,       // each format's historical value (default)
+    slahmNone,
+    slahmHorizontal,
+    slahmVertical,
+    slahmBoth
+};
+
 using SLASupportTreeType = sla::SupportTreeType;
 using SLAPillarConnectionMode = sla::PillarConnectionMode;
 
@@ -266,6 +276,7 @@ CONFIG_OPTION_ENUM_DECLARE_STATIC_MAPS(SupportMaterialInterfacePattern)
 CONFIG_OPTION_ENUM_DECLARE_STATIC_MAPS(SeamPosition)
 CONFIG_OPTION_ENUM_DECLARE_STATIC_MAPS(ScarfSeamPlacement)
 CONFIG_OPTION_ENUM_DECLARE_STATIC_MAPS(SLADisplayOrientation)
+CONFIG_OPTION_ENUM_DECLARE_STATIC_MAPS(SLAArchiveHeaderMirror)
 CONFIG_OPTION_ENUM_DECLARE_STATIC_MAPS(SLAPillarConnectionMode)
 CONFIG_OPTION_ENUM_DECLARE_STATIC_MAPS(SLASupportTreeType)
 CONFIG_OPTION_ENUM_DECLARE_STATIC_MAPS(BrimType)
@@ -1320,6 +1331,7 @@ PRINT_CONFIG_CLASS_DEFINE(
     ((ConfigOptionString,                     sla_archive_format))
     ((ConfigOptionString,                     sla_anycubic_version))
     ((ConfigOptionInt,                        sla_cbddlp_aa))
+    ((ConfigOptionEnum<SLAArchiveHeaderMirror>,sla_archive_header_mirror))
     ((ConfigOptionString,                     sla_phz_encryption_key))
     ((ConfigOptionString,                     nanodlp_device_profile))
     ((ConfigOptionFloat,                      sla_output_precision))

@@ -40,7 +40,6 @@ sudo apt-get install -y \
   libglu1-mesa-dev \
   libgtk-3-dev \
   libdbus-1-dev \
-  libwebkit2gtk-4.1-dev \
   texinfo
 ```
 
@@ -90,6 +89,20 @@ bash ./build_linux.sh --jobs 4 --tests --run
 bash ./run_prusa_slicer.sh
 ```
 
+The launcher (`run_prusa_slicer.sh`) passes all arguments to `build/src/prusa-slicer`
+(`sla-slicer` is a symlink to it). Useful ways to start:
+
+```bash
+bash ./run_prusa_slicer.sh                              # normal start, your usual profiles
+bash ./run_prusa_slicer.sh --datadir /path/to/trial     # isolated profiles for experiments
+bash ./run_prusa_slicer.sh --help-sla                   # full list of SLA command-line options
+bash ./run_mid_refactor_tests.sh                        # persistent separate profiles in build/mid-refactor-user-tests
+```
+
+Usage, profiles and the command line are described in [manual.txt](manual.txt)
+(Polish); tests in [doc/TESTING.md](doc/TESTING.md); code layout in
+[doc/DEVELOPER.md](doc/DEVELOPER.md).
+
 The launcher starts the offline SLA application without configuring TLS certificates.
 Application transport code and printer upload backends are excluded; CURL and
 OpenSSL are no longer direct application dependencies. The dependency configuration
@@ -97,9 +110,99 @@ also excludes them. Initial dependency builds can still download source archives
 if those archives are missing locally; prepare the dependency cache in advance
 for a fully offline build. Running the application does not run that build script.
 
-WebView and its platform libraries remain build dependencies during the GUI split.
-Their transitive system dependencies differ by platform; this change does not
-remove all networking libraries from the host system.
+In the offline build (`SLIC3R_OFFLINE_ONLY=ON`, the default here) wxWidgets'
+`webview` component is not requested and no WebView source is compiled, so
+`libwebkit2gtk`, `libjavascriptcoregtk` and `libsoup` are no longer linked.
+Check an existing binary with:
+
+```bash
+python3 tests/architecture/verify_offline_no_network_libs.py --binary build/src/prusa-slicer
+```
+
+(After pulling this change, re-run `cmake` on `build/` and rebuild; the check
+fails on binaries built before it. The bundled wxWidgets static libraries in
+`deps/` are unchanged, so no dependency rebuild is needed. Untested.)
+
+## Product name, binary name and user data
+
+- User-visible name: **SLA-Slicer** (`SLIC3R_APP_NAME` in `version.inc`).
+- The storage key `SLIC3R_APP_KEY` intentionally remains `PrusaSlicer`. It names the
+  data directory (`~/.config/PrusaSlicer`, or `$XDG_CONFIG_HOME/PrusaSlicer`) and
+  `PrusaSlicer.ini`, so existing presets, profiles and settings keep working with no
+  migration step and nothing is copied or moved. Renaming the key would orphan them
+  (the datadir lookup lives in `libslic3r/Utils/DirectoriesUtils.cpp`, which a
+  branding change does not touch). Use `--datadir <dir>` to run with an isolated directory.
+- The executable stays `prusa-slicer`; `sla-slicer` is provided as a symlink next to it
+  (build tree and install). Tests and scripts that reference `build/src/prusa-slicer`
+  are unaffected.
+
+## Install and relocatable bundle
+
+Plain install (non-FHS layout, default; installs `bin/prusa-slicer`, `bin/sla-slicer`
+and `resources/`; no G-code viewer files, no udev rules in SLA-only builds):
+
+```bash
+cmake --install build --prefix /opt/sla-slicer      # untested
+/opt/sla-slicer/bin/sla-slicer
+```
+
+The executable finds its resources at `<exe dir>/../resources` (`src/CLI/Setup.cpp`),
+so the install tree can be moved anywhere. A `-DSLIC3R_FHS=1` configure instead
+bakes the absolute `<prefix>/share/SLA-Slicer` path and is not relocatable.
+
+Relocatable tarball from the local build (needs a finished `bash ./build_linux.sh`):
+
+```bash
+bash tools/make_relocatable_bundle.sh            # writes dist/sla-slicer-<version>-linux-x86_64.tar.gz
+tar xzf dist/sla-slicer-*-linux-x86_64.tar.gz -C /somewhere && /somewhere/sla-slicer-*/sla-slicer
+```
+
+It uses `tools/bundle_native_libraries.py`, then removes every library the host must
+provide: glibc, libstdc++, the GTK/GL/X11/Wayland stack **and the libraries that stack
+itself uses** (libmount, libblkid, libselinux, libpcre, libffi, systemd, compression,
+libpng, expat, ...). Only application-specific libraries stay bundled (OpenCV, TBB,
+libtiff + jbig/deflate, OpenJPEG, libjpeg, libwebp). Such a bundle runs only on
+distributions whose glibc is at least as new as the build machine's (a CachyOS build
+needs glibc 2.43 — Arch/Fedora only).
+
+### Portable Linux build (Docker, glibc 2.35)
+
+For a bundle that runs on older distributions, build inside an Ubuntu 22.04 container
+(glibc 2.35, GCC 12). Needs a running docker daemon and network access during the
+build (apt, PyPI, dependency sources); the result itself is offline.
+
+```bash
+JOBS=8 bash tools/docker/build_portable.sh            # default work dir: ./build-docker (gitignored)
+# -> build-docker/dist/sla-slicer-<version>/ and sla-slicer-<version>-linux-x86_64.tar.gz
+tests/dist/bundle_in_docker.sh build-docker/dist/sla-slicer-<version> \
+    ubuntu:22.04 ubuntu:24.04 debian:12 debian:testing fedora:latest archlinux:latest
+```
+
+`tools/docker/Dockerfile.build` defines the image, `tools/docker/container_build.sh` builds
+the dependency superbuild (first run: hours; cached in `build-docker/work`, ccache in
+`build-docker/ccache`), the app (`SLIC3R_SLA_ONLY`, `SLIC3R_OFFLINE_ONLY`), runs the
+CTest subset that needs no display, and packs the bundle. `BUNDLE_LIBSTDCXX=1` also
+bundles libstdc++/libgcc_s (not needed for the targets below).
+
+Verified 14 November 2026. CLI: `tests/dist/bundle_in_docker.sh` (`ldd`, `--help`, slicing a cube to
+GOO and SL1 with a fresh data directory; container CTest 22/22). GUI: `tests/dist/bundle_gui_in_docker.sh`
+(Xvfb + Mesa software OpenGL, fresh data directory: the main window and the first-run Configuration
+Wizard appear, no error dialog, process alive):
+
+| Distribution | glibc | CLI (slice GOO + SL1) | GUI start (Xvfb) |
+|---|---|---|---|
+| Ubuntu 22.04 | 2.35 | PASS  PASS |
+| Ubuntu 24.04 | 2.39 | PASS  PASS |
+| Debian 12 | 2.36 | PASS  PASS |
+| Debian testing | 2.43 | PASS  PASS |
+| Fedora (latest) | 2.44 | PASS  PASS |
+| Arch Linux (latest) | 2.44 | PASS  PASS |
+
+Bundle requirements: glibc ≥ 2.35, libstdc++ with `GLIBCXX_3.4.30` (GCC ≥ 12), and on
+the host GTK3, OpenGL (Mesa or vendor driver), dbus, libSM/libICE and libnotify — all
+present on a normal desktop, plus an installed UTF-8 locale (without any, the app reports
+"Switching language failed" — minimal container images only). Not verified: a real GPU driver
+on another distribution (the container uses Mesa software rendering).
 
 ## Existing builds after a compiler update
 

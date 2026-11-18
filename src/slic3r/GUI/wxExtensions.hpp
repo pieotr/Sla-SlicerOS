@@ -215,7 +215,13 @@ public:
 
     virtual void    sys_color_changed();
 
+protected:
+    // Icon-only buttons have no visible text: publish the tooltip (else the icon name) as AT-SPI name.
+    void            DoSetToolTipText(const wxString& tip) override;
+
 private:
+    void            update_accessible_name(const wxString& tooltip);
+
     wxWindow*       m_parent { nullptr };
     std::string     m_current_icon_name;
     std::string     m_disabled_icon_name;

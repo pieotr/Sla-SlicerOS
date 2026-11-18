@@ -490,11 +490,25 @@ set(SLIC3R_SOURCES
     SLA/LayerJobParameters.cpp
     SLA/ChituboxJobOverlay.cpp
     SLA/LayerDocument.cpp
+    SLA/LayerMemoryBudget.cpp
+    SLA/LayerMemoryBudget.hpp
     SLA/LayerImageFile.hpp
     SLA/LayerImageFile.cpp
     SLA/ColorMask.cpp
     SLA/LayerProgress.hpp
     SLA/LayerDocument.hpp
+    SLA/LayerIssues.hpp
+    SLA/LayerIssues.cpp
+    SLA/LayerOperations.hpp
+    SLA/LayerOperations.cpp
+    SLA/LayerListStream.hpp
+    SLA/LayerListStream.cpp
+    SLA/LayerSuggestions.hpp
+    SLA/LayerSuggestions.cpp
+    SLA/LayerExports.hpp
+    SLA/LayerExports.cpp
+    SLA/LayerRecipe.hpp
+    SLA/LayerRecipe.cpp
     SLA/CrealityCXDLPv4MaskReader.hpp
     SLA/CrealityCXDLPv4FreshExportPlan.cpp
     SLA/CrealityCXDLPv4FreshExportPlan.hpp
@@ -511,6 +525,8 @@ set(SLIC3R_SOURCES
     SLA/ExportSnapshot.hpp
     SLA/ExportRequest.hpp
     SLA/ExportRequest.cpp
+    SLA/RepresentationAdjustment.hpp
+    SLA/RepresentationAdjustment.cpp
     SLA/SlicedResultSession.hpp
     SLA/SlicedResultSession.cpp
     SLA/RasterToPolygons.hpp
@@ -637,6 +653,117 @@ if (NOT SLIC3R_SLA_ONLY)
     list(APPEND SLIC3R_SOURCES ${SLIC3R_FFF_EMITTER_SOURCES})
 endif()
 
+# FFF printing core (G-code generation, perimeters/Arachne, infill, FFF supports,
+# Print/PrintObject/Layer pipeline). The SLA-only application never slices with
+# it, so these units are not compiled there (tests/architecture/
+# verify_sla_fff_core_cut.py enforces the list). Shared geometry that the SLA
+# code still needs stays in the main list on purpose:
+#  - Arachne/utils/PolygonsSegmentIndex.hpp, PolygonsPointIndex.hpp are header-only
+#    and used by Geometry/Voronoi*.cpp and SLA/SupportIslands;
+#  - Slicing.cpp/SlicingAdaptive.cpp (layer-height profile used by the viewport and PresetHints),
+#    Flow.cpp (PlaceholderParser, PresetHints), GCode/Thumbnails.cpp and
+#    GCode/ThumbnailData.cpp (archive thumbnails), ShortestPath.cpp.
+set(SLIC3R_FFF_CORE_SOURCES
+    # Algorithm
+    Algorithm/LineSegmentation/LineSegmentation.cpp
+    # (root)
+    BridgeDetector.cpp
+    Brim.cpp
+    Extruder.cpp
+    ExtrusionEntity.cpp
+    ExtrusionEntityCollection.cpp
+    ExtrusionRole.cpp
+    ExtrusionSimulator.cpp
+    GCodeReader.cpp
+    InfillAboveBridges.cpp
+    Layer.cpp
+    LayerRegion.cpp
+    MultiMaterialSegmentation.cpp
+    PerimeterGenerator.cpp
+    Print.cpp
+    PrintApply.cpp
+    PrintObject.cpp
+    PrintObjectSlice.cpp
+    PrintRegion.cpp
+    SupportSpotsGenerator.cpp
+    Surface.cpp
+    SurfaceCollection.cpp
+    # Feature
+    Feature/Interlocking/InterlockingGenerator.cpp
+    Feature/Interlocking/VoxelUtils.cpp
+    Feature/FuzzySkin/FuzzySkin.cpp
+    # Fill
+    Fill/Fill.cpp
+    Fill/Fill3DHoneycomb.cpp
+    Fill/FillAdaptive.cpp
+    Fill/FillBase.cpp
+    Fill/FillConcentric.cpp
+    Fill/FillEnsuring.cpp
+    Fill/FillHoneycomb.cpp
+    Fill/FillGyroid.cpp
+    Fill/FillPlanePath.cpp
+    Fill/FillLine.cpp
+    Fill/FillLightning.cpp
+    Fill/Lightning/DistanceField.cpp
+    Fill/Lightning/Generator.cpp
+    Fill/Lightning/Layer.cpp
+    Fill/Lightning/TreeNode.cpp
+    Fill/FillRectilinear.cpp
+    # GCode
+    GCode/ConflictChecker.cpp
+    GCode/ExtrusionProcessor.cpp
+    GCode/FindReplace.cpp
+    GCode/LabelObjects.cpp
+    GCode/GCodeWriter.cpp
+    GCode/PrintExtents.cpp
+    GCode/RetractWhenCrossingPerimeters.cpp
+    GCode/SeamPlacer.cpp
+    GCode/SeamChoice.cpp
+    GCode/SeamPerimeters.cpp
+    GCode/SeamShells.cpp
+    GCode/SeamGeometry.cpp
+    GCode/SeamAligned.cpp
+    GCode/SeamRear.cpp
+    GCode/SeamRandom.cpp
+    GCode/SeamPainting.cpp
+    GCode/SeamScarf.cpp
+    GCode/ModelVisibility.cpp
+    GCode/SmoothPath.cpp
+    GCode/ToolOrdering.cpp
+    GCode/Wipe.cpp
+    GCode/WipeTower.cpp
+    GCode/GCodeProcessor.cpp
+    GCode/AvoidCrossingPerimeters.cpp
+    GCode/Travels.cpp
+    # Support
+    Support/SupportCommon.cpp
+    Support/SupportDebug.cpp
+    Support/SupportMaterial.cpp
+    Support/SupportParameters.cpp
+    Support/OrganicSupport.cpp
+    Support/TreeSupport.cpp
+    Support/TreeSupportCommon.cpp
+    Support/TreeModelVolumes.cpp
+    # Arachne
+    Arachne/BeadingStrategy/BeadingStrategy.cpp
+    Arachne/BeadingStrategy/BeadingStrategyFactory.cpp
+    Arachne/BeadingStrategy/DistributedBeadingStrategy.cpp
+    Arachne/BeadingStrategy/LimitedBeadingStrategy.cpp
+    Arachne/BeadingStrategy/OuterWallInsetBeadingStrategy.cpp
+    Arachne/BeadingStrategy/RedistributeBeadingStrategy.cpp
+    Arachne/BeadingStrategy/WideningBeadingStrategy.cpp
+    Arachne/utils/ExtrusionLine.cpp
+    Arachne/utils/SquareGrid.cpp
+    Arachne/utils/PolylineStitcher.cpp
+    Arachne/PerimeterOrder.cpp
+    Arachne/SkeletalTrapezoidation.cpp
+    Arachne/SkeletalTrapezoidationGraph.cpp
+    Arachne/WallToolPaths.cpp
+)
+if (SLIC3R_SLA_ONLY)
+    list(REMOVE_ITEM SLIC3R_SOURCES ${SLIC3R_FFF_CORE_SOURCES})
+endif()
+
 add_library(libslic3r STATIC ${SLIC3R_SOURCES})
 
 if (CMAKE_SYSTEM_NAME STREQUAL "Linux" AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
@@ -714,6 +841,9 @@ target_include_directories(libslic3r PUBLIC ${EXPAT_INCLUDE_DIRS})
 find_package(JPEG REQUIRED)
 find_package(TIFF REQUIRED MODULE)
 find_package(OpenJPEG REQUIRED)
+# Some distributions' OpenJPEG config (e.g. Ubuntu 22.04) does not attach the versioned include dir
+# (/usr/include/openjpeg-2.x) to the `openjp2` target; add it explicitly.
+target_include_directories(libslic3r PRIVATE ${OPENJPEG_INCLUDE_DIRS})
 # A dependency prefix can contain wxWidgets' bundled JPEG headers while JPEG
 # itself was found in another installation. Keep the header ABI paired with
 # the chosen library, including its companion jconfig/jmorecfg files.
@@ -728,7 +858,7 @@ file(COPY "${_sla_jpeg_headers}/jpeglib.h" "${_sla_jpeg_headers}/jconfig.h"
 find_package(nlohmann_json REQUIRED)
 # Native calibration drawing only. No UVtools/Emgu runtime or network services.
 find_package(OpenCV REQUIRED COMPONENTS core imgproc)
-set_source_files_properties(SLA/ExposureFinderPattern.cpp PROPERTIES
+set_source_files_properties(SLA/ExposureFinderPattern.cpp SLA/CalibrationRaster.cpp PROPERTIES
     INCLUDE_DIRECTORIES "${OpenCV_INCLUDE_DIRS}" SKIP_PRECOMPILE_HEADERS ON)
 get_target_property(_sla_cv_core opencv_core IMPORTED_LOCATION_RELEASE)
 get_target_property(_sla_cv_imgproc opencv_imgproc IMPORTED_LOCATION_RELEASE)

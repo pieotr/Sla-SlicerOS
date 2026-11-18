@@ -60,6 +60,12 @@ namespace Slic3r::CLI
 
     bool    has_full_config_from_profiles(const Data& cli);
     std::optional<int> process_profiles_sharing(const Data& cli);
+    // Standalone --sla-detect-issues; returns an exit code when the action was requested.
+    std::optional<int> process_sla_detect_issues(int argc, char** argv);
+    // Standalone --sla-suggestions (UVtools suggestions, evaluation only).
+    std::optional<int> process_sla_suggestions(int argc, char** argv);
+    // Standalone --sla-run-recipe: declarative layer recipe (doc/AUTOMATION.md).
+    std::optional<int> process_sla_run_recipe(int argc, char** argv);
     bool    process_actions(Data& cli, const DynamicPrintConfig& print_config, std::vector<Model>& models);
 
     // Implemented in GuiParams.cpp

@@ -2,6 +2,7 @@
 #include "ExposureFinderDialog.hpp"
 #include "RasterGeneratorTask.hpp"
 #include "GUI_App.hpp"
+#include "Widgets/ComboBox.hpp"
 #include "Plater.hpp"
 #include "libslic3r/PresetBundle.hpp"
 #include "libslic3r/SLAPrint.hpp"
@@ -65,7 +66,7 @@ public:
 class ExposureFinderForm final : public wxDialog {
     std::map<std::string, wxTextCtrl*> m_text;
     std::map<std::string, wxCheckBox*> m_check;
-    std::map<std::string, wxChoice*> m_choice;
+    std::map<std::string, ComboBox*> m_choice;
     wxGrid *m_rows = nullptr;
     wxSpinCtrl *m_selected_row = nullptr;
     wxButton *m_edit_row = nullptr;
@@ -126,9 +127,9 @@ class ExposureFinderForm final : public wxDialog {
     }
     void choice(wxFlexGridSizer *sizer,const char *key,const char *label,std::initializer_list<const char*> values,int selected) {
         sizer->Add(new wxStaticText(owner(sizer),wxID_ANY,label),0,wxALIGN_CENTER_VERTICAL);
-        auto *field=new wxChoice(owner(sizer),wxID_ANY);for(const auto *value:values)field->Append(value);
+        auto *field=create_readonly_combo(owner(sizer));for(const auto *value:values)field->Append(value);
         field->SetSelection(selected);field->SetName(label);m_choice[key]=field;sizer->Add(field,1,wxEXPAND);
-        field->Bind(wxEVT_CHOICE,[this](wxCommandEvent &){invalidate();});
+        field->Bind(wxEVT_COMBOBOX,[this](wxCommandEvent &){invalidate();});
     }
     double real(const char *key) {
         auto *field=m_text.at(key);std::istringstream input(text(field->GetValue()));input.imbue(std::locale::classic());
@@ -392,7 +393,7 @@ public:
         m_rows->Bind(wxEVT_GRID_CELL_CHANGED,[this](wxGridEvent &event){if(!m_populating && event.GetCol()<4){mark_manual();update_row_validity(event.GetRow());}event.Skip();});
         m_rows->Bind(wxEVT_GRID_SELECT_CELL,[this](wxGridEvent &event){sync_row_selection(event.GetRow());event.Skip();});
         sync_row_selection();
-        m_choice.at("origin")->Bind(wxEVT_CHOICE,[this](wxCommandEvent &){
+        m_choice.at("origin")->Bind(wxEVT_COMBOBOX,[this](wxCommandEvent &){
             invalidate();
             if(m_choice.at("origin")->GetSelection()==0){m_choice.at("origin")->SetSelection(1);CallAfter([this]{safely([this]{generate_table();});});}
         });

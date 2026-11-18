@@ -1,6 +1,7 @@
 # Build output
 /build/
 /build-*/
+/dist/
 /deps/build/
 /deps/build-*/
 

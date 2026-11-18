@@ -255,10 +255,15 @@ protected:
     AnyPtr<const SelectionMask> m_selection;
 
     AnyPtr<const SLAPrint> m_sla_print;
+    // The FFF Print (skirt/brim aware arrangement) is not available in the SLA-only build.
+#ifndef SLIC3R_SLA_ONLY
     AnyPtr<const Print>    m_fff_print;
+#endif // SLIC3R_SLA_ONLY
     bool m_xl_printer = false;
 
+#ifndef SLIC3R_SLA_ONLY
     void set_brim_and_skirt();
+#endif // SLIC3R_SLA_ONLY
 
 public:
     SceneBuilder();
@@ -270,13 +275,17 @@ public:
 
     SceneBuilder && set_model(Model &mdl);
 
+#ifndef SLIC3R_SLA_ONLY
     SceneBuilder && set_fff_print(AnyPtr<const Print> fffprint);
+#endif // SLIC3R_SLA_ONLY
     SceneBuilder && set_sla_print(AnyPtr<const SLAPrint> mdl_print);
 
     using SceneBuilderBase<SceneBuilder>::set_bed;
 
     SceneBuilder &&set_bed(const DynamicPrintConfig &cfg, const Vec2crd &gap);
+#ifndef SLIC3R_SLA_ONLY
     SceneBuilder &&set_bed(const Print &print, const Vec2crd &gap);
+#endif // SLIC3R_SLA_ONLY
 
     SceneBuilder && set_wipe_tower_handlers(std::vector<AnyPtr<WipeTowerHandler>> &&handlers)
     {
@@ -401,9 +410,11 @@ public:
 std::vector<size_t> selected_object_indices(const SelectionMask &sm);
 std::vector<size_t> selected_instance_indices(int obj_idx, const SelectionMask &sm);
 
+#ifndef SLIC3R_SLA_ONLY
 coord_t get_skirt_inset(const Print &fffprint);
 
 coord_t brim_offset(const PrintObject &po);
+#endif // SLIC3R_SLA_ONLY
 
 // unscaled coords are necessary to be able to handle bigger coordinate range
 // than what is available with scaled coords. This is useful when working with

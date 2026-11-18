@@ -5,6 +5,7 @@
 #include <wx/panel.h>
 
 #include "slic3r/GUI/GUI_App.hpp"
+#include "slic3r/GUI/GUI_Utils.hpp"
 
 BEGIN_EVENT_TABLE(TextInput, wxPanel)
 

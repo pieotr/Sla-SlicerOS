@@ -2,6 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# The binary keeps its historical name; build/src/sla-slicer is a symlink to it.
 BIN="${ROOT_DIR}/build/src/prusa-slicer"
 
 

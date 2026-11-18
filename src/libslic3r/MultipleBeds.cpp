@@ -2,7 +2,9 @@
 
 #include "BuildVolume.hpp"
 #include "Model.hpp"
+#ifndef SLIC3R_SLA_ONLY
 #include "Print.hpp"
+#endif // SLIC3R_SLA_ONLY
 
 #include <cassert>
 #include <algorithm>
@@ -459,6 +461,8 @@ Vec2crd MultipleBeds::get_bed_gap() const {
     return scaled(Vec2d{bed_gap() / 2.0});
 };
 
+#ifndef SLIC3R_SLA_ONLY
+// Wipe towers exist only for FFF multi-material prints (needs Print).
 void MultipleBeds::ensure_wipe_towers_on_beds(Model& model, const std::vector<std::unique_ptr<Print>>& prints)
 {
     for (size_t bed_idx = 0; bed_idx < get_number_of_beds(); ++bed_idx) {
@@ -474,6 +478,7 @@ void MultipleBeds::ensure_wipe_towers_on_beds(Model& model, const std::vector<st
             mwt.position = 2*brim*Vec2d(1.,1.);
     }
 }
+#endif
 
 #ifdef SLIC3R_GUI
 

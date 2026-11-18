@@ -15,6 +15,7 @@
 #ifndef slic3r_GCode_hpp_
 #define slic3r_GCode_hpp_
 
+#include "libslic3r/CustomGCode.hpp"
 #include "libslic3r/GCode/ExtrusionOrder.hpp"
 #include "libslic3r/GCode/ExtrusionProcessor.hpp"
 #include "JumpPointSearch.hpp"
@@ -71,12 +72,6 @@ private:
     int _get_temp(const GCodeGenerator &gcodegen) const;
 };
 
-class ColorPrintColors
-{
-    static const std::vector<std::string> Colors;
-public:
-    static const std::vector<std::string>& get() { return Colors; }
-};
 
 struct LayerResult {
     std::string gcode;

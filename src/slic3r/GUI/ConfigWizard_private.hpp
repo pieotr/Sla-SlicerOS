@@ -31,6 +31,7 @@
 #include "GUI.hpp"
 #include "SavePresetDialog.hpp"
 #include "wxExtensions.hpp"
+#include "Widgets/ComboBox.hpp"
 
 #include "Widgets/SpinInput.hpp"
 
@@ -548,14 +549,6 @@ struct PageVendors: ConfigWizardPage
     PageVendors(ConfigWizard *parent, std::string repos_id = std::string(), std::string name = std::string());
 };
 
-struct PageBedShape: ConfigWizardPage
-{
-    BedShapePanel *shape_panel;
-
-    PageBedShape(ConfigWizard *parent);
-    virtual void apply_custom_config(DynamicPrintConfig &config);
-};
-
 struct PageBuildVolume : ConfigWizardPage
 {
     wxTextCtrl* build_volume;
@@ -563,7 +556,7 @@ struct PageBuildVolume : ConfigWizardPage
     wxTextCtrl* display_height;
     wxTextCtrl* display_pixels_x;
     wxTextCtrl* display_pixels_y;
-    wxChoice*   display_orientation;
+    ComboBox*   display_orientation;
     wxCheckBox* display_mirror_x;
     wxCheckBox* display_mirror_y;
     wxCheckBox* use_tilt;
@@ -689,7 +682,6 @@ struct ConfigWizard::priv
     PageMode         *page_mode = nullptr;
 
     // Custom setup pages
-    PageBedShape     *page_bed = nullptr;
     PageBuildVolume* page_bvolume = nullptr;
 
     std::vector<PagePrinters*>  pages_fff;

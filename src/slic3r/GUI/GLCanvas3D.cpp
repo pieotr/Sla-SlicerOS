@@ -25,8 +25,12 @@
 #include "libslic3r/PrintConfig.hpp"
 #include "libslic3r/GCode/ThumbnailData.hpp"
 #include "libslic3r/Geometry/ConvexHull.hpp"
+#ifndef SLIC3R_SLA_ONLY
 #include "libslic3r/ExtrusionEntity.hpp"
+#endif // SLIC3R_SLA_ONLY
+#ifndef SLIC3R_SLA_ONLY
 #include "libslic3r/Layer.hpp"
+#endif // SLIC3R_SLA_ONLY
 #include "libslic3r/MultipleBeds.hpp"
 #include "libslic3r/Utils.hpp"
 #include "libslic3r/SLA/StatisticsPresentation.hpp"
@@ -72,7 +76,9 @@
 #include <wx/fontutil.h>
 
 // Print now includes tbb, and tbb includes Windows. This breaks compilation of wxWidgets if included before wx.
+#ifndef SLIC3R_SLA_ONLY
 #include "libslic3r/Print.hpp"
+#endif // SLIC3R_SLA_ONLY
 #include "libslic3r/SLAPrint.hpp"
 
 #include "wxExtensions.hpp"
@@ -430,7 +436,9 @@ std::pair<SlicingParameters, const std::vector<double>> GLCanvas3D::LayersEditin
 
     assert(m_model_object != nullptr);
     this->update_slicing_parameters();
+#ifndef SLIC3R_SLA_ONLY
     PrintObject::update_layer_height_profile(*m_model_object, *m_slicing_parameters, m_layer_height_profile);
+#endif
     std::pair<SlicingParameters, const std::vector<double>> ret = { *m_slicing_parameters, m_layer_height_profile };
     delete m_slicing_parameters;
     m_slicing_parameters = nullptr;
@@ -678,7 +686,9 @@ void GLCanvas3D::LayersEditing::render_volumes(const GLCanvas3D& canvas, const G
 void GLCanvas3D::LayersEditing::adjust_layer_height_profile()
 {
     this->update_slicing_parameters();
+#ifndef SLIC3R_SLA_ONLY
     PrintObject::update_layer_height_profile(*m_model_object, *m_slicing_parameters, m_layer_height_profile);
+#endif
     Slic3r::adjust_layer_height_profile(*m_slicing_parameters, m_layer_height_profile, this->last_z, this->strength, this->band_width, this->last_action);
     m_layer_height_profile_modified = true;
     m_layers_texture.valid = false;
@@ -718,7 +728,12 @@ void GLCanvas3D::LayersEditing::generate_layer_height_texture()
     this->update_slicing_parameters();
     // Always try to update the layer height profile.
     bool update = ! m_layers_texture.valid;
+#ifdef SLIC3R_SLA_ONLY
+    // Variable layer height editing is FFF-only; the profile comes from PrintObject there.
+    if (false) {
+#else
     if (PrintObject::update_layer_height_profile(*m_model_object, *m_slicing_parameters, m_layer_height_profile)) {
+#endif
         // Initialized to the default value.
         m_layer_height_profile_modified = false;
         update = true;
@@ -760,7 +775,11 @@ void GLCanvas3D::LayersEditing::accept_changes(GLCanvas3D& canvas)
 void GLCanvas3D::LayersEditing::update_slicing_parameters() {
 	if (m_slicing_parameters == nullptr) {
 		m_slicing_parameters = new SlicingParameters();
+#ifndef SLIC3R_SLA_ONLY
+        // Slicing parameters derive from the FFF PrintObject configuration; the layer
+        // height editor is never enabled for SLA, so the default stays unused there.
         *m_slicing_parameters = PrintObject::slicing_parameters(*m_config, *m_model_object, m_object_max_z, m_shrinkage_compensation);
+#endif
     }
 }
 
@@ -2961,25 +2980,21 @@ void GLCanvas3D::reload_scene(bool refresh_immediately, bool force_full_scene_re
     m_dirty = true;
 }
 
+#ifndef SLIC3R_SLA_ONLY
 void GLCanvas3D::load_gcode_shells()
 {
-#ifdef SLIC3R_SLA_ONLY
-    throw ExportError("FFF toolpath preview is unavailable in the SLA-only application");
-#else
 
     m_gcode_viewer.load_shells(*this->fff_print());
     m_gcode_viewer.update_shells_color_by_extruder(m_config);
     m_gcode_viewer.set_force_shells_visible(true);
 
-#endif
 }
+#endif // SLIC3R_SLA_ONLY
 
+#ifndef SLIC3R_SLA_ONLY
 void GLCanvas3D::load_gcode_preview(const GCodeProcessorResult& gcode_result, const std::vector<std::string>& str_tool_colors,
     const std::vector<std::string>& str_color_print_colors)
 {
-#ifdef SLIC3R_SLA_ONLY
-    throw ExportError("FFF toolpath preview is unavailable in the SLA-only application");
-#else
 
     m_gcode_viewer.enable_legend(true);
     m_gcode_viewer.enable_view_type_cache_write(true);
@@ -2997,8 +3012,8 @@ void GLCanvas3D::load_gcode_preview(const GCodeProcessorResult& gcode_result, co
     set_as_dirty();
     request_extra_frame();
 
-#endif
 }
+#endif // SLIC3R_SLA_ONLY
 
 void GLCanvas3D::load_sla_preview()
 {
@@ -3017,12 +3032,10 @@ void GLCanvas3D::load_sla_preview()
     }
 }
 
+#ifndef SLIC3R_SLA_ONLY
 void GLCanvas3D::load_preview(const std::vector<std::string>& str_tool_colors, const std::vector<std::string>& str_color_print_colors,
     const std::vector<CustomGCode::Item>& color_print_values)
 {
-#ifdef SLIC3R_SLA_ONLY
-    throw ExportError("FFF toolpath preview is unavailable in the SLA-only application");
-#else
 
     const Print *print = this->fff_print();
     if (print == nullptr)
@@ -3042,8 +3055,8 @@ void GLCanvas3D::load_preview(const std::vector<std::string>& str_tool_colors, c
     m_gcode_viewer.set_force_shells_visible(false);
     _set_warning_notification_if_needed(EWarning::ToolpathOutside);
 
-#endif
 }
+#endif // SLIC3R_SLA_ONLY
 
 void GLCanvas3D::bind_event_handlers()
 {

@@ -11,7 +11,9 @@
 #include <cstddef>
 
 #include "libslic3r.h"
+#ifndef SLIC3R_SLA_ONLY
 #include "ExtrusionEntity.hpp"
+#endif // SLIC3R_SLA_ONLY
 #include "Point.hpp"
 #include "libslic3r/ExPolygon.hpp"
 #include "libslic3r/Polyline.hpp"
@@ -36,6 +38,7 @@ std::vector<size_t> 				 chain_points(const Points &points, const Point *start_n
 // Used to give layer islands a print order.
 std::vector<size_t> 				 chain_expolygons(const ExPolygons &expolygons);
 
+#ifndef SLIC3R_SLA_ONLY
 // Chain extrusion entities by a shortest distance. Returns the ordered extrusions together with a "reverse" flag.
 // Set input "reversed" to true if the vector of "entities" is to be considered to be reversed once already.
 std::vector<std::pair<size_t, bool>> chain_extrusion_entities(const std::vector<ExtrusionEntity*> &entities, const Point *start_near = nullptr, const bool reversed = false);
@@ -54,25 +57,31 @@ std::vector<std::pair<size_t, bool>> chain_extrusion_paths(std::vector<Extrusion
 void                                 reorder_extrusion_paths(std::vector<ExtrusionPath> &extrusion_paths, std::vector<std::pair<size_t, bool>> &chain);
 void                                 chain_and_reorder_extrusion_paths(std::vector<ExtrusionPath> &extrusion_paths, const Point *start_near = nullptr);
 
+#endif // SLIC3R_SLA_ONLY
+
 Polylines 							 chain_polylines(Polylines &&src, const Point *start_near = nullptr);
 inline Polylines 					 chain_polylines(const Polylines& src, const Point* start_near = nullptr) { Polylines tmp(src); return chain_polylines(std::move(tmp), start_near); }
 
 ClipperLib::PolyNodes				 chain_clipper_polynodes(const Points &points, const ClipperLib::PolyNodes &items);
 
+#ifndef SLIC3R_SLA_ONLY
 // Chain instances of print objects by an approximate shortest path.
 // Returns pairs of PrintObject idx and instance of that PrintObject.
 class Print;
 struct PrintInstance;
 
 std::vector<const PrintInstance*> 	 chain_print_object_instances(const Print &print);
+#endif // SLIC3R_SLA_ONLY
 
 // Chain lines into polylines.
 Polylines 							 chain_lines(const std::vector<Line> &lines, const double point_distance_epsilon);
 
 // Chain and reorder layer islands by the shortest distance.
+#ifndef SLIC3R_SLA_ONLY
 std::vector<size_t>                  chain_layer_islands(const std::vector<std::reference_wrapper<const LayerIsland>> &islands, const Point *start_near = nullptr);
 void                                 reorder_layer_islands(std::vector<std::reference_wrapper<const LayerIsland>> &islands, const std::vector<size_t> &chain);
 void                                 chain_and_reorder_layer_islands(std::vector<std::reference_wrapper<const LayerIsland>> &islands, const Point *start_near = nullptr);
+#endif // SLIC3R_SLA_ONLY
 
 } // namespace Slic3r
 

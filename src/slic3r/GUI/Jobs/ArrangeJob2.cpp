@@ -13,7 +13,9 @@
 #include <libslic3r/MultipleBeds.hpp>
 
 #include <libslic3r/SLAPrint.hpp>
+#ifndef SLIC3R_SLA_ONLY
 #include <libslic3r/Print.hpp>
+#endif // SLIC3R_SLA_ONLY
 
 #include <slic3r/GUI/Plater.hpp>
 #include <slic3r/GUI/GLCanvas3D.hpp>

@@ -1,4 +1,5 @@
 #include "CheckBox.hpp"
+#include "../GUI_Utils.hpp"
 
 //#include "../wxExtensions.hpp"
 
@@ -20,6 +21,8 @@ CheckBox::CheckBox(wxWindow* parent, const wxString& name)
     Bind(wxEVT_LEAVE_WINDOW, &CheckBox::updateBitmap, this);
 #endif
 
+    // Native toggle button underneath; expose it as a check box (name comes from the label when one is given).
+    Slic3r::GUI::set_accessible_name(this, wxString(), wxString(), Slic3r::GUI::AccessibleRole::CheckBox);
 	update();
 }
 

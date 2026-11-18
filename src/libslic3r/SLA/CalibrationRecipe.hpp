@@ -28,4 +28,25 @@ struct CalibrationRecipe {
   // Freeze nested data as well as the outer provenance object.
   std::shared_ptr<const CalibrationRecipe> clone() const;
 };
+
+// Conversions used by the "apply result to profile" step. They are pure so the
+// dialog only picks the value and shows old -> new.
+//
+// A grayscale patch cured with the preset exposure at gray `level` received
+// level/255 of the full-white dose. Assuming dose ~ gray x time, the same dose
+// at full white needs exposure * level / 255 seconds. This is the cure
+// threshold, not a recommendation: the user may edit the result before applying.
+inline double grayscale_equivalent_exposure_s(double exposure_s, unsigned level) {
+  if (!std::isfinite(exposure_s) || exposure_s <= 0. || level == 0 || level > 255)
+    throw RuntimeError("Grayscale level must be 1-255 and exposure positive");
+  return exposure_s * double(level) / 255.;
+}
+// A 3x3 erode removes one pixel per iteration on every side, so N iterations
+// shrink the footprint by N pixels; the compensation is that width in mm
+// (mean of both axes for non-square pixels).
+inline double elephant_foot_compensation_mm(unsigned erode_iterations, double pitch_x_mm, double pitch_y_mm) {
+  if (!std::isfinite(pitch_x_mm) || !std::isfinite(pitch_y_mm) || pitch_x_mm <= 0. || pitch_y_mm <= 0.)
+    throw RuntimeError("Invalid pixel pitch");
+  return double(erode_iterations) * (pitch_x_mm + pitch_y_mm) * .5;
+}
 } // namespace Slic3r::sla

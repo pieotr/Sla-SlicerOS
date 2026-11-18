@@ -70,6 +70,57 @@ inline std::string base64(const std::array<uint8_t, 64> &bytes) {
     }
     return result;
 }
+// The public half of the protocol: the 64-byte block a ciphertext line
+// decodes to, or nothing when it is not a well-formed line. Used to read the
+// per-layer program of an existing ZCode file.
+inline bool base64_decode_block(const std::string &text, std::array<uint8_t, 64> &out) {
+    if (text.size() != 88 || text.compare(86, 2, "==") != 0)
+        return false;
+    auto value = [](char c) -> int {
+        if (c >= 'A' && c <= 'Z') return c - 'A';
+        if (c >= 'a' && c <= 'z') return c - 'a' + 26;
+        if (c >= '0' && c <= '9') return c - '0' + 52;
+        return c == '+' ? 62 : c == '/' ? 63 : -1;
+    };
+    size_t at = 0;
+    for (size_t i = 0; i < 84; i += 4) {
+        int v[4];
+        for (int k = 0; k < 4; ++k)
+            if ((v[k] = value(text[i + k])) < 0) return false;
+        const unsigned bits = unsigned(v[0]) << 18 | unsigned(v[1]) << 12 | unsigned(v[2]) << 6 | unsigned(v[3]);
+        out[at++] = uint8_t(bits >> 16); out[at++] = uint8_t(bits >> 8); out[at++] = uint8_t(bits);
+    }
+    const int a = value(text[84]), b = value(text[85]);
+    if (a < 0 || b < 0 || (b & 15) != 0) return false;
+    out[at] = uint8_t(((unsigned(a) << 6 | unsigned(b)) >> 4) & 255);
+    return true;
+}
+// Empty on any deviation from the exact framing encrypt_line produces.
+inline std::string decrypt_line(const std::string &base64_line) {
+    std::array<uint8_t, 64> cipher{};
+    if (!base64_decode_block(base64_line, cipher))
+        return {};
+    Integer c = 0;
+    for (uint8_t b : cipher)
+        c = (c << 8) | b;
+    const auto &k = key();
+    if (c >= k.n)
+        return {};
+    Integer m = boost::multiprecision::powm(c, k.e, k.n);
+    std::array<uint8_t, 64> plain{};
+    for (size_t i = plain.size(); i > 0; --i) {
+        plain[i - 1] = uint8_t((m & 255).convert_to<unsigned>());
+        m >>= 8;
+    }
+    if (plain[0] != 0 || plain[1] != 1)
+        return {};
+    size_t separator = 2;
+    while (separator < 64 && plain[separator] == 255)
+        ++separator;
+    if (separator >= 63 || plain[separator] != 0)
+        return {};
+    return std::string(plain.begin() + separator + 1, plain.end());
+}
 inline std::string encrypt_lines(const std::vector<std::string> &lines) {
     // Fixed output slots preserve line order across worker counts.
     std::vector<std::string> encoded(lines.size());

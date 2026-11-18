@@ -4,6 +4,7 @@
 #include "UIColors.hpp"
 
 #include "../GUI_App.hpp"
+#include "../GUI_Utils.hpp"
 
 #include <wx/dcgraph.h>
 #include <wx/panel.h>

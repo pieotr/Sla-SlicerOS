@@ -92,7 +92,9 @@ public:
 							     {m_build_volume_bb.max.x(), m_build_volume_bb.max.y()}); }
         Vec2d   bed_gap() const;
 	Vec2crd get_bed_gap() const;
+#ifndef SLIC3R_SLA_ONLY
 	void   ensure_wipe_towers_on_beds(Model& model, const std::vector<std::unique_ptr<Print>>& prints);
+#endif
 
 	void   start_autoslice(std::function<void(int,bool)>);
 	bool   stop_autoslice(bool restore_original);

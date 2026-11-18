@@ -319,9 +319,14 @@ std::vector<uint8_t> tiff_encode(const png::ImageGreyscale &image) {
     TIFFSetField(file.get(),TIFFTAG_COMPRESSION,COMPRESSION_LZW);TIFFSetField(file.get(),TIFFTAG_PREDICTOR,PREDICTOR_HORIZONTAL);
     TIFFSetField(file.get(),TIFFTAG_ORIENTATION,ORIENTATION_TOPLEFT);
     TIFFSetField(file.get(),TIFFTAG_ROWSPERSTRIP,TIFFDefaultStripSize(file.get(),0));
-    for(size_t y=0;y<image.rows;++y)
-        if(TIFFWriteScanline(file.get(),const_cast<uint8_t *>(image.buf.data()+y*image.cols),uint32_t(y),0)<0)
+    // TIFFWriteScanline may modify the row it is given: libtiff <= 4.3 applies the horizontal predictor
+    // in place, which used to corrupt the caller's (const) layer image. Hand it a scratch copy per row.
+    std::vector<uint8_t> scratch(image.cols);
+    for(size_t y=0;y<image.rows;++y) {
+        if(image.cols)std::memcpy(scratch.data(),image.buf.data()+y*image.cols,image.cols);
+        if(TIFFWriteScanline(file.get(),scratch.data(),uint32_t(y),0)<0)
             throw RuntimeError("Cannot encode TIFF scanline");
+    }
     if(!TIFFWriteDirectory(file.get()))throw RuntimeError("Cannot finish TIFF directory");}
     if(memory.failed)throw RuntimeError("TIFF output exceeds the memory budget");
     return std::move(memory.output);

@@ -28,10 +28,12 @@ namespace DoubleSlider {
 bool equivalent_areas(const double& bottom_area, const double& top_area);
 
 // return true if color change was detected
+#ifndef SLIC3R_SLA_ONLY
 bool check_color_change(const Slic3r::PrintObject* object, size_t frst_layer_id, size_t layers_cnt, bool check_overhangs,
                         // what to do with detected color change
                         // and return true when detection have to be desturbed
                         std::function<bool(const Slic3r::Layer*)> break_condition);
+#endif
 enum ConflictType
 {
     ctNone,

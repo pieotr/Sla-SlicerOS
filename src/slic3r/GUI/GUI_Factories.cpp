@@ -674,8 +674,10 @@ void MenuFactory::append_menu_items_add_volume(MenuType menu_type)
             }, m_parent);
     }
 
+#ifndef SLIC3R_SLA_ONLY // height-range modifiers carry FFF per-layer settings only
     if (menu_type == mtObjectFFF)
         append_menu_item_layers_editing(menu);
+#endif
 }
 
 wxMenuItem* MenuFactory::append_menu_item_layers_editing(wxMenu* menu)
@@ -925,6 +927,10 @@ void MenuFactory::append_menu_item_change_extruder(wxMenu* menu)
             menu->Destroy(item_id);
     }
 
+#ifdef SLIC3R_SLA_ONLY
+    // A resin printer has no extruders; extruders_count() is already 1 for SLA, this makes it explicit.
+    return;
+#endif
     const int extruders_cnt = extruders_count();
     if (extruders_cnt <= 1)
         return;

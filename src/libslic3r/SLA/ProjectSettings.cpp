@@ -132,11 +132,22 @@ void finite_option(const ConfigOption &option) {
     default: break;
     }
 }
+// Options added after projects already existed: a project written before the option was introduced
+// restores it with the schema default instead of being rejected (the default reproduces the old output).
+bool optional_project_key(const std::string &key) { return key=="sla_archive_header_mirror"; }
+
 void restore_role(DynamicPrintConfig &output,const ProjectPresetSettings &role,const ConfigBase &schema) {
-    if (role.name.size()>4096 || role.name.find('\0')!=std::string::npos || role.values.size()!=schema.keys().size())
+    size_t absent_optional=0;
+    for (const auto &key:schema.keys())
+        if (optional_project_key(key) && role.values.find(key)==role.values.end()) ++absent_optional;
+    if (role.name.size()>4096 || role.name.find('\0')!=std::string::npos || role.values.size()+absent_optional!=schema.keys().size())
         throw RuntimeError("Invalid or incomplete project SLA preset");
     for (const auto &key:schema.keys()) {
         const auto found=role.values.find(key);
+        if (found==role.values.end() && optional_project_key(key)) {
+            output.set_key_value(key,schema.option(key)->clone());
+            continue;
+        }
         if (found==role.values.end() || found->second.size()>1024*1024)
             throw RuntimeError("Missing or oversized project SLA option");
         output.set_deserialize_strict(key,found->second);
@@ -151,7 +162,13 @@ ProjectPresetSettings capture_role(const ConfigBase &configuration,const ConfigB
     DynamicPrintConfig values;values.apply(schema);values.apply_only(configuration,schema.keys(),true);
     ProjectPresetSettings result;
     if (const auto *name=configuration.option<ConfigOptionString>(identity)) result.name=name->value;
-    for (const auto &key:values.keys()) result.values.emplace(key,values.opt_serialize(key));
+    for (const auto &key:values.keys()) {
+        auto text=values.opt_serialize(key);
+        // The default of an optional (later added) option is not stored, so projects written before the
+        // option existed stay byte-identical when re-saved and restore it as the default.
+        if (optional_project_key(key) && schema.option(key) && text==schema.option(key)->serialize()) continue;
+        result.values.emplace(key,std::move(text));
+    }
     return result;
 }
 } // namespace

@@ -563,6 +563,7 @@ ScalableButton::ScalableButton( wxWindow *          parent,
 {
     Create(parent, id, label, pos, size, style);
     Slic3r::GUI::wxGetApp().UpdateDarkUI(this);
+    update_accessible_name(wxString());
 
     if (!icon_name.empty()) {
         SetBitmap(*get_bmp_bundle(icon_name, width, height));
@@ -594,6 +595,25 @@ ScalableButton::ScalableButton( wxWindow *          parent,
     Slic3r::GUI::wxGetApp().UpdateDarkUI(this);
 
     SetBitmap(bitmap.bmp());
+    update_accessible_name(wxString());
+}
+
+void ScalableButton::update_accessible_name(const wxString& tooltip)
+{
+    if (!GetLabel().empty())
+        return; // visible text already provides the name
+    wxString name = tooltip.BeforeFirst('\n');
+    if (name.empty() && !m_current_icon_name.empty()) {
+        name = wxString::FromUTF8(m_current_icon_name);
+        name.Replace("_", " ");
+    }
+    Slic3r::GUI::set_accessible_name(this, name, tooltip, Slic3r::GUI::AccessibleRole::PushButton);
+}
+
+void ScalableButton::DoSetToolTipText(const wxString& tip)
+{
+    wxButton::DoSetToolTipText(tip);
+    update_accessible_name(tip);
 }
 
 void ScalableButton::SetBitmap_(const ScalableBitmap& bitmap)

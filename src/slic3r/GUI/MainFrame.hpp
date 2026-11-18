@@ -192,7 +192,6 @@ public:
     // Called from wxEVT_ACTIVATE, as wxEVT_CREATE was not reliable (bug in wxWidgets?).
     void        register_win32_callbacks();
     void        init_menubar_as_editor();
-    void        init_menubar_as_gcodeviewer();
     void        update_menubar();
     // Open item in menu by menu and item name (in actual language)
     void        open_menubar_item(const wxString& menu_name,const wxString& item_name);

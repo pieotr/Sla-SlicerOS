@@ -2,6 +2,7 @@
 ///|/
 ///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
 ///|/
+#include "HeaderMirror.hpp"
 #include "NanoDLPArchive.hpp"
 #include "libslic3r/SLAPrint.hpp"
 #include "libslic3r/SLA/PrinterRaster.hpp"
@@ -85,7 +86,7 @@ nlohmann::json NanoDLPArchive::prepare_metadata(const SLAPrint &print,const std:
     slicer["DisplayController"]=m_rgb?0:1;
     // ImageMirror has only a horizontal flag. Vertical reflection and rotated
     // metadata need the complete device contract, not an invented flag value.
-    slicer["ImageMirror"]=m_cfg.display_mirror_x.value?1:0;
+    slicer["ImageMirror"]=resolve_header_mirror(m_cfg,m_cfg.display_mirror_x.value,false).x?1:0;
     profile["TransitionalLayer"]=material.sla_transition_layers.value;
     for(bool is_bottom:{false,true}) {
         const std::string prefix=is_bottom?"Support":"";

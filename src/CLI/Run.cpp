@@ -5,6 +5,14 @@ namespace Slic3r::CLI {
 
 int run(int argc, char** argv)
 {
+    // Layer issue detection needs no profiles or models; handle it before option parsing.
+    if (const auto status = process_sla_detect_issues(argc, argv))
+        return *status;
+    if (const auto status = process_sla_suggestions(argc, argv))
+        return *status;
+    if (const auto status = process_sla_run_recipe(argc, argv))
+        return *status;
+
     Data cli;
     if (!setup(cli, argc, argv))
         return 1;

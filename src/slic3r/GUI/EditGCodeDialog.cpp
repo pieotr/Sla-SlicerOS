@@ -24,7 +24,9 @@
 #include "libslic3r/PlaceholderParser.hpp"
 #include "libslic3r/Preset.hpp"
 #include "libslic3r/PresetBundle.hpp" // IWYU pragma: keep
+#ifndef SLIC3R_SLA_ONLY
 #include "libslic3r/Print.hpp"
+#endif // SLIC3R_SLA_ONLY
 
 namespace Slic3r {
 namespace GUI {

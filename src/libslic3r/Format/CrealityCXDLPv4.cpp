@@ -1,3 +1,4 @@
+#include "HeaderMirror.hpp"
 #include "libslic3r/SLA/ExportPrinterValidation.hpp"
 #include "libslic3r/SLA/PrinterRaster.hpp"
 ///|/ Copyright (c) Prusa Research 2026
@@ -563,7 +564,7 @@ void CrealityCXDLPv4Archive::export_print_impl(const std::string &fname, const S
         write_u32_le(out, layer_count);
         write_u32_le(out, preview_large_offset);  // preview large offset
         write_u32_le(out, stored_print_time);
-        write_u32_le(out, 0); // Canonical masks already contain printer mirroring.
+        write_u32_le(out, resolve_header_mirror(m_cfg, false, false).any() ? 1u : 0u); // auto: 0, canonical masks already contain printer mirroring.
         write_u32_le(out, print_params_offset);
         write_u32_le(out, uint32_t(PRINT_PARAMS_SIZE));
         write_u32_le(out, 1); // anti alias

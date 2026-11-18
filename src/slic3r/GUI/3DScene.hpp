@@ -429,6 +429,7 @@ public:
         int                volume_idx,
         int                instance_idx);
 
+#ifndef SLIC3R_SLA_ONLY
 #if SLIC3R_OPENGL_ES
     GLVolume* load_wipe_tower_preview(
         float pos_x, float pos_y, float width, float depth, const std::vector<std::pair<float, float>>& z_and_depth_pairs, float height, float cone_angle, float rotation_angle, bool size_unknown, float brim_width, size_t idx, TriangleMesh* out_mesh = nullptr);
@@ -436,6 +437,7 @@ public:
     GLVolume* load_wipe_tower_preview(
         float pos_x, float pos_y, float width, float depth, const std::vector<std::pair<float, float>>& z_and_depth_pairs, float height, float cone_angle, float rotation_angle, bool size_unknown, float brim_width, size_t idx);
 #endif // SLIC3R_OPENGL_ES
+#endif // SLIC3R_SLA_ONLY
 
     // Load SLA auxiliary GLVolumes (for support trees or pad).
     void load_object_auxiliary(
@@ -511,11 +513,13 @@ struct _3DScene
 {
     static void thick_lines_to_verts(const Lines& lines, const std::vector<double>& widths, const std::vector<double>& heights, bool closed, double top_z, GUI::GLModel::Geometry& geometry);
     static void thick_lines_to_verts(const Lines3& lines, const std::vector<double>& widths, const std::vector<double>& heights, bool closed, GUI::GLModel::Geometry& geometry);
+#ifndef SLIC3R_SLA_ONLY
     static void extrusionentity_to_verts(const ExtrusionPath& extrusion_path, float print_z, const Point& copy, GUI::GLModel::Geometry& geometry);
     static void extrusionentity_to_verts(const ExtrusionLoop& extrusion_loop, float print_z, const Point& copy, GUI::GLModel::Geometry& geometry);
     static void extrusionentity_to_verts(const ExtrusionMultiPath& extrusion_multi_path, float print_z, const Point& copy, GUI::GLModel::Geometry& geometry);
     static void extrusionentity_to_verts(const ExtrusionEntityCollection& extrusion_entity_collection, float print_z, const Point& copy, GUI::GLModel::Geometry& geometry);
     static void extrusionentity_to_verts(const ExtrusionEntity* extrusion_entity, float print_z, const Point& copy, GUI::GLModel::Geometry& geometry);
+#endif
 };
 
 }

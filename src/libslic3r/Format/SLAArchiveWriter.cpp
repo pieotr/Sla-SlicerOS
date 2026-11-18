@@ -9,6 +9,7 @@
 #include "libslic3r/PrintConfig.hpp"
 #include "libslic3r/Exception.hpp"
 #include "libslic3r/SLA/LayerDocument.hpp"
+#include "libslic3r/SLA/SL1FreshExportPlan.hpp"
 #include <unordered_map>
 #include <string_view>
 #include <atomic>
@@ -24,7 +25,6 @@ void SLAArchiveWriter::encode_layers(const sla::LayerDocument &document, const s
     if (encoded.empty()) throw RuntimeError("Cannot encode an empty layer document");
     const auto first = document.image(0);
     const uint64_t pixels = uint64_t(first.cols) * first.rows;
-    const int workers = int(std::clamp<uint64_t>((uint64_t(512) << 20) / std::max<uint64_t>(1, pixels * 4), 1, 8));
     std::vector<size_t> representative(encoded.size()), copies(encoded.size(), 0), unique;
     std::unordered_map<std::string_view, size_t> masks;
     for (size_t i = 0; i < encoded.size(); ++i) {
@@ -45,12 +45,10 @@ void SLAArchiveWriter::encode_layers(const sla::LayerDocument &document, const s
     const bool png_container = encoder.target<sla::PNGRasterEncoder>() != nullptr;
     constexpr uint64_t encoded_budget = uint64_t(1) << 30;
     std::atomic<uint64_t> total_bytes{0};
-    tbb::task_arena arena(workers);
-    // Arbitrary checkpoints run on the coordinator, never encoder workers.
-    for (size_t first_index=0; first_index<unique.size(); first_index+=size_t(workers)) {
-      poll();
-      const auto end=std::min(first_index+size_t(workers),unique.size());
-      arena.execute([&] { execution::for_each(ExecutionTBB{}, first_index, end, [&](size_t index) {
+    // Memory-aware worker count (<=25% of RAM, cap 6 GiB; ~4 bytes/pixel per
+    // worker). Checkpoints run on the coordinator, never on encoder workers.
+    const size_t workers = std::max<size_t>(1, sla::memory_bounded_workers(std::max<uint64_t>(1, pixels * 4), unique.size()));
+    sla::for_each_streaming(unique.size(), workers, [&](size_t index) {
         const size_t i = unique[index];
         const auto loaded = i == 0 ? png::ImageGreyscale{} : document.image(i);
         const auto &image = i == 0 ? first : loaded;
@@ -67,9 +65,7 @@ void SLAArchiveWriter::encode_layers(const sla::LayerDocument &document, const s
         const uint64_t bytes = uint64_t(encoded[i].size()) * copies[i];
         if (total_bytes.fetch_add(bytes, std::memory_order_relaxed) + bytes > encoded_budget)
             throw RuntimeError("Encoded layers exceed the 1 GiB memory budget");
-      }); });
-      poll();
-    }
+    }, [&](size_t) { poll(); });
     for (size_t i = 0; i < encoded.size(); ++i) {
         poll();
         if (representative[i] != i) encoded[i] = encoded[representative[i]];

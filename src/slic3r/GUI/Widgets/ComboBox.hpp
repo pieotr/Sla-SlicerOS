@@ -20,6 +20,7 @@ class ComboBox : public wxWindowWithItems<TextInput, wxItemContainer>
     int      popup_selection = wxNOT_FOUND;
     wxString popup_value;
     bool     popup_committed = false;
+    bool     m_publish_accessible = false;
 
 public:
     ComboBox(wxWindow *      parent,
@@ -80,6 +81,11 @@ public:
 
     void     OnKeyDown(wxKeyEvent& event);
 
+    // Opt-in: publish name + current value (description) through ATK/AT-SPI (GTK only; no-op elsewhere).
+    void     publish_accessible_value() { m_publish_accessible = true; update_accessible(); }
+    void     update_accessible();
+    void     SetName(const wxString &name) override { TextInput::SetName(name); update_accessible(); }
+
 protected:
     virtual int  DoInsertItems(const wxArrayStringsAdapter &items,
                                unsigned int                 pos,
@@ -93,6 +99,9 @@ protected:
     void  DoSetItemClientData(unsigned int n, void *data) override;
     
     void OnEdit() override;
+
+    // Natural size for combos created without an explicit size: widest entry + drop-down arrow.
+    wxSize DoGetBestSize() const override;
 
 #ifdef __WIN32__
     WXLRESULT MSWWindowProc(WXUINT nMsg, WXWPARAM wParam, WXLPARAM lParam) override;
@@ -111,5 +120,10 @@ private:
 
     DECLARE_EVENT_TABLE()
 };
+
+// App-owned read-only drop-down for dialogs and panels (replaces wxChoice / read-only wxComboBox, whose GTK popup closes on
+// button release under GTK3 + XWayland/KWin). Optional name/tooltip; the name and the shown value are published through AT-SPI.
+ComboBox *create_readonly_combo(wxWindow *parent, const wxString &name = wxString(), const wxString &tooltip = wxString(),
+                                const wxArrayString &items = wxArrayString(), int selection = 0);
 
 #endif // !slic3r_GUI_ComboBox_hpp_

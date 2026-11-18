@@ -1,5 +1,6 @@
 ///|/ Copyright (c) Prusa Research 2026
 ///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher.
+#include "HeaderMirror.hpp"
 #include "ChituboxArchive.hpp"
 #include "ChituboxRasterEncoder.hpp"
 #include "CTBEncryptedArchive.hpp"
@@ -346,7 +347,7 @@ void UVToolsChituboxArchive::export_print_impl(const std::string &fname,const SL
     write_u32_le(out, fresh ? fresh->estimated_print_time : sla::lcd_print_time(print));        // 19: Estimated print time
     // This describes the assumed projection; the pixels are already oriented.
     // Match the format's normal/mirrored flag without transforming them again.
-    write_u32_le(out, (m_cfg.display_mirror_x.value || m_cfg.display_mirror_y.value) ? 1u : 0u);
+    write_u32_le(out, resolve_header_mirror(m_cfg, m_cfg.display_mirror_x.value, m_cfg.display_mirror_y.value).any() ? 1u : 0u);
     write_u32_le(out, legacy_v1 ? 0u : header_size);      // 21: v1 has no print-parameters block
     // The original encoder declares the schema size even when v1 omits it.
     write_u32_le(out, 60u);                             // 22: PrintParametersSize
@@ -607,7 +608,7 @@ void ChituboxCTBModernArchive::export_print(const std::string filename, const SL
     f32(header, 36, round2(float(material.exposure_time.value))); f32(header, 40, round2(float(material.initial_exposure_time.value)));
     f32(header, 44, light_off(false)); u32(header, 48, bottom); u32(header, 52, dims.resolution_x); u32(header, 56, dims.resolution_y);
     u32(header, 60, large_offset); u32(header, 64, table_offset); u32(header, 68, uint32_t(m_layers.size()));
-    u32(header, 72, small_offset); u32(header, 76, uint32_t(estimate)); u32(header, 80, m_cfg.display_mirror_x.value ? 1 : 0);
+    u32(header, 72, small_offset); u32(header, 76, uint32_t(estimate)); u32(header, 80, resolve_header_mirror(m_cfg, m_cfg.display_mirror_x.value, false).any() ? 1 : 0);
     u32(header, 84, print_offset); u32(header, 88, 60); u32(header, 92, 1);
     const auto normal_pwm = uint16_t(param("light_pwm", false)), bottom_pwm = uint16_t(param("light_pwm", true));
     header[96] = uint8_t(normal_pwm); header[97] = uint8_t(normal_pwm >> 8);
@@ -742,7 +743,7 @@ void CTBEncryptedArchive::export_print(const std::string filename,const SLAPrint
     f32(settings,40,float(material.exposure_time.value));f32(settings,44,float(material.initial_exposure_time.value));
     const uint32_t bottom=uint32_t(sla::bottom_layers(print,m_layers.size()));
     u32(settings,52,bottom);u32(settings,56,dims.resolution_x);u32(settings,60,dims.resolution_y);u32(settings,64,uint32_t(m_layers.size()));
-    u32(settings,68,large_offset);u32(settings,72,small_offset);u32(settings,80,m_cfg.display_mirror_x.value?1:0);
+    u32(settings,68,large_offset);u32(settings,72,small_offset);u32(settings,80,resolve_header_mirror(m_cfg,m_cfg.display_mirror_x.value,false).any()?1:0);
     // Named printers require fixed protocol placeholders. Anonymous numeric
     // identity is retained in its own native motion; forcing .05 could destroy
     // the height==FIRST predicate. Timing uses the actual fields written below.

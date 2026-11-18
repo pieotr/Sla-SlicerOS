@@ -397,6 +397,8 @@ PrinterPicker::PrinterPicker(wxWindow *parent, const VendorProfile &vendor, wxSt
         titles.push_back(title);
 
         wxStaticBitmap* bitmap_widget = new wxStaticBitmap(this, wxID_ANY, bitmap);
+        // Picture of the printer model named by the label next to it; give it a name instead of an anonymous image.
+        set_accessible_name(bitmap_widget, from_u8(model.name) + " picture", wxString(), AccessibleRole::Image);
         bitmaps.push_back(bitmap_widget);
 
         auto *variants_panel = new wxPanel(this);
@@ -2565,29 +2567,6 @@ public:
     ~DiamTextCtrl() {}
 };
 
-PageBedShape::PageBedShape(ConfigWizard *parent)
-    : ConfigWizardPage(parent, _L("Bed Shape and Size"), _L("Bed Shape"), 1)
-    , shape_panel(new BedShapePanel(this))
-{
-    append_text(_L("Set the shape of your printer's bed."));
-
-    shape_panel->build_panel(*wizard_p()->custom_config->option<ConfigOptionPoints>("bed_shape"),
-        *wizard_p()->custom_config->option<ConfigOptionString>("bed_custom_texture"),
-        *wizard_p()->custom_config->option<ConfigOptionString>("bed_custom_model"));
-
-    append(shape_panel);
-}
-
-void PageBedShape::apply_custom_config(DynamicPrintConfig &config)
-{
-    const std::vector<Vec2d>& points = shape_panel->get_shape();
-    const std::string& custom_texture = shape_panel->get_custom_texture();
-    const std::string& custom_model = shape_panel->get_custom_model();
-    config.set_key_value("bed_shape", new ConfigOptionPoints(points));
-    config.set_key_value("bed_custom_texture", new ConfigOptionString(custom_texture));
-    config.set_key_value("bed_custom_model", new ConfigOptionString(custom_model));
-}
-
 PageBuildVolume::PageBuildVolume(ConfigWizard* parent)
     // TRN ConfigWizard : Size of possible print, related on printer size
     : ConfigWizardPage(parent, _L("Build Volume"), _L("Build Volume"), 1)
@@ -2596,7 +2575,7 @@ PageBuildVolume::PageBuildVolume(ConfigWizard* parent)
     , display_height(new DiamTextCtrl(this))
     , display_pixels_x(new DiamTextCtrl(this))
     , display_pixels_y(new DiamTextCtrl(this))
-    , display_orientation(new wxChoice(this, wxID_ANY))
+    , display_orientation(create_readonly_combo(this, "Display orientation"))
     , display_mirror_x(new wxCheckBox(this, wxID_ANY, _L("Mirror horizontally")))
     , display_mirror_y(new wxCheckBox(this, wxID_ANY, _L("Mirror vertically")))
     , use_tilt(new wxCheckBox(this, wxID_ANY, _L("Enable tilt function")))
@@ -3094,7 +3073,6 @@ void ConfigWizard::priv::load_pages()
             page_custom->set_only_sla_mode(only_sla_mode);
             index->add_page(page_custom);
             if (page_custom->custom_wanted()) {
-                index->add_page(page_bed);
                 index->add_page(page_bvolume);
             }
         }
@@ -4173,7 +4151,9 @@ bool ConfigWizard::priv::apply_config(AppConfig *app_config, PresetBundle *prese
         }
 
         custom_cfg.set_key_value("printer_technology", new ConfigOptionEnum<PrinterTechnology>(page_custom->custom_technology()));
-        page_bed->apply_custom_config(custom_cfg);
+        // No polygon bed page in the SLA flow: the build-volume page derives the bed
+        // rectangle from the display size (sla::synchronize_bed_shape). Bed texture/model
+        // stay editable in the Printer Settings tab.
         page_bvolume->apply_custom_config(custom_cfg);
 
         copy_bed_model_and_texture_if_needed(custom_cfg);
@@ -4223,13 +4203,16 @@ bool ConfigWizard::priv::apply_config(AppConfig *app_config, PresetBundle *prese
             material_names.emplace_back(profile_name);
 
         std::set<std::string> unique_material_names;
+        std::string primary_material; // first material actually created/updated: becomes the active one
         for (const std::string &material_name_raw : material_names) {
             std::string material_name = material_name_raw;
             boost::trim(material_name);
             if (material_name.empty() || !unique_material_names.insert(material_name).second)
                 continue;
 
-            Preset *material_ptr = preset_bundle->sla_materials.find_preset(material_name, true);
+            // Exact lookup only: with first_visible_if_not_found=true a new name returned some other visible
+            // material, which was then overwritten (exposure, cost, ...) instead of creating the named one.
+            Preset *material_ptr = preset_bundle->sla_materials.find_preset(material_name, false);
             if (material_ptr == nullptr && base_material != nullptr) {
                 DynamicPrintConfig material_cfg(base_material->config);
                 if (auto *id_opt = material_cfg.option<ConfigOptionString>("sla_material_settings_id", true))
@@ -4256,7 +4239,13 @@ bool ConfigWizard::priv::apply_config(AppConfig *app_config, PresetBundle *prese
 
             apply_hop_and_tilt_safety(*material_ptr, hop_below, hop_above);
             material_ptr->save();
+            if (primary_material.empty())
+                primary_material = material_name;
         }
+        // load_config_from_wizard() selected a material named after the printer; activate the user's own
+        // (first listed) material instead, otherwise the typed exposure etc. would not be used for slicing.
+        if (custom_material_enabled && !primary_material.empty())
+            preset_bundle->sla_materials.select_preset_by_name(primary_material, true);
     }
 
     // Update the selections from the compatibilty.
@@ -4659,7 +4648,6 @@ ConfigWizard::ConfigWizard(wxWindow *parent)
 #ifndef SLIC3R_OFFLINE_ONLY
     p->add_page(p->page_mode     = new PageMode(this));
 #endif
-    p->add_page(p->page_bed      = new PageBedShape(this));
     p->add_page(p->page_bvolume  = new PageBuildVolume(this));
 
     vsizer->Add(topsizer, 1, wxEXPAND | wxALL, DIALOG_MARGIN);

@@ -10,6 +10,7 @@
 #include "SLA/AnycubicSettingsPreflight.hpp"
 #include "SLA/CrealityCXDLPv4MaskReader.hpp"
 #include <chrono>
+#include <sstream>
 ///|/ Copyright (c) Prusa Research 2018 - 2023 Tomáš Mészáros @tamasmeszaros, Lukáš Matěna @lukasmatena, Pavel Mikuš @Godrak, Oleksandra Iushchenko @YuSanka, Vojtěch Bubník @bubnikv, Roman Beránek @zavorka, Enrico Turri @enricoturri1966
 ///|/ Copyright (c) 2022 ole00 @ole00
 ///|/
@@ -96,6 +97,7 @@
 #endif
 
 #include "I18N.hpp"
+#include <fstream>
 
 //! macro used to mark string used at localization,
 //! return same string
@@ -392,7 +394,7 @@ sla::ExportSnapshot SLAPrint::capture_export_snapshot_impl(const ThumbnailsList 
 void SLAPrint::write_export_snapshot(const sla::ExportSnapshot &snapshot,
     const sla::ExportGenerationGuard &generation, const std::string &format,
     const std::string &path, const std::string &projectname, bool palette_approved,
-    const std::function<void()> &checkpoint)
+    const std::function<void()> &checkpoint, const sla::RepresentationApproval *approval)
 {
     const auto started = std::chrono::steady_clock::now();
     const auto trace = [&](const char *phase) {
@@ -430,6 +432,8 @@ void SLAPrint::write_export_snapshot(const sla::ExportSnapshot &snapshot,
         trace("raster context ready");
     } else {
         configuration.set("sla_archive_format", format);
+        // No document: nothing is proven against per-layer rows, so adjusted values go in directly.
+        if (approval) sla::apply_representation_adjustments(configuration, *approval);
         job = std::make_unique<SLAPrint>(); job->apply(Model{}, configuration);
         const auto reason = job->validate(); if (!reason.empty()) throw ExportError(reason);
     }
@@ -484,7 +488,8 @@ void SLAPrint::write_export_snapshot(const sla::ExportSnapshot &snapshot,
             document = job->m_layer_document.get();
             job->m_frozen_sl1_document = document;
         }
-        job->export_layer_document(*document, format, path, snapshot.thumbnails(), projectname);
+        job->export_layer_document(*document, format, path, snapshot.thumbnails(), projectname,
+            {}, nullptr, approval);
     } else {
         // Keep the explicitly selected vector writer; do not re-infer a
         // different schema from the last component of an alias filename.
@@ -1355,6 +1360,10 @@ SLAPrintStatistics raster_job_statistics(const SLAPrint &print, const sla::Layer
     // Reuse only a fully validated count owned by these exact PNG bytes.
     // Edits and project restores take the decoding fallback. Repeated-Z
     // groups below still decode their actual union when masks differ.
+    // The rasterizer's own lit-pixel ledger covers plain Gray8 masks whose PNG
+    // bytes are unchanged since rasterization (per-layer byte/hash check).
+    const auto *rasterized = print.raster_lit_ledger();
+    const bool ledger_fits = rasterized && rasterized->columns() == columns && rasterized->rows() == rows;
     std::vector<size_t> pending;
     pending.reserve(unique.size());
     for (const auto i : unique) {
@@ -1363,27 +1372,23 @@ SLAPrintStatistics raster_job_statistics(const SLAPrint &print, const sla::Layer
             if (cached->columns != columns || cached->rows != rows)
                 throw RuntimeError("Raster job masks must match the oriented printer resolution");
             areas[i] = double(cached->nonzero_pixels) * pixel_area;
+        } else if (const auto lit = ledger_fits ? rasterized->lit_pixels(i, document.encoded_layer(i)) : std::nullopt) {
+            areas[i] = double(*lit) * pixel_area;
         } else pending.push_back(i);
     }
-    // Full-resolution PNG inflation dominates this step. Bound concurrent
-    // decoded buffers to the same 512 MiB budget as rasterization/encoding.
-    const int workers=int(std::clamp<uint64_t>((uint64_t(512)<<20)/
-        std::max<uint64_t>(1,uint64_t(columns)*rows*4),1,8));
-    tbb::task_arena arena(workers);
-    // Keep arbitrary request/UI checkpoints on the coordinator. A bounded
-    // batch limits cancellation latency without invoking callbacks on workers.
-    for (size_t first=0; first<pending.size(); first+=size_t(workers)) {
-      checkpoint();
-      const auto end=std::min(first+size_t(workers),pending.size());
-      arena.execute([&] { execution::for_each(ExecutionTBB{},first,end,[&](size_t index) {
+    // Full-resolution PNG inflation dominates this step. In-flight decoded
+    // buffers are bounded by physical RAM (<=25%, cap 6 GiB; see
+    // sla::memory_bounded_workers). Each task stores only one double, so the
+    // batch size does not affect memory. Checkpoints stay on the coordinator.
+    const size_t workers=sla::memory_bounded_workers(
+        std::max<uint64_t>(1,uint64_t(columns)*rows*4),pending.size());
+    sla::for_each_streaming(pending.size(),workers,[&](size_t index) {
         const auto i=pending[index];
         const auto mask=document.image(i);
         if (mask.cols!=columns || mask.rows!=rows)
             throw RuntimeError("Raster job masks must match the oriented printer resolution");
         areas[i]=double(std::count_if(mask.buf.begin(),mask.buf.end(),[](uint8_t value){return value!=0;}))*pixel_area;
-      }); });
-      checkpoint();
-    }
+    },[&](size_t) {checkpoint();});
     double previous_z = 0;
     const bool repeated = fresh && fresh->position_policy == sla::ExposurePositionPolicy::RepeatedExposureHeights;
     for (size_t i = 0; i < document.layer_count(); ++i) {
@@ -1662,7 +1667,12 @@ void SLAPrint::export_print(const std::string &fname, const ThumbnailsList &thum
         (m_layer_document && m_layer_document->fresh_job())) {
         if (!m_layer_document)
             throw ExportError("This vector result cannot be converted to a raster container without slicing again");
-        export_layer_document(*m_layer_document, requested->id, fname, thumbnails, projectname);
+        // This context's own result, exported by its non-const owner: no
+        // callback can reach m_layer_document while the export runs (edits stop
+        // and join the worker first and bump the generation guard that every
+        // checkpoint verifies), so the SL1 writer may borrow its PNG bytes.
+        export_layer_document_impl(*m_layer_document, requested->id, fname, thumbnails, projectname,
+            {}, &generation, LayerExportInput::OwnedResult);
         return;
     }
     if (m_archiver) {
@@ -1779,9 +1789,27 @@ static sla::LayerParameters fresh_chitubox_row(const sla::LayerParameters &sourc
     return represented;
 }
 
+namespace sla {
+// `rasterized` only lets the SL1 planner skip inflating PNGs whose bytes the
+// rasterizer itself produced and counted; every other path ignores it.
+static LayerConversionPlan plan_layer_conversion_impl(const LayerDocument &document,
+                                                      const std::string &destination,
+                                                      const LayerProgress &progress,
+                                                      const MaskLitLedger *rasterized,
+                                                      const std::string &anycubic_version = "auto");
+}
 sla::LayerConversionPlan sla::plan_layer_conversion(const LayerDocument &document,
                                                     const std::string &destination,
                                                     const LayerProgress &progress)
+{
+    return plan_layer_conversion_impl(document, destination, progress, nullptr);
+}
+
+sla::LayerConversionPlan sla::plan_layer_conversion_impl(const LayerDocument &document,
+                                                    const std::string &destination,
+                                                    const LayerProgress &progress,
+                                                    const MaskLitLedger *rasterized,
+                                                    const std::string &anycubic_version)
 {
     check_layer_progress(progress, 0, document.layer_count());
     if (const auto &fresh=document.fresh_job()) {
@@ -1789,15 +1817,17 @@ sla::LayerConversionPlan sla::plan_layer_conversion(const LayerDocument &documen
             check_layer_progress(progress, 0, document.layer_count()); return true;
         });
         if (fresh->position_policy == ExposurePositionPolicy::RepeatedExposureHeights && destination != "uvj" && destination != "cxdlpv4")
-            throw RuntimeError("Destination " + destination + " has no verified preserving exporter for repeated-height exposure sequences");
+            throw RuntimeError("Destination " + destination + " cannot store repeated-height exposure sequences "
+                               "(several exposures at one Z). Export to uvj or cxdlpv4, or remove the repeated exposures first.");
         if(destination=="uvj") {
             auto typed=std::make_shared<UVJFreshExportPlan>(uvj_fresh_export_plan(document));
             LayerConversionPlan plan;plan.destination=destination;plan.source_geometry=fresh->geometry;
             plan.globals=typed->globals;plan.uvj_fresh=std::move(typed);return plan;
         }
-        const auto &anycubic_versions=anycubic_available_versions(destination);
-        if(std::any_of(anycubic_versions.begin(),anycubic_versions.end(),
-                       [](uint16_t version){return version>=516 && version<=518;})) {
+        // Only the version this export will actually write owns a fresh plan; a legacy default
+        // (515/v1) of an Anycubic family with modern versions uses the direct writer below.
+        const auto anycubic_resolved=generated_anycubic_version(destination,anycubic_version);
+        if(anycubic_resolved && *anycubic_resolved>=516 && *anycubic_resolved<=518) {
             auto typed=std::make_shared<AnycubicFreshExportPlan>(anycubic_fresh_export_plan(document));
             LayerConversionPlan plan;plan.destination=destination;plan.source_geometry=fresh->geometry;
             plan.globals=typed->globals;plan.anycubic_fresh=std::move(typed);return plan;
@@ -1813,7 +1843,7 @@ sla::LayerConversionPlan sla::plan_layer_conversion(const LayerDocument &documen
             plan.globals=typed->represented.globals;plan.cws_fresh=std::move(typed);return plan;
         }
         if (destination == "SL1" || destination == "SL1S") {
-            auto typed = std::make_shared<SL1FreshExportPlan>(sl1_fresh_export_plan(document, progress));
+            auto typed = std::make_shared<SL1FreshExportPlan>(sl1_fresh_export_plan(document, progress, rasterized));
             LayerConversionPlan plan;
             plan.destination = destination; plan.source_geometry = fresh->geometry;
             plan.globals = typed->globals; plan.sl1_fresh = std::move(typed); return plan;
@@ -1829,8 +1859,18 @@ sla::LayerConversionPlan sla::plan_layer_conversion(const LayerDocument &documen
         }
         // A matching row schema alone does not prove global/header support.
         if(destination!="ctb_v3" && destination!="ctb_v4" && destination!="ctb_v5" &&
-           destination!="ctb_encrypted_v4" && destination!="ctb_encrypted")
-            throw RuntimeError("Destination " + destination + " has no parameter-preserving fresh-job exporter yet");
+           destination!="ctb_encrypted_v4" && destination!="ctb_encrypted") {
+            // Every other writable format has no bespoke parameter plan. It is exported by its
+            // own direct writer (what the CLI runs for sla_archive_format=X) with the job's
+            // globals applied; direct_fresh_export_config() proves per-layer fidelity or refuses.
+            if(destination=="SL1SVG")
+                throw RuntimeError("SL1SVG stores vector outlines and cannot be written from rasterized layers. "
+                                   "Choose a pixel-based format, or slice with SL1SVG as the printer format.");
+            LayerConversionPlan plan;
+            plan.destination=destination;plan.source_geometry=fresh->geometry;
+            plan.globals=fresh->globals;plan.rows=fresh->rows;plan.direct_fresh=true;
+            return plan;
+        }
         const auto validate_globals = destination == "ctb_v3" ? validate_chitubox_v3_job : validate_chitubox_job;
         validate_globals(fresh->globals,document.layer_count());
         auto represented=*fresh;
@@ -1859,7 +1899,8 @@ sla::LayerConversionPlan sla::plan_layer_conversion(const LayerDocument &documen
                     if (std::none_of(plan.schema.begin(), plan.schema.end(),
                             [&](const auto &capability) { return capability.field == field->first; })) {
                         if (field->second != 0)
-                            throw RuntimeError("CTB v3 cannot preserve second-phase motion or explicit layer waits");
+                            throw RuntimeError("CTB v3 cannot store second-phase lift/retract motion or wait times (wait before/after cure, after lift). "
+                                "Set them to 0 in the material settings, or export to CTB v4/v5 which store them.");
                         field = row.erase(field);
                     } else ++field;
                 }
@@ -1911,6 +1952,85 @@ sla::LayerConversionPlan sla::plan_layer_conversion(const LayerDocument &documen
         plan.rows.push_back(std::move(row));
     }
     return plan;
+}
+
+static const char *fresh_parameter_label(sla::LayerParameter field)
+{
+    using F=sla::LayerParameter;
+    switch(field) {
+    case F::PositionZ: return "layer height (Z) [mm]";
+    case F::Exposure: return "exposure [s]";
+    case F::LiftDistance: return "lift distance [mm]";
+    case F::LiftSpeed: return "lift speed [mm/min]";
+    case F::LightOff: return "light-off delay [s]";
+    case F::WaitBefore: return "wait before cure [s]";
+    case F::WaitAfter: return "wait after cure [s]";
+    case F::WaitAfterLift: return "wait after lift [s]";
+    case F::LiftDistance2: return "second lift distance [mm]";
+    case F::LiftSpeed2: return "second lift speed [mm/min]";
+    case F::RetractSpeed: return "retract speed [mm/min]";
+    case F::RetractDistance2: return "second retract distance [mm]";
+    case F::RetractSpeed2: return "second retract speed [mm/min]";
+    case F::LightPWM: return "light PWM";
+    }
+    return "parameter";
+}
+
+DynamicPrintConfig sla::direct_fresh_export_config(const LayerDocument &document, const std::string &format,
+                                                   const DynamicPrintConfig &base)
+{
+    const auto &fresh=document.fresh_job();
+    if(!fresh) throw RuntimeError("Direct fresh export requires an owned job");
+    DynamicPrintConfig complete;
+    complete.apply(SLAFullPrintConfig{});complete.apply(base);
+    complete.set("sla_archive_format",format);
+    std::vector<double> positions;positions.reserve(fresh->rows.size());
+    for(const auto &row:fresh->rows) positions.push_back(row.at(LayerParameter::PositionZ));
+    // The writer derives every row from one preset-shaped parameter set. Regenerate that schedule
+    // exactly as slicing does and require the document to be identical; anything else is an edit
+    // this destination cannot store.
+    const auto mismatch=[&](const DynamicPrintConfig &config)->std::optional<std::string> {
+        SLAPrinterConfig printer;printer.apply(config,true);
+        SLAMaterialConfig material;material.apply(config,true);
+        const auto expected=make_fresh_layer_job(printer,material,fresh->globals.layer_height,positions,fresh->producer,fresh->position_policy);
+        if(expected.globals.bottom_layers!=fresh->globals.bottom_layers ||
+           expected.globals.transition_layers!=fresh->globals.transition_layers)
+            return "Destination " + format + " stores one bottom/transition layer count for the whole job; "
+                   "it cannot reproduce this job's counts (" + std::to_string(fresh->globals.bottom_layers) + " bottom, " +
+                   std::to_string(fresh->globals.transition_layers) + " transition layers). Export to a format that stores per-layer rows such as cxdlpv4, ctb_v4 or uvj.";
+        for(size_t i=0;i<fresh->rows.size();++i)
+            for(const auto &[field,value]:fresh->rows[i]) {
+                const auto found=expected.rows[i].find(field);
+                if(found!=expected.rows[i].end() && found->second==value) continue;
+                std::ostringstream text;
+                text<<"Destination "<<format<<" stores one parameter set for the whole job, but layer "<<i+1<<" has "
+                    <<fresh_parameter_label(field)<<" = "<<value;
+                if(found!=expected.rows[i].end()) text<<" where the job schedule gives "<<found->second;
+                text<<". Make this parameter uniform in the layer editor (reset the per-layer edit), "
+                      "or export to a format that stores per-layer parameters (cxdlpv4, ctb_v4, ctb_v5, uvj).";
+                return text.str();
+            }
+        return std::nullopt;
+    };
+    if(!mismatch(complete)) return complete;
+    auto applied=complete;
+    fresh->globals.apply_to(applied);
+    if(!mismatch(applied)) return applied;
+    // A short job clips the configured transition count; the schedule keeps the unclipped denominator.
+    auto unclipped=applied;
+    unclipped.set("sla_transition_layers",complete.opt_int("sla_transition_layers"));
+    if(!mismatch(unclipped)) return unclipped;
+    throw RuntimeError(*mismatch(applied));
+}
+
+sla::RepresentationPlan sla::plan_export_representation(const std::string &format, const DynamicPrintConfig &config,
+                                                         const LayerDocument *document)
+{
+    if (!has_representation_rules(format)) return {};
+    DynamicPrintConfig effective;
+    if (document && document->fresh_job()) effective = direct_fresh_export_config(*document, format, config);
+    else { effective.apply(SLAFullPrintConfig{}); effective.apply(config); effective.set("sla_archive_format", format); }
+    return plan_representation(format, effective);
 }
 
 void sla::require_layer_conversion_geometry(const LayerConversionPlan &plan,
@@ -1970,7 +2090,8 @@ void SLAPrint::convert_layer_archive(const DynamicPrintConfig &config, const sla
 
 void SLAPrint::convert_layer_archive_owned(const DynamicPrintConfig &config,
     const sla::LayerDocument &document, const std::string &format, const std::string &path,
-    const sla::ExportGenerationGuard &generation, const sla::LayerProgress &progress)
+    const sla::ExportGenerationGuard &generation, const sla::LayerProgress &progress,
+    const sla::RepresentationApproval *approval)
 {
     const auto checkpoint = [&] {
         generation.check();
@@ -1980,7 +2101,8 @@ void SLAPrint::convert_layer_archive_owned(const DynamicPrintConfig &config,
     checkpoint();
     if (format=="cxdlpv4")
         sla::require_cxdlpv4_printer_identifier(config.opt_string("printer_model"),bool(document.fresh_job()));
-    const auto plan = sla::plan_layer_conversion(document, format, progress);
+    const auto plan = sla::plan_layer_conversion_impl(document, format, progress, nullptr,
+                                                      config.opt_string("sla_anycubic_version"));
     checkpoint();
     sla::require_layer_conversion_geometry(plan, config);
     sla::require_layer_conversion_motion(plan, config);
@@ -1989,43 +2111,49 @@ void SLAPrint::convert_layer_archive_owned(const DynamicPrintConfig &config,
     // second statistics pass. An explicit flag retains the reference path for
     // equivalence and performance regression checks.
     const char *dispatch_flag = std::getenv("SLA_EXPERIMENT_CONVERSION_DISPATCH");
-    const bool planned_dispatch = !dispatch_flag || std::strcmp(dispatch_flag, "1") == 0;
+    // A direct-writer plan keeps the real Z grid and the document's own masks: the destination's
+    // regular writer (the CLI route) consumes the job as is.
+    const bool planned_dispatch = !plan.direct_fresh && (!dispatch_flag || std::strcmp(dispatch_flag, "1") == 0);
+    const bool copy_masks = !planned_dispatch && !plan.direct_fresh;
     std::vector<sla::EncodedRaster> rasters;std::vector<double> levels;
-    if (!planned_dispatch) rasters.reserve(document.layer_count());
+    if (copy_masks) rasters.reserve(document.layer_count());
     levels.reserve(document.layer_count());
     for(size_t i=0;i<document.layer_count();++i) {
         generation.check();sla::check_layer_progress(progress, i, document.layer_count());generation.check();
-        if (!planned_dispatch) {
+        if (copy_masks) {
             const auto bytes=document.encoded_layer(i);const auto *begin=static_cast<const uint8_t *>(bytes.buf);
             rasters.emplace_back(std::vector<uint8_t>(begin,begin+bytes.sz),"png");
         }
-        levels.push_back(double(i+1)/1000.);
+        levels.push_back(plan.direct_fresh ? plan.rows[i].at(sla::LayerParameter::PositionZ) : double(i+1)/1000.);
     }
     auto configuration=config;configuration.set("sla_archive_format",format);
-    if (plan.globals) {
+    if (plan.direct_fresh) configuration=sla::direct_fresh_export_config(document,format,configuration);
+    else if (plan.globals) {
         if (plan.cxdlpv4_fresh || plan.sl1_fresh || plan.cws_fresh || plan.cbddlp_fresh || plan.anycubic_fresh || plan.uvj_fresh) plan.globals->apply_to(configuration);
         else sla::apply_chitubox_container_baseline(*plan.globals, document.layer_count(), configuration);
     }
     std::optional<sla::LayerDocument> masks;
-    if (!planned_dispatch) masks=sla::LayerDocument::from_rasters(std::move(rasters), progress);
+    if (copy_masks) masks=sla::LayerDocument::from_rasters(std::move(rasters), progress);
     auto context=create_raster_job_impl(configuration,masks ? *masks : document,levels,std::nullopt,
         sla::ExposurePositionPolicy::IncreasingLayers,nullptr,&generation,checkpoint,
         planned_dispatch ? RasterJobPurpose::PlannedConversionDispatch : RasterJobPurpose::CompleteJob);
-    context->export_layer_document_planned(document,format,path,{},"converted", &plan);
+    context->export_layer_document_planned(document,format,path,{},"converted", &plan,nullptr,{},LayerExportInput::CallerOwned,approval);
 }
 void SLAPrint::export_layer_document(const sla::LayerDocument &document, const std::string &format,
                                    const std::string &path, const ThumbnailsList &thumbnails,
                                    const std::string &projectname,
                                    const std::function<void()> &checkpoint,
-                                   const sla::ExportGenerationGuard *request_generation) const
+                                   const sla::ExportGenerationGuard *request_generation,
+                                   const sla::RepresentationApproval *approval) const
 {
     export_layer_document_impl(document, format, path, thumbnails, projectname,
-        checkpoint, request_generation, LayerExportInput::CallerOwned);
+        checkpoint, request_generation, LayerExportInput::CallerOwned, approval);
 }
 
 void SLAPrint::export_layer_document_snapshot(const sla::LayerDocument &document, std::string format,
     std::string path, ThumbnailsList thumbnails, std::string projectname,
-    const std::function<void()> &checkpoint, const sla::ExportGenerationGuard *request_generation) const
+    const std::function<void()> &checkpoint, const sla::ExportGenerationGuard *request_generation,
+    const sla::RepresentationApproval *approval) const
 {
     throw_if_canceled();
     if (request_generation && !export_input_guard().same_source(*request_generation))
@@ -2039,13 +2167,13 @@ void SLAPrint::export_layer_document_snapshot(const sla::LayerDocument &document
     // Copy the supplied editor masks, never the context's earlier sliced result.
     // No callback receives a reference to this local immutable document.
     export_layer_document_impl(captured, format, path, thumbnails, projectname,
-        checkpoint, &generation, LayerExportInput::PrivateSnapshot);
+        checkpoint, &generation, LayerExportInput::PrivateSnapshot, approval);
 }
 
 void SLAPrint::export_layer_document_impl(const sla::LayerDocument &document, const std::string &format,
     const std::string &path, const ThumbnailsList &thumbnails, const std::string &projectname,
     const std::function<void()> &checkpoint, const sla::ExportGenerationGuard *request_generation,
-    LayerExportInput input) const
+    LayerExportInput input, const sla::RepresentationApproval *approval) const
 {
     const auto started=std::chrono::steady_clock::now();
     throw_if_canceled();
@@ -2061,19 +2189,21 @@ void SLAPrint::export_layer_document_impl(const sla::LayerDocument &document, co
     };
     check();
     const auto plan = !document.fresh_job() && document.parameter_capabilities().empty() ? std::nullopt :
-        std::optional<sla::LayerConversionPlan>(sla::plan_layer_conversion(document, format,
-            [&](size_t, size_t) { check(); return true; }));
+        std::optional<sla::LayerConversionPlan>(sla::plan_layer_conversion_impl(document, format,
+            [&](size_t, size_t) { check(); return true; }, raster_lit_ledger(),
+            m_printer_config.sla_anycubic_version.value));
     check();
     if(std::getenv("SLA_TRACE_EXPORT_STAGES")) BOOST_LOG_TRIVIAL(info) << "Layer export plan: " <<
         std::chrono::duration<double>(std::chrono::steady_clock::now()-started).count() << " s";
     export_layer_document_planned(document, format, path, thumbnails, projectname,
-        plan ? &*plan : nullptr, &generation, checkpoint, input);
+        plan ? &*plan : nullptr, &generation, checkpoint, input, approval);
 }
 
 void SLAPrint::export_layer_document_planned(const sla::LayerDocument &document, const std::string &format,
     const std::string &path, const ThumbnailsList &thumbnails, const std::string &projectname,
     const sla::LayerConversionPlan *plan, const sla::ExportGenerationGuard *request_generation,
-    const std::function<void()> &checkpoint, LayerExportInput input) const
+    const std::function<void()> &checkpoint, LayerExportInput input,
+    const sla::RepresentationApproval *approval) const
 {
     const auto started=std::chrono::steady_clock::now();
     const auto trace=[&](const char *phase) {
@@ -2093,7 +2223,7 @@ void SLAPrint::export_layer_document_planned(const sla::LayerDocument &document,
     if (!unavailable.empty()) throw ExportError(unavailable);
     if (document.layer_count() != m_printer_input.size())
         throw RuntimeError("Layer document does not match the sliced result");
-    const bool transferring_parameters = plan != nullptr;
+    const bool transferring_parameters = plan != nullptr && !plan->direct_fresh;
     if (plan) {
         sla::require_layer_conversion_geometry(*plan, m_full_print_config);
         sla::require_layer_conversion_motion(*plan, m_full_print_config);
@@ -2117,7 +2247,10 @@ void SLAPrint::export_layer_document_planned(const sla::LayerDocument &document,
         fresh_pricing->validate(); // Before mask copying/encoding or any output.
     }
     validate_layer_document(*this, document, transferring_parameters, check);
-    auto writer = SLAArchiveWriter::create(format, m_printer_config);
+    // Approved adjustments also reach the writer's own printer identity (printer_model).
+    SLAPrinterConfig writer_printer = m_printer_config;
+    if (approval) sla::apply_representation_adjustments(writer_printer, *approval);
+    auto writer = SLAArchiveWriter::create(format, writer_printer);
     if (!writer) throw RuntimeError("Unknown SLA archive format: " + format);
     // Export without Apply must use statistics for this exact document for
     // mesh jobs as well as generated jobs. It must not mutate the source.
@@ -2134,10 +2267,24 @@ void SLAPrint::export_layer_document_planned(const sla::LayerDocument &document,
     export_config.set("sla_archive_format", format);
     // Preserve source job defaults separately from its per-layer overrides.
     // Printer geometry and destination identity remain in the chosen context.
-    const auto source_globals = plan ? plan->globals : std::nullopt;
+    const auto source_globals = plan && !plan->direct_fresh ? plan->globals : std::nullopt;
+    if (plan && plan->direct_fresh) {
+        export_config = sla::direct_fresh_export_config(document, format, export_config);
+        // The writer stamps m_printer_input levels; they must be this job's Z rows.
+        for (size_t i=0;i<m_printer_input.size();++i)
+            if (std::abs(double(m_printer_input[i].level())*SCALING_FACTOR - plan->rows[i].at(sla::LayerParameter::PositionZ)) > 1e-6)
+                throw RuntimeError("Destination " + format + " stores a regular layer grid, but layer " + std::to_string(i+1) +
+                                   " sits at a different Z than the sliced result. Slice again before exporting.");
+    }
     if (source_globals) {
         if (plan->cxdlpv4_fresh || plan->sl1_fresh || plan->cws_fresh || plan->cbddlp_fresh || plan->anycubic_fresh || plan->uvj_fresh) source_globals->apply_to(export_config);
         else sla::apply_chitubox_container_baseline(*source_globals, document.layer_count(), export_config);
+    }
+    if (approval && !approval->empty()) {
+        // Applied after the fidelity proof above: the file gets the representable values while the
+        // job and the user's presets keep their own.
+        sla::apply_representation_adjustments(export_config, *approval);
+        BOOST_LOG_TRIVIAL(info) << "Export to " << format << " writes adjusted values: " << sla::describe_adjustments(*approval);
     }
     if(plan && plan->cbddlp_fresh) {
         export_config.set("sla_retract_speed",double(plan->cbddlp_fresh->retract_speed));
@@ -2190,6 +2337,7 @@ void SLAPrint::export_layer_document_planned(const sla::LayerDocument &document,
         plan && plan->sl1_fresh && (format == "SL1" || format == "SL1S") &&
         typeid(*writer) == typeid(SL1Archive) &&
         (input == LayerExportInput::PrivateSnapshot ||
+            (input == LayerExportInput::OwnedResult && m_layer_document.get() == &document) ||
             (m_frozen_sl1_document == &document && m_layer_document.get() == &document));
     // Native v4 reuse retains its separately owned immutable encoded batch.
     std::shared_ptr<const std::vector<sla::EncodedRaster>> reused;
@@ -2460,8 +2608,8 @@ void SLAPrint::export_layer_document_planned(const sla::LayerDocument &document,
                     throw RuntimeError("CXDLPv4 native rows cannot preserve fresh job intent");
             }
             trace("CXDLP metadata verified");
-            const int workers=int(std::clamp<uint64_t>((uint64_t(512)<<20)/
-                std::max<uint64_t>(1,uint64_t(layout.columns)*layout.rows*4),1,8));
+            const int workers=int(std::max<size_t>(1,sla::memory_bounded_workers(
+                std::max<uint64_t>(1,uint64_t(layout.columns)*layout.rows*6),fresh.rows.size())));
             tbb::task_arena verification_arena(workers);
             // User checkpoints stay on the coordinator. Workers inspect only
             // thread-safe cancellation state, never arbitrary UI callbacks.
@@ -2756,6 +2904,7 @@ bool SLAPrint::invalidate_state_by_config_options(const std::vector<t_config_opt
         "sla_archive_format"sv,
         "sla_anycubic_version"sv,
         "sla_cbddlp_aa"sv,
+        "sla_archive_header_mirror"sv,
         "sla_phz_encryption_key"sv,
         "nanodlp_device_profile"sv,
         "sla_output_precision"sv,
@@ -2842,7 +2991,7 @@ bool SLAPrint::invalidate_state_by_config_options(const std::vector<t_config_opt
         return key == "exposure_time" || key == "initial_exposure_time" ||
             key == "min_exposure_time" || key == "max_exposure_time" ||
             key == "min_initial_exposure_time" || key == "max_initial_exposure_time" ||
-            key == "sla_archive_format" || key == "sla_anycubic_version" || key == "sla_cbddlp_aa" || key == "sla_phz_encryption_key" || key == "nanodlp_device_profile" ||
+            key == "sla_archive_format" || key == "sla_anycubic_version" || key == "sla_cbddlp_aa" || key == "sla_archive_header_mirror" || key == "sla_phz_encryption_key" || key == "nanodlp_device_profile" ||
             std::any_of(std::begin(sla::machine_settings), std::end(sla::machine_settings),
                         [&](const auto &setting) { return key == setting.key; });
     });

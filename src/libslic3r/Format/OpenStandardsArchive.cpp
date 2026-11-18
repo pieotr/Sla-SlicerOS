@@ -2,6 +2,7 @@
 ///|/
 ///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
 ///|/
+#include "HeaderMirror.hpp"
 #include "OpenStandardsArchive.hpp"
 #include "libslic3r/PNGReadWrite.hpp"
 #include "libslic3r/SLA/PrintParameters.hpp"
@@ -319,7 +320,7 @@ void OpenSLAArchive::export_print(const std::string fname,
   out.number(m_cfg.max_print_height.value);
   out.number(width);
   out.number(height);
-  out.u8(0); // The canonical masks already contain LCD mirror transforms.
+  out.u8(resolve_header_mirror(m_cfg, false, false).bits()); // auto: 0, the canonical masks already contain LCD mirror transforms.
   out.text("PNG", 16);
   out.text("PNG", 16);
   out.u32(8);

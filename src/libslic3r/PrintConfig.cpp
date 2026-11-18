@@ -210,6 +210,15 @@ static const t_config_enum_values s_keys_map_SLADisplayOrientation = {
 };
 CONFIG_OPTION_ENUM_DEFINE_STATIC_MAPS(SLADisplayOrientation)
 
+static const t_config_enum_values s_keys_map_SLAArchiveHeaderMirror = {
+    { "auto",           slahmAuto},
+    { "none",           slahmNone},
+    { "horizontal",     slahmHorizontal},
+    { "vertical",       slahmVertical},
+    { "both",           slahmBoth}
+};
+CONFIG_OPTION_ENUM_DEFINE_STATIC_MAPS(SLAArchiveHeaderMirror)
+
 static const t_config_enum_values s_keys_map_SLAPillarConnectionMode = {
     {"zigzag",          int(SLAPillarConnectionMode::zigzag)},
     {"cross",           int(SLAPillarConnectionMode::cross)},
@@ -4873,6 +4882,24 @@ void PrintConfigDef::init_sla_params()
                      "This controls the file codec, separately from raster smoothing.");
     def->min = 1; def->max = 16; def->mode = comSimple;
     def->set_default_value(new ConfigOptionInt(8));
+
+    def = this->add("sla_archive_header_mirror", coEnum);
+    def->label = L("Mirror flag in file header");
+    def->full_label = L("Mirror flag written into the output file header");
+    def->tooltip = L("Only the mirror/flip flag stored in the header of the output file (e.g. CTB, CXDLP v4, Chitubox ZIP, OSF, OSLA, "
+                     "CWS, GOO, VDT, Klipper, NanoDLP). The layer images themselves are NOT changed; use the display mirroring options above for that. "
+                     "Automatic keeps the value this slicer has always written for each format. Change it only if your printer shows the print "
+                     "mirrored or double-mirrored. Verify with a small asymmetric test print. Formats with a single yes/no flag store "
+                     "any mirroring as 'yes' (NanoDLP: horizontal only).");
+    def->set_enum<SLAArchiveHeaderMirror>({
+        { "auto",       L("Automatic (format default)") },
+        { "none",       L("No mirror") },
+        { "horizontal", L("Horizontal") },
+        { "vertical",   L("Vertical") },
+        { "both",       L("Horizontal and vertical") }
+    });
+    def->mode = comExpert;
+    def->set_default_value(new ConfigOptionEnum<SLAArchiveHeaderMirror>(slahmAuto));
 
     def = this->add("nanodlp_device_profile", coString);
     def->label = L("NanoDLP controller profile (JSON)");

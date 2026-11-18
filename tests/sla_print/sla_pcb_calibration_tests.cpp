@@ -3476,3 +3476,297 @@ TEST_CASE("Anycubic515 export restores caller rounding mode on success and time 
     const auto header=u32(20);CHECK(u32(header+84)==327);
   }
 }
+
+namespace {
+// True when two artworks cover exactly the same area (within 1e-4 mm^2).
+bool same_copper(const sla::PCBArtwork &a, const sla::PCBArtwork &b) {
+  const double mismatch = area(sla::PCBArtwork{diff_ex(a.copper, b.copper)}) +
+                          area(sla::PCBArtwork{diff_ex(b.copper, a.copper)});
+  return mismatch < 1e-4;
+}
+} // namespace
+
+TEST_CASE("Gerber G74 single-quadrant arcs match the G75 equivalent", "[sla_pcb][sla_pcb_g74]") {
+  const std::string head = prefix + "%ADD10C,1*%D10*";
+  SECTION("counter-clockwise quarter arc with unsigned offsets") {
+    auto multi = sla::parse_gerber(head + "G75*X50000Y0D02*G03X0Y50000I-50000J0D01*M02*");
+    auto single = sla::parse_gerber(head + "G74*X50000Y0D02*G03X0Y50000I50000J0D01*M02*");
+    REQUIRE(same_copper(multi, single));
+  }
+  SECTION("clockwise quarter arc and a centre off the axes") {
+    auto multi = sla::parse_gerber(head + "G75*X0Y50000D02*G02X50000Y0I0J-50000D01*M02*");
+    auto single = sla::parse_gerber(head + "G74*X0Y50000D02*G02X50000Y0I0J50000D01*M02*");
+    REQUIRE(same_copper(multi, single));
+    // 3-4-5 triangle: centre (0,0) lies off both axes of the start point (3,4).
+    auto offset_multi = sla::parse_gerber(head + "G75*X30000Y40000D02*G03X-40000Y30000I-30000J-40000D01*M02*");
+    auto offset_single = sla::parse_gerber(head + "G74*X30000Y40000D02*G03X-40000Y30000I30000J40000D01*M02*");
+    REQUIRE(area(offset_multi) > 1.);
+    REQUIRE(same_copper(offset_multi, offset_single));
+  }
+  SECTION("arcs wider than 90 degrees and missing mode declaration are rejected") {
+    REQUIRE_THROWS(sla::parse_gerber(head + "G74*X50000Y0D02*G03X-50000Y0I50000J0D01*M02*"));
+    REQUIRE_THROWS(sla::parse_gerber(head + "X50000Y0D02*G03X0Y50000I50000J0D01*M02*"));
+  }
+  SECTION("G74 arcs work inside regions") {
+    auto multi = sla::parse_gerber(prefix + "G75*G36*X0Y0D02*X50000Y0D01*G03X0Y50000I-50000J0D01*G01X0Y0D01*G37*M02*");
+    auto single = sla::parse_gerber(prefix + "G74*G36*X0Y0D02*X50000Y0D01*G03X0Y50000I50000J0D01*G01X0Y0D01*G37*M02*");
+    REQUIRE(same_copper(multi, single));
+    REQUIRE(area(single) == Catch::Approx(25. * 3.141592653589793 / 4.).margin(.05));
+  }
+}
+
+TEST_CASE("Gerber LM LR LS transform apertures at flash and draw time", "[sla_pcb][sla_pcb_transform]") {
+  // Off-centre 4x2 bar at (3,0) in aperture space.
+  const std::string bar = "%AMBAR*21,1,4,2,3,0,0*%\n%ADD10BAR*%D10*";
+  SECTION("LR90 with LMX equals the manually transformed macro") {
+    // Mirror X then rotate 90 deg CCW: centre (3,0) -> (-3,0) -> (0,-3), bar 2 wide, 4 tall.
+    auto transformed = sla::parse_gerber(prefix + bar + "%LMX*%%LR90*%X100000Y100000D03*M02*");
+    auto manual = sla::parse_gerber(prefix + "%AMBAR*21,1,2,4,0,-3,0*%\n%ADD10BAR*%D10*X100000Y100000D03*M02*");
+    REQUIRE(area(transformed) == Catch::Approx(8.).margin(.001));
+    REQUIRE(same_copper(transformed, manual));
+  }
+  SECTION("transforms persist until changed and LS scales about the flash point") {
+    auto board = sla::parse_gerber(prefix + "%ADD10R,2X2*%D10*%LS2*%X0Y0D03*%LS1*%X100000Y0D03*M02*");
+    REQUIRE(area(board) == Catch::Approx(16. + 4.).margin(.001));
+    auto bounds = get_extents(board.copper);
+    REQUIRE(unscaled(bounds.min.x()) == Catch::Approx(-2.).margin(1e-4));
+    auto rotated = sla::parse_gerber(prefix + "%ADD10R,4X2*%D10*%LR90*%X0Y0D03*M02*");
+    bounds = get_extents(rotated.copper);
+    REQUIRE(unscaled(bounds.size().x()) == Catch::Approx(2.).margin(1e-4));
+    REQUIRE(unscaled(bounds.size().y()) == Catch::Approx(4.).margin(1e-4));
+    auto reset = sla::parse_gerber(prefix + "%ADD10R,4X2*%D10*%LR90*%%LR0*%X0Y0D03*M02*");
+    REQUIRE(unscaled(get_extents(reset.copper).size().x()) == Catch::Approx(4.).margin(1e-4));
+  }
+  SECTION("transformed strokes use the transformed aperture") {
+    auto board = sla::parse_gerber(prefix + "%ADD10R,4X2*%D10*%LR90*%X0Y0D02*X100000Y0D01*M02*");
+    const auto size = unscaled(get_extents(board.copper).size());
+    REQUIRE(size.x() == Catch::Approx(12.).margin(1e-4));
+    REQUIRE(size.y() == Catch::Approx(4.).margin(1e-4));
+  }
+  SECTION("invalid transformation values are rejected") {
+    for (const std::string command : {"%LMZ*%", "%LS0*%", "%LS-1*%", "%LRabc*%"})
+      REQUIRE_THROWS(sla::parse_gerber(prefix + "%ADD10R,2X2*%D10*" + command + "X0Y0D03*M02*"));
+  }
+}
+
+TEST_CASE("Gerber SR step-and-repeat and AB block apertures", "[sla_pcb][sla_pcb_blocks]") {
+  SECTION("2x3 step-and-repeat yields six translated copies") {
+    auto panel = sla::parse_gerber(prefix + "%ADD10R,2X2*%D10*%SRX2Y3I10J8*%X0Y0D03*%SR*%M02*");
+    std::string manual;
+    for (int row = 0; row < 3; ++row)
+      for (int column = 0; column < 2; ++column)
+        manual += "X" + std::to_string(column * 100000) + "Y" + std::to_string(row * 80000) + "D03*";
+    auto reference = sla::parse_gerber(prefix + "%ADD10R,2X2*%D10*" + manual + "M02*");
+    REQUIRE(area(panel) == Catch::Approx(24.).margin(.001));
+    REQUIRE(panel.copper.size() == 6);
+    REQUIRE(same_copper(panel, reference));
+  }
+  SECTION("clear polarity inside a block replays with every copy") {
+    auto panel = sla::parse_gerber(prefix + "%ADD10R,4X4*%%ADD11R,2X2*%%SRX2Y1I10J0*%%LPD*%D10*X0Y0D03*%LPC*%D11*X0Y0D03*%SR*%M02*");
+    REQUIRE(area(panel) == Catch::Approx(2. * 12.).margin(.001));
+    REQUIRE(panel.copper.size() == 2);
+  }
+  SECTION("AB flash equals the equivalent geometry and may nest") {
+    const std::string blocks =
+        "%ADD10R,2X2*%%ADD11C,1*%"
+        "%ABD12*%D10*X0Y0D03*D11*X30000Y0D03*%AB*%"
+        "%ABD13*%D12*X0Y0D03*X0Y50000D03*%AB*%";
+    auto flashed = sla::parse_gerber(prefix + blocks + "D13*X100000Y100000D03*M02*");
+    auto manual = sla::parse_gerber(prefix + "%ADD10R,2X2*%%ADD11C,1*%D10*X100000Y100000D03*X100000Y150000D03*"
+                                    "D11*X130000Y100000D03*X130000Y150000D03*M02*");
+    REQUIRE(same_copper(flashed, manual));
+    // A block flashed with LS2 is scaled as a whole about its origin.
+    auto scaled = sla::parse_gerber(prefix + "%ADD10R,2X2*%%ABD12*%D10*X10000Y0D03*%AB*%D12*%LS2*%X0Y0D03*M02*");
+    auto scaled_manual = sla::parse_gerber(prefix + "%ADD10R,4X4*%D10*X20000Y0D03*M02*");
+    REQUIRE(same_copper(scaled, scaled_manual));
+  }
+  SECTION("blocks keep their own polarity and restore the outer state") {
+    auto board = sla::parse_gerber(prefix + "%ADD10R,6X6*%%ADD11R,2X2*%"
+                                            "%ABD12*%D10*X0Y0D03*%LPC*%D11*X0Y0D03*%AB*%"
+                                            "%LPD*%D12*X0Y0D03*M02*");
+    REQUIRE(area(board) == Catch::Approx(32.).margin(.001));
+    REQUIRE(board.copper.front().holes.size() == 1);
+  }
+  SECTION("malformed blocks are rejected") {
+    const std::string pad = "%ADD10R,2X2*%D10*";
+    for (const std::string command :
+         {"%SRX2Y2I1J1*%X0Y0D03*M02*",           // unterminated SR
+          "%SR*%X0Y0D03*",                        // close without open
+          "%SRX2Y2I1J1*%%SRX2Y2I1J1*%X0Y0D03*%SR*%%SR*%", // nested SR
+          "%SRX0Y2I1J1*%X0Y0D03*%SR*%",           // zero count
+          "%SRX2Y2I1*%X0Y0D03*%SR*%",             // missing J
+          "%ABD12*%X0Y0D03*",                     // unterminated AB
+          "%ABD10*%%AB*%",                        // duplicate D-code
+          "%AB*%",                                // close without open
+          "%ABD12*%%SRX2Y1I1J1*%X0Y0D03*%AB*%%SR*%"}) // overlapping blocks
+      REQUIRE_THROWS(sla::parse_gerber(prefix + pad + command + "M02*"));
+  }
+}
+
+TEST_CASE("Gerber relative coordinates are rejected with a clear message", "[sla_pcb][sla_pcb_relative]") {
+  for (const std::string command : {"G91*", "%FSLIX24Y24*%"}) {
+    try {
+      sla::parse_gerber("%FSLAX24Y24*%%MOMM*%%ADD10C,1*%D10*" + command + "X0Y0D03*M02*");
+      FAIL("relative coordinates must not be parsed");
+    } catch (const std::exception &error) {
+      REQUIRE(std::string(error.what()).find("relative") != std::string::npos);
+    }
+  }
+}
+
+TEST_CASE("Excellon routing sweeps the tool along G00 M15 G01-G03 paths", "[sla_pcb][sla_pcb_routing]") {
+  auto make_board = [] { return sla::parse_gerber(prefix + "%ADD10R,40X20*%D10*X200000Y100000D03*M02*"); };
+  const std::string header = "M48\nMETRIC,TZ\nT1C2\n%\nT1\n";
+  const double pi = 3.141592653589793;
+  SECTION("a routed slot equals the G85 slot") {
+    auto routed = make_board(), slotted = make_board();
+    sla::subtract_excellon(routed, header + "G00X5.0Y10.0\nM15\nG01X15.0Y10.0\nM16\nM30\n", .001);
+    sla::subtract_excellon(slotted, header + "X5.0Y10.0G85X15.0Y10.0\nM30\n", .001);
+    REQUIRE(same_copper(routed, slotted));
+    REQUIRE(area(routed) == Catch::Approx(800. - 20. - pi).margin(.02));
+  }
+  SECTION("tool-up moves and inline G00 do not cut") {
+    auto board = make_board();
+    sla::subtract_excellon(board, header + "G00X5.0Y10.0\nG01X15.0Y10.0\nM15\nG00X25.0Y10.0\nM16\nM30\n", .001);
+    REQUIRE(area(board) == Catch::Approx(800.));
+  }
+  SECTION("L-shaped path with a combined line and arcs") {
+    auto board = make_board();
+    sla::subtract_excellon(board, header + "G00X5.0Y5.0M15\nG01X15.0Y5.0\nG01X15.0Y15.0\nM16\nM30\n", .001);
+    REQUIRE(area(board) == Catch::Approx(800. - 42.93).margin(.05)); // two capsules overlapping at the corner
+    auto arc = make_board(), reference = make_board();
+    sla::subtract_excellon(arc, header + "G00X10.0Y5.0\nM15\nG03X5.0Y10.0I-5.0J0.0\nM16\nM30\n", .001);
+    sla::subtract_excellon(reference, header + "G00X10.0Y5.0\nM15\nG03X5.0Y10.0A5.0\nM16\nM30\n", .001);
+    REQUIRE(same_copper(arc, reference));
+    REQUIRE(area(arc) < 800. - 7.);
+  }
+  SECTION("header variants and tool parameters") {
+    auto board = make_board();
+    sla::subtract_excellon(board,
+        ";DRILL file\n;FORMAT={-:-/ absolute / metric / decimal}\nM48\nFMAT,2\nINCH,LZ\nT1F200S65C0.0787\n%\nT1\nX0.2Y0.2\nM30\n", .001);
+    REQUIRE(area(board) == Catch::Approx(800. - pi * 1.0 * 1.0 * (0.0787 * 25.4 / 2.) * (0.0787 * 25.4 / 2.) / 1.0).margin(.02));
+  }
+  SECTION("invalid routing never changes the artwork") {
+    auto board = make_board();
+    for (const auto &body : {"G01X5.0Y5.0\n", "M15\n", "G00X5.0Y5.0\nG01X6.0Y5.0I1.0\nM30\n", "G00X5.0Y5.0\nM15\nG02X9.0Y5.0A1.0\n"})
+      REQUIRE_THROWS(sla::subtract_excellon(board, header + body + "M30\n", .001));
+    REQUIRE(area(board) == Catch::Approx(800.));
+  }
+}
+
+// ---------------------------------------------------------------------------
+// PCB workflow completion: physical scaling, anti-aliasing, preview, recipes.
+// ---------------------------------------------------------------------------
+TEST_CASE("A 10 mm Gerber square keeps its physical size on non-square pixels", "[sla_pcb]") {
+  // 40 x 30 mm on 400 x 150 px: 0.100 mm wide, 0.200 mm tall pixels.
+  SLAPrinterConfig printer;
+  printer.apply(printer_config(), true);
+  const auto board = sla::parse_gerber(prefix + "%ADD10R,10X10*%D10*X0Y0D03*M02*");
+  const auto image = sla::rasterize_pcb(board, printer).image(0);
+  REQUIRE(image.cols == 400);
+  REQUIRE(image.rows == 150);
+  const double pitch_x = 40. / 400., pitch_y = 30. / 150.;
+  size_t min_x = image.cols, max_x = 0, min_y = image.rows, max_y = 0;
+  for (size_t y = 0; y < image.rows; ++y)
+    for (size_t x = 0; x < image.cols; ++x)
+      if (image.get(y, x) == 255) {
+        min_x = std::min(min_x, x); max_x = std::max(max_x, x);
+        min_y = std::min(min_y, y); max_y = std::max(max_y, y);
+      }
+  CHECK(max_x - min_x + 1 == size_t(std::lround(10. / pitch_x)));  // 100 px
+  CHECK(max_y - min_y + 1 == size_t(std::lround(10. / pitch_y)));  // 50 px
+}
+
+TEST_CASE("PCB scaling follows the pitch of each axis when edges fall inside a pixel", "[sla_pcb]") {
+  // Pitch 0.0735 x 0.17 mm: 10 mm is 136.05 x 58.82 px, so the edge pixels are partly covered.
+  auto config = printer_config();
+  config.set("display_width", 29.4);   // 400 px
+  config.set("display_height", 25.5);  // 150 px
+  SLAPrinterConfig printer;
+  printer.apply(config, true);
+  const double pitch_x = 29.4 / 400., pitch_y = 25.5 / 150.;
+  const auto board = sla::parse_gerber(prefix + "%ADD10R,10X10*%D10*X0Y0D03*M02*");
+  const auto image = sla::rasterize_pcb(board, printer).image(0);
+  // Summed edge coverage of a row/column through the board centre is its length in pixels.
+  double row = 0., column = 0.;
+  for (size_t x = 0; x < image.cols; ++x) row += image.get(image.rows / 2, x) / 255.;
+  for (size_t y = 0; y < image.rows; ++y) column += image.get(y, image.cols / 2) / 255.;
+  CHECK(row == Catch::Approx(10. / pitch_x).margin(.1));
+  CHECK(column == Catch::Approx(10. / pitch_y).margin(.1));
+  CHECK(std::lround(row) == std::lround(10. / pitch_x));
+  CHECK(std::lround(column) == std::lround(10. / pitch_y));
+}
+
+TEST_CASE("PCB anti-aliasing option switches between gray edges and hard edges", "[sla_pcb]") {
+  SLAPrinterConfig printer;
+  printer.apply(printer_config(), true);
+  const auto board = sla::parse_gerber(prefix + "%ADD10C,7*%D10*X0Y0D03*M02*");
+  const auto count_gray = [](const sla::LayerDocument &document) {
+    const auto image = document.image(0);
+    size_t gray = 0;
+    for (size_t y = 0; y < image.rows; ++y)
+      for (size_t x = 0; x < image.cols; ++x) gray += image.get(y, x) != 0 && image.get(y, x) != 255;
+    return gray;
+  };
+  sla::PCBPlacement placement;
+  placement.antialiasing = true;
+  CHECK(count_gray(sla::rasterize_pcb(board, printer, placement)) > 0);
+  placement.antialiasing = false;
+  CHECK(count_gray(sla::rasterize_pcb(board, printer, placement)) == 0);
+}
+
+TEST_CASE("PCB size scale enlarges the artwork about its centre", "[sla_pcb]") {
+  SLAPrinterConfig printer;
+  printer.apply(printer_config(), true);
+  const auto board = sla::parse_gerber(prefix + "%ADD10R,10X10*%D10*X0Y0D03*M02*");
+  sla::PCBPlacement placement;
+  placement.scale = 2.;  // 20 x 20 mm = 200 x 100 px, edges on pixel boundaries
+  const auto image = sla::rasterize_pcb(board, printer, placement).image(0);
+  CHECK(std::count(image.buf.begin(), image.buf.end(), uint8_t(255)) == 200 * 100);
+  placement.scale = 0.;
+  CHECK_THROWS(sla::rasterize_pcb(board, printer, placement));
+  placement.scale = 4.;  // 40 mm + margins no longer fit the 40 mm LCD
+  CHECK_THROWS(sla::rasterize_pcb(board, printer, placement));
+}
+
+TEST_CASE("PCB preview renders the composed mask at reduced size", "[sla_pcb]") {
+  SLAPrinterConfig printer;
+  printer.apply(printer_config(), true);
+  const auto left = sla::parse_gerber(prefix + "%ADD10R,4X2*%D10*X50000Y50000D03*M02*");
+  const auto right = sla::parse_gerber(prefix + "%ADD10R,4X2*%D10*X150000Y90000D03*M02*");
+  const auto preview = sla::render_pcb_preview({left, right}, printer, true, {}, false, 100);
+  CHECK(preview.width_px == 100);
+  CHECK(preview.height_px == 38);  // 150 * 100 / 400 = 37.5
+  REQUIRE(preview.pixels.size() == preview.width_px * preview.height_px);
+  CHECK(preview.layer_count == 1);
+  const auto lit = std::count_if(preview.pixels.begin(), preview.pixels.end(), [](uint8_t v) { return v > 0; });
+  CHECK(lit > 0);
+  CHECK(size_t(lit) < preview.pixels.size() / 4);
+
+  const auto inverted = sla::render_pcb_preview({left, right}, printer, true, {}, true, 100);
+  REQUIRE(inverted.pixels.size() == preview.pixels.size());
+  bool complementary = true;
+  for (size_t i = 0; i < preview.pixels.size(); ++i) complementary &= preview.pixels[i] + inverted.pixels[i] == 255;
+  CHECK(complementary);
+
+  const auto separate = sla::render_pcb_preview({left, right}, printer, false, {}, false, 100, 1);
+  CHECK(separate.layer_count == 2);
+  CHECK(separate.shown_layer == 1);
+  CHECK(separate.pixels != sla::render_pcb_preview({left, right}, printer, false, {}, false, 100, 0).pixels);
+  CHECK_THROWS(sla::render_pcb_preview({}, printer, true, {}, false, 100));
+  CHECK_THROWS(sla::render_pcb_preview({left}, printer, true, {}, false, 4));
+  CHECK_THROWS(sla::render_pcb_preview({left}, printer, true, {}, false, 100, 0,
+                                       [] { throw RuntimeError("cancelled"); }));
+}
+
+TEST_CASE("PCB exposure recipes are usable starting points", "[sla_pcb]") {
+  const auto &presets = sla::pcb_exposure_presets();
+  REQUIRE(presets.size() >= 3);
+  for (size_t i = 0; i < presets.size(); ++i) {
+    CHECK(!presets[i].name.empty());
+    CHECK(!presets[i].guidance.empty());
+    CHECK(presets[i].exposure_seconds >= .001);
+    CHECK(presets[i].exposure_seconds <= 86400.);
+    for (size_t j = i + 1; j < presets.size(); ++j) CHECK(presets[i].name != presets[j].name);
+  }
+}

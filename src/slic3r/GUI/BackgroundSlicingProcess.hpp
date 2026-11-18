@@ -16,12 +16,16 @@
 
 #include <wx/event.h>
 
+#ifndef SLIC3R_SLA_ONLY
 #include "libslic3r/Print.hpp"
+#endif // SLIC3R_SLA_ONLY
 #include "libslic3r/PrintBase.hpp"
 #include "libslic3r/GCode/ThumbnailData.hpp"
 #include "libslic3r/SLAPrint.hpp"
 #include "slic3r/Utils/PrintHost.hpp"
+#ifndef SLIC3R_SLA_ONLY
 #include "libslic3r/GCode/GCodeProcessor.hpp"
+#endif // SLIC3R_SLA_ONLY
 
 
 namespace boost { namespace filesystem { class path; } }
@@ -64,9 +68,11 @@ public:
 #endif
     void set_sla_print(SLAPrint *print) { if (m_sla_print != print) { stop(); m_attempts.advance(); m_sla_completion.reset(); } m_sla_print = print; }
 	void set_thumbnail_cb(ThumbnailsGeneratorCallback cb) { m_thumbnail_cb = cb; }
+#ifndef SLIC3R_SLA_ONLY
 	void set_gcode_result(GCodeProcessorResult* result) { m_gcode_result = result; }
 
 	GCodeProcessorResult *get_gcode_result() { return m_gcode_result; }
+#endif
 
 	// The following wxCommandEvent will be sent to the UI thread / Plater window, when the slicing is finished
 	// and the background processing will transition into G-code export.
@@ -160,7 +166,9 @@ public:
     // This "finished" flag does not account for the final export of the output file (.gcode or zipped PNGs),
     // and it does not account for the OctoPrint scheduling.
     bool    finished() const { return m_print->finished(); }
+#ifndef SLIC3R_SLA_ONLY
 	void finalize_gcode(const std::string &path, const bool path_on_removable_media);
+#endif
     void prepare_upload(PrintHostJob &upload_job);
 
 private:
@@ -182,7 +190,9 @@ private:
 	void	stop_internal();
 
 	// Helper to wrap the FFF slicing & G-code generation.
+#ifndef SLIC3R_SLA_ONLY
 	void	process_fff();
+#endif
 
     // Temporary: for mimicking the fff file export behavior with the raster output
     void	process_sla();
@@ -209,7 +219,9 @@ private:
 #endif
 	SLAPrint 				   *m_sla_print			 = nullptr;
 	// Data structure, to which the G-code export writes its annotations.
+#ifndef SLIC3R_SLA_ONLY
 	GCodeProcessorResult     *m_gcode_result 		 = nullptr;
+#endif
 	// Callback function, used to write thumbnails into gcode.
     ThumbnailsGeneratorCallback m_thumbnail_cb 	     = nullptr;
     // Temporary G-code, there is one defined for the BackgroundSlicingProcess,

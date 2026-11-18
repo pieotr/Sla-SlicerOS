@@ -3,6 +3,9 @@
 
 #include "libslic3r/SLA/LayerProgress.hpp"
 #include <atomic>
+#include <cstdlib>
+#include <thread>
+#include <boost/filesystem.hpp>
 #include <chrono>
 #include <future>
 #include <exception>
@@ -50,6 +53,15 @@ std::optional<Result> run_raster_task(wxWindow *parent, const wxString &title, G
     };
     auto task = std::async(std::launch::async, [&, generate = std::move(generate)]() mutable -> Result {
         sla::check_layer_progress(progress);
+        // Test-only deterministic gate for cancellation probes: while the file named by this variable exists the
+        // worker waits (still honouring Cancel). Without the variable this is a single getenv; production unchanged.
+        if (const char *hold = std::getenv("SLA_TEST_RASTER_TASK_HOLD_FILE")) {
+            boost::system::error_code ec;
+            while (boost::filesystem::exists(hold, ec)) {
+                sla::check_layer_progress(progress);
+                std::this_thread::sleep_for(std::chrono::milliseconds(5));
+            }
+        }
         auto result = generate(progress);
         sla::check_layer_progress(progress);
         return result;

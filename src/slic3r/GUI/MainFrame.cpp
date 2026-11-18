@@ -35,7 +35,9 @@
 #include <boost/algorithm/string/replace.hpp>
 #include <boost/log/trivial.hpp>
 
+#ifndef SLIC3R_SLA_ONLY
 #include "libslic3r/Print.hpp"
+#endif // SLIC3R_SLA_ONLY
 #include "libslic3r/Polygon.hpp"
 #include "libslic3r/SLAPrint.hpp"
 #include "libslic3r/PresetBundle.hpp"
@@ -94,7 +96,7 @@ public:
         if(wxGetApp().app_config->get("single_instance") == "0") {
             // Only allow opening a new PrusaSlicer instance on OSX if "single_instance" is disabled, 
             // as starting new instances would interfere with the locking mechanism of "single_instance" support.
-            append_menu_item(menu, wxID_ANY, _L("Open new instance"), _L("Open a new PrusaSlicer instance"),
+            append_menu_item(menu, wxID_ANY, _L("Open new instance"), wxString::Format(_L("Open a new %s instance"), SLIC3R_APP_NAME),
             [](wxCommandEvent&) { start_new_slicer(); }, "", nullptr);
         }
 #ifndef SLIC3R_SLA_ONLY
@@ -110,7 +112,7 @@ public:
     GCodeViewerTaskBarIcon(wxTaskBarIconType iconType = wxTBI_DEFAULT_TYPE) : wxTaskBarIcon(iconType) {}
     wxMenu *CreatePopupMenu() override {
         wxMenu *menu = new wxMenu;
-        append_menu_item(menu, wxID_ANY, _L("Open PrusaSlicer"), _L("Open a new PrusaSlicer instance"),
+        append_menu_item(menu, wxID_ANY, wxString::Format(_L("Open %s"), SLIC3R_APP_NAME), wxString::Format(_L("Open a new %s instance"), SLIC3R_APP_NAME),
             [](wxCommandEvent&) { start_new_slicer(nullptr, true); }, "", nullptr);
         append_menu_item(menu, wxID_ANY, _L("G-code preview") + dots, _L("Open new G-code viewer"),
             [](wxCommandEvent&) { start_new_gcodeviewer_open_file(); }, "", nullptr);
@@ -171,7 +173,7 @@ DPIFrame(NULL, wxID_ANY, "", wxDefaultPosition, wxDefaultSize, wxDEFAULT_FRAME_S
     default:
     case GUI_App::EAppMode::Editor:
         m_taskbar_icon = std::make_unique<PrusaSlicerTaskBarIcon>(wxTBI_DOCK);
-        m_taskbar_icon->SetIcon(wxIcon(Slic3r::var("PrusaSlicer-mac_128px.png"), wxBITMAP_TYPE_PNG), "PrusaSlicer");
+        m_taskbar_icon->SetIcon(wxIcon(Slic3r::var("PrusaSlicer-mac_128px.png"), wxBITMAP_TYPE_PNG), SLIC3R_APP_NAME);
         break;
     case GUI_App::EAppMode::GCodeViewer:
         m_taskbar_icon = std::make_unique<GCodeViewerTaskBarIcon>(wxTBI_DOCK);
@@ -187,10 +189,7 @@ DPIFrame(NULL, wxID_ANY, "", wxDefaultPosition, wxDefaultSize, wxDEFAULT_FRAME_S
 
     // initialize tabpanel and menubar
     init_tabpanel();
-    if (wxGetApp().is_gcode_viewer())
-        init_menubar_as_gcodeviewer();
-    else
-        init_menubar_as_editor();
+    init_menubar_as_editor();
 
 #ifndef __APPLE__
     std::vector<wxAcceleratorEntry*>& entries_cache = accelerator_entries_cache();
@@ -259,14 +258,14 @@ DPIFrame(NULL, wxID_ANY, "", wxDefaultPosition, wxDefaultSize, wxDEFAULT_FRAME_S
         }
 
         if (m_plater != nullptr) {
-            int saved_project = m_plater->save_project_if_dirty(_L("Closing PrusaSlicer. Current project is modified."));
+            int saved_project = m_plater->save_project_if_dirty(format_wxstr(_L("Closing %1%. Current project is modified."), SLIC3R_APP_NAME));
             if (saved_project == wxID_CANCEL) {
                 event.Veto();
                 return;
             }
             // check unsaved changes only if project wasn't saved
             else if (plater()->is_project_dirty() && saved_project == wxID_NO && event.CanVeto() &&
-                     (plater()->is_presets_dirty() && !wxGetApp().check_and_save_current_preset_changes(_L("PrusaSlicer is closing"), _L("Closing PrusaSlicer while some presets are modified.")))) {
+                     (plater()->is_presets_dirty() && !wxGetApp().check_and_save_current_preset_changes(format_wxstr(_L("%1% is closing"), SLIC3R_APP_NAME), format_wxstr(_L("Closing %1% while some presets are modified."), SLIC3R_APP_NAME)))) {
                 event.Veto();
                 return;
             }
@@ -666,10 +665,10 @@ void MainFrame::set_callbacks_for_topbar_menus()
         [this]() -> void {
             wxString preferences_item = _L("Show Log in button in application top bar");
             wxString msg =
-                _L("PrusaSlicer will remember your choice.") + "\n\n" +
+                format_wxstr(_L("%1% will remember your choice."), SLIC3R_APP_NAME) + "\n\n" +
                 format_wxstr(_L("Visit \"Preferences\" and check \"%1%\"\nto changes your choice."), preferences_item);
 
-            MessageDialog msg_dlg(this, msg, _L("PrusaSlicer: Don't ask me again"), wxOK | wxCANCEL | wxICON_INFORMATION);
+            MessageDialog msg_dlg(this, msg, format_wxstr(_L("%1%: Don't ask me again"), SLIC3R_APP_NAME), wxOK | wxCANCEL | wxICON_INFORMATION);
             if (msg_dlg.ShowModal() == wxID_OK) {
                 wxGetApp().app_config->set("show_login_button", "0");
 
@@ -1259,11 +1258,15 @@ bool MainFrame::can_export_gcode() const
 
 bool MainFrame::can_send_gcode() const
 {
+#ifdef SLIC3R_OFFLINE_ONLY
+    return false; // no print hosts offline
+#else
     if (m_plater && ! m_plater->model().objects.empty())
         if (const DynamicPrintConfig *cfg = wxGetApp().preset_bundle->physical_printers.get_selected_printer_config(); cfg)
             if (const auto *print_host_opt = cfg->option<ConfigOptionString>("print_host"); print_host_opt)
                 return ! print_host_opt->value.empty();
     return false;
+#endif
 }
 
 bool MainFrame::can_export_gcode_sd() const
@@ -1468,7 +1471,7 @@ static wxMenu* generate_help_menu()
 {
     wxMenu* helpMenu = new wxMenu();
 
-#ifndef SLIC3R_OFFLINE_ONLY
+#if !defined(SLIC3R_OFFLINE_ONLY) && !defined(SLIC3R_SLA_ONLY) // links point to online Prusa resources
     append_menu_item(helpMenu, wxID_ANY, wxString::Format(_L("%s &Website"), SLIC3R_APP_NAME),
         wxString::Format(_L("Open the %s website in your browser"), SLIC3R_APP_NAME),
         [](wxCommandEvent&) { wxGetApp().open_web_page_localized("https://www.prusa3d.com/slicerweb"); });
@@ -1496,7 +1499,7 @@ static wxMenu* generate_help_menu()
 #endif
     append_menu_item(helpMenu, wxID_ANY, _L("Show &Configuration Folder"), _L("Show user configuration folder (datadir)"),
         [](wxCommandEvent&) { Slic3r::GUI::desktop_open_datadir_folder(); });
-#ifndef SLIC3R_OFFLINE_ONLY
+#if !defined(SLIC3R_OFFLINE_ONLY) && !defined(SLIC3R_SLA_ONLY)
     append_menu_item(helpMenu, wxID_ANY, _L("Report an I&ssue"), wxString::Format(_L("Report an issue on %s"), SLIC3R_APP_NAME),
         [](wxCommandEvent&) { wxGetApp().open_browser_with_warning_dialog("https://github.com/prusa3d/slic3r/issues/new", nullptr, false); });
 #endif
@@ -1690,7 +1693,7 @@ void MainFrame::init_menubar_as_editor()
         append_menu_item(import_menu, wxID_ANY, _L("Import &Config") + dots + "\tCtrl+L", _L("Load exported configuration file"),
             [this](wxCommandEvent&) { load_config_file(); }, "import_config", nullptr,
             []() {return true; }, this);
-        append_menu_item(import_menu, wxID_ANY, _L("Import Config from &Project") + dots +"\tCtrl+Alt+L", _L("Load configuration from project file"),
+        append_menu_item(import_menu, wxID_ANY, _L("Import Config from &Project") + dots +"\tCtrl+Shift+P", _L("Load configuration from project file"),
             [this](wxCommandEvent&) { if (m_plater) m_plater->extract_config_from_project(); }, "import_config", nullptr,
             []() {return true; }, this);
         import_menu->AppendSeparator();
@@ -1717,11 +1720,14 @@ void MainFrame::init_menubar_as_editor()
             }, "export_gcode", nullptr,
             [this](){return can_export_gcode(); }, this);
         m_changeable_menu_items.push_back(item_export_gcode);
-#ifndef SLIC3R_OFFLINE_ONLY
+#if !defined(SLIC3R_OFFLINE_ONLY) && !defined(SLIC3R_SLA_ONLY) // print-host upload is a FFF/online feature
         wxMenuItem* item_send_gcode = append_menu_item(export_menu, wxID_ANY, _L("S&end G-code") + dots + "\tCtrl+Shift+G", _L("Send to print current plate as G-code"),
             [this](wxCommandEvent&) { if (m_plater) m_plater->send_gcode(); }, "export_gcode", nullptr,
             [this](){return can_send_gcode(); }, this);
         m_changeable_menu_items.push_back(item_send_gcode);
+#else
+        // Keep the miSend slot so that the miMaterialTab/miPrinterTab indices stay valid offline.
+        m_changeable_menu_items.push_back(nullptr);
 #endif
 		append_menu_item(export_menu, wxID_ANY, _L("Export sliced result to removable drive") + dots + "\tCtrl+U", _L("Save the current sliced result to an SD card or USB drive"),
 			[this](wxCommandEvent&) { if (m_plater) m_plater->export_gcode(true); }, "export_to_sd", nullptr,
@@ -1746,9 +1752,11 @@ void MainFrame::init_menubar_as_editor()
         append_menu_item(export_menu, wxID_ANY, _L("Export Config &Bundle") + dots, _L("Export all presets to file"),
             [this](wxCommandEvent&) { export_configbundle(); }, "export_config_bundle", nullptr,
             []() {return true; }, this);
+#ifndef SLIC3R_OFFLINE_ONLY
         append_menu_item(export_menu, wxID_ANY, _L("Export Config Bundle With Physical Printers") + dots, _L("Export all presets including physical printers to file"),
             [this](wxCommandEvent&) { export_configbundle(true); }, "export_config_bundle", nullptr,
             []() {return true; }, this);
+#endif
         append_submenu(fileMenu, export_menu, wxID_ANY, _L("&Export"), "");
 
 #ifndef SLIC3R_SLA_ONLY
@@ -1917,7 +1925,7 @@ void MainFrame::init_menubar_as_editor()
 #endif
         
         windowMenu->AppendSeparator();
-        append_menu_item(windowMenu, wxID_ANY, _L("Open New Instance") + "\tCtrl+Shift+I", _L("Open a new PrusaSlicer instance"),
+        append_menu_item(windowMenu, wxID_ANY, _L("Open New Instance") + "\tCtrl+Shift+I", wxString::Format(_L("Open a new %s instance"), SLIC3R_APP_NAME),
             [](wxCommandEvent&) { start_new_slicer(); }, "", nullptr, [this]() {return m_plater != nullptr && !wxGetApp().app_config->get_bool("single_instance"); }, this);
 
         windowMenu->AppendSeparator();
@@ -2027,74 +2035,6 @@ void MainFrame::open_menubar_item(const wxString& menu_name,const wxString& item
     wxPostEvent((wxEvtHandler*)menu, wxCommandEvent(wxEVT_MENU, item_id));
 }
 
-void MainFrame::init_menubar_as_gcodeviewer()
-{
-    wxMenu* fileMenu = new wxMenu;
-    {
-        append_menu_item(fileMenu, wxID_ANY, _L("&Open G-code") + dots + "\tCtrl+O", _L("Open a G-code file"),
-            [this](wxCommandEvent&) { if (m_plater != nullptr) m_plater->load_gcode(); }, "open", nullptr,
-            [this]() {return m_plater != nullptr; }, this);
-#ifdef __APPLE__
-#ifndef SLIC3R_OFFLINE_ONLY
-        append_menu_item(fileMenu, wxID_ANY, _L("Re&load from Disk") + dots + "\tCtrl+Shift+R",
-            _L("Reload the plater from disk"), [this](wxCommandEvent&) { m_plater->reload_gcode_from_disk(); },
-            "", nullptr, [this]() { return !m_plater->get_last_loaded_gcode().empty(); }, this);
-#endif
-#else
-#ifndef SLIC3R_OFFLINE_ONLY
-        append_menu_item(fileMenu, wxID_ANY, _L("Re&load from Disk") + sep + "F5",
-            _L("Reload the plater from disk"), [this](wxCommandEvent&) { m_plater->reload_gcode_from_disk(); },
-            "", nullptr, [this]() { return !m_plater->get_last_loaded_gcode().empty(); }, this);
-#endif
-#endif // __APPLE__
-        fileMenu->AppendSeparator();
-        append_menu_item(fileMenu, wxID_ANY, _L("Convert ASCII G-code to &binary") + dots, _L("Convert a G-code file from ASCII to binary format"),
-            [this](wxCommandEvent&) { if (m_plater != nullptr) m_plater->convert_gcode_to_binary(); }, "convert_file", nullptr,
-            []() { return true; }, this);
-        append_menu_item(fileMenu, wxID_ANY, _L("Convert binary G-code to &ASCII") + dots, _L("Convert a G-code file from binary to ASCII format"),
-            [this](wxCommandEvent&) { if (m_plater != nullptr) m_plater->convert_gcode_to_ascii(); }, "convert_file", nullptr,
-            []() { return true; }, this);
-        fileMenu->AppendSeparator();
-#ifndef SLIC3R_SLA_ONLY
-        append_menu_item(fileMenu, wxID_ANY, _L("Export &Toolpaths as OBJ") + dots, _L("Export toolpaths as OBJ"),
-            [this](wxCommandEvent&) { if (m_plater != nullptr) m_plater->export_toolpaths_to_obj(); }, "export_plater", nullptr,
-            [this]() {return can_export_toolpaths(); }, this);
-#endif
-        append_menu_item(fileMenu, wxID_ANY, _L("Open &PrusaSlicer") + dots, _L("Open PrusaSlicer"),
-            [](wxCommandEvent&) { start_new_slicer(); }, "", nullptr,
-            []() { return true; }, this);
-        fileMenu->AppendSeparator();
-        append_menu_item(fileMenu, wxID_EXIT, _L("&Quit"), wxString::Format(_L("Quit %s"), SLIC3R_APP_NAME),
-            [this](wxCommandEvent&) { Close(false); });
-    }
-
-    // View menu
-    wxMenu* viewMenu = nullptr;
-    if (m_plater != nullptr) {
-        viewMenu = new wxMenu();
-        add_common_view_menu_items(viewMenu, this, std::bind(&MainFrame::can_change_view, this));
-        viewMenu->AppendSeparator();
-        append_menu_check_item(viewMenu, wxID_ANY, _L("Show Legen&d") + sep + "L", _L("Show legend"),
-            [this](wxCommandEvent&) { m_plater->show_legend(!m_plater->is_legend_shown()); }, this,
-            [this]() { return m_plater->is_preview_shown(); }, [this]() { return m_plater->is_legend_shown(); }, this);
-    }
-
-    // helpmenu
-    auto helpMenu = generate_help_menu();
-
-    m_menubar = new wxMenuBar();
-    m_menubar->Append(fileMenu, _L("&File"));
-    if (viewMenu != nullptr) m_menubar->Append(viewMenu, _L("&View"));
-    // Add additional menus from C++
-    m_menubar->Append(wxGetApp().get_config_menu(this), _L("&Configuration"));
-    m_menubar->Append(helpMenu, _L("&Help"));
-    SetMenuBar(m_menubar);
-
-#ifdef __APPLE__
-    init_macos_application_menu(m_menubar, this);
-#endif // __APPLE__
-}
-
 void MainFrame::update_menubar()
 {
     if (wxGetApp().is_gcode_viewer())
@@ -2107,20 +2047,26 @@ void MainFrame::update_menubar()
     if (plater() == nullptr)
         return;
 
-    if (m_changeable_menu_items[miExport] != nullptr)
-        m_changeable_menu_items[miExport]->SetItemLabel(_L("E&xport") + dots + "\tCtrl+G");
-    if (m_changeable_menu_items[miSend] != nullptr)
-        m_changeable_menu_items[miSend]->SetItemLabel(_L("S&end to print") + dots + "\tCtrl+Shift+G");
+    // The slots are filled by create_menu(); the guard also covers a not yet built menu bar.
+    auto menu_item = [this](MenuItems index) -> wxMenuItem* {
+        return size_t(index) < m_changeable_menu_items.size() ? m_changeable_menu_items[index] : nullptr;
+    };
 
-    if (m_changeable_menu_items[miMaterialTab] != nullptr) {
-        m_changeable_menu_items[miMaterialTab]->SetItemLabel(_L("Mate&rial Settings Tab") + "\tCtrl+3");
+    if (auto *item = menu_item(miExport))
+        item->SetItemLabel(_L("E&xport sliced layers") + dots + "\tCtrl+G");
+    // miSend does not exist in the offline build (nullptr slot).
+    if (auto *item = menu_item(miSend))
+        item->SetItemLabel(_L("S&end to print") + dots + "\tCtrl+Shift+G");
+
+    if (auto *item = menu_item(miMaterialTab)) {
+        item->SetItemLabel(_L("Mate&rial Settings Tab") + "\tCtrl+3");
         if (auto *material_bmp = get_bmp_bundle("resin"); material_bmp != nullptr)
-            m_changeable_menu_items[miMaterialTab]->SetBitmap(*material_bmp);
+            item->SetBitmap(*material_bmp);
     }
 
-    if (m_changeable_menu_items[miPrinterTab] != nullptr)
+    if (auto *item = menu_item(miPrinterTab))
         if (auto *printer_bmp = get_bmp_bundle("sla_printer"); printer_bmp != nullptr)
-            m_changeable_menu_items[miPrinterTab]->SetBitmap(*printer_bmp);
+            item->SetBitmap(*printer_bmp);
 }
 
 

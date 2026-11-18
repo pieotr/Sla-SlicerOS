@@ -94,7 +94,7 @@ def main():
             report['status'] = 'inspected'
             return
         def dialog(title):
-            return wait_for(lambda: find(app, lambda n: n.get_name() == title and visible(n)), title)
+            return wait_for(lambda: find(app, lambda n: n.get_name() == title and n.get_role_name() in ('dialog', 'frame') and visible(n)), title)
         def tool(label):
             return wait_for(lambda: find(app, lambda n: visible(n) and n.get_role_name() == 'button' and
                 (n.get_name() == label or n.get_description() == label)), label)

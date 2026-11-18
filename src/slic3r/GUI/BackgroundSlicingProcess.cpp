@@ -8,6 +8,8 @@
 #include "GUI_App.hpp"
 #include "GUI.hpp"
 #include "MainFrame.hpp"
+#include "GUI_Utils.hpp"
+#include "libslic3r/SLA/LayerConversionPlan.hpp"
 #include "format.hpp"
 #include "libslic3r/GCode/Thumbnails.hpp"
 #include "libslic3r/SLA/ExportRequest.hpp"
@@ -29,12 +31,14 @@
 #include <miniz.h>
 
 // Print now includes tbb, and tbb includes Windows. This breaks compilation of wxWidgets if included before wx.
+#ifndef SLIC3R_SLA_ONLY
 #include "libslic3r/Print.hpp"
+#endif // SLIC3R_SLA_ONLY
 #include "libslic3r/SLAPrint.hpp"
 #include "libslic3r/Utils.hpp"
 #ifndef SLIC3R_SLA_ONLY
 #include "libslic3r/GCode/PostProcessor.hpp"
-#endif
+#endif // SLIC3R_SLA_ONLY
 #include "libslic3r/Format/SL1.hpp"
 #include "libslic3r/Thread.hpp"
 #include "libslic3r/libslic3r.h"
@@ -185,13 +189,11 @@ std::string BackgroundSlicingProcess::output_filepath_for_project(const boost::f
     return m_print->output_filepath(project_path.parent_path().string(), project_path.stem().string());
 }
 
+#ifndef SLIC3R_SLA_ONLY
 // This function may one day be merged into the Print, but historically the print was separated
 // from the G-code generator.
 void BackgroundSlicingProcess::process_fff()
 {
-#ifdef SLIC3R_SLA_ONLY
-    throw ExportError("FFF slicing is unavailable in the SLA-only application");
-#else
 	assert(m_print == m_fff_print);
 	m_print->process();
 	wxCommandEvent evt(m_event_slicing_completed_id);
@@ -212,8 +214,8 @@ void BackgroundSlicingProcess::process_fff()
 	    }
 		this->set_step_done(bspsGCodeFinalize);
 	}
-#endif
 }
+#endif // SLIC3R_SLA_ONLY
 
 void BackgroundSlicingProcess::process_sla()
 {
@@ -311,7 +313,29 @@ void BackgroundSlicingProcess::process_sla()
                     if (!palette_approved) { decline(); return; }
                 }
             }
-            const auto request = intent->bind(snapshot, palette_approved);
+            // Settings the destination can only store after rounding/clamping (CXDLP): one dialog lists
+            // them all. Unadjustable problems are refused together with the adjustable ones.
+            sla::RepresentationApproval approval;
+            if (sla::has_representation_rules(intent->format())) {
+                auto representation = sla::plan_export_representation(intent->format(), snapshot->configuration(),
+                    document ? &*document : nullptr);
+                check();
+                if (!representation.blockers.empty()) throw ExportError(representation.strict_message("CXDLP"));
+                if (!representation.adjustments.empty()) {
+                    const auto accepted = std::make_shared<bool>(false);
+                    const auto list = std::make_shared<std::vector<sla::RepresentationAdjustment>>(representation.adjustments);
+                    snapshot->generation().check();
+                    const bool completed = this->execute_ui_task([accepted, list] {
+                        *accepted = GUI::confirm_export_adjustments(GUI::wxGetApp().mainframe->m_plater, "CXDLP", *list);
+                    });
+                    check();
+                    snapshot->generation().check();
+                    if (!completed) throw CanceledException{};
+                    if (!*accepted) { decline(); return; }
+                    approval = std::move(representation.adjustments);
+                }
+            }
+            const auto request = intent->bind(snapshot, palette_approved, std::move(approval));
             m_sla_completion->publication.emplace(SLAExportPublication{request.path(), request.format(), false});
             request.write([this] { this->throw_if_canceled(); });
             m_sla_completion->publication->committed = true;
@@ -373,7 +397,7 @@ void BackgroundSlicingProcess::thread_proc()
 		m_print->finalize();
 		lck.lock();
 		m_state = m_print->canceled() ? STATE_CANCELED : STATE_FINISHED;
-		if (m_print->cancel_status() != Print::CANCELED_INTERNAL) {
+		if (m_print->cancel_status() != PrintBase::CANCELED_INTERNAL) {
 			// Only post the canceled event, if canceled by user.
 			// Don't post the canceled event, if canceled from Print::apply().
 			SlicingProcessCompletedEvent evt(m_event_finished_id, 0, 
@@ -469,12 +493,10 @@ void BackgroundSlicingProcess::call_process(std::exception_ptr &ex) throw()
 	try {
 		assert(m_print != nullptr);
 		switch (m_print->technology()) {
-        case ptFFF:
 #ifdef SLIC3R_SLA_ONLY
-            throw ExportError("FFF slicing is unavailable in the SLA-only application");
+        case ptFFF: throw ExportError("FFF slicing is unavailable in the SLA-only application");
 #else
-            this->process_fff();
-            break;
+        case ptFFF: this->process_fff(); break;
 #endif
 		case ptSLA: this->process_sla(); break;
 		default: m_print->process(); break;
@@ -717,11 +739,11 @@ std::string BackgroundSlicingProcess::validate(std::vector<std::string>* warning
 
 // Apply config over the print. Returns false, if the new config values caused any of the already
 // processed steps to be invalidated, therefore the task will need to be restarted.
-Print::ApplyStatus BackgroundSlicingProcess::apply(const Model &model, const DynamicPrintConfig &config, std::vector<std::string> *warnings)
+PrintBase::ApplyStatus BackgroundSlicingProcess::apply(const Model &model, const DynamicPrintConfig &config, std::vector<std::string> *warnings)
 {
 	assert(m_print != nullptr);
 	assert(config.opt_enum<PrinterTechnology>("printer_technology") == m_print->technology());
-	Print::ApplyStatus invalidated = m_print->apply(model, config, warnings);
+	PrintBase::ApplyStatus invalidated = m_print->apply(model, config, warnings);
 #ifndef SLIC3R_SLA_ONLY
 	if ((invalidated & PrintBase::APPLY_STATUS_INVALIDATED) != 0 && m_print->technology() == ptFFF &&
 		!m_fff_print->is_step_done(psGCodeExport)) {
@@ -820,16 +842,12 @@ bool BackgroundSlicingProcess::invalidate_all_steps()
 	return m_step_state.invalidate_all([this](){ this->stop_internal(); });
 }
 
+#ifndef SLIC3R_SLA_ONLY
 // G-code is generated in m_temp_output_path.
 // Optionally run a post-processing script on a copy of m_temp_output_path.
 // Copy the final G-code to target location (possibly a SD card, if it is a removable media, then verify that the file was written without an error).
 void BackgroundSlicingProcess::finalize_gcode(const std::string &path, const bool path_on_removable_media)
 {
-#ifdef SLIC3R_SLA_ONLY
-    (void)path;
-    (void)path_on_removable_media;
-    throw ExportError("FFF G-code finalization is unavailable in the SLA-only application");
-#else
 	m_print->set_status(95, _u8L("Running post-processing scripts"));
 
 	// Perform the final post-processing of the export path by applying the print statistics over the file name.
@@ -887,8 +905,8 @@ void BackgroundSlicingProcess::finalize_gcode(const std::string &path, const boo
 	}
 
 	m_print->set_status(100, GUI::format(_L("G-code file exported to %1%"), export_path));
-#endif
 }
+#endif // SLIC3R_SLA_ONLY
 
 // A print host upload job has been scheduled, enqueue it to the printhost job queue
 void BackgroundSlicingProcess::prepare_upload(PrintHostJob &upload_job)
@@ -897,10 +915,11 @@ void BackgroundSlicingProcess::prepare_upload(PrintHostJob &upload_job)
 	boost::filesystem::path source_path = boost::filesystem::temp_directory_path()
 		/ boost::filesystem::unique_path("." SLIC3R_APP_KEY ".upload.%%%%-%%%%-%%%%-%%%%");
 
-	if (m_print->technology() == ptFFF) {
 #ifdef SLIC3R_SLA_ONLY
-        throw ExportError("FFF upload is unavailable in the SLA-only application");
+	if (m_print->technology() == ptFFF)
+		throw ExportError("FFF upload is unavailable in the SLA-only application");
 #else
+	if (m_print->technology() == ptFFF) {
 		m_print->set_status(95, _u8L("Running post-processing scripts"));
 		std::string error_message;
 		if (copy_file(m_temp_output_path, source_path.string(), error_message) != SUCCESS)
@@ -912,8 +931,9 @@ void BackgroundSlicingProcess::prepare_upload(PrintHostJob &upload_job)
         std::string output_name_str = upload_job.upload_data.upload_path.string();
 		if (run_post_process_scripts(source_path_str, false, upload_job.printhost->get_name(), output_name_str, m_fff_print->full_print_config()))
 			upload_job.upload_data.upload_path = output_name_str;
+    } else
 #endif
-    } else {
+    {
         upload_job.upload_data.upload_path = m_sla_print->print_statistics().finalize_output_path(upload_job.upload_data.upload_path.string());
 
 		auto [thumbnails_list, errors] = GCodeThumbnails::make_and_check_thumbnail_list(current_print()->full_print_config());

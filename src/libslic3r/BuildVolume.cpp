@@ -13,11 +13,15 @@
 
 #include "ClipperUtils.hpp"
 #include "Geometry/ConvexHull.hpp"
+#ifndef SLIC3R_SLA_ONLY
 #include "libslic3r/GCode/GCodeProcessor.hpp"
+#endif // SLIC3R_SLA_ONLY
 #include "Point.hpp"
 #include "admesh/stl.h"
 #include "libslic3r/BoundingBox.hpp"
+#ifndef SLIC3R_SLA_ONLY
 #include "libslic3r/ExtrusionRole.hpp"
+#endif // SLIC3R_SLA_ONLY
 #include "libslic3r/Geometry/Circle.hpp"
 #include "libslic3r/Polygon.hpp"
 
@@ -383,6 +387,7 @@ BuildVolume::ObjectState BuildVolume::volume_state_bbox(const BoundingBoxf3 volu
     return state;
 }
 
+#ifndef SLIC3R_SLA_ONLY
 bool BuildVolume::all_paths_inside(const GCodeProcessorResult& paths, const BoundingBoxf3& paths_bbox, bool ignore_bottom) const
 {
     auto move_valid = [](const GCodeProcessorResult::MoveVertex &move) {
@@ -423,6 +428,7 @@ bool BuildVolume::all_paths_inside(const GCodeProcessorResult& paths, const Boun
         return true;
     }
 }
+#endif // SLIC3R_SLA_ONLY
 
 template<typename Fn>
 inline bool all_inside_vertices_normals_interleaved(const std::vector<float> &paths, Fn fn)

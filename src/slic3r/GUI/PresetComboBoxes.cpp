@@ -86,7 +86,22 @@ PresetComboBox::PresetComboBox(wxWindow* parent, Preset::Type preset_type, const
     m_em_unit(em_unit(this))
 {
     init_from_bundle(preset_bundle);
-    
+
+    // Accessible name (see ComboBox::update_accessible): the description carries the value and "(modified)".
+    {
+        const char *accessible_name = "Preset";
+        switch (m_type) {
+        case Preset::TYPE_PRINT:        accessible_name = "Print preset"; break;
+        case Preset::TYPE_SLA_PRINT:    accessible_name = "SLA print preset"; break;
+        case Preset::TYPE_FILAMENT:     accessible_name = "Filament preset"; break;
+        case Preset::TYPE_SLA_MATERIAL: accessible_name = "SLA material preset"; break;
+        case Preset::TYPE_PRINTER:      accessible_name = "Printer preset"; break;
+        default: break;
+        }
+        SetName(accessible_name);
+        publish_accessible_value();
+    }
+
     m_bitmapCompatible   = get_bmp_bundle("flag_green");
     m_bitmapIncompatible = get_bmp_bundle("flag_red");
 
@@ -208,6 +223,10 @@ void PresetComboBox::update_selection()
      */
     validate_selection();
 
+    // An empty list leaves m_last_selected at wxNOT_FOUND (GetCount() - 1 on 0 items);
+    // GetString() would assert on it.
+    if (GetCount() == 0)
+        return;
     SetSelection(m_last_selected);
 #ifdef __WXMSW__
     // From the Windows 2004 the tooltip for preset combobox doesn't work after next call of SetTooltip()
@@ -1077,6 +1096,12 @@ void PlaterPresetComboBox::update()
     this->Clear();
     invalidate_selection();
 
+    // Offline build: a legacy datadir may still select a physical printer. Drop that
+    // selection so the preset list below marks the real printer preset as selected.
+#ifdef SLIC3R_OFFLINE_ONLY
+    m_preset_bundle->physical_printers.unselect_printer();
+#endif
+
     const ExtruderFilaments& extruder_filaments  = m_preset_bundle->extruders_filaments[m_extruder_idx >= 0 ? m_extruder_idx : 0];
 
     const Preset* selected_filament_preset = nullptr;
@@ -1237,6 +1262,7 @@ void PlaterPresetComboBox::update()
     if (m_type == Preset::TYPE_PRINTER)
     {
         // add Physical printers, if any exists
+#ifndef SLIC3R_OFFLINE_ONLY // print-host devices do not exist in the offline SLA build
         if (!m_preset_bundle->physical_printers.empty()) {
             set_label_marker(Append(separator(L("Physical printers")), NullBitmapBndl()));
             const PhysicalPrinterCollection& ph_printers = m_preset_bundle->physical_printers;
@@ -1279,6 +1305,7 @@ void PlaterPresetComboBox::update()
                 validate_selection(data.selected);
             }
         }
+#endif
     }
 
     if (m_type == Preset::TYPE_PRINTER || m_type == Preset::TYPE_FILAMENT || m_type == Preset::TYPE_SLA_MATERIAL) {
@@ -1402,6 +1429,12 @@ void TabPresetComboBox::update()
     Freeze();
     Clear();
     invalidate_selection();
+
+    // Offline build: a legacy datadir may still select a physical printer. Drop that
+    // selection so the preset list below marks the real printer preset as selected.
+#ifdef SLIC3R_OFFLINE_ONLY
+    m_preset_bundle->physical_printers.unselect_printer();
+#endif
 
     const ExtruderFilaments& extruder_filaments = m_preset_bundle->extruders_filaments[m_extruder_idx];
 
@@ -1528,6 +1561,7 @@ void TabPresetComboBox::update()
     if (m_type == Preset::TYPE_PRINTER)
     {
         // add Physical printers, if any exists
+#ifndef SLIC3R_OFFLINE_ONLY // print-host devices do not exist in the offline SLA build
         if (!m_preset_bundle->physical_printers.empty()) {
             set_label_marker(Append(separator(L("Physical printers")), NullBitmapBndl()));
             const PhysicalPrinterCollection& ph_printers = m_preset_bundle->physical_printers;
@@ -1563,6 +1597,7 @@ void TabPresetComboBox::update()
                 validate_selection(data.selected);
             }
         }
+#endif
 
         // add "Add/Remove printers" item
         std::string icon_name = "edit_uni";

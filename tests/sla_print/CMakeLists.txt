@@ -13,8 +13,12 @@ add_executable(${_TEST_NAME}_tests ${_TEST_NAME}_tests_main.cpp
     sla_sl1s_tests.cpp
     sla_klipper_tests.cpp
     sla_archive_registry_tests.cpp
+    sla_goo_tests.cpp
+    sla_goo_reader_tests.cpp
     sla_printer_profile_tests.cpp
     sla_pcb_calibration_tests.cpp
+    sla_calibration_generators_tests.cpp
+    sla_layer_issues_tests.cpp
     sla_anycubic_model_precision_tests.cpp
     sla_anycubic_pcb_precision_tests.cpp
     sla_pm4n_producer_tests.cpp
@@ -48,8 +52,24 @@ add_executable(${_TEST_NAME}_tests ${_TEST_NAME}_tests_main.cpp
     sla_encoded_mask_reuse_tests.cpp
     sla_layer_image_tests.cpp
     sla_layer_document_tests.cpp
+    sla_layer_large_document_tests.cpp
+    sla_layer_stream_tests.cpp
+    sla_layer_brush_tests.cpp
+    sla_layer_operations_tests.cpp
+    sla_layer_ops_document_tests.cpp
+    sla_layer_suggestions_tests.cpp
+    sla_layer_recipe_tests.cpp
+    sla_reader_parameters_tests.cpp
+    sla_layer_operations2_tests.cpp
+    sla_more_readers_tests.cpp
+    sla_more_readers2_tests.cpp
+    sla_layer_ops_document2_tests.cpp
     sla_zcorrection_tests.cpp
     sla_offline_tests.cpp
+    sla_header_mirror_tests.cpp
+    sla_cxdlp_edit_tests.cpp
+    sla_fresh_direct_export_tests.cpp
+    sla_representation_adjustment_tests.cpp
     ../../src/slic3r/Utils/HttpOffline.cpp)
 
 # mold linker for successful linking needs also to link TBB library and link it before libslic3r.
@@ -99,6 +119,12 @@ set_tests_properties(sla_archive_registry PROPERTIES LABELS "sla;formats;smoke")
 add_test(NAME sla_reference_roundtrip COMMAND ${_TEST_NAME}_tests "[sla_reference]")
 set_tests_properties(sla_reference_roundtrip PROPERTIES LABELS "sla;formats;smoke" TIMEOUT 120)
 add_test(NAME sla_printer_profiles COMMAND ${_TEST_NAME}_tests "[sla_profiles]")
+add_test(NAME sla_fresh_direct_export COMMAND ${_TEST_NAME}_tests "[sla_fresh_direct]")
+set_tests_properties(sla_fresh_direct_export PROPERTIES LABELS "sla;formats;smoke" TIMEOUT 600)
+add_test(NAME sla_representation_adjustment COMMAND ${_TEST_NAME}_tests "[sla_representation]")
+set_tests_properties(sla_representation_adjustment PROPERTIES LABELS "sla;formats;smoke" TIMEOUT 600)
+add_test(NAME sla_header_mirror COMMAND ${_TEST_NAME}_tests "[sla_header_mirror]")
+set_tests_properties(sla_header_mirror PROPERTIES LABELS "sla;formats;smoke" TIMEOUT 300)
 set_tests_properties(sla_printer_profiles PROPERTIES LABELS "sla;profiles;smoke")
 
 if (WIN32)
@@ -111,6 +137,15 @@ endif()
 
 add_test(NAME sla_layer_document COMMAND ${_TEST_NAME}_tests "[sla_layers]")
 set_tests_properties(sla_layer_document PROPERTIES LABELS "sla;layers;smoke")
+
+add_test(NAME sla_layer_large_documents COMMAND ${_TEST_NAME}_tests "[sla_layers_large]")
+set_tests_properties(sla_layer_large_documents PROPERTIES LABELS "sla;layers;memory" TIMEOUT 300)
+# Real >1 GiB container (about a minute, several GiB of RAM and disk): opt-in only.
+option(SLA_SLOW_LAYER_TESTS "Register the multi-gigabyte layer document test" OFF)
+if(SLA_SLOW_LAYER_TESTS)
+    add_test(NAME sla_layer_huge_container COMMAND ${_TEST_NAME}_tests "[sla_layers_slow]")
+    set_tests_properties(sla_layer_huge_container PROPERTIES LABELS "sla;layers;slow" TIMEOUT 900)
+endif()
 
 add_test(NAME sla_pcb_calibration COMMAND ${_TEST_NAME}_tests "[sla_pcb],[sla_calibration]")
 set_tests_properties(sla_pcb_calibration PROPERTIES LABELS "sla;pcb;calibration;smoke")
@@ -171,4 +206,83 @@ if(SLIC3R_SLA_ONLY)
         --fixtures ${CMAKE_SOURCE_DIR}/tests/data/pm4n_515_legacy)
     set_tests_properties(sla_legacy_pm4n_migration PROPERTIES
         LABELS "sla;migration;legacy;selfcontained;smoke" TIMEOUT 120 RUN_SERIAL TRUE)
+endif()
+
+# Offline build must not link web view / network libraries (goal G12).
+if (SLIC3R_OFFLINE_ONLY AND UNIX AND NOT APPLE)
+    add_test(NAME sla_offline_no_network_libs
+             COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/architecture/verify_offline_no_network_libs.py
+                     --binary $<TARGET_FILE:PrusaSlicer>)
+    set_tests_properties(sla_offline_no_network_libs PROPERTIES LABELS "sla;offline;architecture;smoke" TIMEOUT 15)
+endif()
+
+# Independent readback against the UVtools reference (development oracle only, never a
+# runtime dependency). Set UVTOOLS_CMD to UVtoolsCmd; without it the scripts exit 77 = skipped.
+if (Python3_EXECUTABLE)
+    add_test(NAME sla_oracle_issues_vs_uvtools
+             COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tests/oracle/issues_vs_uvtools.py
+                     --slicer $<TARGET_FILE:PrusaSlicer> --output ${CMAKE_BINARY_DIR}/oracle-issues)
+    add_test(NAME sla_oracle_format_sweep
+             COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tests/oracle/uvtools_format_sweep.py
+                     --slicer $<TARGET_FILE:PrusaSlicer> --output ${CMAKE_BINARY_DIR}/oracle-sweep/ctest --jobs 12)
+    set_tests_properties(sla_oracle_issues_vs_uvtools PROPERTIES LABELS "sla;oracle" SKIP_RETURN_CODE 77 TIMEOUT 900)
+    set_tests_properties(sla_oracle_format_sweep PROPERTIES LABELS "sla;oracle;formats" SKIP_RETURN_CODE 77 TIMEOUT 1800)
+    # Layer-editor saves (recipe edit -> native save) read back by UVtools. Uses python3 from PATH
+    # (needs numpy + Pillow; exit 77 = SKIPPED without them or without UVTOOLS_CMD).
+    add_test(NAME sla_oracle_editor_save
+             COMMAND python3 ${CMAKE_SOURCE_DIR}/tests/oracle/editor_save_vs_uvtools.py
+                     --slicer $<TARGET_FILE:PrusaSlicer> --output ${CMAKE_BINARY_DIR}/oracle-editor-save)
+    set_tests_properties(sla_oracle_editor_save PROPERTIES LABELS "sla;oracle;formats" SKIP_RETURN_CODE 77 TIMEOUT 1800)
+endif()
+
+# Offline SLA hint catalog: content rules and Polish translation coverage (no display needed).
+if (Python3_EXECUTABLE)
+    add_test(NAME sla_hint_catalog
+             COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tests/gui/test_offline_hint_catalog.py)
+    add_test(NAME sla_hint_translations
+             COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tests/gui/test_offline_hint_caption_correspondence.py)
+    set_tests_properties(sla_hint_catalog sla_hint_translations PROPERTIES LABELS "sla;gui;smoke" TIMEOUT 60)
+endif()
+
+# The SLA-only build must not compile the FFF printing core (goal G1).
+if (Python3_EXECUTABLE AND SLIC3R_SLA_ONLY)
+    add_test(NAME sla_fff_core_cut
+             COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/architecture/verify_sla_fff_core_cut.py --build ${CMAKE_BINARY_DIR})
+    set_tests_properties(sla_fff_core_cut PROPERTIES LABELS "sla;architecture;smoke" TIMEOUT 120)
+    # FFF headers (Print/Layer/Extrusion*/GCode...) must not leak back into the compiled SLA TUs.
+    add_test(NAME sla_fff_header_cut
+             COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/architecture/verify_sla_fff_header_cut.py --build ${CMAKE_BINARY_DIR})
+    set_tests_properties(sla_fff_header_cut PROPERTIES LABELS "sla;architecture;smoke" TIMEOUT 120)
+endif()
+
+# Runtime GUI acceptance (waves 1-9 were never run before). Each test starts a private, invisible
+# KWin/Xwayland/AT-SPI desktop (tests/gui/run_private_gui.sh; exit 77 = SKIPPED when kwin_wayland,
+# Xwayland, dbus-run-session or python3-gi+Atspi are missing), so it never touches the user's
+# display or ~/.config. They use the PATH `python3` (the one that has PyGObject + Atspi, which the runner
+# itself checks), not Python3_EXECUTABLE, which may be a venv without `gi`. Labels: "gui" + "gui-runtime". The fast subset is always registered; the
+# slower scripts need -DSLA_GUI_SLOW_TESTS=ON. See doc/TESTING.md section 4 for how to run or
+# exclude them (ctest -LE "oracle|gui-runtime").
+if (Python3_EXECUTABLE AND UNIX AND NOT APPLE)
+    set(SLA_GUI_RUNNER ${CMAKE_SOURCE_DIR}/tests/gui/run_private_gui.sh)
+    function(sla_add_gui_test name script timeout)
+        add_test(NAME ${name}
+                 COMMAND bash ${SLA_GUI_RUNNER} -- python3 ${CMAKE_SOURCE_DIR}/tests/gui/ctest_gui.py
+                         --binary $<TARGET_FILE:PrusaSlicer> --output ${CMAKE_BINARY_DIR}/gui-ctest/${name}
+                         --script ${script}
+                 WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+        set_tests_properties(${name} PROPERTIES LABELS "sla;gui;gui-runtime" SKIP_RETURN_CODE 77 TIMEOUT ${timeout}
+                             RUN_SERIAL TRUE)
+    endfunction()
+    sla_add_gui_test(sla_gui_wizard        printer_wizard_smoke  120)
+    sla_add_gui_test(sla_gui_layer_editor  layer_editor_smoke    180)
+    sla_add_gui_test(sla_gui_menus         sla_menus_smoke       180)
+    sla_add_gui_test(sla_gui_issues        sliced_issues_smoke   300)
+    option(SLA_GUI_SLOW_TESTS "Also register the slow runtime GUI tests (operations, canvas tools, PCB, calibration, profile I/O)" OFF)
+    if (SLA_GUI_SLOW_TESTS)
+        sla_add_gui_test(sla_gui_operations   sliced_operations_smoke        900)
+        sla_add_gui_test(sla_gui_canvas       sliced_canvas_tools_smoke      900)
+        sla_add_gui_test(sla_gui_pcb          pcb_expose_smoke               600)
+        sla_add_gui_test(sla_gui_calibration  calibration_entries_smoke      1200)
+        sla_add_gui_test(sla_gui_profile_io   profile_io_smoke               600)
+    endif()
 endif()

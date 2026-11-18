@@ -21,10 +21,15 @@
 #include "Gizmos/GLGizmoMmuSegmentation.hpp"
 
 #include "libslic3r/BuildVolume.hpp"
+#ifndef SLIC3R_SLA_ONLY
 #include "libslic3r/ExtrusionEntity.hpp"
+#endif // SLIC3R_SLA_ONLY
+#ifndef SLIC3R_SLA_ONLY
 #include "libslic3r/ExtrusionEntityCollection.hpp"
+#endif // SLIC3R_SLA_ONLY
 #include "libslic3r/Geometry.hpp"
-#include "libslic3r/Print.hpp"
+#include "libslic3r/TriangleMeshSlicer.hpp"
+#include "libslic3r/Slicing.hpp"
 #include "libslic3r/SLAPrint.hpp"
 #include "libslic3r/Slicing.hpp"
 #include "libslic3r/Format/STL.hpp"
@@ -499,6 +504,8 @@ int GLVolumeCollection::load_object_volume(
     return int(this->volumes.size() - 1);
 }
 
+#ifndef SLIC3R_SLA_ONLY
+// FFF wipe tower preview; needs WipeTower geometry from the FFF G-code core.
 #if SLIC3R_OPENGL_ES
 GLVolume* GLVolumeCollection::load_wipe_tower_preview(
     float pos_x, float pos_y, float width, float depth, const std::vector<std::pair<float, float>>& z_and_depth_pairs, float height, float cone_angle,
@@ -611,6 +618,7 @@ GLVolume* GLVolumeCollection::load_wipe_tower_preview(
 
     return result;
 }
+#endif // SLIC3R_SLA_ONLY
 
 // Load SLA auxiliary GLVolumes (for support trees or pad).
 // This function produces volumes for multiple instances in a single shot,
@@ -1563,6 +1571,8 @@ void _3DScene::thick_lines_to_verts(
     thick_lines_to_geometry(lines, widths, heights, closed, geometry);
 }
 
+#ifndef SLIC3R_SLA_ONLY
+// FFF toolpath tessellation (ExtrusionEntity types are not part of the SLA build).
 // Fill in the qverts and tverts with quads and triangles for the extrusion_path.
 void _3DScene::extrusionentity_to_verts(const ExtrusionPath& extrusion_path, float print_z, const Point& copy, GUI::GLModel::Geometry& geometry)
 {
@@ -1642,5 +1652,6 @@ void _3DScene::extrusionentity_to_verts(const ExtrusionEntity* extrusion_entity,
         }
     }
 }
+#endif // SLIC3R_SLA_ONLY
 
 } // namespace Slic3r

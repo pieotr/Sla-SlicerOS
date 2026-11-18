@@ -95,14 +95,16 @@ void KBShortcutsDialog::fill_shortcuts()
             { ctrl + "R", L("(Re)slice") },
             // File>Import
             { ctrl + "I", L("Import STL/3MF/STEP/OBJ/AMF without config, keep plater") },
-            { ctrl + "L", L("Import Config from ini/amf/3mf/gcode") },
-            { ctrl + alt + "L", L("Load Config from ini/amf/3mf/gcode and merge") },
+            { ctrl + "L", L("Import Config from ini/3mf") },
+            { ctrl + "Shift+" + "P", L("Import Config from project (3mf)") },
             // File>Export
-            { ctrl + "G", L("Export G-code") },
-            { ctrl + "Shift+" + "G", L("Send G-code") },
+            { ctrl + "G", L("Export sliced layers") },
+#ifndef SLIC3R_OFFLINE_ONLY
+            { ctrl + "Shift+" + "G", L("Send to print") },
+#endif
             { ctrl + "E", L("Export config") },
-            { ctrl + "U", L("Export to SD card / Flash drive") },
-            { ctrl + "T", L("Eject SD card / Flash drive") },
+            { ctrl + "U", L("Export sliced result to removable drive") },
+            { ctrl + "T", L("Eject removable drive") },
             // Edit
             { ctrl + "A", L("Select all objects") },
             { "Esc", L("Deselect all") },
@@ -121,11 +123,15 @@ void KBShortcutsDialog::fill_shortcuts()
             // Window
             { ctrl + "1", L("Select Plater Tab") },
             { ctrl + "2", L("Select Print Settings Tab") },
-            { ctrl + "3", L("Select Filament Settings Tab") },
+            { ctrl + "3", L("Select Material Settings Tab") },
             { ctrl + "4", L("Select Printer Settings Tab") },
             { ctrl + "5", L("Switch to 3D") },
             { ctrl + "6", L("Switch to Preview") },
+#ifndef SLIC3R_OFFLINE_ONLY
             { ctrl + "J", L("Print host upload queue") },
+#endif
+            { ctrl + alt + "L", L("Edit sliced layers") },
+            { ctrl + "Shift+" + "L", L("Open layer archive") },
             { ctrl + "Shift+" + "I", L("Open new instance") },
             // View
             { "0-6", L("Camera view") },
@@ -164,11 +170,7 @@ void KBShortcutsDialog::fill_shortcuts()
             { "C", L("Gizmo cut") },
             { "F", L("Gizmo Place face on bed") },
             { "H", L("Gizmo SLA hollow") },
-            { "H", L("Gizmo FDM paint-on fuzzy skin") },
             { "L", L("Gizmo SLA support points") },
-            { "L", L("Gizmo FDM paint-on supports") },
-            { "P", L("Gizmo FDM paint-on seam") },
-            { "N", L("Gizmo Multi Material painting") },
             { "T", L("Gizmo Text emboss / engrave")},
             { "Esc", L("Unselect gizmo or clear selection") },
             { "K", L("Change camera type (perspective, orthographic)") },
@@ -195,6 +197,15 @@ void KBShortcutsDialog::fill_shortcuts()
         Shortcuts gizmos_shortcuts = {
             { ctrl, L("All gizmos: Rotate - left mouse button; Pan - right mouse button") },
             { "Shift+", L("Gizmo move: Press to snap by 1mm") },
+            // SLA supports and hollowing gizmos (GLGizmosManager::on_char)
+            { "A", L("Gizmo SLA support points: Auto-generate support points") },
+            { "M", L("Gizmo SLA support points: Switch to manual editing mode") },
+            { "Enter", L("Gizmo SLA support points: Apply changes") },
+            { "Esc", L("Gizmo SLA support points: Discard changes") },
+            { ctrl + "A", L("Gizmo SLA support points / hollow: Select all points") },
+            { "Del", L("Gizmo SLA support points / hollow: Remove selected points") },
+            { "R", L("Gizmo SLA support points / hollow: Reset clipping plane") },
+            { ctrl + L("Mouse wheel"), L("Gizmo SLA support points / hollow: Move clipping plane") },
             { "Shift+", L("Gizmo scale: Press to snap by 5%") },
             { "F", L("Gizmo scale: Scale selection to fit print volume") },
             { ctrl, L("Gizmo scale: Press to activate one direction scaling") },
@@ -206,37 +217,18 @@ void KBShortcutsDialog::fill_shortcuts()
 
         Shortcuts object_list_shortcuts = {
             { "P", L("Set selected items as Printable/Unprintable") },
-            { "0", L("Set default extruder for the selected items") },
-            { "1-9", L("Set extruder number for the selected items") },
         };
 
         m_full_shortcuts.push_back({ { _L("Objects List"), "" }, object_list_shortcuts });
-    }
-    else {
-        Shortcuts commands_shortcuts = {
-            { ctrl + "O", L("Open a G-code file") },
-#ifdef __APPLE__
-            { ctrl + "Shift+" + "R", L("Reload the plater from disk") },
-#else
-            { "F5", L("Reload plater from disk") },
-#endif // __APPLE__
-        };
-
-        m_full_shortcuts.push_back({ { _L("Commands"), "" }, commands_shortcuts });
     }
 
     Shortcuts preview_shortcuts = {
         { L("Arrow Up"),    L("Vertical slider - Move active thumb Up") },
         { L("Arrow Down"),  L("Vertical slider - Move active thumb Down") },
-        { L("Arrow Left"),  L("Horizontal slider - Move active thumb Left") },
-        { L("Arrow Right"), L("Horizontal slider - Move active thumb Right") },
         { "W", L("Vertical slider - Move active thumb Up") },
         { "S", L("Vertical slider - Move active thumb Down") },
-        { "A", L("Horizontal slider - Move active thumb Left") },
-        { "D", L("Horizontal slider - Move active thumb Right") },
         { "X", L("On/Off one layer mode of the vertical slider") },
         { "L", L("Show/Hide legend") },
-        { "C", L("Show/Hide G-code window") },
     };
 
     m_full_shortcuts.push_back({ { _L("Preview"), "" }, preview_shortcuts });
@@ -246,24 +238,21 @@ void KBShortcutsDialog::fill_shortcuts()
         { L("Arrow Down"),  L("Move active thumb Down") },
         { L("Arrow Left"),  L("Set upper thumb as active") },
         { L("Arrow Right"), L("Set lower thumb as active") },
-        { "+", L("Add color change marker for current layer") },
-        { "-", L("Delete color change marker for current layer") },
         { "Shift+", L("Press to speed up 5 times while moving thumb\nwith arrow keys or mouse wheel") },
         { ctrl, L("Press to speed up 5 times while moving thumb\nwith arrow keys or mouse wheel") },
     };
 
-    m_full_shortcuts.push_back({ { _L("Vertical Slider"), _L("The following shortcuts are applicable in G-code preview when the vertical slider is active") }, layers_slider_shortcuts });
+    m_full_shortcuts.push_back({ { _L("Vertical Slider"), _L("The following shortcuts are applicable in the sliced layers preview when the vertical slider is active") }, layers_slider_shortcuts });
 
-    Shortcuts sequential_slider_shortcuts = {
-        { L("Arrow Left"),  L("Move active thumb Left") },
-        { L("Arrow Right"), L("Move active thumb Right") },
-        { L("Arrow Up"),    L("Set left thumb as active") },
-        { L("Arrow Down"),  L("Set right thumb as active") },
-        { "Shift+", L("Press to speed up 5 times while moving thumb\nwith arrow keys or mouse wheel") },
-        { ctrl, L("Press to speed up 5 times while moving thumb\nwith arrow keys or mouse wheel") },
+    // Sliced layer editor dialog (LayerEditorContent_Canvas.cpp: handle_history_shortcut; LayerEditorContent.cpp: the CHAR_HOOK handler)
+    Shortcuts layer_editor_shortcuts = {
+        { ctrl + "Z", L("Undo the last edit") },
+        { ctrl + "Y", L("Redo") },
+        { ctrl + "Shift+" + "Z", L("Redo") },
+        { "Esc", L("Cancel the stroke being painted; with no stroke in progress, close the editor") },
     };
 
-    m_full_shortcuts.push_back({ { _L("Horizontal Slider"), _L("The following shortcuts are applicable in G-code preview when the horizontal slider is active") }, sequential_slider_shortcuts });
+    m_full_shortcuts.push_back({ { _L("Sliced Layer Editor"), "" }, layer_editor_shortcuts });
 }
 
 wxPanel* KBShortcutsDialog::create_header(wxWindow* parent, const wxFont& bold_font)

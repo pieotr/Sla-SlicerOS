@@ -624,8 +624,12 @@ void ObjectList::update_extruder_values_for_items(const size_t max_extruder)
 
 void ObjectList::update_objects_list_extruder_column(size_t extruders_count)
 {
+#ifdef SLIC3R_SLA_ONLY
+    extruders_count = 1; // the Extruder column has no meaning for resin printers
+#else
     if (printer_technology() == ptSLA)
         extruders_count = 1;
+#endif
 
     m_prevent_update_extruder_in_config = true;
 

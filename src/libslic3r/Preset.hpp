@@ -7,6 +7,7 @@
 #define slic3r_Preset_hpp_
 
 #include <deque>
+#include <functional>
 #include <set>
 #include <unordered_map>
 
@@ -244,6 +245,10 @@ public:
     static const std::vector<std::string>&  sla_printer_options();
     static const std::vector<std::string>&  sla_material_options();
     static const std::vector<std::string>&  sla_print_options();
+    // Keys of sla_print/material/printer_options() that intentionally have no direct editor field in the
+    // Tab pages (derived, widget-managed or internal). Every other key in those lists must be exposed by a Tab;
+    // Tab.cpp verifies this in debug builds and the libslic3r tests pin the whitelist (no stale entries).
+    static const std::vector<std::string>&  sla_hidden_option_keys();
 
 	static void                             update_suffix_modified(const std::string& new_suffix_modified);
     static const std::string&               suffix_modified();
@@ -320,6 +325,65 @@ struct ExternalPreset
 using PresetsConfigSubstitutions = std::vector<PresetConfigSubstitutions>;
 
 // Collections of presets of the same type (one of the Print, Filament or Printer type).
+// All-or-nothing change of several preset INI files (rename with dependents, delete with dependents,
+// import). New contents are first written to temp files next to their targets; only when every temp file
+// exists are they published by renames. A failure before publication deletes the temps; a failure during
+// publication restores the already published files from in-memory copies of their previous bytes. Callers
+// must change their in-memory state only after commit() returned, so memory and disk never diverge.
+// Process-crash recovery (journal) is out of scope here: the window is a few renames of small files.
+class PresetFileTransaction
+{
+public:
+    // Test hook: called before publishing change `index`; throwing simulates a failed write/rename.
+    // The rollback phase calls it with `rollback == true` so tests can also break the restore.
+    using FaultInjector = std::function<void(size_t index, bool rollback)>;
+    static void set_fault_injector(FaultInjector injector);
+
+    PresetFileTransaction() = default;
+    PresetFileTransaction(const PresetFileTransaction&) = delete;
+    PresetFileTransaction& operator=(const PresetFileTransaction&) = delete;
+    ~PresetFileTransaction();
+
+    // Serialize `config` into a temp file next to `path`. `must_not_exist` rejects overwriting an existing
+    // file (rename target, imported preset); otherwise an existing regular file is replaced.
+    void stage_config(const std::string &path, const DynamicPrintConfig &config, bool must_not_exist = false);
+    // Publish the exact bytes of `from` under the new path `to` and remove `from` (rename without
+    // re-serializing, so the file stays byte-identical). `to` must not exist.
+    void stage_rename(const std::string &from, const std::string &to);
+    // Delete `path` on publication (it must be a regular file).
+    void stage_remove(const std::string &path);
+    size_t size() const { return m_changes.size(); }
+    // Publish everything or nothing; throws std::runtime_error with a readable message.
+    void commit();
+
+private:
+    struct Change {
+        std::string path;
+        std::string temp;                 // empty for a removal or once published
+        bool        removal = false;
+        bool        had_original = false;
+        std::string original;             // previous bytes, for rollback
+    };
+    void record_original(Change &change, bool must_not_exist);
+    void discard_temps() noexcept;
+    std::vector<Change> m_changes;
+    bool                m_done = false;
+};
+
+// A user preset (or project default) that references another preset which is about to be deleted.
+struct PresetDependent {
+    enum class Kind {
+        Inherits,                 // child of the deleted preset (same collection)
+        CompatiblePrinters,       // compatible_printers list of a print/material
+        CompatiblePrints,         // compatible_prints list of a material
+        DefaultSlaPrint,          // printer's default_sla_print_profile
+        DefaultSlaMaterial,       // printer's default_sla_material_profile
+    };
+    Preset::Type type;
+    std::string  name;
+    Kind         kind;
+};
+
 class PresetCollection
 {
 public:
@@ -388,8 +452,41 @@ public:
 
     // Rename a saved user preset without saving or discarding its edited draft.
     // I/O/name failures leave the collection and selection unchanged; throws.
-    // Returns false when the name is unchanged. Does not rewrite dependent profiles.
+    // Returns false when the name is unchanged. Same-collection "inherits" references of user presets
+    // (in memory, in the edited draft and on disk) are migrated, then the rename hook is invoked so that
+    // the owner (PresetBundle) can migrate references held by other collections. All file changes form one
+    // PresetFileTransaction: if any dependent file cannot be written, disk and memory stay exactly as before.
     bool            rename_current_preset(const std::string &new_name);
+
+    // Called by rename_current_preset() BEFORE anything is changed, with (type, old name, new name, transaction).
+    // The owner (PresetBundle) stages the files of other collections that reference the old name into the
+    // transaction and returns a closure that applies the same edits in memory after the commit. Not copied.
+    using RenameHookFunction = std::function<std::function<void()>(Preset::Type, const std::string&, const std::string&, PresetFileTransaction&)>;
+    struct RenameHook {
+        RenameHookFunction function;
+        RenameHook() = default;
+        RenameHook(const RenameHook&) {}
+        RenameHook& operator=(const RenameHook&) { return *this; }
+    };
+    void            set_rename_hook(RenameHookFunction hook) { m_rename_hook.function = std::move(hook); }
+
+    // Apply `edit` (returns true if it changed the config) to every loaded user preset with a file; changed
+    // presets are written in one transaction before the in-memory copies are updated. The edited and saved
+    // copies of the selected preset get the same edit so unsaved changes are preserved. Throws on failure
+    // with disk and memory unchanged.
+    void            migrate_user_preset_configs(const std::function<bool(DynamicPrintConfig&)> &edit);
+    // Two-phase variant for callers that combine several collections in one transaction: stage the new
+    // files of the presets `edit` would change (memory untouched) and return the closure that applies `edit`
+    // in memory. Call the closure only after the transaction committed.
+    std::function<void()> stage_user_preset_migration(const std::function<bool(DynamicPrintConfig&)> &edit, PresetFileTransaction &transaction);
+
+    // Delete a user preset together with the references to it, as one transaction. Callers must have shown
+    // the list from PresetBundle::find_preset_dependents(); see PresetBundle::delete_preset_with_dependencies().
+    // `stage_extra` stages file changes of other collections and returns their in-memory closure.
+    bool            delete_preset_transactional(const std::string &name, const std::function<bool(DynamicPrintConfig&)> &flatten_children,
+                        const std::function<std::function<void()>(PresetFileTransaction&)> &stage_extra);
+    // Names of the loaded user presets `edit` would change (the edit is applied to copies only).
+    std::vector<std::string> user_presets_affected_by(const std::function<bool(DynamicPrintConfig&)> &edit) const;
 
     // Find the preset with a new_name or create a new one,
     // initialize it with the initial_preset config.
@@ -637,6 +734,7 @@ private:
     Preset                  m_edited_preset;
     // Contains a copy of the last saved selected preset.
     Preset                  m_saved_preset;
+    RenameHook              m_rename_hook;
 
     // Selected preset.
     size_t                  m_idx_selected;

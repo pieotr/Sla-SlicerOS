@@ -132,7 +132,7 @@ struct ProjectDocumentAccess {
         throw RuntimeError("Project export profile differs from fresh raster geometry");
     }
     if(!anycubic_available_versions(doc.m_archive_format).empty()) {
-      const AnycubicLayerLayout source(doc.m_entries.at(0).bytes,doc.m_archive_format);
+      const AnycubicLayerLayout source(doc.native_original(),doc.m_archive_format);
       if(const auto dimensions=source.physical_dimensions();dimensions &&
          (std::abs(dimensions->first-profile.screen_width_mm)>.005 ||
           std::abs(dimensions->second-profile.screen_height_mm)>.005))
@@ -161,8 +161,8 @@ struct ProjectDocumentAccess {
     return metadata;
   }
   static size_t size(const LayerDocument &doc){return doc.m_entries.size();}
-  static png::ReadBuf entry(const LayerDocument &doc,size_t i) {
-    const auto &bytes=doc.m_entries.at(i).bytes;return {bytes.data(),bytes.size()};
+  static LayerDocument::EncodedView entry(const LayerDocument &doc,size_t i) {
+    return LayerDocument::EncodedView(doc.m_entries.at(i).load());
   }
   static LayerDocument restore(const nlohmann::json &metadata,
                                std::vector<std::vector<uint8_t>> bytes, int manifest_version) {

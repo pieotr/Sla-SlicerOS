@@ -91,7 +91,7 @@ else
   echo "[3/5] Skipping dependency rebuild"
 fi
 
-echo "[4/5] Configuring PrusaSlicer"
+echo "[4/5] Configuring SLA-Slicer"
 cmake -S "$ROOT_DIR" -B "$APP_BUILD_DIR" \
   -DSLIC3R_STATIC=1 \
   -DSLIC3R_GTK=3 \
@@ -104,7 +104,7 @@ cmake -S "$ROOT_DIR" -B "$APP_BUILD_DIR" \
   -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
   -DCMAKE_PREFIX_PATH="$PREFIX_PATH"
 
-echo "[5/5] Building PrusaSlicer target (incremental)"
+echo "[5/5] Building SLA-Slicer target (incremental)"
 cmake --build "$APP_BUILD_DIR" --target PrusaSlicer -- -j"$JOBS"
 
 if [[ "$BUILD_TESTS" == ON ]]; then

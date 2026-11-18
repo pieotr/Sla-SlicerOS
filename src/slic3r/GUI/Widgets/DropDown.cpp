@@ -90,6 +90,8 @@ static gint gtk_popup_key_press (GtkWidget *widget, GdkEvent *gdk_event, wxPopup
                          strcmp(keyval, "Down") == 0   ? WXK_DOWN   :
                          strcmp(keyval, "Left") == 0   ? WXK_LEFT   :
                          strcmp(keyval, "Right") == 0  ? WXK_RIGHT  :
+                         strcmp(keyval, "Home") == 0   ? WXK_HOME   :
+                         strcmp(keyval, "End") == 0    ? WXK_END    :
                          strcmp(keyval, "Return") == 0 ? WXK_RETURN :
                          strcmp(keyval, "Escape") == 0 ? WXK_ESCAPE :
                          strcmp(keyval, "Tab") == 0    ? WXK_TAB : WXK_NONE;
@@ -162,7 +164,7 @@ wxString DropDown::GetValue() const
 void DropDown::SetValue(const wxString &value)
 {
     auto i = std::find(texts.begin(), texts.end(), value);
-    selection = i == texts.end() ? -1 : std::distance(texts.begin(), i);
+    SetSelection(i == texts.end() ? -1 : int(std::distance(texts.begin(), i)));  // repaints / repositions
 }
 
 void DropDown::SetCornerRadius(double radius_in)
@@ -512,7 +514,9 @@ void DropDown::mouseDown(wxMouseEvent& event)
     const int height = rowSize.y * int(texts.size());
     const wxRect rect = { size.x - slider_width, -offset.y * size.y / height, slider_width - 2,
                       size.y * size.y / height };
-    slider_grabbed = rect.Contains(event.GetPosition());
+    // The strip on the right is a scrollbar only when the list overflows (see paintEvent);
+    // otherwise a click there is an ordinary row click.
+    slider_grabbed = height > size.y && rect.Contains(event.GetPosition());
 
     pressedDown = true;
     CaptureMouse();

@@ -19,10 +19,11 @@ std::string request_format(const std::string &format)
 }
 }
 ExportRequest::ExportRequest(std::shared_ptr<const ExportSnapshot> snapshot, std::string format,
-    std::string path, std::string projectname, bool palette_approved)
+    std::string path, std::string projectname, bool palette_approved,
+    RepresentationApproval approval)
     : m_snapshot(std::move(snapshot)), m_generation(request_guard(m_snapshot)),
       m_format(std::move(format)), m_path(std::move(path)), m_projectname(std::move(projectname)),
-      m_palette_approved(palette_approved)
+      m_palette_approved(palette_approved), m_approval(std::move(approval))
 {
     m_format = request_format(m_format);
     if (m_path.empty()) throw ExportError("Export request requires an output path");
@@ -32,7 +33,8 @@ void ExportRequest::write(const std::function<void()> &checkpoint) const
     m_generation.check();
     if (checkpoint) checkpoint();
     m_generation.check();
-    SLAPrint::write_export_snapshot(*m_snapshot, m_generation, m_format, m_path, m_projectname, m_palette_approved, checkpoint);
+    SLAPrint::write_export_snapshot(*m_snapshot, m_generation, m_format, m_path, m_projectname, m_palette_approved, checkpoint,
+        m_approval.empty() ? nullptr : &m_approval);
 }
 NativeArchiveExportRequest::NativeArchiveExportRequest(const LayerDocument &source, std::string path,
     std::optional<LayerExportProfile> profile, const LayerProgress &progress)
@@ -75,9 +77,11 @@ bool NativeArchiveExportRequest::acknowledge_saved(LayerDocument &source) const
 }
 
 NativeArchiveConversionRequest::NativeArchiveConversionRequest(const LayerDocument &source,
-    DynamicPrintConfig configuration, std::string format, std::string path, const LayerProgress &progress)
+    DynamicPrintConfig configuration, std::string format, std::string path, const LayerProgress &progress,
+    RepresentationApproval approval)
     : m_generation(source.export_generation_guard().with_cancellation()),
-      m_configuration(std::move(configuration)), m_format(request_format(format)), m_path(std::move(path))
+      m_configuration(std::move(configuration)), m_format(request_format(format)), m_path(std::move(path)),
+      m_approval(std::move(approval))
 {
     m_generation.check();
     if (m_path.empty()) throw ExportError("Conversion requires an output path");
@@ -100,7 +104,7 @@ void NativeArchiveConversionRequest::write(const LayerProgress &progress) const
     };
     m_generation.check();
     SLAPrint::convert_layer_archive_owned(m_configuration, *m_document, m_format, m_path,
-        m_generation, guarded_progress);
+        m_generation, guarded_progress, m_approval.empty() ? nullptr : &m_approval);
 }
 
 bool ExportInputGuard::same_source(const ExportGenerationGuard &output) const
@@ -136,7 +140,8 @@ void DeferredExportRequest::cancel() const
     if (m_state->ready) m_state->ready->cancel();
     m_state->cancelled.store(true, std::memory_order_release);
 }
-ExportRequest DeferredExportRequest::bind(std::shared_ptr<const ExportSnapshot> snapshot, bool palette_approved) const
+ExportRequest DeferredExportRequest::bind(std::shared_ptr<const ExportSnapshot> snapshot, bool palette_approved,
+                                       RepresentationApproval approval) const
 {
     std::lock_guard<std::mutex> lock(m_state->mutex);
     check();
@@ -144,7 +149,7 @@ ExportRequest DeferredExportRequest::bind(std::shared_ptr<const ExportSnapshot> 
     if (!m_input.same_source(snapshot->generation())) throw ExportError("Export result belongs to another source");
     if (m_state->ready) throw ExportError("Export request is already bound to a result");
     const auto path = snapshot->statistics().finalize_output_path(m_path);
-    ExportRequest ready(snapshot, m_format, path, m_projectname, palette_approved);
+    ExportRequest ready(snapshot, m_format, path, m_projectname, palette_approved, std::move(approval));
     // Capture may race an external mutation. A result accepted between two
     // input changes must never become the output of the earlier intent.
     check();

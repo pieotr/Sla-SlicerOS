@@ -7,7 +7,6 @@
 #include "libslic3r/Exception.hpp"
 #include "libslic3r/Model.hpp"
 #include "libslic3r/Utils.hpp"
-#include "libslic3r/GCode.hpp"
 #include "libslic3r/Geometry.hpp"
 #include "libslic3r/GCode/ThumbnailData.hpp"
 #include "libslic3r/Semver.hpp"
@@ -23,6 +22,7 @@
 #include <string_view>
 
 #include <boost/assign.hpp>
+#include <boost/regex.hpp>
 #include <boost/bimap.hpp>
 #include <boost/filesystem.hpp>
 

@@ -221,7 +221,11 @@ static bool setup_common()
     // On Linux, wxGTK has no support for Wayland, and the app crashes on
     // startup if gtk3 is used. This env var has to be set explicitly to
     // instruct the window manager to fall back to X server mode.
-    ::setenv("GDK_BACKEND", "x11", /* replace */ true);
+    // Opt-in probe (not a default): SLA_SLICER_NATIVE_WAYLAND=1 leaves the backend choice to GTK/the environment so the
+    // application can be tried on native Wayland (GTK3 combo popups behave correctly there, unlike on XWayland/KWin).
+    const char *native_wayland = ::getenv("SLA_SLICER_NATIVE_WAYLAND");
+    if (!(native_wayland && *native_wayland && std::string(native_wayland) != "0"))
+        ::setenv("GDK_BACKEND", "x11", /* replace */ true);
 
     // https://github.com/prusa3d/PrusaSlicer/issues/12969
     ::setenv("WEBKIT_DISABLE_COMPOSITING_MODE", "1", /* replace */ false);

@@ -1,4 +1,5 @@
 // Native port of the local UVtools VDTFile.cs JSON schema, AGPLv3 or later.
+#include "HeaderMirror.hpp"
 #include "VoxeldanceArchive.hpp"
 #include "libslic3r/PNGReadWrite.hpp"
 #include "libslic3r/SLA/PrintParameters.hpp"
@@ -156,8 +157,8 @@ void VoxeldanceTangoArchive::export_print(const std::string fname, const SLAPrin
                     {"z_height", float(m_cfg.max_print_height.value)},
                     {"resolution_x", width},
                     {"resolution_y", height},
-                    {"x_mirror", m_cfg.display_mirror_x.value},
-                    {"y_mirror", m_cfg.display_mirror_y.value},
+                    {"x_mirror", resolve_header_mirror(m_cfg, m_cfg.display_mirror_x.value, m_cfg.display_mirror_y.value).x},
+                    {"y_mirror", resolve_header_mirror(m_cfg, m_cfg.display_mirror_x.value, m_cfg.display_mirror_y.value).y},
                     {"notes", ""},
                     {"uvtools_convert_to", ""}}},
                   {"advanced_parameters",

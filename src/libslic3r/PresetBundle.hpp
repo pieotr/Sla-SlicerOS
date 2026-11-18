@@ -201,7 +201,42 @@ public:
         return      { Preset::TYPE_PRINTER, Preset::TYPE_SLA_PRINT, Preset::TYPE_SLA_MATERIAL };
     }
 
+    // User presets that reference `name` of the given SLA type and would have to change if it were deleted:
+    // children (inherits), compatible_printers / compatible_prints entries and printers' default profiles.
+    // Empty when nothing depends on it. System, external and default presets are never listed.
+    std::vector<PresetDependent> find_preset_dependents(Preset::Type type, const std::string &name) const;
+
+    // Delete a saved user preset and fix every dependent in ONE file transaction (all or nothing; throws
+    // with disk and memory unchanged). The GUI lists find_preset_dependents() and asks before calling it.
+    //  - children get "inherits" of the deleted parent; their config already holds the complete values;
+    //  - the name is removed from compatible_printers / compatible_prints; a list that becomes empty turns
+    //    into the explicit "None" state (empty list + condition "false"), never into "compatible with all";
+    //  - default_sla_print_profile / default_sla_material_profile pointing to it are cleared.
+    // Returns false when no such preset exists.
+    bool delete_preset_with_dependencies(Preset::Type type, const std::string &name);
+
+    // Export one SLA preset (printer, material or process) as a stand-alone .ini file (temp file + rename).
+    void export_preset_ini(Preset::Type type, const std::string &name, const std::string &path) const;
+
+    // Result of import_preset_ini().
+    struct PresetImportResult {
+        std::string name;          // name under which the preset was stored
+        bool        renamed = false; // the suggested name was taken, `name` differs from the file stem
+    };
+    // Import a single SLA preset .ini into the user presets of `type`. The file is normalized
+    // (Preset::normalize) and, for printers, checked with sla::printer_geometry_error; a readable error is
+    // thrown for FFF/foreign files and invalid geometry, leaving everything unchanged. When the name is taken
+    // the preset is stored as "<name> (2)", "(3)" ... and `renamed` is set. `suggested_name` may be empty
+    // (the file stem is used).
+    PresetImportResult import_preset_ini(Preset::Type type, const std::string &path, const std::string &suggested_name = std::string());
+    // First free name derived from `name` ("name", "name (2)", ...) in the collection of `type`.
+    std::string unique_preset_name(Preset::Type type, const std::string &name) const;
+
 private:
+    // Hooks the collections' rename notification to cross-collection reference migration.
+    void install_rename_hooks();
+    std::function<void()> stage_renamed_preset_references(Preset::Type type, const std::string &old_name, const std::string &new_name, PresetFileTransaction &transaction);
+
     std::pair<PresetsConfigSubstitutions, std::string> load_system_presets(ForwardCompatibilitySubstitutionRule compatibility_rule);
     // Merge one vendor's presets with the other vendor's presets, report duplicates.
     std::vector<std::string>    merge_presets(PresetBundle &&other);

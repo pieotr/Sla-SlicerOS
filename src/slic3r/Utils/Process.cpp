@@ -65,13 +65,22 @@ static void start_new_slicer_or_gcodeviewer(const NewSlicerInstanceType instance
 #else 
 	// Own executable path.
 	boost::filesystem::path bin_path = into_path(wxStandardPaths::Get().GetExecutablePath());
+#if defined(__linux__)
+	{
+		// Relaunch the binary that is really running (prusa-slicer or its sla-slicer
+		// symlink); a hard-coded name breaks renamed or relocated packages.
+		boost::system::error_code ec;
+		const boost::filesystem::path self = boost::filesystem::canonical("/proc/self/exe", ec);
+		if (!ec && !self.empty())
+			bin_path = self;
+	}
+#endif
 #if defined(__APPLE__)
 	{
 		// Maybe one day we will be able to run PrusaGCodeViewer, but for now the Apple notarization 
 		// process refuses Apps with multiple binaries and Vojtech does not know any workaround.
 		// ((instance_type == NewSlicerInstanceType::Slicer) ? "PrusaSlicer" : "PrusaGCodeViewer");
 		// Just run PrusaSlicer and give it a --gcodeviewer parameter.
-		bin_path = bin_path.parent_path() / "PrusaSlicer";
 		// On Apple the wxExecute fails, thus we use boost::process instead.
 		BOOST_LOG_TRIVIAL(info) << "Trying to spawn a new slicer \"" << bin_path.string() << "\"";
 		try {
@@ -118,7 +127,9 @@ static void start_new_slicer_or_gcodeviewer(const NewSlicerInstanceType instance
 		std::string my_path;
 		if (args.empty()) {
 			// Binary path was not set to the AppImage in the Linux specific block above, call the application directly.
-			my_path = (bin_path.parent_path() / ((instance_type == NewSlicerInstanceType::Slicer) ? "prusa-slicer" : "prusa-gcodeviewer")).string();
+			// Slicer instances reuse the running executable; the G-code viewer binary is not part of the SLA build.
+			my_path = (instance_type == NewSlicerInstanceType::Slicer) ? bin_path.string()
+				: (bin_path.parent_path() / "prusa-gcodeviewer").string();
 			args.emplace_back(my_path.c_str());
 		}
 		std::string to_open;

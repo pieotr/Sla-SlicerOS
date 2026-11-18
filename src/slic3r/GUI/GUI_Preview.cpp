@@ -6,7 +6,9 @@
 ///|/
 //#include "stdlib.h"
 #include "libslic3r/libslic3r.h"
+#ifndef SLIC3R_SLA_ONLY
 #include "libslic3r/Layer.hpp"
+#endif // SLIC3R_SLA_ONLY
 #include "GUI_Preview.hpp"
 #include "GUI_App.hpp"
 #include "GUI.hpp"
@@ -17,7 +19,9 @@
 #include "OpenGLManager.hpp"
 #include "GLCanvas3D.hpp"
 #include "libslic3r/PresetBundle.hpp"
+#ifndef SLIC3R_SLA_ONLY
 #include "DoubleSliderForGcode.hpp"
+#endif
 #include "DoubleSliderForLayers.hpp"
 #include "Plater.hpp"
 #include "Tab.hpp"
@@ -37,7 +41,9 @@
 #include <wx/colordlg.h>
 
 // this include must follow the wxWidgets ones or it won't compile on Windows -> see http://trac.wxwidgets.org/ticket/2421
+#ifndef SLIC3R_SLA_ONLY
 #include "libslic3r/Print.hpp"
+#endif // SLIC3R_SLA_ONLY
 #include "libslic3r/SLAPrint.hpp"
 #include "NotificationManager.hpp"
 #include "libslic3r/MultipleBeds.hpp"
@@ -184,10 +190,16 @@ void View3D::render()
 
 Preview::Preview(
     wxWindow* parent, Bed3D& bed, Model* model, DynamicPrintConfig* config,
+#ifdef SLIC3R_SLA_ONLY
+    BackgroundSlicingProcess* process, std::function<void()> schedule_background_process_func)
+    : m_config(config)
+    , m_process(process)
+#else
     BackgroundSlicingProcess* process, std::vector<GCodeProcessorResult>* gcode_results, std::function<void()> schedule_background_process_func)
     : m_config(config)
     , m_process(process)
     , m_gcode_results(gcode_results)
+#endif
     , m_schedule_background_process(schedule_background_process_func)
 {
     if (init(parent, bed, model))
@@ -200,10 +212,12 @@ void Preview::set_layers_slider_values_range(int bottom, int top)
                                       std::max(bottom, m_layers_slider->GetMinPos()));
 }
 
+#ifndef SLIC3R_SLA_ONLY
 GCodeProcessorResult* Preview::active_gcode_result()
 {
     return &(*m_gcode_results)[s_multiple_beds.get_active_bed()];
 }
+#endif
 
 bool Preview::init(wxWindow* parent, Bed3D& bed, Model* model)
 {
@@ -285,9 +299,12 @@ void Preview::set_drop_target(wxDropTarget* target)
 void Preview::load_print(bool keep_z_range)
 {
     PrinterTechnology tech = m_process->current_printer_technology();
+#ifndef SLIC3R_SLA_ONLY
     if (tech == ptFFF)
         load_print_as_fff(keep_z_range);
-    else if (tech == ptSLA)
+    else
+#endif // SLIC3R_SLA_ONLY
+    if (tech == ptSLA)
         load_print_as_sla();
 
     Layout();
@@ -306,7 +323,9 @@ void Preview::reload_print()
 void Preview::msw_rescale()
 {
     m_layers_slider->SetEmUnit(wxGetApp().em_unit());
+#ifndef SLIC3R_SLA_ONLY
     m_moves_slider->SetEmUnit(wxGetApp().em_unit());
+#endif
     // rescale warning legend on the canvas
     get_canvas3d()->msw_rescale();
 
@@ -332,14 +351,18 @@ void Preview::render_sliders(GLCanvas3D& canvas)
 
     if (m_layers_slider)
         m_layers_slider->Render(canvas_width, canvas_height, extra_scale, is_collapse_btn_shown ? collapse_toolbar.get_height() : 0.f);
+#ifndef SLIC3R_SLA_ONLY
     if (m_moves_slider)
         m_moves_slider->Render(canvas_width, canvas_height, extra_scale);
+#endif
 }
 
 float Preview::get_moves_slider_height() const
 {
+#ifndef SLIC3R_SLA_ONLY
     if (!s_multiple_beds.is_autoslicing() && m_moves_slider && m_moves_slider->IsShown())
         return m_moves_slider->GetHeight();
+#endif
     return 0.0f;
 }
 
@@ -531,12 +554,11 @@ void Preview::create_sliders()
         });
     }
 
-    // Move Gcode Slider
-
+#ifndef SLIC3R_SLA_ONLY
+    // The G-code moves slider only exists for the FFF preview; the SLA build does not
+    // compile DoubleSliderForGcode.cpp at all.
     m_moves_slider = std::make_unique<DoubleSlider::DSForGcode>(0, 0, 0, 100);
     m_moves_slider->SetEmUnit(wxGetApp().em_unit());
-
-#ifndef SLIC3R_SLA_ONLY
     m_moves_slider->set_callback_on_thumb_move([this]() ->void { on_moves_slider_scroll_changed(); });
 #endif
 
@@ -546,7 +568,9 @@ void Preview::create_sliders()
 
     // Hide sliders from the very begibing. Visibility will be set later
     m_layers_slider->Hide();
+#ifndef SLIC3R_SLA_ONLY
     m_moves_slider->Hide();
+#endif
 }
 
 // Find an index of a value in a sorted vector, which is in <z-eps, z+eps>.
@@ -613,16 +637,24 @@ void Preview::update_layers_slider(const std::vector<double>& layers_z, bool kee
 
     Plater* plater = wxGetApp().plater();
     CustomGCode::Info ticks_info_from_model;
+#ifdef SLIC3R_SLA_ONLY
+    ticks_info_from_model = plater->model().custom_gcode_per_print_z();
+#else
     if (wxGetApp().is_editor())
         ticks_info_from_model = plater->model().custom_gcode_per_print_z();
     else {
         ticks_info_from_model.mode = CustomGCode::Mode::SingleExtruder;
         ticks_info_from_model.gcodes = active_gcode_result()->custom_gcode_per_print_z;
     }
+#endif
     check_layers_slider_values(ticks_info_from_model.gcodes, layers_z);
 
     //first of all update extruder colors to avoid crash, when we are switching printer preset from MM to SM
+#ifdef SLIC3R_SLA_ONLY
+    m_layers_slider->SetExtruderColors(plater->get_extruder_color_strings_from_plater_config());
+#else
     m_layers_slider->SetExtruderColors(plater->get_extruder_color_strings_from_plater_config(wxGetApp().is_editor() ? nullptr : active_gcode_result()));
+#endif
     m_layers_slider->SetSliderValues(layers_z);
     m_layers_slider->force_ruler_update();
     assert(m_layers_slider->GetMinPos() == 0);
@@ -654,8 +686,10 @@ void Preview::update_layers_slider(const std::vector<double>& layers_z, bool kee
     if (sla_print_technology)
         m_layers_slider->SetLayersTimes(plater->active_sla_print().print_statistics().layers_times_running_total,
             plater->active_sla_print().print_statistics().time_basis == SLAPrintStatistics::TimeBasis::OwnedNeutralSchedule);
+#ifndef SLIC3R_SLA_ONLY
     else
         m_layers_slider->SetLayersTimes(m_canvas->get_gcode_layers_times_cache(), active_gcode_result()->print_statistics.modes.front().time);
+#endif
 
     m_layers_slider->Thaw();
 
@@ -822,9 +856,12 @@ void Preview::update_sliders_from_canvas(wxKeyEvent& event)
         if (accelerator > 0)
             delta *= accelerator;
 
+#ifndef SLIC3R_SLA_ONLY
         if (key == WXK_LEFT || key == WXK_RIGHT)
             m_moves_slider->move_current_thumb(delta * (key == WXK_LEFT ? 1 : -1));
-        else if (key == WXK_UP || key == WXK_DOWN)
+        else
+#endif
+        if (key == WXK_UP || key == WXK_DOWN)
             m_layers_slider->move_current_thumb(delta * (key == WXK_DOWN ? 1 : -1));
     }
 
@@ -837,21 +874,21 @@ void Preview::update_sliders_from_canvas(wxKeyEvent& event)
         const int new_pos = key == 'W' ? m_layers_slider->GetHigherPos() + 1 : m_layers_slider->GetHigherPos() - 1;
         m_layers_slider->SetHigherPos(new_pos);
     }
+#ifndef SLIC3R_SLA_ONLY
     else if (key == 'A' || key == 'D') {
         const int new_pos = key == 'D' ? m_moves_slider->GetHigherPos() + 1 : m_moves_slider->GetHigherPos() - 1;
         m_moves_slider->SetHigherPos(new_pos);
     }
+#endif
     else if (key == 'X')
         m_layers_slider->ChangeOneLayerLock();
     else
         event.Skip();
 }
 
+#ifndef SLIC3R_SLA_ONLY
 void Preview::update_moves_slider(std::optional<int> visible_range_min, std::optional<int> visible_range_max)
 {
-#ifdef SLIC3R_SLA_ONLY
-    throw ExportError("FFF moves are unavailable in the SLA-only application");
-#else
     if (active_gcode_result()->moves.empty())
         return;
 
@@ -908,26 +945,22 @@ void Preview::update_moves_slider(std::optional<int> visible_range_min, std::opt
     m_moves_slider->Thaw();
 
     m_moves_slider->ShowLowerThumb(get_app_config()->get("seq_top_layer_only") == "0");
-#endif
 }
+#endif // SLIC3R_SLA_ONLY
 
+#ifndef SLIC3R_SLA_ONLY
 void Preview::enable_moves_slider(bool enable)
 {
-#ifdef SLIC3R_SLA_ONLY
-    throw ExportError("FFF moves are unavailable in the SLA-only application");
-#else
     bool render_as_disabled = !enable;
     if (m_moves_slider != nullptr && m_moves_slider->is_rendering_as_disabled() != render_as_disabled) {
         m_moves_slider->set_render_as_disabled(render_as_disabled);
     }
-#endif
 }
+#endif // SLIC3R_SLA_ONLY
 
+#ifndef SLIC3R_SLA_ONLY
 void Preview::load_print_as_fff(bool keep_z_range)
 {
-#ifdef SLIC3R_SLA_ONLY
-    throw ExportError("FFF preview is unavailable in the SLA-only application");
-#else
 
     if (wxGetApp().mainframe == nullptr || wxGetApp().is_recreating_gui())
         // avoid processing while mainframe is being constructed
@@ -1032,8 +1065,8 @@ void Preview::load_print_as_fff(bool keep_z_range)
             update_layers_slider(zs, keep_z_range);
     }
 
-#endif
 }
+#endif // SLIC3R_SLA_ONLY
 
 void Preview::load_print_as_sla()
 {
@@ -1070,7 +1103,6 @@ void Preview::load_print_as_sla()
 
     if (IsShown()) {
         m_canvas->load_sla_preview();
-        m_moves_slider->Hide();
 
         if (n_layers > 0)
             update_layers_slider(zs);

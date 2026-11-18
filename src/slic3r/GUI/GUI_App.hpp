@@ -207,7 +207,12 @@ public:
 
     EAppMode get_app_mode() const { return m_app_mode; }
     bool is_editor() const { return m_app_mode == EAppMode::Editor; }
+#ifdef SLIC3R_SLA_ONLY
+    // The G-code viewer mode cannot be entered in the SLA-only build.
+    constexpr bool is_gcode_viewer() const { return false; }
+#else
     bool is_gcode_viewer() const { return m_app_mode == EAppMode::GCodeViewer; }
+#endif
     bool is_recreating_gui() const { return m_is_recreating_gui; }
     std::string logo_name() const { return is_editor() ? "PrusaSlicer" : "PrusaSlicer-gcodeviewer"; }
 
@@ -294,7 +299,9 @@ public:
     void            load_project(wxWindow *parent, wxString& input_file) const;
     void            import_model(wxWindow *parent, wxArrayString& input_files) const;
     void            import_zip(wxWindow* parent, wxString& input_file) const;
+#ifndef SLIC3R_SLA_ONLY
     void            load_gcode(wxWindow* parent, wxString& input_file) const;
+#endif
 
     static bool     catch_error(std::function<void()> cb, const std::string& err);
 

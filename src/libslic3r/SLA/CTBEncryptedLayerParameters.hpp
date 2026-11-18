@@ -8,7 +8,8 @@ namespace Slic3r::sla {
 inline bool ctb_encrypted_tilting_vat(const CTBEncryptedLayerLayout &layout)
 {
     const auto address=layout.setting(160),size=layout.setting(164);
-    const std::string machine(size?reinterpret_cast<const char *>(layout.bytes.data()+address):"",size);
+    const auto machine_bytes=size?layout.bytes.read(address,size):std::vector<uint8_t>();
+    const std::string machine(machine_bytes.begin(),machine_bytes.end());
     // Reference uses the public FIRST lift phase, not stored total or bottom
     // speed. Float subtraction matches CTBEncryptedFile.LiftHeight semantics.
     const float first = std::max(layout.parameter(92) - layout.parameter(140), 0.f);

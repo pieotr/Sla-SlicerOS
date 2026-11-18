@@ -12,6 +12,7 @@
 
 #include <boost/optional.hpp>
 
+#include "libslic3r/SLA/RepresentationAdjustment.hpp"
 #include <wx/frame.h>
 #include <wx/dialog.h>
 #include <wx/event.h>
@@ -34,6 +35,16 @@ class wxRect;
 
 namespace Slic3r {
 namespace GUI {
+
+// Accessibility (AT-SPI on GTK; no-op elsewhere). Roles are an ATK-independent subset.
+enum class AccessibleRole { Default, Slider, ComboBox, PushButton, CheckBox, SpinButton, Text, Image, ToggleButton, Label, Canvas };
+// Sets, on GTK, the ATK name/description/role of the window's widget. With `descend`, a scrolled
+// window wrapper (wxDataViewCtrl) is unwrapped to its child. Empty name/description are left untouched.
+void set_accessible_name(wxWindow *window, const wxString &name, const wxString &description = wxString(),
+                         AccessibleRole role = AccessibleRole::Default, bool descend = false);
+// Only the description (e.g. a changing value).
+void set_accessible_description(wxWindow *window, const wxString &description, bool descend = false);
+
 
 #ifdef _WIN32
 // USB HID attach / detach events from Windows OS.
@@ -419,6 +430,26 @@ public:
 
     ~TaskTimer();
 };
+
+// App-owned output-format selection that replaces the file-type filter combo of the GTK file chooser. WHY: under GTK3 on
+// XWayland/KWin every native GtkComboBox popup closes on button release, so the filter combo cannot be used. The format is
+// chosen here in an owner-drawn drop-down ("Export format" dialog, preselected entry first); the file chooser is then opened
+// with that single filter.
+struct ExportFormatOption
+{
+    wxString    label;   // shown in the drop-down and used as the file filter description
+    std::string id;      // registry id (empty when not applicable)
+    std::string ext;     // extension without the dot, lower case
+};
+// Returns the selected index, or -1 when cancelled. A single option is returned without showing the dialog.
+// One confirmation listing every value the destination cannot store as is (parameter, current value ->
+// value that will be written, unit, reason). Built from the app's own widgets with accessible names.
+// Yes: export with the adjusted values; No: cancel. Must run on the UI thread.
+bool confirm_export_adjustments(wxWindow *parent, const wxString &format_name,
+                                const std::vector<sla::RepresentationAdjustment> &adjustments);
+int choose_export_format(wxWindow *parent, const wxString &title, const std::vector<ExportFormatOption> &options, int preselected);
+// A file name typed by the user with the extension of another listed format selects that format; otherwise `chosen` stays.
+int export_format_for_typed_name(const std::vector<ExportFormatOption> &options, int chosen, const std::string &file_name);
 
 class KeyAutoRepeatFilter
 {

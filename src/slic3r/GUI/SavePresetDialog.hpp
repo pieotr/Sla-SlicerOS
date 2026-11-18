@@ -13,7 +13,7 @@
 
 class wxString;
 class wxStaticText;
-class wxComboBox;
+class ComboBox;
 class wxTextCtrl;
 class wxStaticBitmap;
 
@@ -70,7 +70,7 @@ public:
         ValidationType      m_valid_type    {ValidationType::NoValid};
         wxWindow*           m_parent        {nullptr};
         wxStaticBitmap*     m_valid_bmp     {nullptr};
-        wxComboBox*         m_combo         {nullptr};
+        ComboBox*            m_combo         {nullptr};
         wxTextCtrl*         m_text_ctrl     {nullptr};
         wxStaticText*       m_valid_label   {nullptr};
 

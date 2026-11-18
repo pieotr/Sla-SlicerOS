@@ -9,6 +9,7 @@
 #include "libslic3r.h"
 #include "PresetBundle.hpp"
 #include "Utils.hpp"
+#include "SLA/PrinterGeometry.hpp"
 #include "Model.hpp"
 #include "format.hpp"
 #include "CustomParametersHandling.hpp"
@@ -53,6 +54,7 @@ PresetBundle::PresetBundle() :
     printers(Preset::TYPE_PRINTER, Preset::printer_options(), static_cast<const PrintRegionConfig&>(FullPrintConfig::defaults()), "- default FFF -"),
     physical_printers(PhysicalPrinter::printer_options(), this)
 {
+    this->install_rename_hooks();
     // The following keys are handled by the UI, they do not have a counterpart in any StaticPrintConfig derived classes,
     // therefore they need to be handled differently. As they have no counterpart in StaticPrintConfig, they are not being
     // initialized based on PrintConfigDef(), but to empty values (zeros, empty vectors, empty strings).
@@ -87,19 +89,41 @@ PresetBundle::PresetBundle() :
     // The global technology default may be SLA in this fork. The legacy FFF
     // template must still identify its own schema, otherwise the SLA UI reads
     // missing display/exposure options from a nozzle-based configuration.
+#ifdef SLIC3R_SLA_ONLY
+    // SLA-only build: slot 0 keeps its historical name (stored selections may refer to it) but
+    // carries the SLA schema, so no reset / fallback path can ever produce an FFF printer config.
+    {
+        Preset &fallback = this->printers.default_preset(0);
+        fallback.config.clear();
+        fallback.config.apply_only(SLAFullPrintConfig::defaults(), Preset::sla_printer_options());
+        fallback.printer_technology_ref() = ptSLA;
+    }
+    this->printers.preset(1).printer_technology_ref() = ptSLA;
+    Preset::normalize(this->printers.default_preset(0).config);
+    Preset::normalize(this->printers.default_preset(1).config);
+#else
     this->printers.default_preset(0).printer_technology_ref() = ptFFF;
     this->printers.preset(1).printer_technology_ref() = ptSLA;
     Preset::normalize(this->printers.default_preset(1).config);
+#endif
     for (size_t i = 0; i < 2; ++ i) {
 		// The following ugly switch is to avoid printers.preset(0) to return the edited instance, as the 0th default is the current one.
 		Preset &preset = this->printers.default_preset(i);
         for (const char *key : { 
             "printer_settings_id", "printer_vendor", "printer_model", "printer_variant", "thumbnails",
+#ifndef SLIC3R_OFFLINE_ONLY
             //FIXME the following keys are only created here for compatibility to be able to parse legacy Printer profiles.
             // These keys are converted to Physical Printer profile. After the conversion, they shall be removed.
-            "host_type", "print_host", "printhost_apikey", "printhost_cafile"})
+            "host_type", "print_host", "printhost_apikey", "printhost_cafile"
+#endif
+            })
             preset.config.optptr(key, true);
-        if (i == 0) {
+#ifdef SLIC3R_SLA_ONLY
+        const bool fff_slot = false;
+#else
+        const bool fff_slot = i == 0;
+#endif
+        if (fff_slot) {
             preset.config.optptr("default_print_profile", true);
             preset.config.option<ConfigOptionStrings>("default_filament_profile", true);
         } else {
@@ -122,6 +146,283 @@ PresetBundle::PresetBundle() :
 #endif
 
     this->project_config.apply_only(FullPrintConfig::defaults(), s_project_options);
+}
+
+void PresetBundle::install_rename_hooks()
+{
+    auto hook = [this](Preset::Type type, const std::string &old_name, const std::string &new_name, PresetFileTransaction &transaction) {
+        return this->stage_renamed_preset_references(type, old_name, new_name, transaction);
+    };
+    for (PresetCollection *collection : std::initializer_list<PresetCollection*>{ &prints, &filaments, &sla_prints, &sla_materials, &printers })
+        collection->set_rename_hook(hook);
+}
+
+namespace {
+using ConfigEdit = std::function<bool(DynamicPrintConfig&)>;
+
+// Every edit is idempotent: the same function is applied to a copy (to stage the file) and later to memory.
+ConfigEdit replace_in_list_edit(const char *key, std::string old_name, std::string new_name)
+{
+    return [=](DynamicPrintConfig &config) {
+        auto *option = config.option<ConfigOptionStrings>(key, false);
+        bool changed = false;
+        if (option != nullptr)
+            for (std::string &value : option->values)
+                if (value == old_name) { value = new_name; changed = true; }
+        return changed;
+    };
+}
+
+ConfigEdit replace_string_edit(const char *key, std::string old_name, std::string new_name)
+{
+    return [=](DynamicPrintConfig &config) {
+        auto *option = config.option<ConfigOptionString>(key, false);
+        if (option == nullptr || option->value != old_name) return false;
+        option->value = new_name;
+        return true;
+    };
+}
+
+// Remove `name` from a compatibility list. An emptied list would mean "compatible with everything" in the
+// legacy PrusaSlicer reading, so it is converted to the explicit None state used by the Tab compatibility
+// modes (empty list + condition "false"), which keeps the preset out of every selection it was bound to.
+ConfigEdit remove_from_list_edit(const char *list_key, const char *condition_key, std::string name)
+{
+    return [=](DynamicPrintConfig &config) {
+        auto *option = config.option<ConfigOptionStrings>(list_key, false);
+        if (option == nullptr)
+            return false;
+        const auto last = std::remove(option->values.begin(), option->values.end(), name);
+        if (last == option->values.end())
+            return false;
+        option->values.erase(last, option->values.end());
+        if (option->values.empty())
+            config.option<ConfigOptionString>(condition_key, true)->value = "false";
+        return true;
+    };
+}
+
+struct DependencyRule {
+    Preset::Type                target;
+    PresetDependent::Kind       kind;
+    ConfigEdit                  edit;
+};
+
+// References that must change when the preset `name` of `type` is deleted. `parent_inherits` is what the
+// deleted preset itself inherits, handed down to its children.
+std::vector<DependencyRule> deletion_rules(Preset::Type type, const std::string &name, const std::string &parent_inherits)
+{
+    using Kind = PresetDependent::Kind;
+    std::vector<DependencyRule> rules;
+    rules.push_back({ type, Kind::Inherits, replace_string_edit("inherits", name, parent_inherits) });
+    switch (type) {
+    case Preset::TYPE_PRINTER:
+        rules.push_back({ Preset::TYPE_SLA_PRINT,    Kind::CompatiblePrinters, remove_from_list_edit("compatible_printers", "compatible_printers_condition", name) });
+        rules.push_back({ Preset::TYPE_SLA_MATERIAL, Kind::CompatiblePrinters, remove_from_list_edit("compatible_printers", "compatible_printers_condition", name) });
+        break;
+    case Preset::TYPE_SLA_PRINT:
+        rules.push_back({ Preset::TYPE_SLA_MATERIAL, Kind::CompatiblePrints, remove_from_list_edit("compatible_prints", "compatible_prints_condition", name) });
+        rules.push_back({ Preset::TYPE_PRINTER,      Kind::DefaultSlaPrint,  replace_string_edit("default_sla_print_profile", name, std::string()) });
+        break;
+    case Preset::TYPE_SLA_MATERIAL:
+        rules.push_back({ Preset::TYPE_PRINTER,      Kind::DefaultSlaMaterial, replace_string_edit("default_sla_material_profile", name, std::string()) });
+        break;
+    default:
+        break;
+    }
+    return rules;
+}
+} // namespace
+
+std::function<void()> PresetBundle::stage_renamed_preset_references(Preset::Type type, const std::string &old_name, const std::string &new_name, PresetFileTransaction &transaction)
+{
+    std::vector<std::function<void()>> updates;
+    auto stage = [&](Preset::Type target, const ConfigEdit &edit) {
+        updates.push_back(this->get_presets(target).stage_user_preset_migration(edit, transaction));
+    };
+    switch (type) {
+    case Preset::TYPE_PRINTER:
+        stage(Preset::TYPE_SLA_PRINT,    replace_in_list_edit("compatible_printers", old_name, new_name));
+        stage(Preset::TYPE_SLA_MATERIAL, replace_in_list_edit("compatible_printers", old_name, new_name));
+        break;
+    case Preset::TYPE_SLA_PRINT:
+        stage(Preset::TYPE_PRINTER,      replace_string_edit("default_sla_print_profile", old_name, new_name));
+        stage(Preset::TYPE_SLA_MATERIAL, replace_in_list_edit("compatible_prints", old_name, new_name));
+        break;
+    case Preset::TYPE_SLA_MATERIAL:
+        stage(Preset::TYPE_PRINTER,      replace_string_edit("default_sla_material_profile", old_name, new_name));
+        break;
+    default:
+        break;
+    }
+    return [updates = std::move(updates)]() { for (const auto &update : updates) update(); };
+}
+
+std::vector<PresetDependent> PresetBundle::find_preset_dependents(Preset::Type type, const std::string &name) const
+{
+    std::vector<PresetDependent> dependents;
+    const PresetCollection &collection = this->get_presets(type);
+    const Preset *preset = collection.find_preset(name, false, false);
+    if (preset == nullptr || preset->is_default || preset->is_system || preset->is_external)
+        return dependents;
+    for (const DependencyRule &rule : deletion_rules(type, name, preset->inherits()))
+        for (const std::string &dependent : this->get_presets(rule.target).user_presets_affected_by(rule.edit))
+            dependents.push_back({ rule.target, dependent, rule.kind });
+    return dependents;
+}
+
+bool PresetBundle::delete_preset_with_dependencies(Preset::Type type, const std::string &name)
+{
+    PresetCollection &collection = this->get_presets(type);
+    const Preset *preset = collection.find_preset(name, false, false);
+    if (preset == nullptr)
+        return false;
+    const auto rules = deletion_rules(type, name, preset->inherits());
+    // The first rule is always the same-collection "inherits" flattening; the rest touch other collections.
+    ConfigEdit flatten_children = rules.front().edit;
+    std::vector<const DependencyRule*> others;
+    for (size_t i = 1; i < rules.size(); ++i)
+        others.push_back(&rules[i]);
+    auto stage_others = [&](PresetFileTransaction &transaction) {
+        std::vector<std::function<void()>> updates;
+        for (const DependencyRule *rule : others)
+            updates.push_back(this->get_presets(rule->target).stage_user_preset_migration(rule->edit, transaction));
+        return std::function<void()>([updates = std::move(updates)]() { for (const auto &update : updates) update(); });
+    };
+    return collection.delete_preset_transactional(name, flatten_children, stage_others);
+}
+
+namespace {
+bool is_sla_preset_type(Preset::Type type)
+{
+    return type == Preset::TYPE_PRINTER || type == Preset::TYPE_SLA_PRINT || type == Preset::TYPE_SLA_MATERIAL;
+}
+
+const char *preset_kind_label(Preset::Type type)
+{
+    return type == Preset::TYPE_PRINTER ? "printer" : type == Preset::TYPE_SLA_MATERIAL ? "material" : "process";
+}
+
+const std::vector<std::string> &keys_of_type(Preset::Type type)
+{
+    return type == Preset::TYPE_PRINTER ? Preset::sla_printer_options() :
+           type == Preset::TYPE_SLA_MATERIAL ? Preset::sla_material_options() : Preset::sla_print_options();
+}
+
+// Number of keys of `config` that belong to the option list of `type` and are not shared with the
+// compatibility/inheritance bookkeeping every profile type has.
+size_t type_key_matches(const DynamicPrintConfig &config, Preset::Type type)
+{
+    static const std::set<std::string> shared = { "inherits", "compatible_printers", "compatible_printers_condition",
+                                                  "compatible_prints", "compatible_prints_condition", "print_settings_id",
+                                                  "sla_print_settings_id", "sla_material_settings_id", "printer_settings_id" };
+    size_t count = 0;
+    for (const std::string &key : keys_of_type(type))
+        if (config.has(key) && shared.count(key) == 0)
+            ++count;
+    return count;
+}
+
+std::string safe_preset_file_stem(std::string name)
+{
+    boost::algorithm::trim(name);
+    if (boost::iends_with(name, ".ini"))
+        name.erase(name.size() - 4);
+    if (name.empty() || name == "." || name == ".." || name.find_first_of("/\\") != std::string::npos)
+        throw std::runtime_error("Invalid preset name: \"" + name + "\"");
+    return name;
+}
+} // namespace
+
+std::string PresetBundle::unique_preset_name(Preset::Type type, const std::string &name) const
+{
+    const PresetCollection &collection = this->get_presets(type);
+    auto taken = [&](const std::string &candidate) {
+        const Preset *existing = collection.find_preset(candidate, false, false);
+        const std::string path = collection.path_from_name(candidate);
+        return (existing != nullptr && existing->name == candidate) ||
+               boost::filesystem::exists(path) || boost::filesystem::is_symlink(path);
+    };
+    if (!taken(name))
+        return name;
+    for (int n = 2; n < 10000; ++n) {
+        const std::string candidate = name + " (" + std::to_string(n) + ")";
+        if (!taken(candidate))
+            return candidate;
+    }
+    throw std::runtime_error("Cannot find a free name for preset \"" + name + "\"");
+}
+
+void PresetBundle::export_preset_ini(Preset::Type type, const std::string &name, const std::string &path) const
+{
+    if (!is_sla_preset_type(type))
+        throw std::runtime_error("Only printer, material and process presets can be exported");
+    const Preset *preset = this->get_presets(type).find_preset(name, false, false);
+    if (preset == nullptr || preset->is_default)
+        throw std::runtime_error("There is no saved preset named \"" + name + "\" to export");
+    DynamicPrintConfig config = preset->config;
+    // Local project bookkeeping, not a property of the profile.
+    config.erase("print_settings_id");
+    config.erase("sla_print_settings_id");
+    config.erase("sla_material_settings_id");
+    config.erase("printer_settings_id");
+    PresetFileTransaction transaction;
+    transaction.stage_config(path, config); // temp file + rename; a failed export keeps the previous file
+    transaction.commit();
+}
+
+PresetBundle::PresetImportResult PresetBundle::import_preset_ini(Preset::Type type, const std::string &path, const std::string &suggested_name)
+{
+    if (!is_sla_preset_type(type))
+        throw std::runtime_error("Only printer, material and process presets can be imported");
+    PresetCollection &collection = this->get_presets(type);
+
+    DynamicPrintConfig loaded;
+    try {
+        loaded.load_from_ini(path, ForwardCompatibilitySubstitutionRule::Enable);
+    } catch (const std::exception &error) {
+        throw std::runtime_error("Cannot read the profile file \"" + path + "\": " + error.what());
+    }
+    // Reject files of another kind before any value is grafted onto the defaults, because
+    // apply_only() would silently drop the foreign keys and produce a plausible but wrong profile.
+    const ConfigOption *technology = loaded.option("printer_technology");
+    if (technology != nullptr && technology->getInt() != ptSLA)
+        throw std::runtime_error("This is not an SLA profile (printer technology is not SLA); FFF profiles are not supported");
+    const size_t own = type_key_matches(loaded, type);
+    for (Preset::Type other : { Preset::TYPE_PRINTER, Preset::TYPE_SLA_PRINT, Preset::TYPE_SLA_MATERIAL })
+        if (other != type && type_key_matches(loaded, other) > own)
+            throw std::runtime_error(std::string("This file looks like a ") + preset_kind_label(other) +
+                                     " profile, but a " + preset_kind_label(type) + " profile was expected");
+    if (own == 0)
+        throw std::runtime_error(std::string("The file contains no ") + preset_kind_label(type) + " profile settings");
+    if (type == Preset::TYPE_PRINTER && technology == nullptr)
+        throw std::runtime_error("The printer profile does not declare printer_technology = SLA");
+
+    DynamicPrintConfig config = collection.default_preset_for(loaded).config;
+    config.apply_only(loaded, config.keys(), true);
+    // A dangling parent would make the preset look like a modified copy of something that is not installed.
+    if (const auto *inherits = config.option<ConfigOptionString>("inherits", false))
+        if (!inherits->value.empty() && collection.find_preset(inherits->value, false, false) == nullptr)
+            config.option<ConfigOptionString>("inherits")->value.clear();
+    Preset::normalize(config);
+    if (type == Preset::TYPE_PRINTER) {
+        const std::string geometry_error = sla::printer_geometry_error(config);
+        if (!geometry_error.empty())
+            throw std::runtime_error("Invalid printer geometry in the imported profile: " + geometry_error);
+    }
+
+    const std::string requested = safe_preset_file_stem(suggested_name.empty() ?
+        boost::filesystem::path(path).stem().string() : suggested_name);
+    PresetImportResult result;
+    result.name = this->unique_preset_name(type, requested);
+    result.renamed = result.name != requested;
+    const std::string target = collection.path_from_name(result.name);
+
+    PresetFileTransaction transaction;
+    transaction.stage_config(target, config, true);
+    transaction.commit();
+    collection.load_preset(target, result.name, std::move(config), false);
+    return result;
 }
 
 PresetBundle::PresetBundle(const PresetBundle &rhs)
@@ -148,6 +449,8 @@ PresetBundle& PresetBundle::operator=(const PresetBundle &rhs)
     filaments    .update_vendor_ptrs_after_copy(this->vendors);
     sla_materials.update_vendor_ptrs_after_copy(this->vendors);
     printers     .update_vendor_ptrs_after_copy(this->vendors);
+    // The collections' hooks are never copied; make sure they point to this bundle.
+    this->install_rename_hooks();
 
     // Copy extruders filaments
     {
@@ -343,11 +646,14 @@ PresetsConfigSubstitutions PresetBundle::load_presets(AppConfig &config, Forward
     } catch (const std::runtime_error &err) {
         errors_cummulative += err.what();
     }
+#ifndef SLIC3R_OFFLINE_ONLY
+    // Print hosts do not exist in the offline build: stale physical_printer files are ignored.
     try {
         this->physical_printers.load_printers(dir_user_presets, "physical_printer", substitutions, substitution_rule);
     } catch (const std::runtime_error &err) {
         errors_cummulative += err.what();
     }
+#endif
     this->update_multi_material_filament_presets();
     this->update_compatible(PresetSelectCompatibleType::Never);
     if (! errors_cummulative.empty())
@@ -745,12 +1051,14 @@ void PresetBundle::load_selections(AppConfig &config, const PresetPreferences& p
         }
     }
 
+#ifndef SLIC3R_OFFLINE_ONLY
     // Parse the initial physical printer name.
     std::string initial_physical_printer_name = remove_ini_suffix(config.get("presets", "physical_printer"));
 
     // Activate physical printer from the config
     if (!initial_physical_printer_name.empty())
         physical_printers.select_printer(initial_physical_printer_name);
+#endif
 }
 
 // Export selections (current print, current filaments, current printer) into config.ini
@@ -773,7 +1081,9 @@ void PresetBundle::export_selections(AppConfig &config)
     config.set("presets", "sla_print",    sla_prints.get_selected_preset_name());
     config.set("presets", "sla_material", sla_materials.get_selected_preset_name());
     config.set("presets", "printer",      printers.get_selected_preset_name());
+#ifndef SLIC3R_OFFLINE_ONLY
     config.set("presets", "physical_printer", physical_printers.get_selected_full_printer_name());
+#endif
 }
 
 DynamicPrintConfig PresetBundle::full_config() const
@@ -1545,8 +1855,13 @@ std::pair<PresetsConfigSubstitutions, size_t> PresetBundle::load_configbundle(
             presets = &this->printers;
             preset_name = section.first.substr(8);
         } else if (boost::starts_with(section.first, "physical_printer:")) {
+#ifdef SLIC3R_OFFLINE_ONLY
+            // Print hosts are not supported offline: skip the whole section silently.
+            continue;
+#else
             ph_printers = &this->physical_printers;
             ph_printer_name = section.first.substr(17);
+#endif
         } else if (section.first == "presets") {
             // Load the names of the active presets.
             for (auto &kvp : section.second) {
@@ -1565,8 +1880,10 @@ std::pair<PresetsConfigSubstitutions, size_t> PresetBundle::load_configbundle(
                     active_sla_material = kvp.second.data();
                 } else if (kvp.first == "printer") {
                     active_printer = kvp.second.data();
+#ifndef SLIC3R_OFFLINE_ONLY
                 } else if (kvp.first == "physical_printer") {
                     active_physical_printer = kvp.second.data();
+#endif
                 }
             }
         } else if (section.first == "obsolete_presets") {
@@ -2040,18 +2357,29 @@ void PresetBundle::update_compatible(PresetSelectCompatibleType select_other_pri
 
 void PresetBundle::export_configbundle(const std::string &path, bool export_system_settings, bool export_physical_printers/* = false*/, std::function<bool(const std::string&, const std::string&, std::string&)> secret_callback)
 {
+    // Write to a sibling and rename: a full disk or cancelled export must not destroy the previous bundle.
+    const boost::filesystem::path temp_path = boost::filesystem::path(path).parent_path() / boost::filesystem::unique_path(".sla-bundle-%%%%-%%%%.tmp");
     boost::nowide::ofstream c;
-    c.open(path, std::ios::out | std::ios::trunc);
+    c.open(temp_path.string(), std::ios::out | std::ios::trunc);
+    if (!c)
+        throw Slic3r::RuntimeError("Cannot write the configuration bundle: " + temp_path.string());
 
     // Put a comment at the first line including the time stamp and Slic3r version.
     c << "# " << Slic3r::header_slic3r_generated() << std::endl;
 
     // Export the print, filament and printer profiles.
 
+#ifdef SLIC3R_SLA_ONLY
+    // No FFF sections in an SLA-only bundle: the FFF collections hold nothing exportable.
+    for (const PresetCollection *presets : { (const PresetCollection*)&this->sla_prints,
+                                              (const PresetCollection*)&this->sla_materials,
+                                              (const PresetCollection*)&this->printers }) {
+#else
 	for (const PresetCollection *presets : { 
 		(const PresetCollection*)&this->prints, (const PresetCollection*)&this->filaments, 
 		(const PresetCollection*)&this->sla_prints, (const PresetCollection*)&this->sla_materials, 
 		(const PresetCollection*)&this->printers }) {
+#endif
         for (const Preset &preset : (*presets)()) {
             if (preset.is_default || preset.is_external || (preset.is_system && ! export_system_settings))
                 // Only export the common presets, not external files or the default preset.
@@ -2062,6 +2390,9 @@ void PresetBundle::export_configbundle(const std::string &path, bool export_syst
         }
     }
 
+#ifdef SLIC3R_OFFLINE_ONLY
+    export_physical_printers = false; // nothing to export, and nothing may leak host credentials
+#endif
     if (export_physical_printers) {
         for (const PhysicalPrinter& ph_printer : this->physical_printers) {
             c << std::endl << "[physical_printer:" << ph_printer.name << "]" << std::endl;
@@ -2078,10 +2409,13 @@ void PresetBundle::export_configbundle(const std::string &path, bool export_syst
 
     // Export the names of the active presets.
     c << std::endl << "[presets]" << std::endl;
+#ifndef SLIC3R_SLA_ONLY
     c << "print = " << this->prints.get_selected_preset_name() << std::endl;
+#endif
     c << "sla_print = " << this->sla_prints.get_selected_preset_name() << std::endl;
     c << "sla_material = " << this->sla_materials.get_selected_preset_name() << std::endl;
     c << "printer = " << this->printers.get_selected_preset_name() << std::endl;
+#ifndef SLIC3R_SLA_ONLY
     for (size_t i = 0; i < this->extruders_filaments.size(); ++ i) {
         char suffix[64];
         if (i > 0)
@@ -2090,11 +2424,22 @@ void PresetBundle::export_configbundle(const std::string &path, bool export_syst
             suffix[0] = 0;
         c << "filament" << suffix << " = " << this->extruders_filaments[i].get_selected_preset_name() << std::endl;
     }
+#endif
 
     if (export_physical_printers && this->physical_printers.get_selected_idx() >= 0)
         c << "physical_printer = " << this->physical_printers.get_selected_printer_name() << std::endl;
 
     c.close();
+    if (!c) {
+        boost::system::error_code ignored;
+        boost::filesystem::remove(temp_path, ignored);
+        throw Slic3r::RuntimeError("Cannot write the configuration bundle: " + path);
+    }
+    if (const auto error = rename_file(temp_path.string(), path)) {
+        boost::system::error_code ignored;
+        boost::filesystem::remove(temp_path, ignored);
+        throw Slic3r::RuntimeError("Cannot write the configuration bundle \"" + path + "\": " + error.message());
+    }
 }
 
 // Set the filament preset name. As the name could come from the UI selection box, 
