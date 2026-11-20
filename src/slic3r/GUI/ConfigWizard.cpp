@@ -851,12 +851,79 @@ void PathChoice::on_paint(wxPaintEvent &)
     }
 }
 
-PagePath::PagePath(ConfigWizard *parent)
-    : ConfigWizardPage(parent, _L("Your printer"), _L("Your printer"))
+// Fills the "Queued:" strip of a choice page: one chip per queued item, a click removes it.
+static void fill_chip_panel(wxWindow *owner, wxPanel *panel, const std::vector<WizardQueueItem> &items, const wxString &hint_format)
+{
+    wxSizer *sizer = panel->GetSizer();
+    sizer->Clear(true);
+    panel->Show(!items.empty());
+    if (items.empty())
+        return;
+    const int em = em_unit(owner);
+    auto *label = new wxStaticText(panel, wxID_ANY, _L("Queued:"));
+    label->SetFont(owner->GetFont().MakeBold());
+    sizer->Add(label, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, em / 2);
+    for (const auto &item : items) {
+        auto *chip = new wxButton(panel, wxID_ANY, item.label + wxString::FromUTF8("  \xC3\x97"), wxDefaultPosition, wxDefaultSize, wxBU_EXACTFIT);
+        wxGetApp().UpdateDarkUI(chip);
+        const wxString hint = format_wxstr(hint_format, item.label);
+        chip->SetToolTip(hint);
+        set_accessible_name(chip, hint);
+        chip->Bind(wxEVT_BUTTON, [owner, remove = item.remove](wxCommandEvent &) { owner->CallAfter(remove); });
+        sizer->Add(chip, 0, wxRIGHT | wxBOTTOM, em / 2);
+    }
+}
+
+PageGoal::PageGoal(ConfigWizard *parent)
+    : ConfigWizardPage(parent, _L("What would you like to set up?"), _L("What to set up"))
 {
     const int em = page_em();
     m_welcome = append_help(format_wxstr(_L("Welcome to %s. It takes only a few steps to get your printer ready."), SLIC3R_APP_NAME));
     m_welcome->Hide();
+    append_help(_L("Pick one; the steps on the left follow your choice. Nothing is installed or changed until you click Finish."));
+    append_spacer(em / 2);
+
+    m_choice = new PathChoice(this);
+    m_choice->set_wrap_width(std::min(38 * em, std::max(14 * em, wrap_width() - 11 * em)));
+    m_choice->add_card(_L("A printer"),
+        _L("Add a printer from a vendor, one from the profile library or your own. A vendor printer brings its default materials."), "sla_printer");
+    m_choice->add_card(_L("A material"),
+        _L("Add ready-made resin profiles or create your own, for printers you already have."), "resin");
+    m_choice->add_card(_L("A printer and a material"),
+        _L("Add a printer first, then choose or create a resin profile for it in the same run."), "sla_printer_resin");
+    m_choice->on_pick = [this](size_t index) {
+        m_goal = index == 0 ? WizardGoal::Printer : index == 1 ? WizardGoal::Material : WizardGoal::Both;
+        wizard_p()->on_goal_changed();
+    };
+    append(m_choice, 0, wxEXPAND, 0);
+    m_choice->set_selected(0);
+}
+
+void PageGoal::set_goal(WizardGoal goal, bool notify)
+{
+    m_goal = goal;
+    m_choice->set_selected(goal == WizardGoal::Printer ? 0 : goal == WizardGoal::Material ? 1 : 2);
+    if (notify)
+        wizard_p()->on_goal_changed();
+}
+
+void PageGoal::refresh_cards(bool printers_installed)
+{
+    m_choice->set_available(1, printers_installed, _L("Add a printer first; materials belong to a printer."));
+    if (!printers_installed && m_goal == WizardGoal::Material)
+        set_goal(WizardGoal::Printer, false);
+    Layout();
+}
+
+void PageGoal::set_run_reason(ConfigWizard::RunReason run_reason)
+{
+    m_welcome->Show(run_reason == ConfigWizard::RR_DATA_EMPTY);
+}
+
+PagePath::PagePath(ConfigWizard *parent)
+    : ConfigWizardPage(parent, _L("Your printer"), _L("Your printer"))
+{
+    const int em = page_em();
     append_help(_L("Where does your printer come from? Pick one; the following steps depend on your choice. "
                    "Nothing is installed or changed until you click Finish."));
     append_spacer(em / 2);
@@ -900,25 +967,7 @@ void PagePath::restore_default()
 void PagePath::refresh_queue()
 {
     auto *p = wizard_p();
-    const std::vector<WizardQueueItem> items = p->queue_items();
-    wxSizer *sizer = m_queue->GetSizer();
-    sizer->Clear(true);
-    m_queue->Show(!items.empty());
-    if (!items.empty()) {
-        const int em = page_em();
-        auto *label = new wxStaticText(m_queue, wxID_ANY, _L("Queued:"));
-        label->SetFont(GetFont().MakeBold());
-        sizer->Add(label, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, em / 2);
-        for (const auto &item : items) {
-            auto *chip = new wxButton(m_queue, wxID_ANY, item.label + wxString::FromUTF8("  \xC3\x97"), wxDefaultPosition, wxDefaultSize, wxBU_EXACTFIT);
-            wxGetApp().UpdateDarkUI(chip);
-            const wxString hint = format_wxstr(_L("Remove queued printer \"%1%\""), item.label);
-            chip->SetToolTip(hint);
-            set_accessible_name(chip, hint);
-            chip->Bind(wxEVT_BUTTON, [this, remove = item.remove](wxCommandEvent &) { CallAfter(remove); });
-            sizer->Add(chip, 0, wxRIGHT | wxBOTTOM, em / 2);
-        }
-    }
+    fill_chip_panel(this, m_queue, p->queue_items(), _L("Remove queued printer \"%1%\""));
     m_queue->Layout();
     Layout();
     p->hscroll->FitInside();
@@ -937,11 +986,6 @@ void PagePath::refresh_cards(bool vendors_available, bool library_available)
     } else if ((m_path == WizardPath::Vendor && !vendors_available) || (m_path == WizardPath::Library && !library_available))
         set_path(library_available ? WizardPath::Library : WizardPath::Custom, false);
     Layout();
-}
-
-void PagePath::set_run_reason(ConfigWizard::RunReason run_reason)
-{
-    m_welcome->Show(run_reason == ConfigWizard::RR_DATA_EMPTY);
 }
 
 PagePrinters::PagePrinters(ConfigWizard *parent,
@@ -1115,7 +1159,7 @@ wxString PagePrinters::validate()
     // Only the last vendor step insists on a choice, so that a user may skip a vendor page on the way.
     auto *p = wizard_p();
     if (p->path() == WizardPath::Vendor && !p->pages_msla.empty() && p->pages_msla.back() == this &&
-        !p->check_sla_selected() && !p->existing_printers_kept() && p->queue.empty())
+        !p->check_sla_selected() && !p->existing_printers_kept() && p->printer_queue().empty())
         return _L("Tick at least one printer model to continue.");
     return wxString();
 }
@@ -1913,7 +1957,7 @@ void PageProfilePrinters::install_selected_profile(PresetBundle &preset_bundle, 
     install_library_profile(preset_bundle, app_config, selected_path);
 }
 
-void install_library_profile(PresetBundle &preset_bundle, AppConfig &app_config, const std::string &profile_path)
+std::string install_library_profile(PresetBundle &preset_bundle, AppConfig &app_config, const std::string &profile_path)
 {
     DynamicPrintConfig source;
     source.load_from_ini(profile_path, ForwardCompatibilitySubstitutionRule::Enable);
@@ -1943,6 +1987,7 @@ void install_library_profile(PresetBundle &preset_bundle, AppConfig &app_config,
     printers.load_preset(candidate.file, name, candidate.config, true);
     preset_bundle.update_compatible(PresetSelectCompatibleType::Always);
     preset_bundle.export_selections(app_config);
+    return name;
 }
 
 // ============================================================================
@@ -2040,9 +2085,7 @@ std::string PageCustom::sample_sla_profile_name() const
     return sample_sla_profile_names[size_t(selection)];
 }
 
-// ============================================================================
-// Optional: custom material
-// ============================================================================
+// Helpers of the material pages
 
 static double parse_text_double(wxTextCtrl *ctrl, double fallback)
 {
@@ -2064,177 +2107,384 @@ static bool text_is_number(wxTextCtrl *ctrl, double minimum, double maximum)
     return text.ToDouble(&value) && std::isfinite(value) && value >= minimum && value <= maximum;
 }
 
-PageCustomMaterial::PageCustomMaterial(ConfigWizard *parent)
-    : ConfigWizardPage(parent, _L("Custom material"), _L("Custom material"))
+// ============================================================================
+// Material branch: "Your material" and the guided creation of an own material
+// ============================================================================
+
+PageMaterialPath::PageMaterialPath(ConfigWizard *parent)
+    : ConfigWizardPage(parent, _L("Your material"), _L("Your material"))
 {
-    optional_step = true;
     const int em = page_em();
-    append_help(_L("Optional. Skip this step to use the materials you picked. Turn the option on only if you want "
-                          "an own resin profile with its own exposure times."));
+    append_help(_L("What material do you want to add? Pick one; the following steps depend on your choice. "
+                   "Nothing is installed or created until you click Finish."));
+    append_spacer(em / 2);
 
-    cb_create = new wxCheckBox(this, wxID_ANY, _L("Create my own material profile"));
-    cb_create->SetFont(GetFont().MakeBold());
-    cb_create->SetValue(false);
-    set_accessible_name(cb_create, _L("Create my own material profile"), wxString(), AccessibleRole::CheckBox);
-    append(cb_create, 0, wxEXPAND | wxBOTTOM, em / 2);
+    m_choice = new PathChoice(this);
+    m_choice->set_wrap_width(std::min(38 * em, std::max(14 * em, wrap_width() - 11 * em)));
+    m_choice->add_card(_L("Ready-made material profiles"),
+        _L("Pick from the resin profiles of the printer vendor that fit your printers."), "resin");
+    m_choice->add_card(_L("Create my own material"),
+        _L("A guided set of steps: name and brand, the printers it is for and a base profile, then exposure."), "wrench");
+    m_queue = new wxPanel(this);
+    wxGetApp().UpdateDarkUI(m_queue);
+    m_queue->SetSizer(new wxWrapSizer(wxHORIZONTAL));
+    m_queue->Hide();
+    append(m_queue, 0, wxEXPAND | wxBOTTOM, em / 2);
+    m_choice->on_pick = [this](size_t index) {
+        m_user_chose = true;
+        m_path = index == 0 ? MaterialPath::Ready : MaterialPath::Custom;
+        wizard_p()->on_material_path_changed();
+    };
+    append(m_choice, 0, wxEXPAND, 0);
+    append_help(_L("One material is enough. Need more? Finish this one, then use \"Add another material\" on the Summary step."));
+    m_choice->set_selected(0);
+}
 
-    form = new wxPanel(this);
-    wxGetApp().UpdateDarkUI(form);
-    auto *form_sizer = new wxBoxSizer(wxVERTICAL);
-    form->SetSizer(form_sizer);
+void PageMaterialPath::set_path(MaterialPath path, bool notify)
+{
+    m_path = path;
+    m_choice->set_selected(path == MaterialPath::Ready ? 0 : path == MaterialPath::Custom ? 1 : size_t(-1));
+    if (notify)
+        wizard_p()->on_material_path_changed();
+}
 
-    form_sizer->Add(new wxStaticText(form, wxID_ANY, _L("Start from material:")), 0, wxBOTTOM, em / 4);
-    base_choice = new wxListBox(form, wxID_ANY, wxDefaultPosition, wxSize(-1, 6 * em));
-    wxGetApp().UpdateDarkUI(base_choice);
-    set_accessible_name(base_choice, _L("Base material profile"));
-    form_sizer->Add(base_choice, 0, wxEXPAND | wxBOTTOM, em);
+void PageMaterialPath::refresh_cards(bool ready_available)
+{
+    m_ready_available = ready_available;
+    m_choice->set_available(0, ready_available,
+        _L("No vendor printer is installed or added in this run, so there are no ready-made profiles to offer."));
+    // Until the user picks one, the default follows what is possible.
+    if (!m_user_chose && m_path != MaterialPath::None)
+        set_path(ready_available ? MaterialPath::Ready : MaterialPath::Custom, false);
+    else if (m_path == MaterialPath::Ready && !ready_available)
+        set_path(MaterialPath::Custom, false);
+    Layout();
+}
+
+void PageMaterialPath::on_activate()
+{
+    const MaterialPath before = m_path;
+    refresh_cards(wizard_p()->ready_made_available());
+    refresh_queue();
+    if (before != m_path)
+        CallAfter([this]() { wizard_p()->on_material_path_changed(); });
+}
+
+void PageMaterialPath::refresh_queue()
+{
+    fill_chip_panel(this, m_queue, wizard_p()->material_queue_items(), _L("Remove queued material \"%1%\""));
+    m_queue->Layout();
+    Layout();
+    wizard_p()->hscroll->FitInside();
+}
+
+// ---- own material, step 1: basics
+
+PageMaterialBasics::PageMaterialBasics(ConfigWizard *parent)
+    : ConfigWizardPage(parent, _L("Material basics"), _L("Material basics"))
+{
+    const int em = page_em();
+    append_help(_L("Describe your resin. The name is required and must be unique. Brand, type, cost and notes are filled in from "
+                   "the starting profile (you can change it in the next step); what you type stays."));
 
     auto *grid = new wxFlexGridSizer(3, em / 2, em);
     grid->AddGrowableCol(1, 1);
     auto row = [&](const wxString &label, const wxString &accessible, wxTextCtrl *&ctrl, const wxString &unit = wxString(), long style = 0) {
-        ctrl = wizard_text(form, accessible, 0, style);
-        grid->Add(new wxStaticText(form, wxID_ANY, label + ":"), 0, wxALIGN_CENTRE_VERTICAL);
+        ctrl = wizard_text(this, accessible, 0, style);
+        grid->Add(new wxStaticText(this, wxID_ANY, label + ":"), 0, wxALIGN_CENTRE_VERTICAL);
         grid->Add(ctrl, 1, wxEXPAND);
-        grid->Add(new wxStaticText(form, wxID_ANY, unit), 0, wxALIGN_CENTRE_VERTICAL);
+        grid->Add(new wxStaticText(this, wxID_ANY, unit), 0, wxALIGN_CENTRE_VERTICAL);
     };
     row(_L("Material name"), _L("Material name"), name_input);
     row(_L("Brand"), _L("Material brand"), vendor_input);
     row(_L("Type"), _L("Material type"), type_input);
     row(_L("Bottle cost"), _L("Bottle cost"), cost_input, _L("currency"));
-    row(_L("Exposure"), _L("Required exposure"), exposure_input, _L("s"));
-    row(_L("Initial exposure"), _L("Required initial exposure"), initial_exposure_input, _L("s"));
-    row(_L("Hop height (below)"), _L("Required hop height below"), hop_below_input, _L("mm"));
-    row(_L("Hop height (above)"), _L("Required hop height above"), hop_above_input, _L("mm"));
     row(_L("Notes"), _L("Material notes"), notes_input, wxString(), wxTE_MULTILINE);
-    notes_input->SetMinSize(wxSize(-1, 3 * em));
-    form_sizer->Add(grid, 0, wxEXPAND);
-    append(form, 0, wxEXPAND, 0);
+    notes_input->SetMinSize(wxSize(-1, 4 * em));
+    append(grid, 0, wxEXPAND, 0);
 
-    name_input->ChangeValue(_L("My Resin"));
-
-    cb_create->Bind(wxEVT_CHECKBOX, [this](wxCommandEvent &) { update_form(); show_error(wxString()); });
-    base_choice->Bind(wxEVT_LISTBOX, [this](wxCommandEvent &) { load_defaults_from(base_sla_material_profile_name()); });
-    update_form();
+    prepare_next();
+    name_input->Bind(wxEVT_TEXT, [this](wxCommandEvent &event) { refresh_inline_error(); event.Skip(); });
+    cost_input->Bind(wxEVT_TEXT, [this](wxCommandEvent &event) { m_touched[2] = true; refresh_inline_error(); event.Skip(); });
+    vendor_input->Bind(wxEVT_TEXT, [this](wxCommandEvent &event) { m_touched[0] = true; event.Skip(); });
+    type_input->Bind(wxEVT_TEXT, [this](wxCommandEvent &event) { m_touched[1] = true; event.Skip(); });
+    notes_input->Bind(wxEVT_TEXT, [this](wxCommandEvent &event) { m_touched[3] = true; event.Skip(); });
 }
 
-void PageCustomMaterial::update_form()
+std::string PageMaterialBasics::name() const { return into_u8(name_input->GetValue()); }
+std::string PageMaterialBasics::vendor() const { return into_u8(vendor_input->GetValue()); }
+std::string PageMaterialBasics::type() const { return into_u8(type_input->GetValue()); }
+std::string PageMaterialBasics::notes() const { return into_u8(notes_input->GetValue()); }
+double PageMaterialBasics::cost() const { return parse_text_double(cost_input, 0.0); }
+
+void PageMaterialBasics::load_defaults(const Preset &base)
 {
-    form->Show(cb_create->GetValue());
-    Layout();
-    wizard_p()->hscroll->Layout();
-    wizard_p()->hscroll->FitInside();
+    if (auto *opt = base.config.option<ConfigOptionString>("material_vendor"); opt != nullptr && !m_touched[0])
+        vendor_input->ChangeValue(from_u8(opt->value));
+    if (auto *opt = base.config.option<ConfigOptionString>("material_type"); opt != nullptr && !m_touched[1])
+        type_input->ChangeValue(from_u8(opt->value));
+    if (auto *opt = base.config.option<ConfigOptionFloat>("bottle_cost"); opt != nullptr && !m_touched[2])
+        cost_input->ChangeValue(double_to_string(opt->value));
+    if (auto *opt = base.config.option<ConfigOptionString>("material_notes"); opt != nullptr && !m_touched[3])
+        notes_input->ChangeValue(from_u8(opt->value));
 }
 
-void PageCustomMaterial::on_activate()
+void PageMaterialBasics::prepare_next()
 {
-    // Offer the materials known at this moment as the starting point (kept selection when still present).
-    const std::string previous = base_sla_material_profile_name();
+    for (bool &touched : m_touched)
+        touched = false;
+    const std::string base = into_u8(_L("My Resin"));
+    std::string candidate = base;
+    const auto *materials = &wxGetApp().preset_bundle->sla_materials;
+    const std::set<std::string> queued = wizard_p()->queued_material_names();
+    std::set<std::string> printers = wizard_p()->queued_custom_names();
+    for (unsigned suffix = 2; suffix < 1000 && (materials->find_preset(candidate, false) != nullptr || queued.count(candidate) || printers.count(candidate)); ++suffix)
+        candidate = base + " " + std::to_string(suffix);
+    name_input->ChangeValue(from_u8(candidate));
+}
+
+void PageMaterialBasics::on_activate()
+{
+    if (wizard_p()->page_material_base)
+        wizard_p()->page_material_base->ensure_built();
+    refresh_inline_error();
+}
+
+void PageMaterialBasics::refresh_inline_error()
+{
+    show_error(validate());
+}
+
+wxString PageMaterialBasics::validate()
+{
+    std::string name = this->name();
+    boost::trim(name);
+    if (name.empty())
+        return _L("Enter a name for the material profile.");
+    auto *p = wizard_p();
+    if (p->queued_material_names().count(name) != 0 || wxGetApp().preset_bundle->sla_materials.find_preset(name, false) != nullptr)
+        return format_wxstr(_L("A material profile named \"%1%\" already exists. Choose another name."), from_u8(name));
+    // A new custom printer gets a material of its own name; an own material must not take that name.
+    std::set<std::string> printer_names = p->queued_custom_names();
+    if (p->path() == WizardPath::Custom && p->page_custom)
+        printer_names.insert(p->page_custom->profile_name());
+    if (printer_names.count(name) != 0)
+        return format_wxstr(_L("The name \"%1%\" is used by the material that is created for the printer of the same name. Choose another name."), from_u8(name));
+    if (!text_is_number(cost_input, 0., 1e7))
+        return _L("Bottle cost: enter a number (0 or more).");
+    return wxString();
+}
+
+// ---- own material, step 2: printers and base profile
+
+PageMaterialBase::PageMaterialBase(ConfigWizard *parent)
+    : ConfigWizardPage(parent, _L("Printer and base"), _L("Printer and base"))
+{
+    const int em = page_em();
+    append_heading(_L("Which printers is it for?"));
+    append_help(_L("The material shows up in the material list of the printers you tick. Printers added in this run are marked \"new\"."));
+    m_targets = new wxPanel(this);
+    wxGetApp().UpdateDarkUI(m_targets);
+    m_targets->SetSizer(new wxBoxSizer(wxVERTICAL));
+    append(m_targets, 0, wxEXPAND, 0);
+
+    append_spacer(em);
+    append_heading(_L("Start from"));
+    append_help(_L("Your material is a copy of this profile: exposure and the other resin settings start from its values, "
+                   "and you change what differs. Pick the resin closest to yours."));
+    base_choice = new wxListBox(this, wxID_ANY, wxDefaultPosition, wxSize(-1, 8 * em));
+    wxGetApp().UpdateDarkUI(base_choice);
+    set_accessible_name(base_choice, _L("Base material profile"));
+    append(base_choice, 0, wxEXPAND, 0);
+    base_choice->Bind(wxEVT_LISTBOX, [this](wxCommandEvent &) {
+        show_error(wxString());
+        wizard_p()->load_material_defaults(base_name());
+    });
+}
+
+bool PageMaterialBase::is_checked(const WizardMaterialTarget &target, const std::vector<WizardMaterialTarget> &all) const
+{
+    const auto known = m_state.find(target.name);
+    if (known != m_state.end())
+        return known->second;
+    // Default: the printers added in this run; otherwise the active printer; otherwise all of them.
+    if (std::any_of(all.begin(), all.end(), [](const WizardMaterialTarget &t) { return t.is_new; }))
+        return target.is_new;
+    const std::string &active = wxGetApp().preset_bundle->printers.get_selected_preset_name();
+    if (std::any_of(all.begin(), all.end(), [&active](const WizardMaterialTarget &t) { return t.name == active; }))
+        return target.name == active;
+    return true;
+}
+
+std::vector<std::string> PageMaterialBase::selected_targets() const
+{
+    const std::vector<WizardMaterialTarget> all = wizard_p()->material_targets();
+    std::vector<std::string> names;
+    for (const WizardMaterialTarget &target : all)
+        if (is_checked(target, all))
+            names.push_back(target.name);
+    return names;
+}
+
+void PageMaterialBase::reset_targets()
+{
+    m_state.clear();
+}
+
+std::string PageMaterialBase::base_name() const
+{
+    const int selection = base_choice->GetSelection();
+    return selection < 0 || size_t(selection) >= base_names.size() ? std::string() : base_names[size_t(selection)];
+}
+
+void PageMaterialBase::rebuild()
+{
+    auto *p = wizard_p();
+    const int em = page_em();
+    wxWindowUpdateLocker freeze(this);
+
+    const std::vector<WizardMaterialTarget> targets = p->material_targets();
+    wxSizer *sizer = m_targets->GetSizer();
+    sizer->Clear(true);
+    if (targets.empty()) {
+        auto *note = new wxStaticText(m_targets, wxID_ANY, _L("No printer is available yet. Go back to step 1 and choose \"A printer and a material\"."));
+        note->Wrap(wrap_width());
+        sizer->Add(note, 0, wxBOTTOM, em / 2);
+    }
+    for (const WizardMaterialTarget &target : targets) {
+        auto *box = new wxCheckBox(m_targets, wxID_ANY, target.label);
+        wxGetApp().UpdateDarkUI(box);
+        box->SetValue(is_checked(target, targets));
+        m_state[target.name] = box->GetValue();
+        set_accessible_name(box, target.label, wxString(), AccessibleRole::CheckBox);
+        box->Bind(wxEVT_CHECKBOX, [this, name = target.name, box](wxCommandEvent &) {
+            m_state[name] = box->GetValue();
+            show_error(wxString());
+        });
+        sizer->Add(box, 0, wxBOTTOM, em / 4);
+    }
+
+    // Starting points: the materials ticked in this run first, then everything installed.
+    const std::string previous = base_name();
     base_names.clear();
     base_choice->Clear();
     auto add_name = [this](const std::string &name) {
         if (std::find(base_names.begin(), base_names.end(), name) == base_names.end()) {
             base_names.emplace_back(name);
-            base_choice->Append(from_u8(name));
+            base_choice->Append(base_profile_label(name));
         }
     };
-    // Materials ticked on the previous step come first (vendor path), then everything already installed.
-    auto *wiz = wizard_p();
-    if (wiz->vendor_active() && wiz->appconfig_new.has_section(AppConfig::SECTION_MATERIALS))
-        for (const auto &kv : wiz->appconfig_new.get_section(AppConfig::SECTION_MATERIALS))
+    if (p->vendor_active() && p->appconfig_new.has_section(AppConfig::SECTION_MATERIALS))
+        for (const auto &kv : p->appconfig_new.get_section(AppConfig::SECTION_MATERIALS))
             if (kv.second == "1")
                 add_name(kv.first);
-    for (const Preset& preset : wxGetApp().preset_bundle->sla_materials) {
+    // The material in use now is the natural starting point of a new one.
+    if (const Preset &active = wxGetApp().preset_bundle->sla_materials.get_selected_preset(); !active.is_default && active.is_visible)
+        add_name(active.name);
+    for (const Preset &preset : wxGetApp().preset_bundle->sla_materials) {
         if (!preset.is_visible && !preset.is_default)
             continue;
         add_name(preset.name);
     }
-    if (base_names.empty()) {
-        const Preset &preset = wxGetApp().preset_bundle->sla_materials.default_preset();
-        base_names.emplace_back(preset.name);
-        base_choice->Append(from_u8(preset.name));
-    }
-    auto found = std::find(base_names.begin(), base_names.end(), previous);
+    if (base_names.empty())
+        add_name(wxGetApp().preset_bundle->sla_materials.default_preset().name);
+    const auto found = std::find(base_names.begin(), base_names.end(), previous);
     base_choice->SetSelection(found == base_names.end() ? 0 : int(found - base_names.begin()));
     if (found == base_names.end())
-        load_defaults_from(base_sla_material_profile_name());
+        p->load_material_defaults(base_name());
+
+    m_built = true;
+    m_targets->Layout();
+    Layout();
+    p->hscroll->FitInside();
 }
 
-void PageCustomMaterial::load_defaults_from(const std::string &base_name)
+wxString PageMaterialBase::validate()
 {
-    const Preset *preset = base_name.empty() ? nullptr : wxGetApp().preset_bundle->sla_materials.find_preset(base_name, false);
-    // A material ticked in this wizard run is not installed yet: read it from the wizard's own bundles.
-    if (preset == nullptr && !base_name.empty())
-        for (const auto &bundle : wizard_p()->bundles)
-            if ((preset = bundle.second.preset_bundle->sla_materials.find_preset(base_name, false)) != nullptr)
-                break;
-    if (preset == nullptr)
-        preset = wxGetApp().preset_bundle->sla_materials.find_preset(base_name, true);
-    if (preset == nullptr)
-        return;
-    if (auto *opt = preset->config.option<ConfigOptionString>("material_vendor"); opt != nullptr)
-        vendor_input->ChangeValue(from_u8(opt->value));
-    if (auto *opt = preset->config.option<ConfigOptionString>("material_type"); opt != nullptr)
-        type_input->ChangeValue(from_u8(opt->value));
-    if (auto *opt = preset->config.option<ConfigOptionFloat>("bottle_cost"); opt != nullptr)
-        cost_input->ChangeValue(double_to_string(opt->value));
-    if (auto *opt = preset->config.option<ConfigOptionFloat>("exposure_time"); opt != nullptr)
+    if (wizard_p()->material_targets().empty())
+        return _L("Add a printer first: a material belongs to a printer.");
+    if (selected_targets().empty())
+        return _L("Tick at least one printer this material is for.");
+    return wxString();
+}
+
+// ---- own material, step 3: exposure
+
+PageMaterialExposure::PageMaterialExposure(ConfigWizard *parent)
+    : ConfigWizardPage(parent, _L("Exposure"), _L("Exposure"))
+{
+    const int em = page_em();
+    append_help(_L("How long each layer is exposed, and how far the platform lifts between layers. The values come from the base profile; "
+                   "if you are unsure keep them and fine-tune later in the material settings."));
+
+    auto *grid = new wxFlexGridSizer(3, em / 2, em);
+    grid->AddGrowableCol(1, 1);
+    auto row = [&](const wxString &label, const wxString &accessible, wxTextCtrl *&ctrl, const wxString &unit) {
+        ctrl = wizard_text(this, accessible);
+        grid->Add(new wxStaticText(this, wxID_ANY, label + ":"), 0, wxALIGN_CENTRE_VERTICAL);
+        grid->Add(ctrl, 1, wxEXPAND);
+        grid->Add(new wxStaticText(this, wxID_ANY, unit), 0, wxALIGN_CENTRE_VERTICAL);
+    };
+    append_heading(_L("Exposure times"));
+    row(_L("Exposure"), _L("Required exposure"), exposure_input, _L("s"));
+    row(_L("Initial exposure"), _L("Required initial exposure"), initial_exposure_input, _L("s"));
+    append(grid, 0, wxEXPAND, 0);
+    append_help(_L("Initial exposure is used for the first layers that stick to the platform; it is longer than the normal exposure."));
+
+    append_spacer(em / 2);
+    append_heading(_L("Platform lift"));
+    grid = new wxFlexGridSizer(3, em / 2, em);
+    grid->AddGrowableCol(1, 1);
+    row(_L("Hop height (below)"), _L("Required hop height below"), hop_below_input, _L("mm"));
+    row(_L("Hop height (above)"), _L("Required hop height above"), hop_above_input, _L("mm"));
+    append(grid, 0, wxEXPAND, 0);
+
+    for (wxTextCtrl *ctrl : { exposure_input, initial_exposure_input, hop_below_input, hop_above_input })
+        ctrl->Bind(wxEVT_TEXT, [this](wxCommandEvent &event) { refresh_inline_error(); event.Skip(); });
+}
+
+double PageMaterialExposure::exposure() const { return parse_text_double(exposure_input, 2.0); }
+double PageMaterialExposure::initial_exposure() const { return parse_text_double(initial_exposure_input, 20.0); }
+double PageMaterialExposure::hop_below() const { return parse_text_double(hop_below_input, 5.0); }
+double PageMaterialExposure::hop_above() const { return parse_text_double(hop_above_input, 5.0); }
+
+void PageMaterialExposure::load_defaults(const Preset &base)
+{
+    if (auto *opt = base.config.option<ConfigOptionFloat>("exposure_time"); opt != nullptr)
         exposure_input->ChangeValue(double_to_string(opt->value));
-    if (auto *opt = preset->config.option<ConfigOptionFloat>("initial_exposure_time"); opt != nullptr)
+    if (auto *opt = base.config.option<ConfigOptionFloat>("initial_exposure_time"); opt != nullptr)
         initial_exposure_input->ChangeValue(double_to_string(opt->value));
-    if (auto *opt = preset->config.option<ConfigOptionFloats>("tower_hop_height"); opt != nullptr) {
+    if (auto *opt = base.config.option<ConfigOptionFloats>("tower_hop_height"); opt != nullptr) {
         if (!opt->values.empty())
             hop_below_input->ChangeValue(double_to_string(opt->values[0]));
         if (opt->values.size() > 1)
             hop_above_input->ChangeValue(double_to_string(opt->values[1]));
     }
-    if (auto *opt = preset->config.option<ConfigOptionString>("material_notes"); opt != nullptr)
-        notes_input->ChangeValue(from_u8(opt->value));
+    refresh_inline_error();
 }
 
-wxString PageCustomMaterial::validate()
+void PageMaterialExposure::on_activate()
 {
-    if (!custom_material_profile_enabled())
-        return wxString();
-    std::string name = custom_material_profile_name();
-    boost::trim(name);
-    if (name.empty())
-        return _L("Enter a name for the material profile (or turn the option off).");
-    // The material named like a (queued or current) custom printer is the one created for that printer.
-    std::set<std::string> printer_names = wizard_p()->queued_custom_names();
-    if (wizard_p()->path() == WizardPath::Custom && wizard_p()->page_custom)
-        printer_names.insert(wizard_p()->page_custom->profile_name());
-    if (printer_names.count(name) == 0 && wxGetApp().preset_bundle->sla_materials.find_preset(name, false) != nullptr)
-        return format_wxstr(_L("A material profile named \"%1%\" already exists. Choose another name."), from_u8(name));
+    if (wizard_p()->page_material_base)
+        wizard_p()->page_material_base->ensure_built();
+    refresh_inline_error();
+}
+
+void PageMaterialExposure::refresh_inline_error()
+{
+    show_error(validate());
+}
+
+wxString PageMaterialExposure::validate()
+{
     if (!text_is_number(exposure_input, 0.1, 1000.))
         return _L("Exposure: enter a number of seconds between 0.1 and 1000.");
     if (!text_is_number(initial_exposure_input, 0.1, 10000.))
         return _L("Initial exposure: enter a number of seconds between 0.1 and 10000.");
-    if (!text_is_number(cost_input, 0., 1e7))
-        return _L("Bottle cost: enter a number (0 or more).");
     if (!text_is_number(hop_below_input, 0., 1000.) || !text_is_number(hop_above_input, 0., 1000.))
         return _L("Hop height: enter a number of millimetres (0 or more).");
     return wxString();
 }
-
-std::string PageCustomMaterial::base_sla_material_profile_name() const
-{
-    if (base_choice == nullptr)
-        return {};
-    const int selection = base_choice->GetSelection();
-    if (selection < 0 || size_t(selection) >= base_names.size())
-        return {};
-    return base_names[size_t(selection)];
-}
-
-std::string PageCustomMaterial::custom_material_profile_name() const { return into_u8(name_input->GetValue()); }
-std::string PageCustomMaterial::custom_material_vendor() const { return into_u8(vendor_input->GetValue()); }
-std::string PageCustomMaterial::custom_material_type() const { return into_u8(type_input->GetValue()); }
-std::string PageCustomMaterial::custom_material_notes() const { return into_u8(notes_input->GetValue()); }
-double PageCustomMaterial::custom_material_cost() const { return parse_text_double(cost_input, 0.0); }
-double PageCustomMaterial::custom_material_hop_below() const { return parse_text_double(hop_below_input, 5.0); }
-double PageCustomMaterial::custom_material_hop_above() const { return parse_text_double(hop_above_input, 5.0); }
-double PageCustomMaterial::custom_material_exposure_time() const { return parse_text_double(exposure_input, 2.0); }
-double PageCustomMaterial::custom_material_initial_exposure_time() const { return parse_text_double(initial_exposure_input, 20.0); }
 
 // ============================================================================
 // Optional: preferences
@@ -2297,31 +2547,49 @@ void PageSummary::rebuild()
         sizer->Add(label, 0, wxEXPAND | wxLEFT | wxBOTTOM, em);
     };
 
-    // A line with an optional "Remove" button (queued items only).
-    auto removable_line = [&](const wxString &text, const std::function<void()> &remove) {
+    // A line with a "Remove" button: everything this run adds can be taken out again right here.
+    auto removable_line = [&](const wxString &text, const wxString &hint_format, const std::function<void()> &remove) {
         auto *row = new wxBoxSizer(wxHORIZONTAL);
         auto *label = new wxStaticText(holder, wxID_ANY, wxString::FromUTF8("\xE2\x80\xA2 ") + text);
         label->Wrap(wrap_width() - 12 * em);
         row->Add(label, 1, wxALIGN_CENTER_VERTICAL | wxRIGHT, em / 2);
         auto *button = new wxButton(holder, wxID_ANY, _L("Remove"), wxDefaultPosition, wxDefaultSize, wxBU_EXACTFIT);
         wxGetApp().UpdateDarkUI(button);
-        const wxString hint = format_wxstr(_L("Remove queued printer \"%1%\""), text);
+        const wxString hint = format_wxstr(hint_format, text);
         button->SetToolTip(hint);
         set_accessible_name(button, hint);
         button->Bind(wxEVT_BUTTON, [this, remove](wxCommandEvent &) { CallAfter(remove); });
         row->Add(button, 0, wxALIGN_CENTER_VERTICAL);
         sizer->Add(row, 0, wxEXPAND | wxLEFT | wxBOTTOM, em);
     };
+    // An action button with a one-line explanation (next to it, or below it on a narrow page).
+    auto action = [&](const wxString &label, const wxString &hint, const wxString &note, const std::function<void()> &run) {
+        const bool narrow = wrap_width() < 40 * em;
+        auto *row = new wxBoxSizer(narrow ? wxVERTICAL : wxHORIZONTAL);
+        auto *button = new wxButton(holder, wxID_ANY, label);
+        wxGetApp().UpdateDarkUI(button);
+        button->SetToolTip(hint);
+        set_accessible_name(button, label, hint);
+        button->Bind(wxEVT_BUTTON, [this, run](wxCommandEvent &) { CallAfter(run); });
+        row->Add(button, 0, narrow ? wxBOTTOM : (wxALIGN_CENTER_VERTICAL | wxRIGHT), narrow ? em / 2 : em);
+        auto *text = new wxStaticText(holder, wxID_ANY, note);
+        text->SetForegroundColour(wizard_muted_colour());
+        text->Wrap(narrow ? wrap_width() - 2 * em : wrap_width() - 24 * em);
+        row->Add(text, 1, narrow ? 0 : wxALIGN_CENTER_VERTICAL);
+        sizer->Add(row, 0, wxEXPAND | wxLEFT | wxTOP | wxBOTTOM, em);
+    };
+    const wxString remove_printer = _L("Remove queued printer \"%1%\"");
+    const wxString remove_material = _L("Remove material \"%1%\"");
 
-    const std::vector<WizardQueueItem> queued = p->queue_items();
-    const bool multiple = !queued.empty();
-    heading(multiple ? _L("Printers") : _L("Printer"));
-    bool any_printer = false;
-    if (p->vendor_active()) {
-        if (p->vendor_queued) {
-            // One line per model so that a new one can be taken out of the queue.
+    // ------------------------------------------------------------------ Printers
+    heading(_L("Printers"));
+    if (!p->goal_printer()) {
+        line(_L("No printer is added. Your installed printers stay as they are."));
+    } else {
+        bool any_printer = false;
+        if (p->vendor_active()) {
+            // One line per model; a model that is new in this run can be taken out here.
             const auto &installed = wxGetApp().app_config->vendors();
-            size_t queued_index = 0;
             for (PagePrinters *page : p->pages_msla)
                 for (const PagePrinters::TickedModel &model : page->ticked_models()) {
                     any_printer = true;
@@ -2331,93 +2599,84 @@ void PageSummary::rebuild()
                     const wxString text = from_u8(page->vendor_profile ? page->vendor_profile->name : std::string()) + ": " + from_u8(model.label);
                     if (known)
                         line(text);
-                    else if (queued_index < queued.size())
-                        removable_line(text, queued[queued_index++].remove);
+                    else
+                        removable_line(text, remove_printer, [p, page, model]() {
+                            page->untick_model(model);
+                            // The tick reaches appconfig_new through a pending event; re-evaluate after it.
+                            p->q->CallAfter([p]() { p->queue_changed(); });
+                        });
                 }
-        } else {
-            for (PagePrinters *page : p->pages_msla) {
-                const std::vector<std::string> names = page->selected_model_names();
-                if (names.empty())
-                    continue;
-                any_printer = true;
-                wxString joined;
-                for (const std::string &name : names)
-                    joined += (joined.IsEmpty() ? "" : ", ") + from_u8(name);
-                line(from_u8(page->vendor_profile ? page->vendor_profile->name : std::string()) + ": " + joined);
-            }
         }
-    }
-    // Library profiles and custom printers queued earlier (the vendor models above come first in `queued`).
-    {
-        const size_t first = queued.size() - p->queue.size();
+        // Library profiles and custom printers queued earlier.
         for (size_t i = 0; i < p->queue.size(); ++i) {
             const auto &item = p->queue[i];
             any_printer = true;
+            const auto remove = [p, i]() {
+                if (i < p->queue.size())
+                    p->queue.erase(p->queue.begin() + i);
+                p->queue_changed();
+            };
             if (item.kind == WizardQueuedPrinter::Kind::Library)
-                removable_line(format_wxstr(_L("Library profile \"%1%\" is saved as a new printer profile."), from_u8(item.name)), queued[first + i].remove);
+                removable_line(format_wxstr(_L("Library profile \"%1%\" is saved as a new printer profile."), from_u8(item.name)), remove_printer, remove);
             else
                 removable_line(format_wxstr(_L("New custom printer \"%1%\" (%2%), based on \"%3%\"."), from_u8(item.name), from_u8(item.detail), base_profile_label(item.base_name)),
-                               queued[first + i].remove);
+                               remove_printer, remove);
         }
-    }
-    switch (p->path()) {
-    case WizardPath::Vendor:
-        if (!any_printer)
-            line(_L("No new vendor printer. Your existing printers are kept."));
-        break;
-    case WizardPath::Library:
-        if (p->page_profile_printers && p->page_profile_printers->any_selected()) {
-            any_printer = true;
-            line(format_wxstr(_L("Library profile \"%1%\" is saved as a new printer profile and activated."),
-                              from_u8(p->page_profile_printers->get_selected_profile_name())));
-        } else if (!any_printer)
-            line(_L("No library profile selected yet."));
-        break;
-    case WizardPath::Custom:
-        if (p->page_custom && p->page_bvolume) {
-            any_printer = true;
-            line(format_wxstr(_L("New custom printer \"%1%\", based on \"%2%\"."), from_u8(p->page_custom->profile_name()),
-                              base_profile_label(p->page_custom->sample_sla_profile_name())));
-            const auto *bv = p->page_bvolume;
-            line(format_wxstr(_L("Display %1% x %2% mm, %3% x %4% px, %5%; build height %6% mm."),
-                              bv->display_width->GetValue(), bv->display_height->GetValue(),
-                              bv->display_pixels_x->GetValue(), bv->display_pixels_y->GetValue(),
-                              bv->display_orientation->GetSelection() == 0 ? _L("landscape") : _L("portrait"),
-                              bv->build_volume->GetValue()));
-            wxString extras;
-            if (bv->display_mirror_x->GetValue()) extras += _L("mirrored horizontally") + "; ";
-            if (bv->display_mirror_y->GetValue()) extras += _L("mirrored vertically") + "; ";
-            extras += bv->use_tilt->GetValue() ? _L("tilt function on") : _L("tilt function off");
-            line(extras);
+        // The printer being edited on the current path.
+        switch (p->path()) {
+        case WizardPath::Vendor:
+            if (!any_printer)
+                line(_L("No new vendor printer. Your existing printers are kept."));
+            break;
+        case WizardPath::Library:
+            if (p->page_profile_printers && p->page_profile_printers->any_selected()) {
+                any_printer = true;
+                removable_line(format_wxstr(_L("Library profile \"%1%\" is saved as a new printer profile and activated."),
+                                            from_u8(p->page_profile_printers->get_selected_profile_name())), remove_printer, [p]() {
+                    p->page_profile_printers->clear_selection();
+                    p->page_path->set_path(WizardPath::None, false);
+                    p->queue_changed();
+                });
+            } else if (!any_printer)
+                line(_L("No library profile selected yet."));
+            break;
+        case WizardPath::Custom:
+            if (p->page_custom && p->page_bvolume) {
+                any_printer = true;
+                removable_line(format_wxstr(_L("New custom printer \"%1%\", based on \"%2%\"."), from_u8(p->page_custom->profile_name()),
+                                            base_profile_label(p->page_custom->sample_sla_profile_name())), remove_printer, [p]() {
+                    p->page_path->set_path(WizardPath::None, false);
+                    p->queue_changed();
+                });
+                const auto *bv = p->page_bvolume;
+                line(format_wxstr(_L("Display %1% x %2% mm, %3% x %4% px, %5%; build height %6% mm."),
+                                  bv->display_width->GetValue(), bv->display_height->GetValue(),
+                                  bv->display_pixels_x->GetValue(), bv->display_pixels_y->GetValue(),
+                                  bv->display_orientation->GetSelection() == 0 ? _L("landscape") : _L("portrait"),
+                                  bv->build_volume->GetValue()));
+                wxString extras;
+                if (bv->display_mirror_x->GetValue()) extras += _L("mirrored horizontally") + "; ";
+                if (bv->display_mirror_y->GetValue()) extras += _L("mirrored vertically") + "; ";
+                extras += bv->use_tilt->GetValue() ? _L("tilt function on") : _L("tilt function off");
+                line(extras);
+            }
+            break;
+        case WizardPath::None:
+            if (!any_printer)
+                line(_L("No printer chosen yet."));
+            break;
         }
-        break;
-    case WizardPath::None:
-        if (!any_printer)
-            line(_L("No printer chosen yet."));
-        break;
+        // Optional: more printers in this run. Nothing is required here; Finish works without it.
+        action(_L("Add another printer"),
+               _L("Optional: keep what you chose so far and add one more printer in this run. Nothing is installed before Finish."),
+               _L("Optional - only if you have more than one printer."), [p]() { p->add_another_printer(); });
     }
 
-    // Optional: more printers in this run. Nothing is required here; Finish works without it.
-    {
-        const bool narrow = wrap_width() < 40 * em;
-        auto *row = new wxBoxSizer(narrow ? wxVERTICAL : wxHORIZONTAL);
-        auto *add = new wxButton(holder, wxID_ANY, _L("Add another printer"));
-        wxGetApp().UpdateDarkUI(add);
-        const wxString hint = _L("Optional: keep what you chose so far and add one more printer in this run. Nothing is installed before Finish.");
-        add->SetToolTip(hint);
-        set_accessible_name(add, _L("Add another printer"), hint);
-        add->Bind(wxEVT_BUTTON, [this, p](wxCommandEvent &) { CallAfter([p]() { p->add_another_printer(); }); });
-        row->Add(add, 0, narrow ? wxBOTTOM : (wxALIGN_CENTER_VERTICAL | wxRIGHT), narrow ? em / 2 : em);
-        auto *note = new wxStaticText(holder, wxID_ANY, _L("Optional - only if you have more than one printer."));
-        note->SetForegroundColour(wizard_muted_colour());
-        note->Wrap(narrow ? wrap_width() - 2 * em : wrap_width() - 24 * em);
-        row->Add(note, 1, narrow ? 0 : wxALIGN_CENTER_VERTICAL);
-        sizer->Add(row, 0, wxEXPAND | wxLEFT | wxTOP | wxBOTTOM, em);
-    }
-
+    // ------------------------------------------------------------------ Materials
+    heading(_L("Materials"));
     const bool custom_in_play = p->path() == WizardPath::Custom || p->queue_has(WizardQueuedPrinter::Kind::Custom);
-    if (p->vendor_active() || custom_in_play) {
-        heading(_L("Materials"));
+    if (!p->goal_material()) {
+        // "A printer" alone: a vendor printer brings its default materials, a custom printer one named like itself.
         if (p->vendor_active()) {
             std::vector<std::string> names;
             if (p->appconfig_new.has_section(AppConfig::SECTION_MATERIALS))
@@ -2435,7 +2694,7 @@ void PageSummary::rebuild()
                 }
                 if (names.size() > 6)
                     joined += format_wxstr(_L(" and %1% more"), names.size() - 6);
-                line(format_wxstr(_L("%1% material profile(s): %2%"), names.size(), joined));
+                line(format_wxstr(_L("Default materials of the vendor printer are installed with it: %1% profile(s): %2%"), names.size(), joined));
             }
         }
         if (custom_in_play) {
@@ -2446,17 +2705,71 @@ void PageSummary::rebuild()
                 printers += (printers.IsEmpty() ? "" : ", ") + from_u8(p->page_custom->profile_name());
             line(format_wxstr(_L("Material profile \"%1%\" is created with the defaults of the new printer."), printers));
         }
-        if (p->page_custom_material && p->custom_material_step_active() && p->page_custom_material->custom_material_profile_enabled())
-            line(format_wxstr(_L("New custom material \"%1%\" (exposure %2% s, initial exposure %3% s) becomes the active material."),
-                              from_u8(p->page_custom_material->custom_material_profile_name()),
-                              double_to_string(p->page_custom_material->custom_material_exposure_time()),
-                              double_to_string(p->page_custom_material->custom_material_initial_exposure_time())));
-        else
-            line(_L("No custom material is created."));
+        if (!p->vendor_active() && !custom_in_play)
+            line(_L("No materials are added."));
+    } else {
+        bool any_material = false;
+        // Ready-made profiles (and the default materials of a vendor printer added in this run), each one removable.
+        const std::vector<std::string> ready = p->new_ticked_materials(!p->vendor_active());
+        size_t shown = 0;
+        for (const std::string &name : ready) {
+            any_material = true;
+            if (shown++ >= 8)
+                continue;
+            removable_line(format_wxstr(_L("Ready-made profile \"%1%\"."), from_u8(name)), remove_material, [p, name]() {
+                p->appconfig_new.erase(AppConfig::SECTION_MATERIALS, name);
+                p->invalidate_materials();
+                p->page_summary->rebuild();
+            });
+        }
+        if (ready.size() > 8)
+            removable_line(format_wxstr(_L("%1% more ready-made profiles."), ready.size() - 8), remove_material, [p, ready]() {
+                for (size_t i = 8; i < ready.size(); ++i)
+                    p->appconfig_new.erase(AppConfig::SECTION_MATERIALS, ready[i]);
+                p->invalidate_materials();
+                p->page_summary->rebuild();
+            });
+        if (custom_in_play) {
+            any_material = true;
+            wxString printers;
+            for (const std::string &name : p->queued_custom_names())
+                printers += (printers.IsEmpty() ? "" : ", ") + from_u8(name);
+            if (p->path() == WizardPath::Custom && p->page_custom)
+                printers += (printers.IsEmpty() ? "" : ", ") + from_u8(p->page_custom->profile_name());
+            line(format_wxstr(_L("Material profile \"%1%\" is created with the defaults of the new printer."), printers));
+        }
+        auto describe = [](const WizardQueuedMaterial &item) {
+            wxString printers;
+            for (const std::string &name : item.targets)
+                printers += (printers.IsEmpty() ? "" : ", ") + from_u8(name);
+            return format_wxstr(_L("New material \"%1%\": exposure %2% s, initial exposure %3% s, for %4%."), from_u8(item.name),
+                                double_to_string(item.exposure), double_to_string(item.initial_exposure), printers);
+        };
+        for (size_t i = 0; i < p->material_queue.size(); ++i) {
+            any_material = true;
+            removable_line(describe(p->material_queue[i]), remove_material, [p, i]() {
+                if (i < p->material_queue.size())
+                    p->material_queue.erase(p->material_queue.begin() + i);
+                p->material_queue_changed();
+            });
+        }
+        if (p->material_path() == MaterialPath::Custom && p->page_material_basics) {
+            any_material = true;
+            removable_line(describe(p->make_material_entry()), remove_material, [p]() {
+                p->page_material_path->set_path(MaterialPath::None, false);
+                p->material_queue_changed();
+            });
+        }
+        if (!any_material)
+            line(_L("No new material."));
+        action(_L("Add another material"),
+               _L("Optional: keep what you chose so far and add one more material in this run. Nothing is created before Finish."),
+               _L("Optional - only if you want more than one material."), [p]() { p->add_another_material(); });
     }
 
-    heading(_L("Preferences"));
-    if (p->page_preferences) {
+    // ------------------------------------------------------------------ Preferences
+    if (p->page_preferences && p->goal() != WizardGoal::Material) {
+        heading(_L("Preferences"));
         line(p->page_preferences->use_inches() ? _L("Object sizes in inches.") : _L("Object sizes in millimetres."));
         line(p->page_preferences->full_pathnames() ? _L("Model file paths are stored in 3MF files.") : _L("Model file paths are not stored."));
     }
@@ -3181,36 +3494,55 @@ void ConfigWizard::priv::load_pages()
     ConfigWizardPage *keep = index->active_page();
     index->clear();
 
-    // Step 1 is always the same question; the following steps depend on the chosen path.
-    if (page_path)
-        index->add_page(page_path);
+    // Step 1 is always the same question: what to set up. The branches below follow the answer.
+    if (page_goal)
+        index->add_page(page_goal);
 
-    switch (path()) {
-    case WizardPath::Vendor:
-        for (const auto page : pages_msla)
-            if (page != nullptr && !is_prusa_printer_page(page))
-                index->add_page(page);
-        break;
-    case WizardPath::Library:
-        if (page_profile_printers)
-            index->add_page(page_profile_printers);
-        break;
-    case WizardPath::Custom:
-        if (page_custom)
-            index->add_page(page_custom);
-        if (page_bvolume)
-            index->add_page(page_bvolume);
-        break;
-    case WizardPath::None:
-        break;
+    if (goal_printer()) {
+        if (page_path)
+            index->add_page(page_path);
+        switch (path()) {
+        case WizardPath::Vendor:
+            for (const auto page : pages_msla)
+                if (page != nullptr && !is_prusa_printer_page(page))
+                    index->add_page(page);
+            break;
+        case WizardPath::Library:
+            if (page_profile_printers)
+                index->add_page(page_profile_printers);
+            break;
+        case WizardPath::Custom:
+            if (page_custom)
+                index->add_page(page_custom);
+            if (page_bvolume)
+                index->add_page(page_bvolume);
+            break;
+        case WizardPath::None:
+            break;
+        }
     }
-    // Materials follow the vendor printers that are going to be installed (current choice or queued earlier).
-    if (page_sla_materials && (path() == WizardPath::Vendor || (vendor_queued && any_sla_selected)))
-        index->add_page(page_sla_materials);
-    if (page_custom_material && custom_material_step_active())
-        index->add_page(page_custom_material);
+    if (goal_material() && page_material_path) {
+        index->add_page(page_material_path);
+        switch (material_path()) {
+        case MaterialPath::Ready:
+            if (page_sla_materials)
+                index->add_page(page_sla_materials);
+            break;
+        case MaterialPath::Custom:
+            if (page_material_basics)
+                index->add_page(page_material_basics);
+            if (page_material_base)
+                index->add_page(page_material_base);
+            if (page_material_exposure)
+                index->add_page(page_material_exposure);
+            break;
+        case MaterialPath::None:
+            break;
+        }
+    }
 
-    if (page_preferences)
+    // Application preferences belong to setting up a printer; a run that only adds a material skips them.
+    if (page_preferences && goal() != WizardGoal::Material)
         index->add_page(page_preferences);
 #ifdef _WIN32
     if (page_files_association)
@@ -3224,29 +3556,268 @@ void ConfigWizard::priv::load_pages()
     // Keep the user where they are when the page still exists in the new path.
     if (keep != nullptr)
         index->go_to(keep);
-    if (index->active_page() == nullptr && page_path)
-        index->go_to(page_path);
+    if (index->active_page() == nullptr && page_goal)
+        index->go_to(page_goal);
 
     q->Layout();
 // This Refresh() is needed to avoid ugly artifacts after printer selection, when no one vendor was selected from the very beginnig
     q->Refresh();
 }
 
-bool ConfigWizard::priv::queue_has(QueuedPrinter::Kind kind) const
+const std::vector<WizardQueuedPrinter>& ConfigWizard::priv::printer_queue() const
 {
-    return std::any_of(queue.begin(), queue.end(), [kind](const QueuedPrinter &item) { return item.kind == kind; });
+    static const std::vector<QueuedPrinter> none;
+    return goal_printer() ? queue : none;
 }
 
-bool ConfigWizard::priv::custom_material_step_active() const
+void ConfigWizard::priv::refresh_sla_selected()
 {
-    return path() == WizardPath::Vendor || path() == WizardPath::Custom || queue_has(QueuedPrinter::Kind::Custom) ||
-           (vendor_queued && any_sla_selected);
+    any_sla_selected = (vendor_active() || goal_material()) && check_sla_selected();
+}
+
+bool ConfigWizard::priv::vendor_printer_counts(const std::string &vendor_id, const Preset &printer) const
+{
+    const std::string &model = printer.config.opt_string("printer_model");
+    const std::string &variant = printer.config.opt_string("printer_variant");
+    if (model.empty() || variant.empty())
+        return false;
+    // Ticks count only while a vendor printer is being installed by this run; otherwise what is installed counts.
+    const AppConfig &config = vendor_active() ? appconfig_new : *wxGetApp().app_config;
+    return config.get_variant(vendor_id, model, variant);
+}
+
+bool ConfigWizard::priv::ready_made_available() const
+{
+    for (const auto &[vendor_id, bundle] : bundles)
+        for (const Preset &printer : bundle.preset_bundle->printers) {
+            if (printer.printer_technology() != ptSLA || !vendor_printer_counts(vendor_id, printer))
+                continue;
+            for (const Preset &material : bundle.preset_bundle->sla_materials)
+                if (is_compatible_with_printer(PresetWithVendorProfile(material, nullptr), PresetWithVendorProfile(printer, nullptr)))
+                    return true;
+        }
+    return false;
+}
+
+bool ConfigWizard::priv::has_installed_printers() const
+{
+    for (const Preset &printer : wxGetApp().preset_bundle->printers)
+        if (printer.printer_technology() == ptSLA && !printer.is_default && printer.is_visible)
+            return true;
+    return false;
+}
+
+std::vector<WizardMaterialTarget> ConfigWizard::priv::material_targets() const
+{
+    std::vector<WizardMaterialTarget> targets;
+    std::set<std::string> seen;
+    auto add = [&](const std::string &name, bool is_new) {
+        if (name.empty() || !seen.insert(name).second)
+            return;
+        targets.push_back({ name, is_new ? format_wxstr(_L("%1% (new)"), from_u8(name)) : from_u8(name), is_new });
+    };
+    for (const Preset &printer : wxGetApp().preset_bundle->printers)
+        if (printer.printer_technology() == ptSLA && !printer.is_default && printer.is_visible)
+            add(printer.name, false);
+    // Vendor models ticked in this run (their presets are installed at Finish).
+    if (vendor_active()) {
+        const auto &installed = wxGetApp().app_config->vendors();
+        for (const auto &[vendor_id, bundle] : bundles)
+            for (const Preset &printer : bundle.preset_bundle->printers) {
+                if (printer.printer_technology() != ptSLA || !vendor_printer_counts(vendor_id, printer))
+                    continue;
+                const auto vendor = installed.find(vendor_id);
+                const std::string &model = printer.config.opt_string("printer_model");
+                const std::string &variant = printer.config.opt_string("printer_variant");
+                const bool known = vendor != installed.end() && vendor->second.count(model) != 0 && vendor->second.at(model).count(variant) != 0;
+                if (!known)
+                    add(printer.name, true);
+            }
+    }
+    if (goal_printer()) {
+        for (const QueuedPrinter &item : queue)
+            add(item.name, true);
+        if (path() == WizardPath::Library && page_profile_printers && page_profile_printers->any_selected())
+            add(page_profile_printers->get_selected_profile_name(), true);
+        if (path() == WizardPath::Custom && page_custom && page_custom->is_valid_profile_name())
+            add(page_custom->profile_name(), true);
+    }
+    return targets;
+}
+
+std::set<std::string> ConfigWizard::priv::queued_material_names() const
+{
+    std::set<std::string> names;
+    if (goal_material())
+        for (const WizardQueuedMaterial &item : material_queue)
+            names.insert(item.name);
+    return names;
+}
+
+const Preset* ConfigWizard::priv::find_material_base(const std::string &name) const
+{
+    auto &materials = wxGetApp().preset_bundle->sla_materials;
+    const Preset *preset = name.empty() ? nullptr : materials.find_preset(name, false);
+    // A material ticked in this wizard run is not installed yet: read it from the wizard's own bundles.
+    if (preset == nullptr && !name.empty())
+        for (const auto &bundle : bundles)
+            if ((preset = bundle.second.preset_bundle->sla_materials.find_preset(name, false)) != nullptr)
+                break;
+    if (preset == nullptr)
+        preset = materials.find_preset(name, true);
+    return preset;
+}
+
+std::vector<std::string> ConfigWizard::priv::new_ticked_materials(bool only_in_play) const
+{
+    std::vector<std::string> names;
+    const std::string &section = AppConfig::SECTION_MATERIALS;
+    if (!appconfig_new.has_section(section))
+        return names;
+    const AppConfig &installed = *wxGetApp().app_config;
+    for (const auto &[name, value] : appconfig_new.get_section(section)) {
+        if (value != "1" || (installed.has(section, name) && installed.get(section, name) == "1"))
+            continue;
+        if (only_in_play) {
+            bool fits = false;
+            for (const auto &[vendor_id, bundle] : bundles) {
+                const Preset *material = bundle.preset_bundle->sla_materials.find_preset(name, false);
+                if (material == nullptr)
+                    continue;
+                for (const Preset &printer : bundle.preset_bundle->printers)
+                    if (printer.printer_technology() == ptSLA && vendor_printer_counts(vendor_id, printer) &&
+                        is_compatible_with_printer(PresetWithVendorProfile(*material, nullptr), PresetWithVendorProfile(printer, nullptr))) {
+                        fits = true;
+                        break;
+                    }
+                if (fits)
+                    break;
+            }
+            if (!fits)
+                continue;
+        }
+        names.push_back(name);
+    }
+    return names;
+}
+
+void ConfigWizard::priv::load_material_defaults(const std::string &base_name)
+{
+    const Preset *base = find_material_base(base_name);
+    if (base == nullptr)
+        return;
+    if (page_material_basics)
+        page_material_basics->load_defaults(*base);
+    if (page_material_exposure)
+        page_material_exposure->load_defaults(*base);
+}
+
+WizardQueuedMaterial ConfigWizard::priv::make_material_entry() const
+{
+    WizardQueuedMaterial item;
+    item.name = page_material_basics->name();
+    boost::trim(item.name);
+    item.vendor = page_material_basics->vendor();
+    item.type = page_material_basics->type();
+    item.notes = page_material_basics->notes();
+    item.cost = page_material_basics->cost();
+    item.base_name = page_material_base->base_name();
+    item.targets = page_material_base->selected_targets();
+    item.exposure = page_material_exposure->exposure();
+    item.initial_exposure = page_material_exposure->initial_exposure();
+    item.hop_below = page_material_exposure->hop_below();
+    item.hop_above = page_material_exposure->hop_above();
+    return item;
+}
+
+std::vector<WizardQueueItem> ConfigWizard::priv::material_queue_items()
+{
+    std::vector<QueueItem> items;
+    if (!goal_material())
+        return items;
+    for (size_t i = 0; i < material_queue.size(); ++i)
+        items.push_back({ from_u8(material_queue[i].name), [this, i]() {
+                              if (i < material_queue.size())
+                                  material_queue.erase(material_queue.begin() + i);
+                              material_queue_changed();
+                          }});
+    return items;
+}
+
+void ConfigWizard::priv::material_queue_changed()
+{
+    for (ConfigWizardPage *page : all_pages)
+        page->show_error(wxString());
+    load_pages();
+    if (page_material_path)
+        page_material_path->refresh_queue();
+    if (page_summary && index->active_page() == page_summary)
+        page_summary->rebuild();
+}
+
+void ConfigWizard::priv::add_another_material()
+{
+    // What was chosen so far must be complete; otherwise show the problem where it is.
+    wxString message;
+    if (ConfigWizardPage *bad = first_invalid_page(message)) {
+        index->go_to(bad);
+        bad->show_error(message);
+        return;
+    }
+    if (material_path() == MaterialPath::Custom) {
+        material_queue.push_back(make_material_entry());
+        page_material_base->reset_targets();
+        page_material_basics->prepare_next();
+        load_material_defaults(page_material_base->base_name());
+    }
+    page_material_path->set_path(MaterialPath::None, false);
+    for (ConfigWizardPage *page : all_pages)
+        page->show_error(wxString());
+    load_pages();
+    index->go_to(page_material_path);
+    page_material_path->refresh_queue();
+}
+
+void ConfigWizard::priv::invalidate_materials()
+{
+    update_materials(T_ANY);
+    if (page_sla_materials)
+        page_sla_materials->clear();
+    if (page_material_path) {
+        const MaterialPath before = page_material_path->path();
+        page_material_path->refresh_cards(ready_made_available());
+        if (page_material_path->path() != before)
+            load_pages();
+    }
+}
+
+void ConfigWizard::priv::on_goal_changed()
+{
+    custom_printer_selected = path() == WizardPath::Custom;
+    refresh_sla_selected();
+    for (ConfigWizardPage *page : all_pages)
+        page->show_error(wxString());
+    invalidate_materials();
+    load_pages();
+}
+
+void ConfigWizard::priv::on_material_path_changed()
+{
+    for (ConfigWizardPage *page : all_pages)
+        page->show_error(wxString());
+    load_pages();
+}
+
+bool ConfigWizard::priv::queue_has(QueuedPrinter::Kind kind) const
+{
+    const auto &items = printer_queue();
+    return std::any_of(items.begin(), items.end(), [kind](const QueuedPrinter &item) { return item.kind == kind; });
 }
 
 std::set<std::string> ConfigWizard::priv::queued_custom_names() const
 {
     std::set<std::string> names;
-    for (const QueuedPrinter &item : queue)
+    for (const QueuedPrinter &item : printer_queue())
         if (item.kind == QueuedPrinter::Kind::Custom)
             names.insert(item.name);
     return names;
@@ -3260,6 +3831,8 @@ bool ConfigWizard::priv::vendors_changed() const
 std::vector<WizardQueueItem> ConfigWizard::priv::queue_items()
 {
     std::vector<QueueItem> items;
+    if (!goal_printer())
+        return items;
     if (vendor_queued) {
         const auto &installed = wxGetApp().app_config->vendors();
         for (PagePrinters *page : pages_msla)
@@ -3290,21 +3863,31 @@ std::vector<WizardQueueItem> ConfigWizard::priv::queue_items()
 
 void ConfigWizard::priv::queue_changed()
 {
-    any_sla_selected = vendor_active() && check_sla_selected();
+    refresh_sla_selected();
     if (vendor_queued && !vendors_changed())
         vendor_queued = false;
-    if (path() == WizardPath::None && queue.empty() && !vendor_queued && page_path)
+    if (goal_printer() && path() == WizardPath::None && queue.empty() && !vendor_queued && page_path)
         page_path->restore_default();
     custom_printer_selected = path() == WizardPath::Custom;
     for (ConfigWizardPage *page : all_pages)
         page->show_error(wxString());
-    if (any_sla_selected && page_sla_materials) {
-        update_materials(T_ANY);
-        page_sla_materials->clear();
+    invalidate_materials();
+    // A removed printer can no longer be the target of a queued material; a material left without a printer is dropped.
+    if (goal_material() && !material_queue.empty()) {
+        std::set<std::string> available;
+        for (const WizardMaterialTarget &target : material_targets())
+            available.insert(target.name);
+        for (auto it = material_queue.begin(); it != material_queue.end();) {
+            it->targets.erase(std::remove_if(it->targets.begin(), it->targets.end(),
+                                             [&available](const std::string &name) { return available.count(name) == 0; }), it->targets.end());
+            it = it->targets.empty() ? material_queue.erase(it) : it + 1;
+        }
     }
     load_pages();
     if (page_path)
         page_path->refresh_queue();
+    if (page_material_path)
+        page_material_path->refresh_queue();
     if (page_summary && index->active_page() == page_summary)
         page_summary->rebuild();
     if (page_path && path() != WizardPath::None && index->active_page() == nullptr)
@@ -3378,9 +3961,10 @@ void ConfigWizard::priv::add_another_printer()
     }
     page_path->set_path(WizardPath::None, false);
     custom_printer_selected = false;
-    any_sla_selected = vendor_active() && check_sla_selected();
+    refresh_sla_selected();
     for (ConfigWizardPage *page : all_pages)
         page->show_error(wxString());
+    invalidate_materials();
     load_pages();
     index->go_to(page_path);
     page_path->refresh_queue();
@@ -3389,14 +3973,11 @@ void ConfigWizard::priv::add_another_printer()
 void ConfigWizard::priv::on_path_changed()
 {
     custom_printer_selected = path() == WizardPath::Custom;
-    any_sla_selected = vendor_active() && check_sla_selected();
+    refresh_sla_selected();
     for (ConfigWizardPage *page : all_pages)
         page->show_error(wxString());
+    invalidate_materials();
     load_pages();
-    if (any_sla_selected && page_sla_materials) {
-        update_materials(T_ANY);
-        page_sla_materials->clear();
-    }
 }
 
 bool ConfigWizard::priv::existing_printers_kept() const
@@ -3406,7 +3987,7 @@ bool ConfigWizard::priv::existing_printers_kept() const
 
 ConfigWizardPage* ConfigWizard::priv::first_invalid_page(wxString &message)
 {
-    if (page_sla_materials && vendor_active())
+    if (page_sla_materials && (vendor_active() || (goal_material() && material_path() == MaterialPath::Ready)))
         page_sla_materials->check_and_update_presets();
     for (ConfigWizardPage *page : index->pages()) {
         message = page->validate();
@@ -3414,13 +3995,28 @@ ConfigWizardPage* ConfigWizard::priv::first_invalid_page(wxString &message)
             return page;
     }
     // The vendor path needs at least one printer unless one already exists or was queued.
-    if (path() == WizardPath::Vendor && !any_sla_selected && !existing_printers_kept() && queue.empty()) {
+    if (path() == WizardPath::Vendor && !any_sla_selected && !existing_printers_kept() && printer_queue().empty()) {
         message = _L("Tick at least one printer model to continue.");
         return pages_msla.empty() ? static_cast<ConfigWizardPage*>(page_path) : pages_msla.back();
     }
-    if (path() == WizardPath::None && queue.empty() && !(vendor_queued && any_sla_selected) && !existing_printers_kept()) {
+    if (goal_printer() && path() == WizardPath::None && printer_queue().empty() && !(vendor_queued && any_sla_selected) && !existing_printers_kept()) {
         message = _L("Choose how to add your printer to continue.");
         return page_path;
+    }
+    if (goal_material() && material_path() == MaterialPath::None && material_queue.empty()) {
+        message = _L("Choose how to add your material to continue.");
+        return page_material_path;
+    }
+    // "A printer" alone installs the default materials of a vendor printer; a model without any has to be handled in the material branch.
+    if (!goal_material() && vendor_active()) {
+        const auto missing = printer_models_missing_materials();
+        if (!missing.empty()) {
+            wxString names;
+            for (const VendorProfile::PrinterModel *model : missing)
+                names += (names.IsEmpty() ? "" : ", ") + from_u8(model->name);
+            message = format_wxstr(_L("No default material is available for: %1%. Choose \"A printer and a material\" to pick one."), names);
+            return page_goal;
+        }
     }
     message.clear();
     return nullptr;
@@ -3529,17 +4125,27 @@ void ConfigWizard::priv::set_start_page(ConfigWizard::StartPage start_page)
 {
     switch (start_page) {
         case ConfigWizard::SP_MATERIALS:
-            // Materials belong to the vendor path; switch to it when the user asked for the materials step.
-            if (page_path && page_sla_materials && !pages_msla.empty()) {
-                page_path->set_path(WizardPath::Vendor, false);
-                on_path_changed();
-                index->go_to(page_sla_materials);
-                btn_finish->SetFocus();
+            // "Add/remove materials" from the material list: set up a material for the printers that are installed.
+            if (page_goal && page_material_path && page_sla_materials && has_installed_printers()) {
+                page_goal->set_goal(WizardGoal::Material, false);
+                custom_printer_selected = false;
+                refresh_sla_selected();
+                invalidate_materials();
+                if (ready_made_available()) {
+                    page_material_path->set_path(MaterialPath::Ready, false);
+                    load_pages();
+                    index->go_to(page_sla_materials);
+                    btn_finish->SetFocus();
+                } else {
+                    load_pages();
+                    index->go_to(page_material_path);
+                    btn_next->SetFocus();
+                }
                 break;
             }
             // fallthrough
         default:
-            index->go_to(page_path);
+            index->go_to(page_goal);
             btn_next->SetFocus();
             break;
     }
@@ -3602,17 +4208,19 @@ void ConfigWizard::priv::update_materials(Technology technology)
         }
     };
 
-    if ((any_sla_selected || custom_printer_selected) && (technology & T_SLA)) {
+    if (technology & T_SLA) {
         sla_materials.clear();
         aliases_sla.clear();
-
+    }
+    if ((any_sla_selected || custom_printer_selected || goal_material()) && (technology & T_SLA)) {
         // Iterate SLA materials in all bundles
         for (const auto& [name, bundle] : bundles) {
             for (const auto &material : bundle.preset_bundle->sla_materials) {
                 // Iterate printers in all bundles
 				// For now, we only allow the profiles to be compatible with another profiles inside the same bundle.
                 for (const auto& printer : bundle.preset_bundle->printers) {
-                    if(!printer.is_visible || printer.printer_technology() != ptSLA)
+                    // Only the printers in play: installed ones, and the vendor models ticked in this run.
+                    if (printer.printer_technology() != ptSLA || !vendor_printer_counts(name, printer))
                         continue;
                     // Filter out inapplicable printers
                     if (is_compatible_with_printer(PresetWithVendorProfile(material, nullptr), PresetWithVendorProfile(printer, nullptr)))
@@ -3627,7 +4235,7 @@ void ConfigWizard::priv::update_materials(Technology technology)
 void ConfigWizard::priv::on_printer_pick(PagePrinters *page, const PrinterPickerEvent &evt)
 {
     // Nothing is written here: only the in-memory selection (appconfig_new) and the wizard's own bundles change.
-    any_sla_selected = vendor_active() && check_sla_selected();
+    refresh_sla_selected();
     if (vendor_queued && !vendors_changed())
         vendor_queued = false;
     for (ConfigWizardPage *p : all_pages)
@@ -3649,14 +4257,8 @@ void ConfigWizard::priv::on_printer_pick(PagePrinters *page, const PrinterPicker
 		check_and_install_missing_materials(page->technology, evt.model_id);
     }
 
-    if (page->technology & T_SLA) {
-        page_sla_materials->clear();
-        if (!any_sla_selected) {
-            // clear all material's info, when no one printer is selected
-            sla_materials.clear();
-            aliases_sla.clear();
-        }
-    }
+    if (page->technology & T_SLA)
+        invalidate_materials();
 }
 
 void ConfigWizard::priv::select_default_materials_for_printer_model(const VendorProfile::PrinterModel &printer_model, Technology technology)
@@ -3684,6 +4286,8 @@ void ConfigWizard::priv::select_default_materials_for_printer_models(Technology 
 bool ConfigWizard::priv::can_finish()
 {
     if (!index->active_page()) return false;
+    // A run that only adds a material changes no printer; every step is validated at Finish.
+    if (!goal_printer()) return true;
     // Printers already queued (library / custom, or new vendor models) are enough on their own.
     const bool queued = !queue.empty() || (vendor_queued && any_sla_selected);
     switch (path()) {
@@ -3718,7 +4322,7 @@ bool ConfigWizard::priv::on_bnt_finish()
     /* If some printers were added/deleted, but related MaterialPage wasn't activated,
      * than last changes wouldn't be updated for materials.
      */
-    if (page_sla_materials && vendor_active())
+    if (page_sla_materials && (vendor_active() || (goal_material() && material_path() == MaterialPath::Ready)))
         page_sla_materials->check_and_update_presets();
     return true;
 }
@@ -3733,7 +4337,7 @@ std::set<const VendorProfile::PrinterModel*> ConfigWizard::priv::printer_models_
     for (const auto &pair : bundles) {
         const PresetCollection &materials = pair.second.preset_bundle->sla_materials;
         for (const auto &printer : pair.second.preset_bundle->printers) {
-            if (printer.is_visible && printer.printer_technology() == ptSLA) {
+            if (printer.printer_technology() == ptSLA && vendor_printer_counts(pair.first, printer)) {
                 const VendorProfile::PrinterModel *printer_model = PresetUtils::system_printer_model(printer);
                 if (printer_model == nullptr)
                     continue;
@@ -3812,8 +4416,11 @@ bool ConfigWizard::priv::apply_config(AppConfig *app_config, PresetBundle *prese
         return false;
     if (path() == WizardPath::Library && (page_profile_printers == nullptr || !page_profile_printers->validate().IsEmpty()))
         return false;
+    if (goal_material() && material_path() == MaterialPath::Custom &&
+        (!page_material_basics->validate().IsEmpty() || !page_material_base->validate().IsEmpty() || !page_material_exposure->validate().IsEmpty()))
+        return false;
     // Everything this run adds: the queue first, then the printer being edited on the current path.
-    std::vector<QueuedPrinter> to_install = queue;
+    std::vector<QueuedPrinter> to_install = printer_queue();
     if (path() == WizardPath::Library && page_profile_printers->any_selected())
         to_install.push_back(make_library_entry());
     if (path() == WizardPath::Custom && page_custom->is_valid_profile_name())
@@ -3821,10 +4428,20 @@ bool ConfigWizard::priv::apply_config(AppConfig *app_config, PresetBundle *prese
     const bool any_library = std::any_of(to_install.begin(), to_install.end(), [](const QueuedPrinter &i) { return i.kind == QueuedPrinter::Kind::Library; });
     const bool any_custom  = std::any_of(to_install.begin(), to_install.end(), [](const QueuedPrinter &i) { return i.kind == QueuedPrinter::Kind::Custom; });
     if (!vendor_active()) {
-        // Vendor/material ticks only count for the vendor path: the other paths leave installed vendor printers and materials as they are.
+        // Vendor ticks only count for the vendor path: the other paths leave installed vendor printers as they are.
         appconfig_new.set_vendors(*app_config);
-        if (app_config->has_section(AppConfig::SECTION_MATERIALS))
-            appconfig_new.set_section(AppConfig::SECTION_MATERIALS, app_config->get_section(AppConfig::SECTION_MATERIALS));
+        if (!goal_material()) {
+            if (app_config->has_section(AppConfig::SECTION_MATERIALS))
+                appconfig_new.set_section(AppConfig::SECTION_MATERIALS, app_config->get_section(AppConfig::SECTION_MATERIALS));
+        } else if (appconfig_new.has_section(AppConfig::SECTION_MATERIALS)) {
+            // Ready-made profiles count only for printers that stay (a model ticked and then dropped brings no materials).
+            std::map<std::string, std::string> section = appconfig_new.get_section(AppConfig::SECTION_MATERIALS);
+            const std::vector<std::string> wanted = new_ticked_materials(true);
+            for (const std::string &name : new_ticked_materials(false))
+                if (std::find(wanted.begin(), wanted.end(), name) == wanted.end())
+                    section.erase(name);
+            appconfig_new.set_section(AppConfig::SECTION_MATERIALS, section);
+        }
     }
     wxString header, caption = _L("Configuration is edited in ConfigWizard");
     const auto enabled_vendors = appconfig_new.vendors();
@@ -4111,6 +4728,7 @@ bool ConfigWizard::priv::apply_config(AppConfig *app_config, PresetBundle *prese
     // Library profiles and custom printers (queued ones first, the one being edited last) are saved now, and only now.
     // The last one saved stays the active printer.
     std::vector<std::string> custom_profile_names;
+    std::map<std::string, std::string> saved_names;   // library profile -> the name it was saved under (a copy gets a suffix)
     if (any_library || any_custom) {
         if (!check_unsaved_preset_changes &&
             !wxGetApp().check_and_keep_current_preset_changes(caption,
@@ -4121,7 +4739,7 @@ bool ConfigWizard::priv::apply_config(AppConfig *app_config, PresetBundle *prese
         for (QueuedPrinter &item : to_install) {
             if (item.kind == QueuedPrinter::Kind::Library) {
                 try {
-                    install_library_profile(*preset_bundle, *app_config, item.library_path);
+                    saved_names[item.name] = install_library_profile(*preset_bundle, *app_config, item.library_path);
                 } catch (const std::exception &error) {
                     wxMessageBox(from_u8(error.what()), _L("Cannot add printer"), wxOK | wxICON_ERROR);
                     return false;
@@ -4155,82 +4773,89 @@ bool ConfigWizard::priv::apply_config(AppConfig *app_config, PresetBundle *prese
                 hop_opt->values[i] = (i == 0) ? hop_below_fallback : hop_above_fallback;
     };
 
-    // Optional own material (path a and c); created only when its toggle is on.
-    const bool custom_material_enabled = page_custom_material && page_custom_material->custom_material_profile_enabled() &&
-                                         custom_material_step_active();
-    if (custom_material_enabled || !custom_profile_names.empty()) {
-        if (custom_material_enabled && custom_profile_names.empty() && !check_unsaved_preset_changes &&
+    // Own materials of the material branch (queued ones first, then the one being edited) and the materials that
+    // belong to new custom printers (named like the printer, created by load_config_from_wizard).
+    std::vector<WizardQueuedMaterial> to_create;
+    if (goal_material()) {
+        to_create = material_queue;
+        if (material_path() == MaterialPath::Custom)
+            to_create.push_back(make_material_entry());
+    }
+    if (!to_create.empty() || !custom_profile_names.empty()) {
+        if (!to_create.empty() && custom_profile_names.empty() && !check_unsaved_preset_changes &&
             !wxGetApp().check_and_keep_current_preset_changes(caption, _L("A new SLA material was created and it will be activated."), act_btns, &apply_keeped_changes))
             return false;
 
-        const std::string base_material_name = custom_material_enabled ? page_custom_material->base_sla_material_profile_name() : std::string();
-        const Preset *base_material = nullptr;
-        if (!base_material_name.empty())
-            base_material = preset_bundle->sla_materials.find_preset(base_material_name, true);
-        if (base_material == nullptr && !custom_profile_names.empty())
-            base_material = preset_bundle->sla_materials.find_preset(custom_profile_names.front(), true);
-        if (base_material == nullptr)
-            base_material = &preset_bundle->sla_materials.default_preset();
-
-        const double hop_below = custom_material_enabled ? std::max(0.0, page_custom_material->custom_material_hop_below()) : 5.0;
-        const double hop_above = custom_material_enabled ? std::max(0.0, page_custom_material->custom_material_hop_above()) : 5.0;
-
-        std::vector<std::string> material_names;
-        std::string primary_name;
-        if (custom_material_enabled) {
-            primary_name = page_custom_material->custom_material_profile_name();
-            boost::trim(primary_name);
-            if (primary_name.empty() && !custom_profile_names.empty())
-                primary_name = custom_profile_names.front();
-            material_names.emplace_back(primary_name);
+        // Printer-named materials: make sure they carry usable hop heights.
+        for (const std::string &printer_name : custom_profile_names) {
+            Preset *material_ptr = preset_bundle->sla_materials.find_preset(printer_name, false);
+            if (material_ptr == nullptr) {
+                DynamicPrintConfig material_cfg(preset_bundle->sla_materials.default_preset().config);
+                if (auto *id_opt = material_cfg.option<ConfigOptionString>("sla_material_settings_id", true))
+                    id_opt->value = printer_name;
+                material_ptr = &preset_bundle->sla_materials.load_preset(
+                    preset_bundle->sla_materials.path_from_name(printer_name), printer_name, material_cfg, false);
+            }
+            if (auto *id_opt = material_ptr->config.option<ConfigOptionString>("sla_material_settings_id", true))
+                id_opt->value = printer_name;
+            apply_hop_and_tilt_safety(*material_ptr, 5.0, 5.0);
+            material_ptr->save();
         }
-        for (const std::string &printer_name : custom_profile_names)
-            material_names.emplace_back(printer_name);
 
-        std::set<std::string> unique_material_names;
-        std::string primary_material; // first material actually created/updated: becomes the active one
-        for (const std::string &material_name_raw : material_names) {
-            std::string material_name = material_name_raw;
+        std::string material_to_activate;
+        for (const WizardQueuedMaterial &spec : to_create) {
+            std::string material_name = spec.name;
             boost::trim(material_name);
-            if (material_name.empty() || !unique_material_names.insert(material_name).second)
+            if (material_name.empty())
                 continue;
+            // The printers it is for, under the names they really got.
+            std::vector<std::string> targets;
+            for (const std::string &target : spec.targets) {
+                const auto renamed = saved_names.find(target);
+                targets.push_back(renamed == saved_names.end() ? target : renamed->second);
+            }
+            const double hop_below = std::max(0.0, spec.hop_below);
+            const double hop_above = std::max(0.0, spec.hop_above);
 
             // Exact lookup only: with first_visible_if_not_found=true a new name returned some other visible
             // material, which was then overwritten (exposure, cost, ...) instead of creating the named one.
             Preset *material_ptr = preset_bundle->sla_materials.find_preset(material_name, false);
-            if (material_ptr == nullptr && base_material != nullptr) {
-                DynamicPrintConfig material_cfg(base_material->config);
+            if (material_ptr == nullptr) {
+                // Copy the base profile first: loading a preset may move the presets around.
+                const Preset *base = find_material_base(spec.base_name);
+                DynamicPrintConfig material_cfg(base != nullptr ? base->config : preset_bundle->sla_materials.default_preset().config);
                 if (auto *id_opt = material_cfg.option<ConfigOptionString>("sla_material_settings_id", true))
                     id_opt->value = material_name;
                 material_ptr = &preset_bundle->sla_materials.load_preset(
                     preset_bundle->sla_materials.path_from_name(material_name), material_name, material_cfg, false);
             }
-
             if (material_ptr == nullptr)
                 continue;
 
             if (auto *id_opt = material_ptr->config.option<ConfigOptionString>("sla_material_settings_id", true))
                 id_opt->value = material_name;
-
-            if (custom_material_enabled && material_name == primary_name) {
-                material_ptr->config.set_key_value("material_vendor", new ConfigOptionString(page_custom_material->custom_material_vendor()));
-                material_ptr->config.set_key_value("material_type", new ConfigOptionString(page_custom_material->custom_material_type()));
-                material_ptr->config.set_key_value("material_notes", new ConfigOptionString(page_custom_material->custom_material_notes()));
-                material_ptr->config.set_key_value("bottle_cost", new ConfigOptionFloat(std::max(0.0, page_custom_material->custom_material_cost())));
-                material_ptr->config.set_key_value("exposure_time", new ConfigOptionFloat(std::max(0.1, page_custom_material->custom_material_exposure_time())));
-                material_ptr->config.set_key_value("initial_exposure_time", new ConfigOptionFloat(std::max(0.1, page_custom_material->custom_material_initial_exposure_time())));
-                material_ptr->config.set_key_value("tower_hop_height", new ConfigOptionFloats({ hop_below, hop_above }));
-            }
+            material_ptr->config.set_key_value("material_vendor", new ConfigOptionString(spec.vendor));
+            material_ptr->config.set_key_value("material_type", new ConfigOptionString(spec.type));
+            material_ptr->config.set_key_value("material_notes", new ConfigOptionString(spec.notes));
+            material_ptr->config.set_key_value("bottle_cost", new ConfigOptionFloat(std::max(0.0, spec.cost)));
+            material_ptr->config.set_key_value("exposure_time", new ConfigOptionFloat(std::max(0.1, spec.exposure)));
+            material_ptr->config.set_key_value("initial_exposure_time", new ConfigOptionFloat(std::max(0.1, spec.initial_exposure)));
+            material_ptr->config.set_key_value("tower_hop_height", new ConfigOptionFloats({ hop_below, hop_above }));
+            // The material is selectable for exactly the printers it was made for.
+            material_ptr->config.set_key_value("compatible_printers", new ConfigOptionStrings(targets));
 
             apply_hop_and_tilt_safety(*material_ptr, hop_below, hop_above);
             material_ptr->save();
-            if (primary_material.empty())
-                primary_material = material_name;
+
+            // Activate it when it fits the printer that is active now (a material for another printer stays in the list).
+            const Preset &active_printer = preset_bundle->printers.get_selected_preset();
+            if (is_compatible_with_printer(PresetWithVendorProfile(*material_ptr, material_ptr->vendor), PresetWithVendorProfile(active_printer, active_printer.vendor)))
+                material_to_activate = material_name;
         }
         // load_config_from_wizard() selected a material named after the printer; activate the user's own
         // material instead, otherwise the typed exposure etc. would not be used for slicing.
-        if (custom_material_enabled && !primary_material.empty())
-            preset_bundle->sla_materials.select_preset_by_name(primary_material, true);
+        if (!material_to_activate.empty())
+            preset_bundle->sla_materials.select_preset_by_name(material_to_activate, true);
     }
 
     // Update the selections from the compatibilty.
@@ -4353,21 +4978,29 @@ void ConfigWizard::priv::load_pages_from_archive()
     if (!page_sla_materials)
         add_page(page_sla_materials = new PageMaterials(q, &sla_materials,
             _L("SLA materials"), _L("SLA materials"), _L("Type:")));
-    if (!page_custom_material)
-        add_page(page_custom_material = new PageCustomMaterial(q));
+    if (!page_material_path)
+        add_page(page_material_path = new PageMaterialPath(q));
+    if (!page_material_basics)
+        add_page(page_material_basics = new PageMaterialBasics(q));
+    if (!page_material_base)
+        add_page(page_material_base = new PageMaterialBase(q));
+    if (!page_material_exposure)
+        add_page(page_material_exposure = new PageMaterialExposure(q));
     if (!page_preferences)
         add_page(page_preferences = new PagePreferences(q));
     if (!page_summary)
         add_page(page_summary = new PageSummary(q));
 
     page_path->refresh_cards(!pages_msla.empty(), page_profile_printers->has_profiles());
+    page_goal->refresh_cards(has_installed_printers());
     custom_printer_selected = path() == WizardPath::Custom;
-    any_sla_selected = vendor_active() && check_sla_selected();
+    refresh_sla_selected();
 
     check_and_install_missing_materials(T_ANY);
     update_materials(T_ANY);
     if (any_sla_selected)
         page_sla_materials->reload_presets();
+    page_material_path->refresh_cards(ready_made_available());
 
     load_pages();
 }
@@ -4459,6 +5092,7 @@ ConfigWizard::ConfigWizard(wxWindow *parent)
     wxGetApp().SetWindowVariantForButton(p->btn_finish);
     wxGetApp().SetWindowVariantForButton(p->btn_cancel);
 
+    p->add_page(p->page_goal = new PageGoal(this));
     p->add_page(p->page_path = new PagePath(this));
 
     // other pages will be loaded later (run() -> load_pages_from_archive())

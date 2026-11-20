@@ -34232,3 +34232,217 @@ msgstr "Zapisz edytowane archiwum"
 
 msgid "built-in default settings"
 msgstr "wbudowane ustawienia domyślne"
+
+# Wave 38: configuration wizard (what to set up, material branch) and menu texts
+msgid "What would you like to set up?"
+msgstr "Co chcesz skonfigurować?"
+
+msgid "What to set up"
+msgstr "Co skonfigurować"
+
+msgid "Pick one; the steps on the left follow your choice. Nothing is installed or changed until you click Finish."
+msgstr "Wybierz jedną opcję; kroki po lewej stronie zależą od wyboru. Nic nie zostanie zainstalowane ani zmienione, dopóki nie klikniesz Zakończ."
+
+msgid "A printer"
+msgstr "Drukarka"
+
+msgid "Add a printer from a vendor, one from the profile library or your own. A vendor printer brings its default materials."
+msgstr "Dodaj drukarkę od producenta, z biblioteki profili albo własną. Drukarka producenta ma swoje domyślne materiały."
+
+msgid "A material"
+msgstr "Materiał"
+
+msgid "Add ready-made resin profiles or create your own, for printers you already have."
+msgstr "Dodaj gotowe profile żywic albo utwórz własny, dla drukarek, które już masz."
+
+msgid "A printer and a material"
+msgstr "Drukarka i materiał"
+
+msgid "Add a printer first, then choose or create a resin profile for it in the same run."
+msgstr "Najpierw dodaj drukarkę, a potem w tym samym przebiegu wybierz lub utwórz dla niej profil żywicy."
+
+msgid "Add a printer first; materials belong to a printer."
+msgstr "Najpierw dodaj drukarkę; materiały należą do drukarki."
+
+msgid "Your material"
+msgstr "Twój materiał"
+
+msgid "What material do you want to add? Pick one; the following steps depend on your choice. Nothing is installed or created until you click Finish."
+msgstr "Jaki materiał chcesz dodać? Wybierz jedną opcję; kolejne kroki zależą od wyboru. Nic nie zostanie zainstalowane ani utworzone, dopóki nie klikniesz Zakończ."
+
+msgid "Ready-made material profiles"
+msgstr "Gotowe profile materiałów"
+
+msgid "Pick from the resin profiles of the printer vendor that fit your printers."
+msgstr "Wybierz spośród profili żywic producenta, które pasują do Twoich drukarek."
+
+msgid "Create my own material"
+msgstr "Utwórz własny materiał"
+
+msgid "A guided set of steps: name and brand, the printers it is for and a base profile, then exposure."
+msgstr "Krok po kroku: nazwa i marka, drukarki, dla których jest przeznaczony, profil bazowy, a na końcu naświetlanie."
+
+msgid "One material is enough. Need more? Finish this one, then use \"Add another material\" on the Summary step."
+msgstr "Jeden materiał wystarczy. Potrzebujesz więcej? Skończ ten, a potem użyj „Dodaj kolejny materiał” w kroku Podsumowanie."
+
+msgid "No vendor printer is installed or added in this run, so there are no ready-made profiles to offer."
+msgstr "Żadna drukarka producenta nie jest zainstalowana ani dodawana w tym przebiegu, więc nie ma gotowych profili do zaoferowania."
+
+msgid "Remove queued material \"%1%\""
+msgstr "Usuń materiał z kolejki „%1%”"
+
+msgid "Material basics"
+msgstr "Podstawy materiału"
+
+msgid "Describe your resin. The name is required and must be unique. Brand, type, cost and notes are filled in from the starting profile (you can change it in the next step); what you type stays."
+msgstr "Opisz swoją żywicę. Nazwa jest wymagana i musi być unikalna. Marka, rodzaj, cena i notatki są wypełnione z profilu początkowego (zmienisz go w następnym kroku); to, co wpiszesz, zostaje."
+
+msgid "Enter a name for the material profile."
+msgstr "Wpisz nazwę profilu materiału."
+
+msgid "The name \"%1%\" is used by the material that is created for the printer of the same name. Choose another name."
+msgstr "Nazwa „%1%” jest używana przez materiał tworzony dla drukarki o tej samej nazwie. Wybierz inną nazwę."
+
+msgid "Printer and base"
+msgstr "Drukarka i baza"
+
+msgid "Which printers is it for?"
+msgstr "Dla których drukarek jest przeznaczony?"
+
+msgid "The material shows up in the material list of the printers you tick. Printers added in this run are marked \"new\"."
+msgstr "Materiał pojawi się na liście materiałów zaznaczonych drukarek. Drukarki dodane w tym przebiegu są oznaczone jako „nowa”."
+
+msgid "Your material is a copy of this profile: exposure and the other resin settings start from its values, and you change what differs. Pick the resin closest to yours."
+msgstr "Twój materiał jest kopią tego profilu: naświetlanie i pozostałe ustawienia żywicy startują od jego wartości, a Ty zmieniasz to, co się różni. Wybierz żywicę najbliższą swojej."
+
+msgid "No printer is available yet. Go back to step 1 and choose \"A printer and a material\"."
+msgstr "Nie ma jeszcze żadnej drukarki. Wróć do kroku 1 i wybierz „Drukarka i materiał”."
+
+msgid "Add a printer first: a material belongs to a printer."
+msgstr "Najpierw dodaj drukarkę: materiał należy do drukarki."
+
+msgid "Tick at least one printer this material is for."
+msgstr "Zaznacz co najmniej jedną drukarkę, dla której jest ten materiał."
+
+msgid "How long each layer is exposed, and how far the platform lifts between layers. The values come from the base profile; if you are unsure keep them and fine-tune later in the material settings."
+msgstr "Jak długo naświetlana jest każda warstwa i jak wysoko podnosi się platforma między warstwami. Wartości pochodzą z profilu bazowego; jeśli nie jesteś pewien, zostaw je i dopracuj później w ustawieniach materiału."
+
+msgid "Exposure times"
+msgstr "Czasy naświetlania"
+
+msgid "Initial exposure is used for the first layers that stick to the platform; it is longer than the normal exposure."
+msgstr "Naświetlanie początkowe dotyczy pierwszych warstw, które przyklejają się do platformy; jest dłuższe niż zwykłe naświetlanie."
+
+msgid "Platform lift"
+msgstr "Podnoszenie platformy"
+
+msgid "Remove material \"%1%\""
+msgstr "Usuń materiał „%1%”"
+
+msgid "No printer is added. Your installed printers stay as they are."
+msgstr "Nie dodano żadnej drukarki. Zainstalowane drukarki pozostają bez zmian."
+
+msgid "Default materials of the vendor printer are installed with it: %1% profile(s): %2%"
+msgstr "Domyślne materiały drukarki producenta są instalowane razem z nią: profili: %1%: %2%"
+
+msgid "No materials are added."
+msgstr "Nie dodano żadnych materiałów."
+
+msgid "Ready-made profile \"%1%\"."
+msgstr "Gotowy profil „%1%”."
+
+msgid "%1% more ready-made profiles."
+msgstr "Kolejne gotowe profile: %1%."
+
+msgid "New material \"%1%\": exposure %2% s, initial exposure %3% s, for %4%."
+msgstr "Nowy materiał „%1%”: naświetlanie %2% s, naświetlanie początkowe %3% s, dla: %4%."
+
+msgid "No new material."
+msgstr "Brak nowego materiału."
+
+msgid "Add another material"
+msgstr "Dodaj kolejny materiał"
+
+msgid "Optional: keep what you chose so far and add one more material in this run. Nothing is created before Finish."
+msgstr "Opcjonalnie: zachowaj dotychczasowy wybór i dodaj jeszcze jeden materiał w tym przebiegu. Nic nie jest tworzone przed Zakończ."
+
+msgid "Optional - only if you want more than one material."
+msgstr "Opcjonalnie: tylko jeśli chcesz więcej niż jeden materiał."
+
+msgid "%1% (new)"
+msgstr "%1% (nowa)"
+
+msgid "Choose how to add your material to continue."
+msgstr "Wybierz, jak dodać materiał, aby kontynuować."
+
+msgid "No default material is available for: %1%. Choose \"A printer and a material\" to pick one."
+msgstr "Brak materiału domyślnego dla: %1%. Wybierz „Drukarka i materiał”, aby wskazać materiał."
+
+msgid "Open a new %s instance"
+msgstr "Otwórz nowe okno programu %s"
+
+msgid "Closing %1%. Current project is modified."
+msgstr "Zamykanie programu %1%. Bieżący projekt jest zmodyfikowany."
+
+msgid "%1% is closing"
+msgstr "%1% zamyka się"
+
+msgid "Closing %1% while some presets are modified."
+msgstr "Zamykanie programu %1%, gdy część profili jest zmodyfikowana."
+
+msgid "Recent layer documents"
+msgstr "Ostatnie dokumenty warstw"
+
+msgid "Export sliced layers"
+msgstr "Eksportuj pocięte warstwy"
+
+msgid "Export the current SLA result"
+msgstr "Eksportuj bieżący wynik SLA"
+
+msgid "Export sliced result to removable drive"
+msgstr "Eksportuj wynik cięcia na dysk wymienny"
+
+msgid "Save the current sliced result to an SD card or USB drive"
+msgstr "Zapisz bieżący wynik cięcia na karcie SD lub dysku USB"
+
+msgid "Safely eject the SD card or USB drive after exporting."
+msgstr "Bezpiecznie wysuń kartę SD lub dysk USB po eksporcie."
+
+msgid "Show the material settings"
+msgstr "Pokaż ustawienia materiału"
+
+msgid "Edit sliced layers"
+msgstr "Edytuj pocięte warstwy"
+
+msgid "Edit pixels in the current sliced result"
+msgstr "Edytuj piksele w bieżącym wyniku cięcia"
+
+msgid "Edit pixels in a supported SLA archive or layer image"
+msgstr "Edytuj piksele w obsługiwanym archiwum SLA lub obrazie warstwy"
+
+msgid "PCB exposure"
+msgstr "Naświetlanie PCB"
+
+msgid "Generate exposure layers from Gerber and Excellon files"
+msgstr "Generuj warstwy naświetlania z plików Gerber i Excellon"
+
+msgid "Printer calibration"
+msgstr "Kalibracja drukarki"
+
+msgid "Generate XYZ, grayscale and lift-area calibration layers"
+msgstr "Generuj warstwy kalibracyjne XYZ, skali szarości i obszaru podnoszenia"
+
+msgid "ExposureFinder calibration"
+msgstr "Kalibracja ExposureFinder"
+
+msgid "Configure an exposure test table, pattern and LCD layout"
+msgstr "Skonfiguruj tabelę testu naświetlania, wzór i układ LCD"
+
+msgid "E&xport sliced layers"
+msgstr "E&ksportuj pocięte warstwy"
+
+msgid "%d FFF/FDM section(s) of the configuration file were skipped: this application supports SLA/MSLA printers only."
+msgstr "Pominięto %d sekcji FFF/FDM pliku konfiguracji: ta aplikacja obsługuje wyłącznie drukarki SLA/MSLA."
+
+msgid "%d FFF/FDM section(s) of the bundle were skipped: this application supports SLA/MSLA printers only."
+msgstr "Pominięto %d sekcji FFF/FDM pakietu: ta aplikacja obsługuje wyłącznie drukarki SLA/MSLA."

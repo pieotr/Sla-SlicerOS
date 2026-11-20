@@ -161,8 +161,10 @@ def main():
             n.get_state_set().contains(Atspi.StateType.SHOWING)), 'visible wizard dialog')
 
     def select(dialog):
-        # Wave 34 flow: step 1 asks where the printer comes from; the library path marks a profile (nothing is saved
-        # until Finish).
+        # Wave 34/38 flow: step 1 asks what to set up ("A printer" is the default), then where the printer comes from;
+        # the library path marks a profile (nothing is saved until Finish).
+        click(wait_for(lambda: find(dialog, lambda n: n.get_role_name() == 'button' and n.get_name() in ('Next >', '&Next >') and
+            n.get_state_set().contains(Atspi.StateType.SHOWING)), 'Next button (what to set up)'))
         click(wait_for(lambda: find(dialog, lambda n: n.get_role_name() == 'radio button' and
             n.get_name() == 'A profile from the library' and n.get_state_set().contains(Atspi.StateType.SHOWING)), 'library path card'))
         click(wait_for(lambda: find(dialog, lambda n: n.get_role_name() == 'button' and n.get_name() in ('Next >', '&Next >') and

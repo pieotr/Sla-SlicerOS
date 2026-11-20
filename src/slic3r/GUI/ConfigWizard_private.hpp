@@ -163,6 +163,26 @@ struct WizardQueueItem { wxString label; std::function<void()> remove; };
 // None: the user pressed "Add another printer" and has not chosen how to add the next one yet.
 enum class WizardPath { Vendor, Library, Custom, None };
 
+// Step 1 of the wizard: WHAT the user wants to set up. It decides which branches (printer / material) the index shows.
+enum class WizardGoal { Printer, Material, Both };
+
+// How the user adds a material (material branch). None: "Add another material" was pressed and nothing is chosen yet.
+enum class MaterialPath { Ready, Custom, None };
+
+// A material profile of the user's own, queued with "Add another material" (created at Finish).
+struct WizardQueuedMaterial {
+    std::string name, vendor, type, notes, base_name;
+    double cost { 0. }, exposure { 2. }, initial_exposure { 20. }, hop_below { 5. }, hop_above { 5. };
+    std::vector<std::string> targets;   // names of the printers it is for (installed, or added in this run)
+};
+
+// A printer a new material can be made for: installed already, or added in this wizard run.
+struct WizardMaterialTarget {
+    std::string name;
+    wxString    label;
+    bool        is_new { false };
+};
+
 struct ConfigWizardPage: wxPanel
 {
     ConfigWizard *parent;
@@ -456,6 +476,23 @@ private:
     void              on_paint(wxPaintEvent &);
 };
 
+// Step 1: "What would you like to set up?" - a printer, a material or both.
+struct PageGoal: ConfigWizardPage
+{
+    PageGoal(ConfigWizard *parent);
+
+    WizardGoal goal() const { return m_goal; }
+    void set_goal(WizardGoal goal, bool notify = true);
+    // "A material" needs an installed printer: without one the card is disabled and says why.
+    void refresh_cards(bool printers_installed);
+    virtual void set_run_reason(ConfigWizard::RunReason run_reason) override;
+
+private:
+    PathChoice   *m_choice { nullptr };
+    WizardGoal    m_goal { WizardGoal::Printer };
+    wxStaticText *m_welcome { nullptr };
+};
+
 struct PagePath: ConfigWizardPage
 {
     PagePath(ConfigWizard *parent);
@@ -466,7 +503,6 @@ struct PagePath: ConfigWizardPage
     void refresh_cards(bool vendors_available, bool library_available);
     // Back to the first usable card (after the last queued printer was removed).
     void restore_default();
-    virtual void set_run_reason(ConfigWizard::RunReason run_reason) override;
     virtual void on_activate() override { refresh_queue(); }
     // The compact "Queued: ..." line (one removable chip per queued printer); hidden while nothing is queued.
     void refresh_queue();
@@ -478,12 +514,12 @@ private:
     bool          m_initialised { false };
     bool          m_vendors_available { false };
     bool          m_library_available { false };
-    wxStaticText *m_welcome { nullptr };
 };
 
 // Path (b): community library of printer profiles. Selecting only MARKS a profile; it is saved at Finish.
 // Saves a library profile file as a new (uniquely named) printer preset and selects it. Throws on failure.
-void install_library_profile(PresetBundle &preset_bundle, AppConfig &app_config, const std::string &profile_path);
+// Returns the name the profile was saved under.
+std::string install_library_profile(PresetBundle &preset_bundle, AppConfig &app_config, const std::string &profile_path);
 
 struct PageProfilePrinters: ConfigWizardPage
 {
@@ -541,41 +577,99 @@ private:
     SavePresetDialog::Item  *profile_name_editor {nullptr};
 };
 
-// Optional step: one own material profile (path a and c). Nothing happens unless the toggle is on.
-struct PageCustomMaterial: ConfigWizardPage
+// Material branch, first step: ready-made vendor profiles or an own material (guided, three steps).
+struct PageMaterialPath: ConfigWizardPage
 {
-    PageCustomMaterial(ConfigWizard *parent);
+    PageMaterialPath(ConfigWizard *parent);
 
-    bool        custom_material_profile_enabled() const { return cb_create && cb_create->GetValue(); }
-    std::string base_sla_material_profile_name() const;
-    std::string custom_material_profile_name() const;
-    std::string custom_material_vendor() const;
-    std::string custom_material_type() const;
-    std::string custom_material_notes() const;
-    double      custom_material_cost() const;
-    double      custom_material_hop_below() const;
-    double      custom_material_hop_above() const;
-    double      custom_material_exposure_time() const;
-    double      custom_material_initial_exposure_time() const;
-    virtual wxString validate() override;
+    MaterialPath path() const { return m_path; }
+    void set_path(MaterialPath path, bool notify = true);
+    // Ready-made profiles exist for vendor printers (installed or added in this run) only.
+    void refresh_cards(bool ready_available);
+    bool ready_available() const { return m_ready_available; }
     virtual void on_activate() override;
+    // The "Queued:" line: one removable chip per material queued with "Add another material".
+    void refresh_queue();
 
 private:
-    wxCheckBox              *cb_create {nullptr};
-    wxPanel                 *form {nullptr};
-    wxListBox               *base_choice {nullptr};
+    PathChoice   *m_choice { nullptr };
+    wxPanel      *m_queue { nullptr };
+    MaterialPath  m_path { MaterialPath::Ready };
+    bool          m_ready_available { false };
+    bool          m_user_chose { false };
+};
+
+// Own material, step 1: name, brand, type, bottle cost, notes.
+struct PageMaterialBasics: ConfigWizardPage
+{
+    PageMaterialBasics(ConfigWizard *parent);
+
+    std::string name() const;
+    std::string vendor() const;
+    std::string type() const;
+    std::string notes() const;
+    double      cost() const;
+    // Brand, type, cost and notes follow the base profile unless the user typed them.
+    void        load_defaults(const Preset &base);
+    // After the material was queued: a fresh unique name for the next one.
+    void        prepare_next();
+    virtual wxString validate() override;
+    virtual void on_activate() override;
+    void        refresh_inline_error();
+
+private:
+    wxTextCtrl *name_input { nullptr };
+    wxTextCtrl *vendor_input { nullptr };
+    wxTextCtrl *type_input { nullptr };
+    wxTextCtrl *cost_input { nullptr };
+    wxTextCtrl *notes_input { nullptr };
+    bool        m_touched[4] { false, false, false, false };   // brand, type, cost, notes
+};
+
+// Own material, step 2: the printers it is for and the profile it starts from.
+struct PageMaterialBase: ConfigWizardPage
+{
+    PageMaterialBase(ConfigWizard *parent);
+
+    std::string              base_name() const;
+    // Printers ticked here that still exist in this run (installed, or added and not removed).
+    std::vector<std::string> selected_targets() const;
+    // Forget what was ticked (after the material was queued).
+    void                     reset_targets();
+    virtual wxString validate() override;
+    virtual void on_activate() override { rebuild(); }
+    void rebuild();
+    // The first visit of any own-material step fills in the form from the default base profile.
+    void ensure_built() { if (!m_built) rebuild(); }
+
+private:
+    bool                     m_built { false };
+    wxPanel                 *m_targets { nullptr };
+    std::map<std::string, bool> m_state;
+    wxListBox               *base_choice { nullptr };
     std::vector<std::string> base_names;
-    wxTextCtrl              *name_input {nullptr};
-    wxTextCtrl              *vendor_input {nullptr};
-    wxTextCtrl              *type_input {nullptr};
-    wxTextCtrl              *cost_input {nullptr};
-    wxTextCtrl              *hop_below_input {nullptr};
-    wxTextCtrl              *hop_above_input {nullptr};
-    wxTextCtrl              *exposure_input {nullptr};
-    wxTextCtrl              *initial_exposure_input {nullptr};
-    wxTextCtrl              *notes_input {nullptr};
-    void                     load_defaults_from(const std::string &base_name);
-    void                     update_form();
+    bool                     is_checked(const WizardMaterialTarget &target, const std::vector<WizardMaterialTarget> &all) const;
+};
+
+// Own material, step 3: exposure, initial exposure and hop heights.
+struct PageMaterialExposure: ConfigWizardPage
+{
+    PageMaterialExposure(ConfigWizard *parent);
+
+    double exposure() const;
+    double initial_exposure() const;
+    double hop_below() const;
+    double hop_above() const;
+    void   load_defaults(const Preset &base);
+    virtual wxString validate() override;
+    virtual void on_activate() override;
+    void   refresh_inline_error();
+
+private:
+    wxTextCtrl *exposure_input { nullptr };
+    wxTextCtrl *initial_exposure_input { nullptr };
+    wxTextCtrl *hop_below_input { nullptr };
+    wxTextCtrl *hop_above_input { nullptr };
 };
 
 // Optional step: a few application preferences. The wizard keeps the app offline (no update / downloader options).
@@ -718,6 +812,8 @@ struct ConfigWizard::priv
     using QueuedPrinter = WizardQueuedPrinter;
     using QueueItem = WizardQueueItem;
     std::vector<QueuedPrinter> queue;
+    // Own materials queued with "Add another material" (created at Finish).
+    std::vector<WizardQueuedMaterial> material_queue;
     bool vendor_queued { false };
     bool custom_printer_selected { false }; // The custom path is chosen
     bool custom_printer_in_bundle { false }; // Older custom printer already exists when wizard starts
@@ -736,7 +832,11 @@ struct ConfigWizard::priv
     PageProfilePrinters *page_profile_printers = nullptr;
     PageCustom       *page_custom = nullptr;
     PagePath         *page_path = nullptr;
-    PageCustomMaterial *page_custom_material = nullptr;
+    PageGoal         *page_goal = nullptr;
+    PageMaterialPath *page_material_path = nullptr;
+    PageMaterialBasics *page_material_basics = nullptr;
+    PageMaterialBase *page_material_base = nullptr;
+    PageMaterialExposure *page_material_exposure = nullptr;
     PagePreferences  *page_preferences = nullptr;
     PageSummary      *page_summary = nullptr;
 #ifdef _WIN32
@@ -781,12 +881,38 @@ struct ConfigWizard::priv
     void set_run_reason(RunReason run_reason);
     void update_materials(Technology technology);
 
-    WizardPath path() const { return page_path ? page_path->path() : WizardPath::Vendor; }
+    WizardGoal goal() const { return page_goal ? page_goal->goal() : WizardGoal::Printer; }
+    bool goal_printer() const { return goal() != WizardGoal::Material; }
+    bool goal_material() const { return goal() != WizardGoal::Printer; }
+    // The way the printer is added; None while the printer branch is not part of the wizard.
+    WizardPath path() const { return goal_printer() && page_path ? page_path->path() : WizardPath::None; }
+    MaterialPath material_path() const { return goal_material() && page_material_path ? page_material_path->path() : MaterialPath::None; }
+    // Printers queued for this run (nothing while the wizard only sets up a material).
+    const std::vector<QueuedPrinter>& printer_queue() const;
     // Vendor ticks are installed at Finish (path Vendor, or ticks queued by "Add another printer").
-    bool vendor_active() const { return path() == WizardPath::Vendor || vendor_queued; }
+    bool vendor_active() const { return path() == WizardPath::Vendor || (goal_printer() && vendor_queued); }
     bool queue_has(QueuedPrinter::Kind kind) const;
-    // True when the optional "Custom material" step is part of the wizard now.
-    bool custom_material_step_active() const;
+    // A vendor printer (bundle id + preset) that is installed or will be installed by this run.
+    bool vendor_printer_counts(const std::string &vendor_id, const Preset &printer) const;
+    bool ready_made_available() const;
+    bool has_installed_printers() const;
+    // Printers a new material can be made for: installed, ticked vendor models, queued and current printers.
+    std::vector<WizardMaterialTarget> material_targets() const;
+    std::set<std::string> queued_material_names() const;
+    const Preset* find_material_base(const std::string &name) const;
+    void load_material_defaults(const std::string &base_name);
+    WizardQueuedMaterial make_material_entry() const;
+    std::vector<QueueItem> material_queue_items();
+    void add_another_material();
+    void material_queue_changed();
+    void on_goal_changed();
+    void on_material_path_changed();
+    // Rebuild the list of ready-made material profiles after the printers in play changed.
+    void invalidate_materials();
+    // any_sla_selected: a vendor printer counts (ticked, or installed while only a material is set up).
+    void refresh_sla_selected();
+    // Materials ticked in this run that are not installed yet; with only_in_play, only those that fit a printer that counts.
+    std::vector<std::string> new_ticked_materials(bool only_in_play) const;
     // Vendor models that are new (not installed yet) and queued, followed by queued library / custom printers.
     std::vector<QueueItem> queue_items();
     // Complete configuration of the custom printer typed on the Custom printer / Display steps.
