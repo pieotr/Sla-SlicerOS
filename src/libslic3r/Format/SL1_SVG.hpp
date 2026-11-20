@@ -14,7 +14,7 @@
 #include "libslic3r/Config.hpp"
 #include "libslic3r/ExPolygon.hpp"
 #include "libslic3r/Format/SLAArchiveReader.hpp"
-#include "libslic3r/GCode/ThumbnailData.hpp"
+#include "libslic3r/Thumbnails/ThumbnailData.hpp"
 #include "libslic3r/SLA/RasterBase.hpp"
 
 namespace Slic3r {

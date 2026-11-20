@@ -6,7 +6,7 @@ std::vector<OpDef> make_layer_operation_defs(const OpContext &initial)
 {
     using namespace ops_detail;
     std::vector<OpDef> defs;
-    auto add = [&](OpGroup g, const char *label, const char *description, std::vector<OpField> fields,
+    auto add = [&](OpGroup g, const wxString &label, const wxString &description, std::vector<OpField> fields,
                    std::function<BuiltOp(const OpValues &, const OpContext &)> build) -> OpDef & {
         defs.push_back({g, label, description, std::move(fields), true, true, true, false, std::move(build)});
         return defs.back();
@@ -14,11 +14,11 @@ std::vector<OpDef> make_layer_operation_defs(const OpContext &initial)
     const int max_px = 32768;
 
     // ---- Transform ----
-    add(OpGroup::Transform, "Move", "Moves the model (or the region of interest) to an anchor with margins.",
-        {pick("anchor", "Anchor", anchor_names(), int(layerops::Anchor::MiddleCenter)),
-         num("ml", "Margin left (px)", -max_px, max_px, 0), num("mt", "Margin top (px)", -max_px, max_px, 0),
-         num("mr", "Margin right (px)", -max_px, max_px, 0), num("mb", "Margin bottom (px)", -max_px, max_px, 0),
-         flag("cut", "Cut (unchecked = copy)", true)},
+    add(OpGroup::Transform, _L("Move"), _L("Moves the model (or the region of interest) to an anchor with margins."),
+        {pick("anchor", _L("Anchor"), anchor_names(), int(layerops::Anchor::MiddleCenter)),
+         num("ml", _L("Margin left (px)"), -max_px, max_px, 0), num("mt", _L("Margin top (px)"), -max_px, max_px, 0),
+         num("mr", _L("Margin right (px)"), -max_px, max_px, 0), num("mb", _L("Margin bottom (px)"), -max_px, max_px, 0),
+         flag("cut", _L("Cut (unchecked = copy)"), true)},
         [](const OpValues &v, const OpContext &c) {
             require_range(c);
             layerops::MoveParams p;
@@ -34,10 +34,10 @@ std::vector<OpDef> make_layer_operation_defs(const OpContext &initial)
             op.kernel = [p](const layerops::StreamLayout &l) { return layerops::move_kernel(p, l); };
             return op;
         });
-    add(OpGroup::Transform, "Resize", "Scales the layers around the image centre (bilinear).",
-        {dbl("x", "X scale (%)", 1, 1000, 100, 2), dbl("y", "Y scale (%)", 1, 1000, 100, 2),
-         flag("constrain", "Constrain proportions (Y follows X)", true),
-         flag("fade", "Fade the scale back to 100 % across the range", false)},
+    add(OpGroup::Transform, _L("Resize"), _L("Scales the layers around the image centre (bilinear)."),
+        {dbl("x", _L("X scale (%)"), 1, 1000, 100, 2), dbl("y", _L("Y scale (%)"), 1, 1000, 100, 2),
+         flag("constrain", _L("Constrain proportions (Y follows X)"), true),
+         flag("fade", _L("Fade the scale back to 100 % across the range"), false)},
         [](const OpValues &v, const OpContext &c) {
             require_range(c);
             layerops::ResizeParams p;
@@ -52,8 +52,8 @@ std::vector<OpDef> make_layer_operation_defs(const OpContext &initial)
             op.kernel = [p](const layerops::StreamLayout &l) { return layerops::resize_kernel(p, l); };
             return op;
         });
-    add(OpGroup::Transform, "Rotate", "Rotates the layers around the image centre. Positive angles are clockwise.",
-        {dbl("angle", "Angle (degrees)", -360, 360, 90, 2)},
+    add(OpGroup::Transform, _L("Rotate"), _L("Rotates the layers around the image centre. Positive angles are clockwise."),
+        {dbl("angle", _L("Angle (degrees)"), -360, 360, 90, 2)},
         [](const OpValues &v, const OpContext &c) {
             require_range(c);
             layerops::RotateParams p;
@@ -67,9 +67,9 @@ std::vector<OpDef> make_layer_operation_defs(const OpContext &initial)
             op.kernel = [p](const layerops::StreamLayout &l) { return layerops::rotate_kernel(p, l); };
             return op;
         });
-    add(OpGroup::Transform, "Flip", "Mirrors the layers horizontally, vertically or both.",
-        {pick("dir", "Direction", {"Horizontal", "Vertical", "Both"}, 0),
-         flag("copy", "Keep the original and blend the flipped copy over it", false)},
+    add(OpGroup::Transform, _L("Flip"), _L("Mirrors the layers horizontally, vertically or both."),
+        {pick("dir", _L("Direction"), {_L("Horizontal"), _L("Vertical"), _L("Both")}, 0),
+         flag("copy", _L("Keep the original and blend the flipped copy over it"), false)},
         [](const OpValues &v, const OpContext &c) {
             require_range(c);
             layerops::FlipParams p;
@@ -82,10 +82,10 @@ std::vector<OpDef> make_layer_operation_defs(const OpContext &initial)
             op.kernel = [p](const layerops::StreamLayout &l) { return layerops::flip_kernel(p, l); };
             return op;
         });
-    add(OpGroup::Transform, "Pattern", "Duplicates the model (or the region of interest) into a grid of copies.",
-        {pick("anchor", "Anchor", with_none(anchor_names()), int(layerops::Anchor::None)),
-         num("cols", "Columns", 1, 1000, 1), num("rows", "Rows", 1, 1000, 1),
-         num("cs", "Column spacing (px)", 0, max_px, 0), num("rs", "Row spacing (px)", 0, max_px, 0)},
+    add(OpGroup::Transform, _L("Pattern"), _L("Duplicates the model (or the region of interest) into a grid of copies."),
+        {pick("anchor", _L("Anchor"), with_none(anchor_names()), int(layerops::Anchor::None)),
+         num("cols", _L("Columns"), 1, 1000, 1), num("rows", _L("Rows"), 1, 1000, 1),
+         num("cs", _L("Column spacing (px)"), 0, max_px, 0), num("rs", _L("Row spacing (px)"), 0, max_px, 0)},
         [](const OpValues &v, const OpContext &c) {
             require_range(c);
             layerops::PatternParams p;
@@ -101,12 +101,12 @@ std::vector<OpDef> make_layer_operation_defs(const OpContext &initial)
             return op;
         });
     {
-        auto &def = add(OpGroup::Transform, "Change resolution",
-            "Copies the model bounds to the centre of a new canvas size (crop or pad). Only for documents that "
-            "store their own resolution (not sliced documents).",
-            {num("w", "New width (px)", 1, max_px, double(initial.width)), num("h", "New height (px)", 1, max_px, double(initial.height)),
-             flag("fix", "Fix pixel ratio", false, "Scale the model by the pixel pitch ratio old/new."),
-             dbl("rx", "Pixel ratio X (old/new)", 0.001, 1000, 1, 3), dbl("ry", "Pixel ratio Y (old/new)", 0.001, 1000, 1, 3)},
+        auto &def = add(OpGroup::Transform, _L("Change resolution"),
+            _L("Copies the model bounds to the centre of a new canvas size (crop or pad). Only for documents that "
+            "store their own resolution (not sliced documents)."),
+            {num("w", _L("New width (px)"), 1, max_px, double(initial.width)), num("h", _L("New height (px)"), 1, max_px, double(initial.height)),
+             flag("fix", _L("Fix pixel ratio"), false, _L("Scale the model by the pixel pitch ratio old/new.")),
+             dbl("rx", _L("Pixel ratio X (old/new)"), 0.001, 1000, 1, 3), dbl("ry", _L("Pixel ratio Y (old/new)"), 0.001, 1000, 1, 3)},
             [](const OpValues &v, const OpContext &) {
                 layerops::ChangeResolutionParams p;
                 p.new_width = v.u("w"); p.new_height = v.u("h"); p.fix_ratio = v.b("fix");
@@ -120,8 +120,8 @@ std::vector<OpDef> make_layer_operation_defs(const OpContext &initial)
     }
 
     // ---- Pixels ----
-    add(OpGroup::Pixels, "Threshold", "Applies an OpenCV-style threshold to the pixel values.",
-        {num("t", "Threshold", 0, 255, 127), num("max", "Maximum", 0, 255, 255), pick("type", "Type", threshold_names(), 0)},
+    add(OpGroup::Pixels, _L("Threshold"), _L("Applies an OpenCV-style threshold to the pixel values."),
+        {num("t", _L("Threshold"), 0, 255, 127), num("max", _L("Maximum"), 0, 255, 255), pick("type", _L("Type"), threshold_names(), 0)},
         [](const OpValues &v, const OpContext &c) {
             require_range(c);
             layerops::ThresholdParams p;
@@ -135,9 +135,9 @@ std::vector<OpDef> make_layer_operation_defs(const OpContext &initial)
             op.kernel = [p](const layerops::StreamLayout &l) { return layerops::threshold_kernel(p, l); };
             return op;
         });
-    add(OpGroup::Pixels, "Solidify", "Fills holes inside the model.",
-        {num("area", "Minimum hole area (px^2, 0 = off)", 0, 100000000, 1),
-         pick("check", "Fill holes", {"larger than or equal to the area", "smaller than or equal to the area"}, 0)},
+    add(OpGroup::Pixels, _L("Solidify"), _L("Fills holes inside the model."),
+        {num("area", _L("Minimum hole area (px^2, 0 = off)"), 0, 100000000, 1),
+         pick("check", _L("Fill holes"), {_L("larger than or equal to the area"), _L("smaller than or equal to the area")}, 0)},
         [](const OpValues &v, const OpContext &c) {
             require_range(c);
             layerops::SolidifyParams p;
@@ -152,12 +152,12 @@ std::vector<OpDef> make_layer_operation_defs(const OpContext &initial)
         });
     {
         const auto chess = layerops::generate_dimming_pattern("Chessboard", 127);
-        auto &def = add(OpGroup::Pixels, "Pixel dimming", "Dims or lightens pixels of the model's walls or inside with a tiled pattern.",
-            {flag("light", "Lighten instead of dim", false), num("ws", "Wall thickness start (px)", 1, 4096, 10),
-             num("we", "Wall thickness end (px)", 1, 4096, 10), flag("walls", "Dim only the walls", false),
+        auto &def = add(OpGroup::Pixels, _L("Pixel dimming"), _L("Dims or lightens pixels of the model's walls or inside with a tiled pattern."),
+            {flag("light", _L("Lighten instead of dim"), false), num("ws", _L("Wall thickness start (px)"), 1, 4096, 10),
+             num("we", _L("Wall thickness end (px)"), 1, 4096, 10), flag("walls", _L("Dim only the walls"), false),
              flag("chamfer", "Fade the wall thickness start -> end over the range", false),
-             txt("pattern", "Pattern (rows of values 0..255)", chess.pattern), txt("alternate", "Alternate pattern", chess.alternate),
-             num("per", "Alternate every N layers", 1, 10000, 1)},
+             txt("pattern", _L("Pattern (rows of values 0..255)"), chess.pattern), txt("alternate", _L("Alternate pattern"), chess.alternate),
+             num("per", _L("Alternate every N layers"), 1, 10000, 1)},
             [](const OpValues &v, const OpContext &c) {
                 require_range(c);
                 layerops::PixelDimmingParams p;
@@ -178,12 +178,12 @@ std::vector<OpDef> make_layer_operation_defs(const OpContext &initial)
         def.pattern_helper = true;
     }
     {
-        auto &def = add(OpGroup::Pixels, "Infill", "Replaces the model interior with a hollow infill pattern (needs neighbouring layers).",
-            {pick("type", "Infill type", {"Pillars", "Concentric", "Waves", "Cubic cross", "Cubic cross alternating", "Cubic star", "Honeycomb", "Gyroid"},
+        auto &def = add(OpGroup::Pixels, _L("Infill"), _L("Replaces the model interior with a hollow infill pattern (needs neighbouring layers)."),
+            {pick("type", _L("Infill type"), {_L("Pillars"), _L("Concentric"), _L("Waves"), _L("Cubic cross"), _L("Cubic cross alternating"), _L("Cubic star"), _L("Honeycomb"), _L("Gyroid")},
                   int(layerops::InfillAlgorithm::CubicCrossAlternating)),
-             dbl("fc", "Floor / ceiling thickness (mm)", 0, 100, 3.0, 3), num("wall", "Wall thickness (px)", 1, 4096, 64),
-             num("thick", "Infill thickness (px)", 1, 4096, 45), num("space", "Infill spacing (px)", 1, 8192, 300),
-             num("bright", "Infill brightness", 0, 255, 255), flag("reinforce", "Reinforce infill", false)},
+             dbl("fc", _L("Floor / ceiling thickness (mm)"), 0, 100, 3.0, 3), num("wall", _L("Wall thickness (px)"), 1, 4096, 64),
+             num("thick", _L("Infill thickness (px)"), 1, 4096, 45), num("space", _L("Infill spacing (px)"), 1, 8192, 300),
+             num("bright", _L("Infill brightness"), 0, 255, 255), flag("reinforce", _L("Reinforce infill"), false)},
             [](const OpValues &v, const OpContext &c) {
                 require_range(c);
                 layerops::InfillParams p;
@@ -203,18 +203,18 @@ std::vector<OpDef> make_layer_operation_defs(const OpContext &initial)
         def.previewable = false;
     }
     {
-        auto &def = add(OpGroup::Pixels, "Pixel arithmetic", "Combines every pixel with a value or pattern (set, add, multiply, bitwise, keep region, ...).",
-            {pick("op", "Operator", {"Set", "Add", "Subtract", "Multiply", "Divide", "Minimum", "Maximum", "Bitwise NOT", "Bitwise AND",
-                                     "Bitwise OR", "Bitwise XOR", "Absolute difference", "Threshold", "Keep region (needs ROI)", "Discard region (needs ROI)"}, 0),
-             pick("apply", "Apply to", {"All pixels", "Model", "Model surface", "Model surface and inset", "Model inner", "Model walls"},
+        auto &def = add(OpGroup::Pixels, _L("Pixel arithmetic"), _L("Combines every pixel with a value or pattern (set, add, multiply, bitwise, keep region, ...)."),
+            {pick("op", _L("Operator"), {_L("Set"), _L("Add"), _L("Subtract"), _L("Multiply"), _L("Divide"), _L("Minimum"), _L("Maximum"), _L("Bitwise NOT"), _L("Bitwise AND"),
+                                     _L("Bitwise OR"), _L("Bitwise XOR"), _L("Absolute difference"), _L("Threshold"), _L("Keep region (needs ROI)"), _L("Discard region (needs ROI)")}, 0),
+             pick("apply", _L("Apply to"), {_L("All pixels"), _L("Model"), _L("Model surface"), _L("Model surface and inset"), _L("Model inner"), _L("Model walls")},
                   int(layerops::ArithmeticApply::Model)),
-             num("ws", "Wall thickness start (px)", 1, 4096, 20), num("we", "Wall thickness end (px)", 1, 4096, 20),
-             flag("chamfer", "Fade the wall thickness over the range", false),
-             num("value", "Value (threshold level for Threshold)", 0, 255, 255), dbl("step", "Value change per layer", -255, 255, 0, 3),
-             pick("tt", "Threshold type", threshold_names(), 0), num("tmax", "Threshold maximum", 0, 255, 255),
-             flag("usepat", "Use pattern instead of the value", false), flag("inv", "Invert the pattern", false),
-             num("per", "Alternate every N layers", 1, 10000, 1),
-             txt("pattern", "Pattern", ""), txt("alternate", "Alternate pattern", "")},
+             num("ws", _L("Wall thickness start (px)"), 1, 4096, 20), num("we", _L("Wall thickness end (px)"), 1, 4096, 20),
+             flag("chamfer", _L("Fade the wall thickness over the range"), false),
+             num("value", _L("Value (threshold level for Threshold)"), 0, 255, 255), dbl("step", _L("Value change per layer"), -255, 255, 0, 3),
+             pick("tt", _L("Threshold type"), threshold_names(), 0), num("tmax", _L("Threshold maximum"), 0, 255, 255),
+             flag("usepat", _L("Use pattern instead of the value"), false), flag("inv", _L("Invert the pattern"), false),
+             num("per", _L("Alternate every N layers"), 1, 10000, 1),
+             txt("pattern", _L("Pattern"), ""), txt("alternate", _L("Alternate pattern"), "")},
             [](const OpValues &v, const OpContext &c) {
                 require_range(c);
                 layerops::PixelArithmeticParams p;
@@ -237,14 +237,14 @@ std::vector<OpDef> make_layer_operation_defs(const OpContext &initial)
         def.pattern_helper = true;
     }
     {
-        auto &def = add(OpGroup::Pixels, "Raft relief", "Relieves the raft with holes, dimming, decimation or tabs. Works on the whole document; "
-                        "the optional region of interest limits it.",
-            {pick("type", "Relief type", {"Relief (holes)", "Dimming", "Decimate", "Tabs"}, 0),
-             num("mask", "First layer with supports (0 = auto-detect)", 0, 1000000, 0), num("ign", "Ignore first layers", 0, 1000000, 0),
-             num("low", "Low brightness", 0, 255, 0), num("dil", "Dilate iterations", 0, 1000, 15), num("margin", "Wall margin (px)", 0, 4096, 40),
-             num("hole", "Hole diameter (px)", 1, 4096, 80), num("spacing", "Hole spacing (px)", 0, 4096, 40),
-             num("high", "Tab brightness", 0, 255, 255), num("tbase", "Tab triangle base (px)", 1, 4096, 200),
-             num("theight", "Tab triangle height (px)", 1, 4096, 250)},
+        auto &def = add(OpGroup::Pixels, _L("Raft relief"), _L("Relieves the raft with holes, dimming, decimation or tabs. Works on the whole document; "
+                        "the optional region of interest limits it."),
+            {pick("type", _L("Relief type"), {_L("Relief (holes)"), _L("Dimming"), _L("Decimate"), _L("Tabs")}, 0),
+             num("mask", _L("First layer with supports (0 = auto-detect)"), 0, 1000000, 0), num("ign", _L("Ignore first layers"), 0, 1000000, 0),
+             num("low", _L("Low brightness"), 0, 255, 0), num("dil", _L("Dilate iterations"), 0, 1000, 15), num("margin", _L("Wall margin (px)"), 0, 4096, 40),
+             num("hole", _L("Hole diameter (px)"), 1, 4096, 80), num("spacing", _L("Hole spacing (px)"), 0, 4096, 40),
+             num("high", _L("Tab brightness"), 0, 255, 255), num("tbase", _L("Tab triangle base (px)"), 1, 4096, 200),
+             num("theight", _L("Tab triangle height (px)"), 1, 4096, 250)},
             [](const OpValues &v, const OpContext &c) {
                 static constexpr layerops::RaftReliefType kTypes[] = {layerops::RaftReliefType::Relief, layerops::RaftReliefType::Dimming,
                                                                        layerops::RaftReliefType::Decimate, layerops::RaftReliefType::Tabs};
@@ -258,11 +258,11 @@ std::vector<OpDef> make_layer_operation_defs(const OpContext &initial)
                 BuiltOp op;
                 op.mask = [p](auto &layers, const auto &, const layerops::LayerSelection &, const sla::LayerProgress &pr) {
                     if (!layerops::raft_relief_layers(layers, p, pr))
-                        invalid("No raft or support layers were found, so nothing was changed.");
+                        invalid(_u8L("No raft or support layers were found, so nothing was changed."));
                 };
                 op.kernel = [p](const layerops::StreamLayout &l) {
                     auto kernel = layerops::raft_relief_kernel(p, l);
-                    if (!kernel) invalid("No raft or support layers were found, so nothing was changed.");
+                    if (!kernel) invalid(_u8L("No raft or support layers were found, so nothing was changed."));
                     return *kernel;
                 };
                 return op;
@@ -272,8 +272,8 @@ std::vector<OpDef> make_layer_operation_defs(const OpContext &initial)
 
     // ---- Layers ----
     {
-        auto &def = add(OpGroup::Layers, "Clone layers", "Repeats every layer of the range N more times (later layers move up).",
-            {num("n", "Clones per layer", 1, 1000, 1), flag("same", "Keep the same Z (repeated exposure)", false)},
+        auto &def = add(OpGroup::Layers, _L("Clone layers"), _L("Repeats every layer of the range N more times (later layers move up)."),
+            {num("n", _L("Clones per layer"), 1, 1000, 1), flag("same", _L("Keep the same Z (repeated exposure)"), false)},
             [](const OpValues &v, const OpContext &c) {
                 require_range(c);
                 layerops::CloneParams p;
@@ -287,8 +287,8 @@ std::vector<OpDef> make_layer_operation_defs(const OpContext &initial)
         def.previewable = false;
     }
     {
-        auto &def = add(OpGroup::Layers, "Remove layers", "Removes the layers of the range (optionally only nearly empty ones).",
-            {flag("use", "Only remove layers with few pixels", false), num("px", "Remove layers with at most N lit pixels", 0, 100000000, 0)},
+        auto &def = add(OpGroup::Layers, _L("Remove layers"), _L("Removes the layers of the range (optionally only nearly empty ones)."),
+            {flag("use", _L("Only remove layers with few pixels"), false), num("px", _L("Remove layers with at most N lit pixels"), 0, 100000000, 0)},
             [](const OpValues &v, const OpContext &c) {
                 require_range(c);
                 layerops::RemoveParams p;
@@ -301,16 +301,16 @@ std::vector<OpDef> make_layer_operation_defs(const OpContext &initial)
     }
     {
         const auto presets = layerops::reheight_presets(initial.layer_count, nominal_layer_height_mm(initial.z_mm));
-        auto &def = add(OpGroup::Layers, "Change layer height", "Splits or merges layers to a new height, or shifts the Z position of a range.",
-            {pick("method", "Method", {"Re-height (split / merge layers)", "Offset Z position of the range"}, 0),
-             pick("preset", "New layer height", reheight_labels(presets), 0),
-             pick("aa", "Anti-aliasing when merging", {"None", "Difference", "Average"}, 0),
-             dbl("off", "Z offset (mm)", -10, 10, 0.01, 3)},
+        auto &def = add(OpGroup::Layers, _L("Change layer height"), _L("Splits or merges layers to a new height, or shifts the Z position of a range."),
+            {pick("method", _L("Method"), {_L("Re-height (split / merge layers)"), _L("Offset Z position of the range")}, 0),
+             pick("preset", _L("New layer height"), reheight_labels(presets), 0),
+             pick("aa", _L("Anti-aliasing when merging"), {_L("None"), _L("Difference"), _L("Average")}, 0),
+             dbl("off", _L("Z offset (mm)"), -10, 10, 0.01, 3)},
             [presets](const OpValues &v, const OpContext &c) {
                 layerops::ReHeightParams p;
                 p.method = layerops::ReHeightMethod(v.i("method"));
                 if (p.method == layerops::ReHeightMethod::ReHeight) {
-                    if (presets.empty()) invalid("This layer height cannot be split or merged exactly.");
+                    if (presets.empty()) invalid(_u8L("This layer height cannot be split or merged exactly."));
                     p.preset = presets.at(size_t(std::clamp(v.i("preset"), 0, int(presets.size()) - 1)));
                 }
                 p.anti_aliasing = layerops::ReHeightAntiAliasing(v.i("aa"));
@@ -323,9 +323,9 @@ std::vector<OpDef> make_layer_operation_defs(const OpContext &initial)
         def.previewable = false;
     }
     {
-        auto &def = add(OpGroup::Layers, "Layer arithmetic", "Computes layers from other layers, e.g. \"10,11 = 11+12-10*5; 3:7 = 3|4\" "
-                        "(operators + - * / & | ^ $ evaluated left to right). Layer numbers in the sentence are 0-based, like UVtools.",
-            {txt("sentence", "Sentence", "")},
+        auto &def = add(OpGroup::Layers, _L("Layer arithmetic"), _L("Computes layers from other layers, e.g. \"10,11 = 11+12-10*5; 3:7 = 3|4\" "
+                        "(operators + - * / & | ^ $ evaluated left to right). Layer numbers in the sentence are 0-based, like UVtools."),
+            {txt("sentence", _L("Sentence"), "")},
             [](const OpValues &v, const OpContext &c) {
                 layerops::LayerArithmeticParams p;
                 p.sentence = v.s("sentence"); p.roi = c.roi;
@@ -340,15 +340,15 @@ std::vector<OpDef> make_layer_operation_defs(const OpContext &initial)
         def.uses_range = false; def.previewable = false;
     }
     {
-        auto &def = add(OpGroup::Layers, "Double exposure", "Prints every layer of the range twice (second pass uses an eroded copy). Needs a document with exposure data.",
-            {num("bottom", "Bottom layer count", 0, 100000, double(initial.bottom_layers)),
-             dbl("fbe", "First pass bottom exposure (s)", 0, 1000, 0, 2), dbl("fne", "First pass normal exposure (s)", 0, 1000, 0, 2),
-             dbl("sbe", "Second pass bottom exposure (s)", 0, 1000, 0, 2), dbl("sne", "Second pass normal exposure (s)", 0, 1000, 0, 2),
-             num("fbr", "First pass bottom erode (px)", 0, 100, 4), num("sbr", "Second pass bottom erode (px)", 0, 100, 0),
-             num("fnr", "First pass normal erode (px)", 0, 100, 1), num("snr", "Second pass normal erode (px)", 0, 100, 0),
-             flag("diff", "Second layer = difference to the first", true), num("ov", "Difference overlap erode (px)", 0, 100, 10),
-             flag("lift", "Lift before the second pass", true), dbl("liftmm", "Second pass lift (mm)", 0, 100, 0.1, 3),
-             flag("wait", "Wait before the second pass", true), dbl("waits", "Second pass wait before cure (s)", 0, 1000, 0, 2)},
+        auto &def = add(OpGroup::Layers, _L("Double exposure"), _L("Prints every layer of the range twice (second pass uses an eroded copy). Needs a document with exposure data."),
+            {num("bottom", _L("Bottom layer count"), 0, 100000, double(initial.bottom_layers)),
+             dbl("fbe", _L("First pass bottom exposure (s)"), 0, 1000, 0, 2), dbl("fne", _L("First pass normal exposure (s)"), 0, 1000, 0, 2),
+             dbl("sbe", _L("Second pass bottom exposure (s)"), 0, 1000, 0, 2), dbl("sne", _L("Second pass normal exposure (s)"), 0, 1000, 0, 2),
+             num("fbr", _L("First pass bottom erode (px)"), 0, 100, 4), num("sbr", _L("Second pass bottom erode (px)"), 0, 100, 0),
+             num("fnr", _L("First pass normal erode (px)"), 0, 100, 1), num("snr", _L("Second pass normal erode (px)"), 0, 100, 0),
+             flag("diff", _L("Second layer = difference to the first"), true), num("ov", _L("Difference overlap erode (px)"), 0, 100, 10),
+             flag("lift", _L("Lift before the second pass"), true), dbl("liftmm", _L("Second pass lift (mm)"), 0, 100, 0.1, 3),
+             flag("wait", _L("Wait before the second pass"), true), dbl("waits", _L("Second pass wait before cure (s)"), 0, 1000, 0, 2)},
             [](const OpValues &v, const OpContext &c) {
                 require_range(c);
                 layerops::DoubleExposureParams p;

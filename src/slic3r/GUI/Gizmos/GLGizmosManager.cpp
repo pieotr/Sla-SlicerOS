@@ -22,7 +22,6 @@
 #include "slic3r/GUI/Gizmos/GLGizmoSlaSupports.hpp"
 #include "slic3r/GUI/Gizmos/GLGizmoCut.hpp"
 #include "slic3r/GUI/Gizmos/GLGizmoHollow.hpp"
-#include "slic3r/GUI/Gizmos/GLGizmoMmuSegmentation.hpp"
 #include "slic3r/GUI/Gizmos/GLGizmoSimplify.hpp"
 #include "slic3r/GUI/Gizmos/GLGizmoEmboss.hpp"
 #include "slic3r/GUI/Gizmos/GLGizmoSVG.hpp"
@@ -101,7 +100,7 @@ bool GLGizmosManager::init()
             return false;
     }
 
-    // Index by stable EType rather than insertion order. FFF-only slots stay empty.
+    // Index by stable EType rather than insertion order. 
     m_gizmos.clear();
     m_gizmos.resize(Undefined);
     m_gizmos[Move].reset(new GLGizmoMove3D(m_parent, "move.svg", 0));
@@ -111,8 +110,7 @@ bool GLGizmosManager::init()
     m_gizmos[Cut].reset(new GLGizmoCut3D(m_parent, "cut.svg", 4));
     m_gizmos[Hollow].reset(new GLGizmoHollow(m_parent, "hollow.svg", 5));
     m_gizmos[SlaSupports].reset(new GLGizmoSlaSupports(m_parent, "sla_supports.svg", 6));
-    m_gizmos[MmSegmentation].reset(new GLGizmoMmuSegmentation(m_parent, "mmu_segmentation.svg", 10));
-    m_gizmos[Measure].reset(new GLGizmoMeasure(m_parent, "measure.svg", 11));
+    m_gizmos[Measure].reset(new GLGizmoMeasure(m_parent, "measure.svg", 7));
     m_gizmos[Emboss].reset(new GLGizmoEmboss(m_parent));
     m_gizmos[Svg].reset(new GLGizmoSVG(m_parent));
     m_gizmos[Simplify].reset(new GLGizmoSimplify(m_parent));
@@ -209,7 +207,7 @@ bool GLGizmosManager::check_gizmos_closed_except(EType type) const
 {
     if (get_current_type() != type && get_current_type() != Undefined) {
         wxGetApp().plater()->get_notification_manager()->push_notification(
-                    NotificationType::CustomSupportsAndSeamRemovedAfterRepair,
+                    NotificationType::CloseGizmoFirst,
                     NotificationManager::NotificationLevel::PrintInfoNotificationLevel,
                     _u8L("ERROR: Please close all manipulators available from "
                          "the left toolbar first"));
@@ -292,8 +290,6 @@ bool GLGizmosManager::gizmo_event(SLAGizmoEventType action, const Vec2d& mouse_p
         return dynamic_cast<GLGizmoSlaSupports*>(m_gizmos[SlaSupports].get())->gizmo_event(action, mouse_position, shift_down, alt_down, control_down);
     else if (m_current == Hollow)
         return dynamic_cast<GLGizmoHollow*>(m_gizmos[Hollow].get())->gizmo_event(action, mouse_position, shift_down, alt_down, control_down);
-    else if (m_current == MmSegmentation)
-        return dynamic_cast<GLGizmoMmuSegmentation*>(m_gizmos[MmSegmentation].get())->gizmo_event(action, mouse_position, shift_down, alt_down, control_down);
     else if (m_current == Measure)
         return dynamic_cast<GLGizmoMeasure*>(m_gizmos[Measure].get())->gizmo_event(action, mouse_position, shift_down, alt_down, control_down);
     else if (m_current == Cut)
@@ -328,19 +324,6 @@ void GLGizmosManager::render_current_gizmo() const
     m_gizmos[m_current]->render();
 }
 
-void GLGizmosManager::render_painter_gizmo()
-{
-    // This function shall only be called when current gizmo is
-    // derived from GLGizmoPainterBase.
-
-    if (!m_enabled || m_current == Undefined)
-        return;
-
-    auto *gizmo = dynamic_cast<GLGizmoPainterBase*>(get_current());
-    assert(gizmo); // check the precondition
-    gizmo->render_painter_gizmo();
-}
-
 void GLGizmosManager::render_overlay()
 {
     if (!m_enabled)
@@ -365,11 +348,7 @@ bool GLGizmosManager::on_mouse_wheel(const wxMouseEvent &evt)
 {
     bool processed = false;
 
-    if (m_current == SlaSupports || m_current == Hollow || m_current == MmSegmentation
-#ifndef SLIC3R_SLA_ONLY
-        || m_current == FdmSupports || m_current == Seam || m_current == FuzzySkin
-#endif
-        ) {
+    if (m_current == SlaSupports || m_current == Hollow ) {
         float rot = (float)evt.GetWheelRotation() / (float)evt.GetWheelDelta();
         if (gizmo_event((rot > 0.f ? SLAGizmoEventType::MouseWheelUp : SLAGizmoEventType::MouseWheelDown), Vec2d::Zero(), evt.ShiftDown(), evt.AltDown(), evt.ControlDown()))
             processed = true;
@@ -542,11 +521,7 @@ bool GLGizmosManager::on_char(wxKeyEvent& evt)
         case 'r' :
         case 'R' :
         {
-            if ((m_current == SlaSupports || m_current == Hollow || m_current == MmSegmentation
-#ifndef SLIC3R_SLA_ONLY
-                || m_current == FdmSupports || m_current == Seam || m_current == FuzzySkin
-#endif
-                ) && gizmo_event(SLAGizmoEventType::ResetClippingPlane))
+            if ((m_current == SlaSupports || m_current == Hollow ) && gizmo_event(SLAGizmoEventType::ResetClippingPlane))
                 processed = true;
 
             break;

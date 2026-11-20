@@ -21,8 +21,7 @@ class AppConfig
 public:
 	enum class EAppMode : unsigned char
 	{
-		Editor,
-		GCodeViewer
+		Editor
 	};
 
 	explicit AppConfig(EAppMode mode) :
@@ -128,7 +127,7 @@ public:
 	std::string 		get_last_output_dir(const std::string& alt, const bool removable = false) const;
 	bool                update_last_output_dir(const std::string &dir, const bool removable = false);
 
-	// reset the current print / filament / printer selections, so that 
+	// reset the current SLA print / material / printer selections, so that 
 	// the  PresetBundle::load_selections(const AppConfig &config) call will select
 	// the first non-default preset when called.
     void                reset_selections();
@@ -174,7 +173,6 @@ public:
 	bool get_mouse_device_swap_yz(const std::string& name, bool& swap) const
 		{ return get_3dmouse_device_numeric_value(name, "swap_yz", swap); }
 
-	static const std::string SECTION_FILAMENTS;
     static const std::string SECTION_MATERIALS;
     static const std::string SECTION_EMBOSS_STYLE;
 
@@ -193,7 +191,7 @@ private:
 	    return true;
 	}
 
-	// Type of application: Editor or GCodeViewer
+	// Type of application (only the Editor exists; the G-code viewer mode was removed)
 	EAppMode													m_mode { EAppMode::Editor };
 	// Map of section, name -> value
 	std::map<std::string, std::map<std::string, std::string>> 	m_storage;

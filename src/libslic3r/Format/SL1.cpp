@@ -26,7 +26,7 @@
 
 #include "libslic3r/miniz_extension.hpp" // IWYU pragma: keep
 #include <LocalesUtils.hpp>
-#include "libslic3r/GCode/ThumbnailData.hpp"
+#include "libslic3r/Thumbnails/ThumbnailData.hpp"
 #include "libslic3r/Utils/JsonUtils.hpp"
 
 #include "SLAArchiveReader.hpp"

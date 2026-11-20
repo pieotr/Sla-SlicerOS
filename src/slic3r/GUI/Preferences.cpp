@@ -135,29 +135,15 @@ void PreferencesDialog::show(const std::string& highlight_opt_key /*= std::strin
 	if (wxGetApp().is_editor()) {
 		auto app_config = get_app_config();
 
-#ifndef SLIC3R_SLA_ONLY
-		downloader->set_path_name(app_config->get("url_downloader_dest"));
-		downloader->allow(!app_config->has("downloader_url_registered") || app_config->get_bool("downloader_url_registered"));
-
-		for (const std::string opt_key : {"suppress_hyperlinks", "downloader_url_registered", "show_login_button", "show_step_import_parameters"})
-			m_optgroup_other->set_value(opt_key, app_config->get_bool(opt_key));
-		// by default "Log in" button is visible
-		if (!app_config->has("show_login_button"))
-			m_optgroup_other->set_value("show_login_button", true);
-#else
 		// Downloader and account options are not created in the SLA-only build.
 		for (const std::string opt_key : {"suppress_hyperlinks", "show_step_import_parameters"})
 			m_optgroup_other->set_value(opt_key, app_config->get_bool(opt_key));
-#endif
 
 		for (const std::string opt_key : { "default_action_on_close_application"
 										   ,"default_action_on_new_project"
 										   ,"default_action_on_select_preset" })
 			m_optgroup_general->set_value(opt_key, app_config->get(opt_key) == "none");
 		m_optgroup_general->set_value("default_action_on_dirty_project", app_config->get("default_action_on_dirty_project").empty());
-#ifndef SLIC3R_SLA_ONLY
-		m_optgroup_gui->set_value("seq_top_layer_only", app_config->get_bool("seq_top_layer_only"));
-#endif
 
 		// update colors for color pickers of the labels
 		update_color(m_sys_colour, wxGetApp().get_label_clr_sys());
@@ -316,14 +302,14 @@ void PreferencesDialog::build()
 		append_bool_option(m_optgroup_general, "background_processing", 
 			L("Background processing"),
 			L("If this is enabled, Slic3r will pre-process objects as soon "
-				"as they\'re loaded in order to save time when exporting G-code."),
+				"as they\'re loaded in order to save time when exporting sliced layers."),
 			app_config->get_bool("background_processing"));
 
 		append_bool_option(m_optgroup_general, "alert_when_supports_needed", 
 			L("Alert when supports needed"),
 			L("If this is enabled, Slic3r will raise alerts when it detects "
-				"issues in the sliced object, that can be resolved with supports (and brim). "
-				"Examples of such issues are floating object parts, unsupported extrusions and low bed adhesion."),
+				"issues in the sliced object, that can be resolved with supports. "
+				"Examples of such issues are floating object parts and unsupported overhangs."),
 			app_config->get_bool("alert_when_supports_needed"));
 
 
@@ -359,17 +345,12 @@ void PreferencesDialog::build()
 
 		append_bool_option(m_optgroup_general, "no_defaults",
 			L("Suppress \" - default - \" presets"),
-			L("Suppress \" - default - \" presets in the Print / Filament / Printer selections once there are any other valid presets available."),
+			L("Suppress \" - default - \" presets in the Print / Material / Printer selections once there are any other valid presets available."),
 			app_config->get_bool("no_defaults"));
 
-		append_bool_option(m_optgroup_general, "no_templates",
-			L("Suppress \" Template \" filament presets"),
-			L("Suppress \" Template \" filament presets in configuration wizard and sidebar visibility."),
-			app_config->get_bool("no_templates"));
-
 		append_bool_option(m_optgroup_general, "show_incompatible_presets",
-			L("Show incompatible print and filament presets"),
-			L("When checked, the print and filament presets are shown in the preset editor "
+			L("Show incompatible print and material presets"),
+			L("When checked, the print and material presets are shown in the preset editor "
 			"even if they are marked as incompatible with the active printer"),
 			app_config->get_bool("show_incompatible_presets"));
 
@@ -420,18 +401,6 @@ void PreferencesDialog::build()
 			L("Always ask for unsaved changes in presets when creating new project"),
 			app_config->get("default_action_on_new_project") == "none");
 	}
-#ifdef _WIN32
-	else {
-		append_bool_option(m_optgroup_general, "associate_gcode",
-			L("Associate .gcode files to PrusaSlicer G-code Viewer"),
-			L("If enabled, sets PrusaSlicer G-code Viewer as default application to open .gcode files."),
-			app_config->get_bool("associate_gcode"));
-		append_bool_option(m_optgroup_general, "associate_bgcode",
-			L("Associate .bgcode files to PrusaSlicer G-code Viewer"),
-			L("If enabled, sets PrusaSlicer G-code Viewer as default application to open .bgcode files."),
-			app_config->get_bool("associate_bgcode"));
-	}
-#endif // _WIN32
 
 #if __APPLE__
 	append_bool_option(m_optgroup_general, "use_retina_opengl",
@@ -443,13 +412,6 @@ void PreferencesDialog::build()
 
 	m_optgroup_general->append_separator();
 
-#ifndef SLIC3R_OFFLINE_ONLY
-	// Show/Hide splash screen
-	append_bool_option(m_optgroup_general, "show_splash_screen",
-		L("Show splash screen"),
-		L("Show splash screen"),
-		app_config->get_bool("show_splash_screen"));
-#endif
 
 	append_bool_option(m_optgroup_general, "restore_win_position",
 		L("Restore window position on start"),
@@ -529,13 +491,6 @@ void PreferencesDialog::build()
 			m_values[opt_key] = boost::any_cast<bool>(value) ? "1" : "0";
 	};
 
-#ifndef SLIC3R_SLA_ONLY // G-code preview slider; SLA has no G-code
-	append_bool_option(m_optgroup_gui, "seq_top_layer_only",
-		L("Sequential slider applied only to top layer"),
-		L("If enabled, changes made using the sequential slider, in preview, apply only to gcode top layer. "
-		  "If disabled, changes made using the sequential slider, in preview, apply to the whole gcode."),
-		app_config->get_bool("seq_top_layer_only"));
-#endif
 
 	if (is_editor) {
 		append_bool_option(m_optgroup_gui, "show_collapse_button",
@@ -567,11 +522,6 @@ void PreferencesDialog::build()
 			L("If enabled, shows non-manifold edges."),
 			app_config->get_bool("non_manifold_edges"));
 
-		append_bool_option(m_optgroup_gui, "allow_auto_color_change",
-			L("Allow automatically color change"),
-			L("If enabled, related notification will be shown, when sliced object looks like a logo or a sign."),
-			app_config->get_bool("allow_auto_color_change"));
-
 		m_optgroup_gui->append_separator();
 /*
 		append_bool_option(m_optgroup_gui, "suppress_round_corners",
@@ -586,16 +536,6 @@ void PreferencesDialog::build()
 			L("If enabled, useful hints are displayed at startup."),
 			app_config->get_bool("show_hints"));
 
-		#ifndef SLIC3R_OFFLINE_ONLY
-		append_enum_option<NotifyReleaseMode>(m_optgroup_gui, "notify_release",
-			L("Notify about new releases"),
-			L("You will be notified about new release after startup acordingly: All = Regular release and alpha / beta releases. Release only = regular release."),
-			new ConfigOptionEnum<NotifyReleaseMode>(static_cast<NotifyReleaseMode>(s_keys_map_NotifyReleaseMode.at(app_config->get("notify_release")))),
-			{ { "all", L("All") },
-			  { "release", L("Release only") },
-			  { "none", L("None") }
-			});
-		#endif
 
 		m_optgroup_gui->append_separator();
 
@@ -608,22 +548,10 @@ void PreferencesDialog::build()
 	activate_options_tab(m_optgroup_gui);
 
 	if (is_editor) {
-		#ifndef SLIC3R_OFFLINE_ONLY
-		// set Field for notify_release to its value to activate the object
-		boost::any val = s_keys_map_NotifyReleaseMode.at(app_config->get("notify_release"));
-		m_optgroup_gui->get_field("notify_release")->set_value(val, false);
-		#endif
 
 		create_icon_size_slider();
 		m_icon_size_sizer->ShowItems(app_config->get_bool("use_custom_toolbar_size"));
 
-		#ifndef SLIC3R_OFFLINE_ONLY
-		create_settings_mode_widget();
-		#endif
-		#ifndef SLIC3R_OFFLINE_ONLY
-		create_settings_text_color_widget();
-		create_settings_mode_color_widget();
-		#endif
 
 		m_optgroup_other = create_options_tab(_L("Other"), tabs);
 		m_optgroup_other->on_change = [this](t_config_option_key opt_key, boost::any value) {
@@ -640,12 +568,6 @@ void PreferencesDialog::build()
 		};
 
 
-#ifndef SLIC3R_SLA_ONLY // G-code only
-		append_bool_option(m_optgroup_other, "use_binary_gcode_when_supported", L("Use binary G-code when the printer supports it"),
-                    L("If the 'Supports binary G-code' option is enabled in Printer Settings, "
-                      "checking this option will result in the export of G-code in binary format."),
-                    app_config->get_bool("use_binary_gcode_when_supported"));
-#endif
 
 		append_bool_option(m_optgroup_other, "suppress_hyperlinks",
 			L("Suppress to open hyperlink in browser"),
@@ -659,23 +581,9 @@ void PreferencesDialog::build()
 			L("If enabled, " SLIC3R_APP_NAME " will show a dialog with quality selection when importing a STEP file."),
 			app_config->get_bool("show_step_import_parameters"));
 
-#ifndef SLIC3R_SLA_ONLY // Prusa account / online downloads are not part of the offline SLA build
-		append_bool_option(m_optgroup_other, "show_login_button",
-			L("Show \"Log in\" button in application top bar"),
-			L("If enabled, " SLIC3R_APP_NAME " will show up \"Log in\" button in application top bar."),
-			app_config->get_bool("show_login_button"));
-
-		append_bool_option(m_optgroup_other, "downloader_url_registered",
-			L("Allow downloads from supported websites (e.g. Printables.com)"),
-			L("If enabled, " SLIC3R_APP_NAME " can download and open files from supported websites"),
-			app_config->get_bool("downloader_url_registered"));
-#endif
 
 		activate_options_tab(m_optgroup_other);
 
-#ifndef SLIC3R_SLA_ONLY
-		create_downloader_path_sizer();
-#endif
 		create_settings_font_widget();
 
 #if ENABLE_ENVIRONMENT_MAP
@@ -781,23 +689,13 @@ void PreferencesDialog::update_ctrls_alignment()
 void PreferencesDialog::accept(wxEvent&)
 {
 	if(wxGetApp().is_editor()) {
-#ifndef SLIC3R_SLA_ONLY
-		if (const auto it = m_values.find("downloader_url_registered"); it != m_values.end())
-			downloader->allow(it->second == "1");
-		if (!downloader->on_finish())
-			return;
-#if defined(__linux__) && defined(SLIC3R_DESKTOP_INTEGRATION) 
-		if(DownloaderUtils::Worker::perform_registration_linux) 
-			DesktopIntegrationDialog::perform_downloader_desktop_integration();
-#endif //(__linux__) && defined(SLIC3R_DESKTOP_INTEGRATION)
-#endif // SLIC3R_SLA_ONLY
 	}
 
 	std::vector<std::string> options_to_recreate_GUI = { "no_defaults", "sys_menu_enabled", "font_pt_size", "suppress_round_corners" };
 
 	for (const std::string& option : options_to_recreate_GUI) {
 		if (m_values.find(option) != m_values.end()) {
-			wxString title = wxGetApp().is_editor() ? wxString(SLIC3R_APP_NAME) : wxString(GCODEVIEWER_APP_NAME);
+			wxString title = wxString(SLIC3R_APP_NAME);
 			title += " - " + _L("Changes for the critical options");
 			MessageDialog dialog(nullptr,
 				_L("Changing some options will trigger application restart.\n"
@@ -856,9 +754,6 @@ void PreferencesDialog::accept(wxEvent&)
 		wxGetApp().force_menu_update();
 #endif //_MSW_DARK_MODE
 #endif // _WIN32
-
-	if (m_values.find("no_templates") != m_values.end())
-		wxGetApp().plater()->force_filament_cb_update();
 
 	wxGetApp().update_ui_from_settings();
 	clear_cache();

@@ -9,9 +9,6 @@
 
 #include <boost/algorithm/string.hpp>
 #include <boost/log/trivial.hpp>
-#ifndef SLIC3R_OFFLINE_ONLY
-#include <curl/curl.h>
-#endif
 
 namespace Slic3r {
 namespace GUI {
@@ -77,22 +74,7 @@ std::string filename_from_url(const std::string& url)
 }
 std::string unescape_url(const std::string& unescaped)
 {
-#ifdef SLIC3R_OFFLINE_ONLY
     return {}; // URI-triggered downloads are unavailable.
-#else
-	std::string ret_val;
-	CURL* curl = curl_easy_init();
-	if (curl) {
-		int decodelen;
-		char* decoded = curl_easy_unescape(curl, unescaped.c_str(), unescaped.size(), &decodelen);
-		if (decoded) {
-			ret_val = std::string(decoded);
-			curl_free(decoded);
-		}
-		curl_easy_cleanup(curl);
-	}
-	return ret_val;
-#endif
 }
 }
 

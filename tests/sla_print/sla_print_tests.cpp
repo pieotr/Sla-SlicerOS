@@ -1,5 +1,4 @@
 #include <array>
-#include <libslic3r/CustomGCode.hpp>
 #include <libslic3r/PrintConfig.hpp>
 #include <unordered_map>
 #include <catch2/generators/catch_generators.hpp>
@@ -143,6 +142,74 @@ TEST_CASE("BranchingSupports::FloorSupportsDoNotPierceModel", "[SLASupportGenera
     sla::SupportTreeConfig supportcfg;
     supportcfg.object_elevation_mm = 0;
     supportcfg.tree_type = sla::SupportTreeType::Branching;
+
+    for (auto fname : SUPPORT_TEST_MODELS)
+        test_support_model_collision(fname, supportcfg);
+}
+
+TEST_CASE("OrganicBranchingSupports::ElevatedSupportGeometryIsValid", "[SLASupportGeneration][Organic]") {
+    sla::SupportTreeConfig supportcfg;
+    supportcfg.object_elevation_mm = 10.;
+    supportcfg.tree_type = sla::SupportTreeType::OrganicBranching;
+
+    for (auto fname : SUPPORT_TEST_MODELS) test_supports(fname, supportcfg);
+}
+
+TEST_CASE("OrganicBranchingSupports::FloorSupportGeometryIsValid", "[SLASupportGeneration][Organic]") {
+    sla::SupportTreeConfig supportcfg;
+    supportcfg.object_elevation_mm = 0;
+    supportcfg.tree_type = sla::SupportTreeType::OrganicBranching;
+
+    for (auto fname : SUPPORT_TEST_MODELS) test_supports(fname, supportcfg);
+}
+
+TEST_CASE("OrganicBranchingSupports::ElevatedSupportsDoNotPierceModel", "[SLASupportGeneration][Organic]") {
+    sla::SupportTreeConfig supportcfg;
+    supportcfg.object_elevation_mm = 10.;
+    supportcfg.tree_type = sla::SupportTreeType::OrganicBranching;
+
+    for (auto fname : SUPPORT_TEST_MODELS)
+        test_support_model_collision(fname, supportcfg);
+}
+
+TEST_CASE("OrganicBranchingSupports::FloorSupportsDoNotPierceModel", "[SLASupportGeneration][Organic]") {
+    sla::SupportTreeConfig supportcfg;
+    supportcfg.object_elevation_mm = 0;
+    supportcfg.tree_type = sla::SupportTreeType::OrganicBranching;
+
+    for (auto fname : SUPPORT_TEST_MODELS)
+        test_support_model_collision(fname, supportcfg);
+}
+
+TEST_CASE("OrganicSupports::ElevatedSupportGeometryIsValid", "[SLASupportGeneration][Organic]") {
+    sla::SupportTreeConfig supportcfg;
+    supportcfg.object_elevation_mm = 10.;
+    supportcfg.tree_type = sla::SupportTreeType::Organic;
+
+    for (auto fname : SUPPORT_TEST_MODELS) test_supports(fname, supportcfg);
+}
+
+TEST_CASE("OrganicSupports::FloorSupportGeometryIsValid", "[SLASupportGeneration][Organic]") {
+    sla::SupportTreeConfig supportcfg;
+    supportcfg.object_elevation_mm = 0;
+    supportcfg.tree_type = sla::SupportTreeType::Organic;
+
+    for (auto fname : SUPPORT_TEST_MODELS) test_supports(fname, supportcfg);
+}
+
+TEST_CASE("OrganicSupports::ElevatedSupportsDoNotPierceModel", "[SLASupportGeneration][Organic]") {
+    sla::SupportTreeConfig supportcfg;
+    supportcfg.object_elevation_mm = 10.;
+    supportcfg.tree_type = sla::SupportTreeType::Organic;
+
+    for (auto fname : SUPPORT_TEST_MODELS)
+        test_support_model_collision(fname, supportcfg);
+}
+
+TEST_CASE("OrganicSupports::FloorSupportsDoNotPierceModel", "[SLASupportGeneration][Organic]") {
+    sla::SupportTreeConfig supportcfg;
+    supportcfg.object_elevation_mm = 0;
+    supportcfg.tree_type = sla::SupportTreeType::Organic;
 
     for (auto fname : SUPPORT_TEST_MODELS)
         test_support_model_collision(fname, supportcfg);
@@ -445,33 +512,4 @@ TEST_CASE("SLA contour order remains stable at a repeated minimum vertex", "[sla
         CHECK(actual.polygons==reference.polygons);
         CHECK(actual.model_area==reference.model_area);
     }
-}
-
-TEST_CASE("Legacy 3MF colorprint migration preserves metadata without an FFF emitter", "[3mf][sla_legacy_colorprint]") {
-    DynamicPrintConfig legacy;
-    const std::vector<double> heights{.2,.4,.6,.8,1.,1.2,1.4,1.6};
-    legacy.set_key_value("colorprint_heights",new ConfigOptionFloats(heights));
-    CustomGCode::Info migrated;
-    CustomGCode::update_custom_gcode_per_print_z_from_config(migrated,&legacy);
-    REQUIRE(migrated.gcodes.size()==heights.size());
-    CHECK(migrated.mode==CustomGCode::SingleExtruder);
-    CHECK_FALSE(legacy.has("colorprint_heights"));
-    // Stored project colors are user-visible metadata; preserve the historical
-    // first-color offset and cycle rather than inspecting an internal palette.
-    const std::array<const char *,8> expected{"#E67E22","#F1C40F","#27AE60","#1ABC9C",
-        "#2980B9","#9B59B6","#C0392B","#E67E22"};
-    for(size_t i=0;i<heights.size();++i) {
-        CHECK(migrated.gcodes[i].print_z==heights[i]);
-        CHECK(migrated.gcodes[i].type==CustomGCode::ColorChange);
-        CHECK(migrated.gcodes[i].extruder==1);
-        CHECK(migrated.gcodes[i].color==expected[i]);
-        CHECK(migrated.gcodes[i].extra.empty());
-    }
-    const auto preserved=migrated;
-    legacy.set_key_value("colorprint_heights",new ConfigOptionFloats(std::vector<double>{9.}));
-    CustomGCode::update_custom_gcode_per_print_z_from_config(migrated,&legacy);
-    CHECK(migrated==preserved); // Existing modern metadata wins over legacy heights.
-    CHECK_FALSE(legacy.has("colorprint_heights"));
-    CustomGCode::update_custom_gcode_per_print_z_from_config(migrated,&legacy);
-    CHECK(migrated==preserved); // Repeated import conversion is idempotent.
 }

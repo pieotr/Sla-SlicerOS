@@ -27,7 +27,7 @@ public:
         SetName("Layer range slider");
         SetBackgroundStyle(wxBG_STYLE_PAINT);
         SetBackgroundColour(parent->GetBackgroundColour());
-        SetMinSize({std::max(FromDIP(116), 2 * GetTextExtent(wxString::Format("%d", count)).x + FromDIP(48)), FromDIP(200)});
+        SetMinSize({std::max(FromDIP(64), 2 * GetTextExtent(wxString::Format("%d", count)).x + FromDIP(38)), FromDIP(200)});
         SetToolTip("Drag a handle to choose a layer. Up/Down: one layer; Page Up/Down: ten; Home/End: limits. Left/Right chooses the first/last handle. Esc cancels a drag. The overlay updates when you release the handle.");
         Bind(wxEVT_PAINT, [this](wxPaintEvent &) { paint(); });
         Bind(wxEVT_SIZE, [this](wxSizeEvent &event) { Refresh(false); event.Skip(); });

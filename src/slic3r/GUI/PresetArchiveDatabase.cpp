@@ -5,7 +5,6 @@
 #include "slic3r/GUI/format.hpp"
 #include "slic3r/GUI/GUI_App.hpp"
 #include "slic3r/GUI/Plater.hpp"
-#include "slic3r/GUI/UserAccount.hpp"
 #include "slic3r/Utils/PresetUpdaterWrapper.hpp"
 #include "slic3r/GUI/Field.hpp"
 #include "libslic3r/Utils.hpp"
@@ -171,17 +170,6 @@ std::string escape_path_by_element(const std::string& path_string)
 	return ret_val;
 }
 
-bool add_authorization_header(Http& http)
-{
-    if (wxApp::GetInstance() == nullptr || ! GUI::wxGetApp().plater())
-        return false;
-    const std::string access_token = GUI::wxGetApp().plater()->get_user_account()->get_access_token();
-    if (!access_token.empty()) {
-        http.header("Authorization", "Bearer " + access_token);
-    }
-    return true;
-}
-
 }
 
 bool OnlineArchiveRepository::get_file_inner(const std::string& url, const fs::path& target_path, PresetUpdaterUIStatus* ui_status) const
@@ -196,8 +184,6 @@ bool OnlineArchiveRepository::get_file_inner(const std::string& url, const fs::p
 		tmp_path.string());
 
 	auto http = Http::get(url);
-    if (!add_authorization_header(http))
-        return false;
     http
 		.timeout_max(30)
 		.on_progress([](Http::Progress, bool& cancel) {
@@ -874,8 +860,6 @@ bool sync_inner(std::string& manifest, PresetUpdaterUIStatus* ui_status)
 	bool ret = false;
     std::string url = Utils::ServiceConfig::instance().preset_repo_repos_url();
     auto http = Http::get(std::move(url));
-    if (!add_authorization_header(http))
-        return false;
     http
 		.timeout_max(30)
 		.on_error([&](std::string body, std::string error, unsigned http_status) {

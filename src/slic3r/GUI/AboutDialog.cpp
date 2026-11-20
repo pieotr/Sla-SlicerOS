@@ -52,7 +52,7 @@ void AboutDialogLogo::onRepaint(wxEvent &event)
 // -----------------------------------------
 CopyrightsDialog::CopyrightsDialog()
     : DPIDialog(static_cast<wxWindow*>(wxGetApp().mainframe), wxID_ANY, format_wxstr("%1% - %2%"
-        , wxGetApp().is_editor() ? SLIC3R_APP_NAME : GCODEVIEWER_APP_NAME
+        , SLIC3R_APP_NAME
         , _L("Portions copyright")),
         wxDefaultPosition, wxDefaultSize, wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER)
 {
@@ -124,9 +124,6 @@ void CopyrightsDialog::fill_entries()
                                                                             , "https://github.com/richgel999/miniz" },
         { "Expat"           , "1998-2000 Thai Open Source Software Center Ltd and Clark Cooper"
                               "2001-2016 Expat maintainers"                 , "http://www.libexpat.org/" },
-#ifndef SLIC3R_SLA_ONLY
-        { "AVRDUDE"         , "2018  Free Software Foundation, Inc."        , "http://savannah.nongnu.org/projects/avrdude" },
-#endif
         { "Real-Time DXT1/DXT5 C compression library"   
                                     , "Based on original by fabian \"ryg\" giesen v1.04. "
                               "Custom version, modified by Yann Collet"     , "https://github.com/Cyan4973/RygsDXTc" },
@@ -223,7 +220,7 @@ void CopyrightsDialog::onCloseDialog(wxEvent &)
 }
 
 AboutDialog::AboutDialog()
-    : DPIDialog(static_cast<wxWindow*>(wxGetApp().mainframe), wxID_ANY, format_wxstr(_L("About %s"), wxGetApp().is_editor() ? SLIC3R_APP_NAME : GCODEVIEWER_APP_NAME), wxDefaultPosition,
+    : DPIDialog(static_cast<wxWindow*>(wxGetApp().mainframe), wxID_ANY, format_wxstr(_L("About %s"), SLIC3R_APP_NAME), wxDefaultPosition,
         wxDefaultSize, /*wxCAPTION*/wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER)
 {
     SetFont(wxGetApp().normal_font());
@@ -244,7 +241,7 @@ AboutDialog::AboutDialog()
 
     // title
     {
-        wxStaticText* title = new wxStaticText(this, wxID_ANY, wxGetApp().is_editor() ? SLIC3R_APP_NAME : GCODEVIEWER_APP_NAME, wxDefaultPosition, wxDefaultSize);
+        wxStaticText* title = new wxStaticText(this, wxID_ANY, SLIC3R_APP_NAME, wxDefaultPosition, wxDefaultSize);
         wxFont title_font = GUI::wxGetApp().bold_font();
         title_font.SetFamily(wxFONTFAMILY_ROMAN);
         title_font.SetPointSize(int(2.5 * title_font.GetPointSize()));//title_font.SetPointSize(24);

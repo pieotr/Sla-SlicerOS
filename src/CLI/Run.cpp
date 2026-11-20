@@ -28,18 +28,11 @@ int run(int argc, char** argv)
 #ifdef SLIC3R_GUI
     GUI::GUI_InitParams gui_params;
     start_gui |= init_gui_params(gui_params, argc, argv, cli);
-
-    if (gui_params.start_as_gcodeviewer)
-        return start_as_gcode_viewer(gui_params);
 #endif
 
     if (!load_print_data(models, print_config, printer_technology, cli))
         return 1;
 
-#ifndef SLIC3R_SLA_ONLY
-    if (!start_gui && is_needed_post_processing(print_config))
-        return 0;
-#endif
 
     if (!process_transform(cli, print_config, models))
         return 1;

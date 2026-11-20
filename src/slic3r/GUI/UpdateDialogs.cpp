@@ -280,7 +280,7 @@ boost::filesystem::path AppUpdateDownloadDialog::get_download_path() const
 MsgUpdateConfig::MsgUpdateConfig(const std::vector<Update> &updates, PresetUpdater::UpdateParams update_params) :
 	MsgDialog(nullptr, update_params == PresetUpdater::UpdateParams::FORCED_BEFORE_WIZARD  ? _L("Opening Configuration Wizard") : _L("Configuration update"), 
 					   update_params == PresetUpdater::UpdateParams::FORCED_BEFORE_WIZARD ? _L("PrusaSlicer is not using the newest configuration available.\n"
-												"Configuration Wizard may not offer the latest printers, filaments and SLA materials to be installed.") : 
+												"Configuration Wizard may not offer the latest printers and SLA materials to be installed.") : 
 											 _L("Configuration update is available"), wxICON_ERROR)
 {
 	auto *text = new wxStaticText(this, wxID_ANY, _(L(

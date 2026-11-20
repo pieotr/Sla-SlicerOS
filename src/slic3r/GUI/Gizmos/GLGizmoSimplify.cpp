@@ -529,11 +529,6 @@ void GLGizmoSimplify::apply_simplify() {
     auto plater = wxGetApp().plater();
     // TRN %1% = volumes name
     plater->take_snapshot(Slic3r::format(_u8L("Simplify %1%"), create_volumes_name(m_volume_ids, selection)));
-    plater->clear_before_change_mesh(selection.get_object_idx(), _u8L("Custom supports, seams and multimaterial painting were "
-                                                                      "removed after simplifying the mesh."));
-    // After removing custom supports, seams, and multimaterial painting, we have to update info about the object to remove information about
-    // custom supports, seams, and multimaterial painting in the right panel.
-    wxGetApp().obj_list()->update_info_items(selection.get_object_idx());
 
     for (const auto &item: m_state.result) {
         const ObjectID &id = item.first;

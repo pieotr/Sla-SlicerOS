@@ -130,43 +130,6 @@ private:
 
 
 // ----------------------------------------------------------------------------
-// BitmapChoiceRenderer
-// ----------------------------------------------------------------------------
-
-class BitmapChoiceRenderer : public wxDataViewCustomRenderer
-{
-public:
-    BitmapChoiceRenderer(wxDataViewCellMode mode =
-#ifdef __WXOSX__
-        wxDATAVIEW_CELL_INERT
-#else
-        wxDATAVIEW_CELL_EDITABLE
-#endif
-        , int align = wxALIGN_LEFT | wxALIGN_CENTER_VERTICAL
-    ) : wxDataViewCustomRenderer(wxT("DataViewBitmapText"), mode, align) {}
-
-    bool SetValue(const wxVariant& value) override;
-    bool GetValue(wxVariant& value) const override;
-
-    virtual bool Render(wxRect cell, wxDC* dc, int state) override;
-    virtual wxSize GetSize() const override;
-
-    bool        HasEditorCtrl() const override { return true; }
-    wxWindow*   CreateEditorCtrl(wxWindow* parent, wxRect labelRect, const wxVariant& value) override;
-    bool        GetValueFromEditorCtrl(wxWindow* ctrl, wxVariant& value) override;
-
-    void        set_can_create_editor_ctrl_function(std::function<bool()> can_create_fn) { can_create_editor_ctrl = can_create_fn; }
-    void        set_default_extruder_idx(std::function<int()> default_extruder_idx_fn)   { get_default_extruder_idx = default_extruder_idx_fn; }
-
-private:
-    DataViewBitmapText      m_value;
-    std::function<bool()>   can_create_editor_ctrl  { nullptr };
-    std::function<int()>    get_default_extruder_idx{ nullptr };
-};
-
-
-
-// ----------------------------------------------------------------------------
 // TextRenderer
 // ----------------------------------------------------------------------------
 

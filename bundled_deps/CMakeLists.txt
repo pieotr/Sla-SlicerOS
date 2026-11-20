@@ -1,7 +1,4 @@
 add_subdirectory(admesh)
-if (NOT SLIC3R_SLA_ONLY)
-    add_subdirectory(avrdude)
-endif ()
 add_subdirectory(miniz)
 add_subdirectory(glu-libtess)
 add_subdirectory(agg)

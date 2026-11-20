@@ -24,7 +24,7 @@ using namespace Slic3r::GUI;
 // @Vojta suggest to make static variable global
 // Guard for finalize Font Config
 // Will be finalized on application exit
-// It seams that it NOT work
+// It seems that it NOT work
 static std::optional<Slic3r::ScopeGuard> finalize_guard;
 // cache for Loading of the default configuration file and building information about the available fonts.
 static FcConfig *fc = nullptr;

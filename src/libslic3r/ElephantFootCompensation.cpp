@@ -15,7 +15,6 @@
 #include "EdgeGrid.hpp"
 #include "ExPolygon.hpp"
 #include "ElephantFootCompensation.hpp"
-#include "Flow.hpp"
 #include "Geometry.hpp"
 #include "Utils.hpp"
 #include "libslic3r/BoundingBox.hpp"
@@ -626,22 +625,6 @@ ExPolygon elephant_foot_compensation(const ExPolygon &input_expoly, double min_c
 	}
     
 	assert(validate_expoly_orientation(out));
-	return out;
-}
-
-ExPolygon  elephant_foot_compensation(const ExPolygon  &input, const Flow &external_perimeter_flow, const double compensation)
-{
-    // The contour shall be wide enough to apply the external perimeter plus compensation on both sides.
-    double min_contour_width = double(external_perimeter_flow.width() + external_perimeter_flow.spacing());
-    return elephant_foot_compensation(input, min_contour_width, compensation);
-}
-
-ExPolygons elephant_foot_compensation(const ExPolygons &input, const Flow &external_perimeter_flow, const double compensation)
-{
-	ExPolygons out;
-	out.reserve(input.size());
-	for (const ExPolygon &expoly : input)
-		out.emplace_back(elephant_foot_compensation(expoly, external_perimeter_flow, compensation));
 	return out;
 }
 

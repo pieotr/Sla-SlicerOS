@@ -34,7 +34,7 @@
 #include "libslic3r/BuildVolume.hpp"
 #include "libslic3r/Model.hpp"
 #include "libslic3r/FileReader.hpp"
-#include "libslic3r/GCode/ThumbnailData.hpp"
+#include "libslic3r/Thumbnails/ThumbnailData.hpp"
 #include "libslic3r/Format/OBJ.hpp"
 #include "libslic3r/MultipleBeds.hpp"
 #include "../Utils/MacDarkMode.hpp"

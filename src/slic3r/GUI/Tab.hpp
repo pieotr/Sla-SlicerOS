@@ -19,11 +19,9 @@
 //	
 //	 This file implements following packages:
 //	   Slic3r::GUI::Tab;
-//	       Slic3r::GUI::Tab::Print;
-//	       Slic3r::GUI::Tab::Filament;
 //	       Slic3r::GUI::Tab::Printer;
 //	   Slic3r::GUI::Tab::Page
-//	       - Option page: For example, the Slic3r::GUI::Tab::Print has option pages "Layers and perimeters", "Infill", "Skirt and brim" ...
+//	       - Option page: For example, the Slic3r::GUI::Tab::Printer has option pages "General", "Display", "Dependencies" ...
 //	   Slic3r::GUI::SavePresetWindow
 //	       - Dialog to select a new preset name to store the configuration.
 //	   Slic3r::GUI::Tab::Preset;
@@ -61,60 +59,6 @@ namespace GUI {
 
 class TabPresetComboBox;
 class OG_CustomCtrl;
-
-// G-code substitutions
-
-// Substitution Manager - helper for manipuation of the substitutions
-class SubstitutionManager
-{
-	DynamicPrintConfig* m_config{ nullptr };
-	wxWindow*			m_parent{ nullptr };
-	wxFlexGridSizer*	m_grid_sizer{ nullptr };
-
-	int                 m_em{10};
-	std::function<void()> m_cb_edited_substitution{ nullptr };
-	std::function<void()> m_cb_hide_delete_all_btn{ nullptr };
-
-	std::vector<std::string>	m_substitutions;
-	std::vector<wxWindow*>		m_chb_match_single_lines;
-
-	void validate_length();
-	bool is_compatible_with_ui();
-	bool is_valid_id(int substitution_id, const wxString& message);
-
-public:
-	SubstitutionManager() = default;
-	~SubstitutionManager() = default;
-
-	void init(DynamicPrintConfig* config, wxWindow* parent, wxFlexGridSizer* grid_sizer);
-	void create_legend();
-	void delete_substitution(int substitution_id);
-	void add_substitution(	int substitution_id = -1,
-							const std::string& plain_pattern = std::string(),
-							const std::string& format = std::string(),
-							const std::string& params = std::string(),
-							const std::string& notes  = std::string());
-	void update_from_config();
-	void delete_all();
-	void edit_substitution(int substitution_id, 
-						   int opt_pos, // option position insubstitution [0, 2]
-						   const std::string& value);
-	void set_cb_edited_substitution(std::function<void()> cb_edited_substitution) {
-		m_cb_edited_substitution = cb_edited_substitution;
-	}
-	void call_ui_update() {
-		if (m_cb_edited_substitution)
-			m_cb_edited_substitution();
-	}
-	void set_cb_hide_delete_all_btn(std::function<void()> cb_hide_delete_all_btn) {
-		m_cb_hide_delete_all_btn = cb_hide_delete_all_btn;
-	}
-	void hide_delete_all_btn() {
-		if (m_cb_hide_delete_all_btn)
-			m_cb_hide_delete_all_btn();
-	}
-	bool is_empty_substitutions();
-};
 
 // Single Tab page containing a{ vsizer } of{ optgroups }
 // package Slic3r::GUI::Tab::Page;
@@ -193,7 +137,6 @@ protected:
 	ScalableButton*		m_btn_delete_preset;
 	ScalableButton*		m_btn_export_preset { nullptr };	// single preset -> .ini
 	ScalableButton*		m_btn_import_preset { nullptr };	// .ini -> new user preset
-	ScalableButton*		m_btn_edit_ph_printer {nullptr};
 	ScalableButton*		m_btn_hide_incompatible_presets;
 	wxBoxSizer*			m_top_hsizer;
 	wxBoxSizer*			m_hsizer;
@@ -338,7 +281,7 @@ public:
     void		update_preset_choice();
     // Select a new preset, possibly delete the current one.
     // return false, if action was canceled
-    bool        select_preset(std::string preset_name = "", bool delete_current = false, const std::string& last_selected_ph_printer_name = "");
+    bool        select_preset(std::string preset_name = "", bool delete_current = false);
 	bool		may_discard_current_dirty_preset(PresetCollection* presets = nullptr, const std::string& new_printer_name = "");
 
     virtual void    clear_pages();
@@ -367,7 +310,7 @@ public:
 
 	void		on_roll_back_value(const bool to_sys = false);
 
-    PageShp		add_options_page(const wxString& title, const std::string& icon, bool is_extruder_pages = false);
+    PageShp		add_options_page(const wxString& title, const std::string& icon);
 	static wxString translate_category(const wxString& title, Preset::Type preset_type);
 
 	virtual void	OnActivate();
@@ -407,21 +350,13 @@ public:
 
 	void			on_value_change(const std::string& opt_key, const boost::any& value);
 
-    void            update_wiping_button_visibility();
     void            activate_option(const std::string &opt_key, const wxString &category, const std::vector<std::string> &another_blinking_opt_keys = {});
 	void			cache_config_diff(const std::vector<std::string>& selected_options, const DynamicPrintConfig* config = nullptr);
 	void			apply_config_from_cache();
 
 	const std::map<wxString, std::string>& get_category_icon_map() { return m_category_icon; }
 
-	static bool validate_custom_gcode(const wxString& title, const std::string& gcode);
-	bool        validate_custom_gcodes();
-    bool        validate_custom_gcodes_was_shown{ false };
     bool        is_prusa_printer() const;
-
-    void						edit_custom_gcode(const t_config_option_key& opt_key);
-    virtual const std::string&	get_custom_gcode(const t_config_option_key& opt_key);
-    virtual void				set_custom_gcode(const t_config_option_key& opt_key, const std::string& value);
 protected:
 	void			create_line_with_widget(ConfigOptionsGroup* optgroup, const std::string& opt_key, const std::string& path, widget_t widget);
 	wxSizer*		compatible_widget_create(wxWindow* parent, PresetDependencies &deps);
@@ -446,131 +381,21 @@ protected:
     ConfigManipulation get_config_manipulation();
 };
 
-class TabPrint : public Tab
-{
-public:
-	TabPrint(wxBookCtrlBase* parent) :
-        Tab(parent, _(L("Print Settings")), Slic3r::Preset::TYPE_PRINT) {}
-	~TabPrint() {}
-
-	void		build() override;
-	void		update_description_lines() override;
-	void		toggle_options() override;
-	void		update() override;
-	void		clear_pages() override;
-	bool 		supports_printer_technology(const PrinterTechnology tech) const override { return tech == ptFFF; }
-	wxSizer*	create_manage_substitution_widget(wxWindow* parent);
-	wxSizer*	create_substitutions_widget(wxWindow* parent);
-
-private:
-	ogStaticText*	m_recommended_thin_wall_thickness_description_line = nullptr;
-	ogStaticText*	m_top_bottom_shell_thickness_explanation = nullptr;
-	ogStaticText*	m_post_process_explanation = nullptr;
-	ScalableButton* m_del_all_substitutions_btn{nullptr};
-	SubstitutionManager m_subst_manager;
-};
-
-class TabFilament : public Tab
-{
-    BitmapComboBox* m_extruders_cb {nullptr};
-    int             m_active_extruder {0};
-	ogStaticText*	m_volumetric_speed_description_line {nullptr};
-	ogStaticText*	m_cooling_description_line {nullptr};
-
-    void            create_line_with_near_label_widget(ConfigOptionsGroupShp optgroup, const std::string &opt_key, int opt_index = 0);
-    void            update_line_with_near_label_widget(ConfigOptionsGroupShp optgroup, const std::string &opt_key, int opt_index = 0, bool is_checked = true);
-    void            add_filament_overrides_page();
-    void            update_filament_overrides_page();
-    void            create_extruder_combobox();
-	void 			update_volumetric_flow_preset_hints();
-
-    std::map<std::string, wxWindow*> m_overrides_options;
-public:
-	TabFilament(wxBookCtrlBase* parent) :
-		Tab(parent, _L("Filaments"), Slic3r::Preset::TYPE_FILAMENT) {}
-	~TabFilament() {}
-
-	void		build() override;
-	void		update_description_lines() override;
-	void		toggle_options() override;
-	void		update() override;
-	void		clear_pages() override;
-	void        msw_rescale() override;
-	void		sys_color_changed() override;
-	bool 		supports_printer_technology(const PrinterTechnology tech) const override { return tech == ptFFF; }
-    void        load_current_preset() override;
-
-    // set actiev extruder and update preset combobox if needed
-    // return false, if new preset wasn't selected
-    bool        set_active_extruder(int new_selected_extruder);
-    void        invalidate_active_extruder() { m_active_extruder = -1; }
-    void        update_extruder_combobox();
-    void        update_extruder_combobox_visibility();
-    int         get_active_extruder() const { return m_active_extruder; }
-
-	const std::string&	get_custom_gcode(const t_config_option_key& opt_key) override;
-	void				set_custom_gcode(const t_config_option_key& opt_key, const std::string& value) override;
-
-protected:
-    bool        select_preset_by_name(const std::string& name_w_suffix, bool force) override;
-    bool        save_current_preset(const std::string& new_name, bool detach) override;
-    bool        delete_current_preset() override;
-};
-
 class TabPrinter : public Tab
 {
-private:
-	bool		m_has_single_extruder_MM_page = false;
-	bool		m_use_silent_mode = false;
-    bool        m_supports_travel_acceleration = false;
-	bool        m_supports_min_feedrates = false;
-	void		append_option_line(ConfigOptionsGroupShp optgroup, const std::string opt_key);
-	bool		m_rebuild_kinematics_page = false;
-	ogStaticText* m_machine_limits_description_line {nullptr};
-	void 		update_machine_limits_description(const MachineLimitsUsage usage);
-
-	ogStaticText*	m_fff_print_host_upload_description_line {nullptr};
-	ogStaticText*	m_sla_print_host_upload_description_line {nullptr};
-
-    std::vector<PageShp>			m_pages_fff;
-    std::vector<PageShp>			m_pages_sla;
-
 public:
-	size_t		m_extruders_count;
-	size_t		m_extruders_count_old = 0;
-	size_t		m_initial_extruders_count;
-	size_t		m_sys_extruders_count;
-	size_t		m_cache_extruder_count = 0;
-
-    PrinterTechnology               m_printer_technology = ptFFF;
-
     TabPrinter(wxBookCtrlBase* parent) :
         Tab(parent, _L("Printers"), Slic3r::Preset::TYPE_PRINTER) {}
 	~TabPrinter() {}
 
 	void		build() override;
-	void		build_print_host_upload_group(Page* page);
-    void		build_fff();
     void		build_sla();
-	void		reload_config() override;
-	void		activate_selected_page(std::function<void()> throw_if_canceled) override;
-	void		clear_pages() override;
 	void		toggle_options() override;
     void		update() override;
-    void		update_fff();
     void		update_sla();
-    void        update_pages(); // update m_pages according to printer technology
-	void		extruders_count_changed(size_t extruders_count);
-	PageShp		build_kinematics_page();
-	void		build_extruder_pages(size_t n_before_extruders);
-	void		build_unregular_pages(bool from_initial_build = false);
-	void		on_preset_loaded() override;
-	void		init_options_list() override;
 	bool 		supports_printer_technology(const PrinterTechnology /* tech */) const override { return true; }
 
 	wxSizer*	create_bed_shape_widget(wxWindow* parent);
-	void		cache_extruder_cnt(const DynamicPrintConfig* config = nullptr);
-	bool		apply_extruder_cnt_from_cache();
 	void		update_sla_prusa_specific_visibility() override;
 };
 

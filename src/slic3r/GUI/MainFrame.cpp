@@ -35,16 +35,12 @@
 #include <boost/algorithm/string/replace.hpp>
 #include <boost/log/trivial.hpp>
 
-#ifndef SLIC3R_SLA_ONLY
-#include "libslic3r/Print.hpp"
-#endif // SLIC3R_SLA_ONLY
 #include "libslic3r/Polygon.hpp"
 #include "libslic3r/SLAPrint.hpp"
 #include "libslic3r/PresetBundle.hpp"
 
 #include "Tab.hpp"
 #include "3DScene.hpp"
-#include "PrintHostDialogs.hpp"
 #include "wxExtensions.hpp"
 #include "GUI_ObjectList.hpp"
 #include "Mouse3DController.hpp"
@@ -69,8 +65,6 @@
 #include "GalleryDialog.hpp"
 #include "NotificationManager.hpp"
 #include "Preferences.hpp"
-#include "WebViewPanel.hpp"
-#include "UserAccount.hpp"
 
 #ifdef _WIN32
 #include <dbt.h>
@@ -99,23 +93,6 @@ public:
             append_menu_item(menu, wxID_ANY, _L("Open new instance"), wxString::Format(_L("Open a new %s instance"), SLIC3R_APP_NAME),
             [](wxCommandEvent&) { start_new_slicer(); }, "", nullptr);
         }
-#ifndef SLIC3R_SLA_ONLY
-        append_menu_item(menu, wxID_ANY, _L("G-code preview") + dots, _L("Open G-code viewer"),
-            [](wxCommandEvent&) { start_new_gcodeviewer_open_file(); }, "", nullptr);
-#endif
-        return menu;
-    }
-};
-class GCodeViewerTaskBarIcon : public wxTaskBarIcon
-{
-public:
-    GCodeViewerTaskBarIcon(wxTaskBarIconType iconType = wxTBI_DEFAULT_TYPE) : wxTaskBarIcon(iconType) {}
-    wxMenu *CreatePopupMenu() override {
-        wxMenu *menu = new wxMenu;
-        append_menu_item(menu, wxID_ANY, wxString::Format(_L("Open %s"), SLIC3R_APP_NAME), wxString::Format(_L("Open a new %s instance"), SLIC3R_APP_NAME),
-            [](wxCommandEvent&) { start_new_slicer(nullptr, true); }, "", nullptr);
-        append_menu_item(menu, wxID_ANY, _L("G-code preview") + dots, _L("Open new G-code viewer"),
-            [](wxCommandEvent&) { start_new_gcodeviewer_open_file(); }, "", nullptr);
         return menu;
     }
 };
@@ -129,27 +106,16 @@ static wxIcon main_frame_icon(GUI_App::EAppMode app_mode)
     int len = int(::GetModuleFileName(nullptr, path.data(), MAX_PATH));
     if (len > 0 && len < MAX_PATH) {
         path.erase(path.begin() + len, path.end());
-        if (app_mode == GUI_App::EAppMode::GCodeViewer) {
-            // Only in case the slicer was started with --gcodeviewer parameter try to load the icon from prusa-gcodeviewer.exe
-            // Otherwise load it from the exe.
-            for (const std::wstring_view exe_name : { std::wstring_view(L"prusa-slicer.exe"), std::wstring_view(L"prusa-slicer-console.exe") })
-                if (boost::iends_with(path, exe_name)) {
-                    path.erase(path.end() - exe_name.size(), path.end());
-                    path += L"prusa-gcodeviewer.exe";
-                    break;
-                }
-        }
     }
     return wxIcon(path, wxBITMAP_TYPE_ICO);
 #else // _WIN32
-    return wxIcon(Slic3r::var(app_mode == GUI_App::EAppMode::Editor ? "PrusaSlicer_128px.png" : "PrusaSlicer-gcodeviewer_128px.png"), wxBITMAP_TYPE_PNG);
+    return wxIcon(Slic3r::var("PrusaSlicer_128px.png"), wxBITMAP_TYPE_PNG);
 #endif // _WIN32
 }
 
 MainFrame::MainFrame(const int font_point_size) :
 DPIFrame(NULL, wxID_ANY, "", wxDefaultPosition, wxDefaultSize, wxDEFAULT_FRAME_STYLE, "mainframe", font_point_size),
-    m_printhost_queue_dlg(new PrintHostQueueDialog(this))
-    , m_recent_projects(9)
+    m_recent_projects(9)
     , m_recent_layer_documents(9, wxWindow::NewControlId(9))
     , m_settings_dialog(this)
     , diff_dialog(this)
@@ -169,17 +135,8 @@ DPIFrame(NULL, wxID_ANY, "", wxDefaultPosition, wxDefaultSize, wxDEFAULT_FRAME_S
 
 #ifdef __APPLE__
     // Initialize the docker task bar icon.
-    switch (wxGetApp().get_app_mode()) {
-    default:
-    case GUI_App::EAppMode::Editor:
-        m_taskbar_icon = std::make_unique<PrusaSlicerTaskBarIcon>(wxTBI_DOCK);
-        m_taskbar_icon->SetIcon(wxIcon(Slic3r::var("PrusaSlicer-mac_128px.png"), wxBITMAP_TYPE_PNG), SLIC3R_APP_NAME);
-        break;
-    case GUI_App::EAppMode::GCodeViewer:
-        m_taskbar_icon = std::make_unique<GCodeViewerTaskBarIcon>(wxTBI_DOCK);
-        m_taskbar_icon->SetIcon(wxIcon(Slic3r::var("PrusaSlicer-gcodeviewer-mac_128px.png"), wxBITMAP_TYPE_PNG), "G-code Viewer");
-        break;
-    }
+    m_taskbar_icon = std::make_unique<PrusaSlicerTaskBarIcon>(wxTBI_DOCK);
+    m_taskbar_icon->SetIcon(wxIcon(Slic3r::var("PrusaSlicer-mac_128px.png"), wxBITMAP_TYPE_PNG), SLIC3R_APP_NAME);
 #endif // __APPLE__
 
     // Load the icon either from the exe, or from the ico file.
@@ -275,10 +232,6 @@ DPIFrame(NULL, wxID_ANY, "", wxDefaultPosition, wxDefaultSize, wxDEFAULT_FRAME_S
             }
         }
 
-        if (event.CanVeto() && !wxGetApp().check_print_host_queue()) {
-            event.Veto();
-            return;
-        }
         this->shutdown();
         // propagate event
         event.Skip();
@@ -325,13 +278,7 @@ DPIFrame(NULL, wxID_ANY, "", wxDefaultPosition, wxDefaultSize, wxDEFAULT_FRAME_S
     update_ui_from_settings();    // FIXME (?)
 
     if (m_plater != nullptr) {
-#if ENABLE_HACK_GCODEVIEWER_SLOW_ON_MAC
-        // When the application is run as GCodeViewer the collapse toolbar is set as enabled, but rendered outside of the screen
-        m_plater->get_collapse_toolbar().set_enabled(wxGetApp().is_gcode_viewer() ?
-            true : wxGetApp().app_config->get_bool("show_collapse_button"));
-#else
         m_plater->get_collapse_toolbar().set_enabled(wxGetApp().app_config->get_bool("show_collapse_button"));
-#endif // ENABLE_HACK_GCODEVIEWER_SLOW_ON_MAC
         m_plater->show_action_buttons(true);
 
         preferences_dialog = new PreferencesDialog(this);
@@ -382,9 +329,8 @@ void MainFrame::update_layout()
         Layout();
     };
 
-    ESettingsLayout layout = wxGetApp().is_gcode_viewer() ? ESettingsLayout::GCodeViewer :
-        (wxGetApp().app_config->get_bool("old_settings_layout_mode") ? ESettingsLayout::Old :
-         wxGetApp().app_config->get_bool("dlg_settings_layout_mode") ? ESettingsLayout::Dlg : ESettingsLayout::Old);
+    ESettingsLayout layout = wxGetApp().app_config->get_bool("old_settings_layout_mode") ? ESettingsLayout::Old :
+         wxGetApp().app_config->get_bool("dlg_settings_layout_mode") ? ESettingsLayout::Dlg : ESettingsLayout::Old;
 
     if (m_layout == layout)
         return;
@@ -447,19 +393,6 @@ void MainFrame::update_layout()
         m_tabpanel->ShowJustMode();
         m_settings_dialog.GetSizer()->Add(m_tabpanel, 1, wxEXPAND | wxTOP, 2);
         m_settings_dialog.Layout();
-        break;
-    }
-    case ESettingsLayout::GCodeViewer:
-    {
-        m_main_sizer->Add(m_plater, 1, wxEXPAND);
-        m_plater->set_default_bed_shape();
-#if ENABLE_HACK_GCODEVIEWER_SLOW_ON_MAC
-        m_plater->get_collapse_toolbar().set_enabled(true);
-#else
-        m_plater->get_collapse_toolbar().set_enabled(false);
-#endif // !ENABLE_HACK_GCODEVIEWER_SLOW_ON_MAC
-        m_plater->collapse_sidebar(true);
-        m_plater->Show();
         break;
     }
     }
@@ -590,8 +523,6 @@ void MainFrame::update_title()
     }
 
     std::string build_id = SLIC3R_BUILD_ID;
-    if (! wxGetApp().is_editor())
-        boost::replace_first(build_id, SLIC3R_APP_NAME, GCODEVIEWER_APP_NAME);
     size_t 		idx_plus = build_id.find('+');
     if (idx_plus != build_id.npos) {
     	// Parse what is behind the '+'. If there is a number, then it is a build number after the label, and full build ID is shown.
@@ -625,24 +556,12 @@ static wxString GetTooltipForSettingsButton(PrinterTechnology pt)
 
 void MainFrame::update_topbars()
 {
-    if (wxGetApp().is_gcode_viewer())
-        return;
     if (!m_tmp_top_bar || !m_tabpanel)
         return;
 
-#ifdef SLIC3R_OFFLINE_ONLY
     const bool show_login = false;
-#else
-    const bool show_login = !wxGetApp().app_config->has("show_login_button") || wxGetApp().app_config->get_bool("show_login_button");
-#endif
     m_tmp_top_bar->ShowUserAccount(show_login);
     m_tabpanel->ShowUserAccount(show_login);
-
-    if (!show_login) {
-        if (auto user_account = wxGetApp().plater()->get_user_account();
-            user_account && user_account->is_logged())
-            user_account->do_logout();
-    }
 }
 
 void MainFrame::set_callbacks_for_topbar_menus()
@@ -653,44 +572,15 @@ void MainFrame::set_callbacks_for_topbar_menus()
         [](/*ConfigOptionMode*/int mode) -> std::string { return wxGetApp().get_mode_btn_color(mode); }
     );
 
-#ifdef SLIC3R_OFFLINE_ONLY
     m_bar_menus.set_account_menu_callbacks(
         []() -> void {},
         []() -> void {},
         []() -> TopBarMenus::UserAccountInfo { return TopBarMenus::UserAccountInfo(); }
     );
-#else
-    m_bar_menus.set_account_menu_callbacks(
-        []() -> void { wxGetApp().plater()->act_with_user_account(); },
-        [this]() -> void {
-            wxString preferences_item = _L("Show Log in button in application top bar");
-            wxString msg =
-                format_wxstr(_L("%1% will remember your choice."), SLIC3R_APP_NAME) + "\n\n" +
-                format_wxstr(_L("Visit \"Preferences\" and check \"%1%\"\nto changes your choice."), preferences_item);
-
-            MessageDialog msg_dlg(this, msg, format_wxstr(_L("%1%: Don't ask me again"), SLIC3R_APP_NAME), wxOK | wxCANCEL | wxICON_INFORMATION);
-            if (msg_dlg.ShowModal() == wxID_OK) {
-                wxGetApp().app_config->set("show_login_button", "0");
-
-                m_bar_menus.RemoveHideLoginItem();
-                update_topbars();
-            }
-        },
-        []() -> TopBarMenus::UserAccountInfo {
-            if (auto user_account = wxGetApp().plater()->get_user_account())
-                return { user_account->is_logged(),
-                         user_account->get_username(),
-                         user_account->get_avatar_path(true) };
-            return TopBarMenus::UserAccountInfo();
-        }
-    );
-#endif
 
     // we need "Hide Log in button" menu item only till "show_login_button" wasn't changed
     if (wxGetApp().app_config->has("show_login_button")
-#ifdef SLIC3R_OFFLINE_ONLY
         || true
-#endif
     )
         m_bar_menus.RemoveHideLoginItem();
 }
@@ -716,17 +606,6 @@ void MainFrame::init_tabpanel()
     m_settings_dialog.set_tabpanel(m_tabpanel);
 
     m_tabpanel->Bind(wxEVT_BOOKCTRL_PAGE_CHANGED, [this](wxBookCtrlEvent& e) {
-        if (int old_selection = e.GetOldSelection();
-            old_selection != wxNOT_FOUND && old_selection < static_cast<int>(m_tabpanel->GetPageCount())) {
-            Tab* old_tab = dynamic_cast<Tab*>(m_tabpanel->GetPage(old_selection));
-            if (old_tab)
-                old_tab->validate_custom_gcodes();
-        }
-
-#ifndef __APPLE__
-        on_tab_change_rename_reload_item(e.GetSelection());
-#endif // !__APPLE__
-
         wxWindow* panel = m_tabpanel->GetCurrentPage();
         Tab* tab = dynamic_cast<Tab*>(panel);
 
@@ -734,7 +613,6 @@ void MainFrame::init_tabpanel()
         if (panel == nullptr || (tab != nullptr && !tab->supports_printer_technology(m_plater->printer_technology())))
             return;
 
-        // temporary fix - WebViewPanel is not inheriting from Tab -> would jump to select Plater
         if (panel && !tab)
             return;
 
@@ -761,12 +639,6 @@ void MainFrame::init_tabpanel()
         // load initial config
         auto full_config = wxGetApp().preset_bundle->full_config();
         m_plater->on_config_change(full_config);
-
-        // Show a correct number of filament fields.
-        // nozzle_diameter is undefined when SLA printer is selected
-        if (full_config.has("nozzle_diameter")) {
-            m_plater->sidebar().set_extruders_count(full_config.option<ConfigOptionFloats>("nozzle_diameter")->values.size());
-        }
 
         if (wxGetApp().is_editor())
             m_tmp_top_bar->SetSettingsButtonTooltip(GetTooltipForSettingsButton(m_plater->printer_technology()));
@@ -835,313 +707,16 @@ void MainFrame::create_preset_tabs()
     add_created_tab(new TabSLAMaterial(m_tabpanel), "resin");
     add_created_tab(new TabPrinter(m_tabpanel), "sla_printer");
     
-#ifndef SLIC3R_OFFLINE_ONLY
-    m_printables_webview = new PrintablesWebViewPanel(m_tabpanel);
-    add_printables_webview_tab();
 
-    m_connect_webview = new ConnectWebViewPanel(m_tabpanel);
-    m_printer_webview = new PrinterWebViewPanel(m_tabpanel, L"");
-
-    // new created tabs have to be hidden by default
-    m_connect_webview->Hide();
-    m_printer_webview->Hide();
-#endif
-
-}
-
-void MainFrame::on_account_login(const std::string& token)
-{
-#ifdef SLIC3R_OFFLINE_ONLY
-    (void)token;
-    return;
-#else
-    add_connect_webview_tab();
-    assert (m_printables_webview);
-    m_printables_webview->login(token);
-#endif
-}
-void MainFrame::on_account_will_refresh()
-{
-#ifdef SLIC3R_OFFLINE_ONLY
-    return;
-#else
-    m_printables_webview->send_will_refresh();
-#endif
-}
-void MainFrame::on_account_did_refresh(const std::string& token)
-{
-#ifdef SLIC3R_OFFLINE_ONLY
-    (void)token;
-    return;
-#else
-    m_printables_webview->send_refreshed_token(token);
-#endif
-}
-void MainFrame::on_account_logout()
-{
-#ifdef SLIC3R_OFFLINE_ONLY
-    return;
-#else
-    remove_connect_webview_tab();
-    assert (m_printables_webview);
-    m_printables_webview->logout();
-#endif
-}
-
-void MainFrame::add_connect_webview_tab()
-{
-#ifdef SLIC3R_OFFLINE_ONLY
-    return;
-#else
-    if (m_connect_webview_added) {
-        m_connect_webview->resend_config();
-        return;
-    }
-    // parameters of InsertNewPage (to prevent ambigous overloaded function)
-    // insert "Connect" tab to position next to "Printer" tab
-    // order of tabs: Plater - Print Settings - Filaments - Printers - Prusa Connect - Prusa Link
-
-    int n = m_tabpanel->FindPage(m_printables_webview) + 1;
-    wxWindow* page = m_connect_webview;
-    const wxString text(L"Prusa Connect");
-    const std::string bmp_name = "";
-    bool bSelect = false;
-    m_tabpanel->InsertNewPage(n, page, text, bmp_name, bSelect);
-    m_connect_webview->set_create_browser();
-    m_connect_webview_added = true;
-#endif
-}
-void MainFrame::remove_connect_webview_tab()
-{
-#ifdef SLIC3R_OFFLINE_ONLY
-    return;
-#else
-    if (!m_connect_webview_added) {
-        return;
-    }
-    int n = m_tabpanel->FindPage(m_connect_webview);
-    if (m_tabpanel->GetSelection() == n)
-        m_tabpanel->SetSelection(0);
-    m_tabpanel->RemovePage(size_t(n));
-    m_connect_webview_added = false;
-    m_connect_webview->logout();
-    m_connect_webview->destroy_browser();
-#endif
-}
-
-void MainFrame::show_connect_tab(const wxString& url)
-{
-#ifdef SLIC3R_OFFLINE_ONLY
-    (void)url;
-    return;
-#else
-    if (!m_connect_webview_added) {
-        return;
-    }
-    m_connect_webview->prohibit_after_show_func_once();
-    m_tabpanel->SetSelection(m_tabpanel->FindPage(m_connect_webview));
-    m_connect_webview->set_load_default_url_on_next_error(true);
-    m_connect_webview->load_url(url);
-#endif
-}
-void MainFrame::show_printables_tab(const std::string& url)
-{
-#ifdef SLIC3R_OFFLINE_ONLY
-    (void)url;
-    return;
-#else
-     if (!m_printables_webview_added) {
-        return;
-    }
-    // we have to set next url first, than show the tab
-    // printables_tab has to reload on show everytime
-    // so it is not possible load_url right after show
-    m_printables_webview->set_load_default_url_on_next_error(true);
-    m_printables_webview->set_next_show_url(url);
-    m_tabpanel->SetSelection(m_tabpanel->FindPage(m_printables_webview));
-#endif
-}
-void MainFrame::add_printables_webview_tab()
-{
-#ifdef SLIC3R_OFFLINE_ONLY
-    return;
-#else
-    if (m_printables_webview_added) {
-        return;
-    }
-
-    int n = m_tabpanel->FindPage(wxGetApp().get_tab(Preset::TYPE_PRINTER)) + 1;
-    wxWindow* page = m_printables_webview;
-    const wxString text(L"Printables");
-    const std::string bmp_name = "";
-    m_tabpanel->InsertNewPage(n, page, text, bmp_name, false);
-    m_printables_webview->set_create_browser();
-    m_printables_webview_added = true;
-#endif
-}
-
-// no longer needed?
-void MainFrame::remove_printables_webview_tab()
-{
-#ifdef SLIC3R_OFFLINE_ONLY
-    return;
-#else
-    if (!m_printables_webview_added) {
-        return;
-    }
-    int n = m_tabpanel->FindPage(m_printables_webview);
-    if (m_tabpanel->GetSelection() == n)
-        m_tabpanel->SetSelection(0);
-    m_tabpanel->RemovePage(size_t(n));
-    m_printables_webview_added = false;
-    m_printables_webview->destroy_browser();
-#endif
-}
-
-void MainFrame::show_printer_webview_tab(DynamicPrintConfig* dpc)
-{
-#ifdef SLIC3R_OFFLINE_ONLY
-    (void)dpc;
-    return;
-#else
-    remove_printer_webview_tab();
-    // if physical printer is selected
-    if (dpc && dpc->option<ConfigOptionEnum<PrintHostType>>("host_type")->value != htPrusaConnect) {
-        std::string url = dpc->opt_string("print_host");
-        if (url.find("http://") != 0 && url.find("https://") != 0) {
-            url = "http://" + url;
-        }
-        // set password / api key
-        if (dynamic_cast<const ConfigOptionEnum<AuthorizationType>*>(dpc->option("printhost_authorization_type"))->value == AuthorizationType::atKeyPassword) {
-            set_printer_webview_api_key(dpc->opt_string("printhost_apikey"));
-        }
-        else {
-            set_printer_webview_credentials(dpc->opt_string("printhost_user"), dpc->opt_string("printhost_password"));
-        }
-        add_printer_webview_tab(from_u8(url));
-    }
-#endif
-}
-
-void MainFrame::add_printer_webview_tab(const wxString& url)
-{
-#ifdef SLIC3R_OFFLINE_ONLY
-    (void)url;
-    return;
-#else
-    if (m_printer_webview_added) {
-        //set_printer_webview_tab_url(url);
-        return;
-    }
-    m_printer_webview_added = true;
-    // add as the last (rightmost) panel
-    m_tabpanel->AddNewPage(m_printer_webview, _L("Physical Printer"), "");
-    m_printer_webview->set_default_url(url);
-    m_printer_webview->set_create_browser();
-#endif
-}
-void MainFrame::remove_printer_webview_tab()
-{
-#ifdef SLIC3R_OFFLINE_ONLY
-    return;
-#else
-    if (!m_printer_webview_added) {
-        return;
-    }
-    if (m_tabpanel->GetPageText(m_tabpanel->GetSelection()) == _L("Physical Printer"))
-            select_tab(size_t(0));
-    m_printer_webview_added = false;
-    m_printer_webview->Hide();
-    m_tabpanel->RemovePage(m_tabpanel->FindPage(m_printer_webview));
-    m_printer_webview->destroy_browser();
-#endif
-}
-
-void MainFrame::set_printer_webview_api_key(const std::string& key)
-{
-#ifdef SLIC3R_OFFLINE_ONLY
-    (void)key;
-    return;
-#else
-    m_printer_webview->set_api_key(key);
-#endif
-}
-void MainFrame::set_printer_webview_credentials(const std::string& usr, const std::string& psk)
-{
-#ifdef SLIC3R_OFFLINE_ONLY
-    (void)usr;
-    (void)psk;
-    return;
-#else
-    m_printer_webview->set_credentials(usr, psk);
-#endif
-}
-
-bool MainFrame::is_any_webview_selected()
-{
-    int selection = m_tabpanel->GetSelection();
-    if (m_printables_webview && selection == m_tabpanel->FindPage(m_printables_webview)) 
-        return true;
-    if (m_connect_webview && m_connect_webview_added && selection == m_tabpanel->FindPage(m_connect_webview)) 
-        return true;
-    if (m_printer_webview && m_printer_webview_added && selection == m_tabpanel->FindPage(m_printer_webview)) 
-        return true;
-    return false;
-}
-
-void MainFrame::reload_selected_webview()
-{
-    int selection = m_tabpanel->GetSelection();
-    if (m_printables_webview && selection == m_tabpanel->FindPage(m_printables_webview)) 
-       m_printables_webview->do_reload();
-    if (m_connect_webview && m_connect_webview_added && selection == m_tabpanel->FindPage(m_connect_webview)) 
-        m_connect_webview->do_reload();
-    if (m_printer_webview && m_printer_webview_added && selection == m_tabpanel->FindPage(m_printer_webview)) 
-        m_printer_webview->do_reload();
-}
-
-void MainFrame::on_tab_change_rename_reload_item(int new_tab)
-{
-    if (!m_tabpanel) {
-        return;
-    }
-    if (!m_menu_item_reload) {
-        return;
-    }
-    if ( (m_printables_webview && new_tab == m_tabpanel->FindPage(m_printables_webview)) 
-        || (m_connect_webview && m_connect_webview_added && new_tab == m_tabpanel->FindPage(m_connect_webview)) 
-        || (m_printer_webview && m_printer_webview_added && new_tab == m_tabpanel->FindPage(m_printer_webview))) 
-    {
-        m_menu_item_reload->SetItemLabel(_L("Re&load Web Content") + "\tF5");
-        m_menu_item_reload->SetHelp(_L("Reload Web Content"));
-    } else {
-        m_menu_item_reload->SetItemLabel(_L("Re&load from Disk") + "\tF5");
-        m_menu_item_reload->SetHelp(_L("Reload the plater from disk"));
-    }
 }
 
 bool MainFrame::reload_item_condition_cb()
 {
-    return is_any_webview_selected() ? true :
-    !m_plater->model().objects.empty();
+    return !m_plater->model().objects.empty();
 }
 void MainFrame::reload_item_function_cb()
 {
-    is_any_webview_selected() 
-        ? reload_selected_webview()
-        : m_plater->reload_all_from_disk();
-}
-
-void Slic3r::GUI::MainFrame::refresh_account_menu(bool avatar/* = false */)
-{
-    if (!m_tabpanel || !m_tmp_top_bar)
-        return;
-
-    // Update User name in TopBar
-    m_bar_menus.UpdateAccountMenu();
-
-    m_tabpanel->GetTopBarItemsCtrl()->UpdateAccountButton(avatar);
-    m_tmp_top_bar->GetTopBarItemsCtrl()->UpdateAccountButton(avatar);
+    m_plater->reload_all_from_disk();
 }
 
 void MainFrame::add_created_tab(Tab* panel,  const std::string& bmp_name /*= ""*/)
@@ -1213,12 +788,6 @@ bool MainFrame::can_export_model() const
     return (m_plater != nullptr) && !m_plater->model().objects.empty();
 }
 
-#ifndef SLIC3R_SLA_ONLY
-bool MainFrame::can_export_toolpaths() const
-{
-    return false;
-}
-#endif
 
 bool MainFrame::can_export_supports() const
 {
@@ -1254,19 +823,6 @@ bool MainFrame::can_export_gcode() const
     // TODO:: add other filters
 
     return true;
-}
-
-bool MainFrame::can_send_gcode() const
-{
-#ifdef SLIC3R_OFFLINE_ONLY
-    return false; // no print hosts offline
-#else
-    if (m_plater && ! m_plater->model().objects.empty())
-        if (const DynamicPrintConfig *cfg = wxGetApp().preset_bundle->physical_printers.get_selected_printer_config(); cfg)
-            if (const auto *print_host_opt = cfg->option<ConfigOptionString>("print_host"); print_host_opt)
-                return ! print_host_opt->value.empty();
-    return false;
-#endif
 }
 
 bool MainFrame::can_export_gcode_sd() const
@@ -1306,7 +862,6 @@ bool MainFrame::can_change_view() const
         int page_id = m_tabpanel->GetSelection();
         return page_id != wxNOT_FOUND && dynamic_cast<const Slic3r::GUI::Plater*>(m_tabpanel->GetPage((size_t)page_id)) != nullptr;
     }
-    case ESettingsLayout::GCodeViewer: { return true; }
     }
 }
 
@@ -1387,11 +942,6 @@ void MainFrame::on_sys_color_changed()
     // update label colors in respect to the system mode
     wxGetApp().init_ui_colours();
 
-    if (wxGetApp().is_gcode_viewer()) {
-        MenuFactory::sys_color_changed(m_menubar);
-        return;
-    }
-
     // but if there are some ui colors in appconfig, they have to be applied
     wxGetApp().update_ui_colours_from_appconfig();
 #ifdef __WXMSW__
@@ -1407,13 +957,6 @@ void MainFrame::on_sys_color_changed()
     // update Tabs
     for (Tab* tab : wxGetApp().tabs_list)
         tab->sys_color_changed();
-
-    if (m_printables_webview)
-        m_printables_webview->sys_color_changed();
-    if (m_connect_webview)
-        m_connect_webview->sys_color_changed();
-    if (m_printer_webview)
-        m_printer_webview->sys_color_changed();
 
     MenuFactory::sys_color_changed(m_menubar);
 
@@ -1445,12 +988,8 @@ static const wxString sep_space = "";
 
 static void append_about_menu_item(wxMenu* target_menu, int insert_pos = wxNOT_FOUND)
 {
-    if (wxGetApp().is_editor())
-        append_menu_item(target_menu, wxID_ANY, wxString::Format(_L("&About %s"), SLIC3R_APP_NAME), _L("Show about dialog"),
-            [](wxCommandEvent&) { Slic3r::GUI::about(); }, nullptr, nullptr, []() {return true; }, nullptr, insert_pos);
-    else
-        append_menu_item(target_menu, wxID_ANY, wxString::Format(_L("&About %s"), GCODEVIEWER_APP_NAME), _L("Show about dialog"),
-            [](wxCommandEvent&) { Slic3r::GUI::about(); }, nullptr, nullptr, []() {return true; }, nullptr, insert_pos);
+    append_menu_item(target_menu, wxID_ANY, wxString::Format(_L("&About %s"), SLIC3R_APP_NAME), _L("Show about dialog"),
+        [](wxCommandEvent&) { Slic3r::GUI::about(); }, nullptr, nullptr, []() {return true; }, nullptr, insert_pos);
 }
 
 #ifdef __APPLE__
@@ -1471,38 +1010,8 @@ static wxMenu* generate_help_menu()
 {
     wxMenu* helpMenu = new wxMenu();
 
-#if !defined(SLIC3R_OFFLINE_ONLY) && !defined(SLIC3R_SLA_ONLY) // links point to online Prusa resources
-    append_menu_item(helpMenu, wxID_ANY, wxString::Format(_L("%s &Website"), SLIC3R_APP_NAME),
-        wxString::Format(_L("Open the %s website in your browser"), SLIC3R_APP_NAME),
-        [](wxCommandEvent&) { wxGetApp().open_web_page_localized("https://www.prusa3d.com/slicerweb"); });
-    // TRN Item from "Help" menu
-    append_menu_item(helpMenu, wxID_ANY, wxString::Format(_L("&Quick Start"), SLIC3R_APP_NAME),
-        wxString::Format(_L("Open the %s website in your browser"), SLIC3R_APP_NAME),
-        [](wxCommandEvent&) { wxGetApp().open_browser_with_warning_dialog("https://help.prusa3d.com/article/first-print-with-prusaslicer_1753", nullptr, false); });
-    // TRN Item from "Help" menu
-    append_menu_item(helpMenu, wxID_ANY, wxString::Format(_L("Sample &G-codes and Models"), SLIC3R_APP_NAME),
-        wxString::Format(_L("Open the %s website in your browser"), SLIC3R_APP_NAME),
-        [](wxCommandEvent&) { wxGetApp().open_browser_with_warning_dialog("https://help.prusa3d.com/article/sample-g-codes_529630", nullptr, false); });
-    helpMenu->AppendSeparator();
-    append_menu_item(helpMenu, wxID_ANY, _L("Prusa 3D &Drivers"), _L("Open the Prusa3D drivers download page in your browser"),
-        [](wxCommandEvent&) { wxGetApp().open_web_page_localized("https://www.prusa3d.com/downloads"); });
-    append_menu_item(helpMenu, wxID_ANY, _L("Software &Releases"), _L("Open the software releases page in your browser"),
-        [](wxCommandEvent&) { wxGetApp().open_browser_with_warning_dialog("https://github.com/prusa3d/PrusaSlicer/releases", nullptr, false); });
-//#        my $versioncheck = $self->_append_menu_item($helpMenu, "Check for &Updates...", "Check for new Slic3r versions", sub{
-//#            wxTheApp->check_version(1);
-//#        });
-//#        $versioncheck->Enable(wxTheApp->have_version_check);
-//        append_menu_item(helpMenu, wxID_ANY, wxString::Format(_L("%s &Manual"), SLIC3R_APP_NAME),
-//                                             wxString::Format(_L("Open the %s manual in your browser"), SLIC3R_APP_NAME),
-//            [this](wxCommandEvent&) { wxGetApp().open_browser_with_warning_dialog("http://manual.slic3r.org/"); });
-    helpMenu->AppendSeparator();
-#endif
     append_menu_item(helpMenu, wxID_ANY, _L("Show &Configuration Folder"), _L("Show user configuration folder (datadir)"),
         [](wxCommandEvent&) { Slic3r::GUI::desktop_open_datadir_folder(); });
-#if !defined(SLIC3R_OFFLINE_ONLY) && !defined(SLIC3R_SLA_ONLY)
-    append_menu_item(helpMenu, wxID_ANY, _L("Report an I&ssue"), wxString::Format(_L("Report an issue on %s"), SLIC3R_APP_NAME),
-        [](wxCommandEvent&) { wxGetApp().open_browser_with_warning_dialog("https://github.com/prusa3d/slic3r/issues/new", nullptr, false); });
-#endif
 #ifndef __APPLE__
     append_about_menu_item(helpMenu);
 #endif // __APPLE__
@@ -1515,11 +1024,6 @@ static wxMenu* generate_help_menu()
     helpMenu->AppendSeparator();
     append_menu_item(helpMenu, wxID_ANY, _L("Keyboard Shortcuts") + sep + "&?", _L("Show the list of the keyboard shortcuts"),
         [](wxCommandEvent&) { wxGetApp().keyboard_shortcuts(); });
-#if ENABLE_THUMBNAIL_GENERATOR_DEBUG
-    helpMenu->AppendSeparator();
-    append_menu_item(helpMenu, wxID_ANY, "DEBUG gcode thumbnails", "DEBUG ONLY - read the selected gcode file and generates png for the contained thumbnails",
-        [](wxCommandEvent&) { wxGetApp().gcode_thumbnails_debug(); });
-#endif // ENABLE_THUMBNAIL_GENERATOR_DEBUG
 
     return helpMenu;
 }
@@ -1703,11 +1207,7 @@ void MainFrame::init_menubar_as_editor()
         append_submenu(fileMenu, import_menu, wxID_ANY, _L("&Import"), "");
 
         wxMenu* export_menu = new wxMenu();
-#ifdef SLIC3R_SLA_ONLY
         wxMenuItem* item_export_gcode = append_menu_item(export_menu, wxID_ANY, _L("Export sliced layers") + dots + "\tCtrl+G", _L("Export the current SLA result"),
-#else
-        wxMenuItem* item_export_gcode = append_menu_item(export_menu, wxID_ANY, _L("Export &G-code") + dots + "\tCtrl+G", _L("Export current plate as G-code"),
-#endif
             [this](wxCommandEvent&) {
                 // Finish the native menu/accessibility action before opening
                 // GTK's modal file chooser. Reentering it here can strand the
@@ -1720,15 +1220,8 @@ void MainFrame::init_menubar_as_editor()
             }, "export_gcode", nullptr,
             [this](){return can_export_gcode(); }, this);
         m_changeable_menu_items.push_back(item_export_gcode);
-#if !defined(SLIC3R_OFFLINE_ONLY) && !defined(SLIC3R_SLA_ONLY) // print-host upload is a FFF/online feature
-        wxMenuItem* item_send_gcode = append_menu_item(export_menu, wxID_ANY, _L("S&end G-code") + dots + "\tCtrl+Shift+G", _L("Send to print current plate as G-code"),
-            [this](wxCommandEvent&) { if (m_plater) m_plater->send_gcode(); }, "export_gcode", nullptr,
-            [this](){return can_send_gcode(); }, this);
-        m_changeable_menu_items.push_back(item_send_gcode);
-#else
         // Keep the miSend slot so that the miMaterialTab/miPrinterTab indices stay valid offline.
         m_changeable_menu_items.push_back(nullptr);
-#endif
 		append_menu_item(export_menu, wxID_ANY, _L("Export sliced result to removable drive") + dots + "\tCtrl+U", _L("Save the current sliced result to an SD card or USB drive"),
 			[this](wxCommandEvent&) { if (m_plater) m_plater->export_gcode(true); }, "export_to_sd", nullptr,
 			[this]() {return can_export_gcode_sd(); }, this);
@@ -1740,35 +1233,14 @@ void MainFrame::init_menubar_as_editor()
             [this](wxCommandEvent&) { if (m_plater) m_plater->export_stl_obj(true); }, "export_plater", nullptr,
             [this](){return can_export_supports(); }, this);
         export_menu->AppendSeparator();
-#ifndef SLIC3R_SLA_ONLY
-        append_menu_item(export_menu, wxID_ANY, _L("Export &Toolpaths as OBJ") + dots, _L("Export toolpaths as OBJ"),
-            [this](wxCommandEvent&) { if (m_plater) m_plater->export_toolpaths_to_obj(); }, "export_plater", nullptr,
-            [this]() {return can_export_toolpaths(); }, this);
-        export_menu->AppendSeparator();
-#endif
         append_menu_item(export_menu, wxID_ANY, _L("Export &Config") + dots +"\tCtrl+E", _L("Export current configuration to file"),
             [this](wxCommandEvent&) { export_config(); }, "export_config", nullptr,
             []() {return true; }, this);
         append_menu_item(export_menu, wxID_ANY, _L("Export Config &Bundle") + dots, _L("Export all presets to file"),
             [this](wxCommandEvent&) { export_configbundle(); }, "export_config_bundle", nullptr,
             []() {return true; }, this);
-#ifndef SLIC3R_OFFLINE_ONLY
-        append_menu_item(export_menu, wxID_ANY, _L("Export Config Bundle With Physical Printers") + dots, _L("Export all presets including physical printers to file"),
-            [this](wxCommandEvent&) { export_configbundle(true); }, "export_config_bundle", nullptr,
-            []() {return true; }, this);
-#endif
         append_submenu(fileMenu, export_menu, wxID_ANY, _L("&Export"), "");
 
-#ifndef SLIC3R_SLA_ONLY
-        wxMenu* convert_menu = new wxMenu();
-        append_menu_item(convert_menu, wxID_ANY, _L("Convert ASCII G-code to &binary") + dots, _L("Convert a G-code file from ASCII to binary format"),
-            [this](wxCommandEvent&) { if (m_plater != nullptr) m_plater->convert_gcode_to_binary(); }, "convert_file", nullptr,
-            []() { return true; }, this);
-        append_menu_item(convert_menu, wxID_ANY, _L("Convert binary G-code to &ASCII") + dots, _L("Convert a G-code file from binary to ASCII format"),
-            [this](wxCommandEvent&) { if (m_plater != nullptr) m_plater->convert_gcode_to_ascii(); }, "convert_file", nullptr,
-            []() { return true; }, this);
-        append_submenu(fileMenu, convert_menu, wxID_ANY, _L("&Convert"), "");
-#endif
 
 		append_menu_item(fileMenu, wxID_ANY, _L("Ejec&t SD Card / Flash Drive") + dots + "\tCtrl+T", _L("Safely eject the SD card or USB drive after exporting."),
 			[this](wxCommandEvent&) { if (m_plater) m_plater->eject_drive(); }, "eject_sd", nullptr,
@@ -1784,10 +1256,6 @@ void MainFrame::init_menubar_as_editor()
             [this](wxCommandEvent&) { repair_stl(); }, "wrench", nullptr,
             []() { return true; }, this);
         fileMenu->AppendSeparator();
-#ifndef SLIC3R_SLA_ONLY
-        append_menu_item(fileMenu, wxID_ANY, _L("&G-code Preview") + dots, _L("Open G-code viewer"),
-            [this](wxCommandEvent&) { start_new_gcodeviewer_open_file(this); }, "", nullptr);
-#endif
         fileMenu->AppendSeparator();
         #ifdef _WIN32
             append_menu_item(fileMenu, wxID_EXIT, _L("E&xit"), wxString::Format(_L("Exit %s"), SLIC3R_APP_NAME),
@@ -1840,20 +1308,7 @@ void MainFrame::init_menubar_as_editor()
         
         editMenu->AppendSeparator();
 #ifdef __APPLE__
-#ifndef SLIC3R_OFFLINE_ONLY
-        append_menu_item(editMenu, wxID_ANY, _L("Re&load from Disk") + dots + "\tCtrl+Shift+R",
-            _L("Reload the plater from disk"), [this](wxCommandEvent&) { m_plater->reload_all_from_disk(); },
-            "", nullptr, [this]() {return !m_plater->model().objects.empty(); }, this);
-        m_menu_item_reload = append_menu_item(editMenu, wxID_ANY, _L("Re&load Web Content") + "\tF5",
-            _L("Reload Web Content"), [this](wxCommandEvent&) {  reload_selected_webview(); },
-            "", nullptr, [this]() {return is_any_webview_selected(); }, this);
-#endif
 #else
-#ifndef SLIC3R_OFFLINE_ONLY
-        m_menu_item_reload = append_menu_item(editMenu, wxID_ANY, _L("Re&load from Disk") + "\tF5",
-            _L("Reload the plater from disk"), [this](wxCommandEvent&) {  reload_item_function_cb(); },
-            "", nullptr, [this]() {return reload_item_condition_cb(); }, this);
-#endif
 #endif // __APPLE__
 
         editMenu->AppendSeparator();
@@ -1918,11 +1373,6 @@ void MainFrame::init_menubar_as_editor()
                 }
             }, "shape_gallery", nullptr, []() {return true; }, this);
         
-#ifndef SLIC3R_OFFLINE_ONLY
-        windowMenu->AppendSeparator();
-        append_menu_item(windowMenu, wxID_ANY, _L("Print &Host Upload Queue") + "\tCtrl+J", _L("Display the Print Host Upload Queue window"),
-            [this](wxCommandEvent&) { m_printhost_queue_dlg->Show(); }, "upload_queue", nullptr, []() {return true; }, this);
-#endif
         
         windowMenu->AppendSeparator();
         append_menu_item(windowMenu, wxID_ANY, _L("Open New Instance") + "\tCtrl+Shift+I", wxString::Format(_L("Open a new %s instance"), SLIC3R_APP_NAME),
@@ -2037,12 +1487,7 @@ void MainFrame::open_menubar_item(const wxString& menu_name,const wxString& item
 
 void MainFrame::update_menubar()
 {
-    if (wxGetApp().is_gcode_viewer())
-        return;
-
-#ifdef SLIC3R_OFFLINE_ONLY
     return;
-#endif
 
     if (plater() == nullptr)
         return;
@@ -2106,7 +1551,7 @@ void MainFrame::repair_stl()
 
 void MainFrame::export_config()
 {
-    // Generate a cummulative configuration for the selected print, filaments and printer.
+    // Generate a cummulative configuration for the selected print, material and printer.
     auto config = wxGetApp().preset_bundle->full_config();
     // Validate the cummulative configuration.
     auto valid = config.validate();
@@ -2129,7 +1574,7 @@ void MainFrame::export_config()
     }
 }
 
-// Load a config file containing a Print, Filament & Printer preset.
+// Load a config file containing a SLA print, material & printer preset.
 void MainFrame::load_config_file()
 {
     if (!wxGetApp().check_and_save_current_preset_changes(_L("Loading of a configuration file"), "", false))
@@ -2137,36 +1582,18 @@ void MainFrame::load_config_file()
     wxFileDialog dlg(this, _L("Select configuration to load:"),
         !m_last_config.IsEmpty() ? get_dir_name(m_last_config) : wxGetApp().app_config->get_last_dir(),
         "config.ini",
-#ifdef SLIC3R_SLA_ONLY
         file_wildcards(FT_INI),
-#else
-        "INI files (*.ini, *.gcode, *.bgcode)|*.ini;*.INI;*.gcode;*.g;*.bgcode;*.bgc",
-#endif
         wxFD_OPEN | wxFD_FILE_MUST_EXIST);
     wxString file;
     if (dlg.ShowModal() == wxID_OK)
         file = dlg.GetPath();
     if (! file.IsEmpty() && this->load_config_file(file.ToUTF8().data())) {
-        DynamicPrintConfig config = wxGetApp().preset_bundle->full_config();
-        const auto* post_process = config.opt<ConfigOptionStrings>("post_process");
-        if (post_process != nullptr && !post_process->values.empty()) {
-            const wxString msg = _L("The selected config file contains a post-processing script.\nPlease review the script carefully before exporting G-code.");
-            std::string text;
-            for (const std::string& s : post_process->values) {
-                text += s;
-            }
-
-            InfoDialog msg_dlg(nullptr, msg, from_u8(text), true, wxOK | wxICON_WARNING);
-            msg_dlg.set_caption(wxString(SLIC3R_APP_NAME " - ") + _L("Attention!"));
-            msg_dlg.ShowModal();
-        }
-
         wxGetApp().app_config->update_config_dir(get_dir_name(file));
         m_last_config = file;
     }
 }
 
-// Load a config file containing a Print, Filament & Printer preset from command line.
+// Load a config file containing a SLA print, material & printer preset from command line.
 bool MainFrame::load_config_file(const std::string &path)
 {
     try {
@@ -2180,10 +1607,13 @@ bool MainFrame::load_config_file(const std::string &path)
 
     m_plater->notify_about_installed_presets();
     wxGetApp().load_current_presets();
+    // A bundle with FFF/FDM sections: the SLA ones were loaded, tell the user about the skipped rest.
+    if (const size_t skipped_fff = wxGetApp().preset_bundle->skipped_fff_sections(); skipped_fff > 0)
+        show_info(this, wxString::Format(_L("%d FFF/FDM section(s) of the configuration file were skipped: this application supports SLA/MSLA printers only."), int(skipped_fff)), wxString("Info"));
     return true;
 }
 
-void MainFrame::export_configbundle(bool export_physical_printers /*= false*/)
+void MainFrame::export_configbundle()
 {
     if (!wxGetApp().check_and_save_current_preset_changes(_L("Exporting configuration bundle"),
                                                           _L("Some presets are modified and the unsaved changes will not be exported into configuration bundle."), false, true))
@@ -2204,54 +1634,9 @@ void MainFrame::export_configbundle(bool export_physical_printers /*= false*/)
         file = dlg.GetPath();
     if (!file.IsEmpty()) {
         // Export the config bundle.
-#if wxUSE_SECRETSTORE
-        bool passwords_to_plain = false;
-        bool passwords_dialog_shown = false;
-#endif
-        // callback function thats going to be passed to preset bundle (so preset bundle doesnt have to include WX secret lib)
-        std::function<bool(const std::string&, const std::string&, std::string&)> load_password = [&](const std::string& printer_id, const std::string& opt, std::string& out_psswd)->bool{
-            out_psswd = std::string();
-#if wxUSE_SECRETSTORE
-            // First password prompts user with dialog
-            if (!passwords_dialog_shown) {
-                wxString msg = _L("Some of the exported printers contain passwords, which are stored in the system password store." 
-                                  " Do you want to include the passwords in the plain text form in the exported file?");
-                MessageDialog dlg_psswd(this, msg, wxMessageBoxCaptionStr, wxYES_NO | wxYES_DEFAULT | wxICON_QUESTION);
-                if (dlg_psswd.ShowModal() == wxID_YES)
-                    passwords_to_plain = true;
-                passwords_dialog_shown = true;
-            }
-            if (!passwords_to_plain)
-                return false;
-            wxSecretStore store = wxSecretStore::GetDefault();
-            wxString errmsg;
-            if (!store.IsOk(&errmsg)) {
-                std::string msg = GUI::format("%1% (%2%).", _u8L("Failed to load credentials from the system password store."), errmsg);
-                BOOST_LOG_TRIVIAL(error) << msg;
-                show_error(nullptr, msg);
-                // Do not try again. System store is not reachable.
-                passwords_to_plain = false;
-                return false;
-            }
-            const wxString service = GUI::format_wxstr(L"%1%/PhysicalPrinter/%2%/%3%", SLIC3R_APP_NAME, printer_id, opt);
-            wxString username;
-            wxSecretValue password;
-            if (!store.Load(service, username, password)) {
-                std::string msg = GUI::format(_u8L("Failed to load credentials from the system password store for printer %1%."), printer_id);
-                BOOST_LOG_TRIVIAL(error) << msg;
-                show_error(nullptr, msg);
-                return false;
-            }
-            out_psswd = into_u8(password.GetAsString());
-            return true;
-#else
-            return false;
-#endif // wxUSE_SECRETSTORE 
-        };
-
         wxGetApp().app_config->update_config_dir(get_dir_name(file));
         try {
-            wxGetApp().preset_bundle->export_configbundle(file.ToUTF8().data(), false, export_physical_printers, load_password);
+            wxGetApp().preset_bundle->export_configbundle(file.ToUTF8().data(), false);
         } catch (const std::exception &ex) {
 			show_error(this, ex.what());
         }
@@ -2293,11 +1678,15 @@ void MainFrame::load_configbundle(wxString file/* = wxEmptyString, const bool re
     // Load the currently selected preset into the GUI, update the preset selection box.
 	wxGetApp().load_current_presets();
 
-    const auto message = wxString::Format(_L("%d presets successfully imported."), presets_imported);
+    wxString message = wxString::Format(_L("%d presets successfully imported."), presets_imported);
+    // FFF/FDM sections ([print:], [filament:], [physical_printer:], FFF printers) of an old bundle are not supported:
+    // they were skipped, tell the user instead of importing them silently.
+    if (const size_t skipped_fff = wxGetApp().preset_bundle->skipped_fff_sections(); skipped_fff > 0)
+        message += "\n\n" + wxString::Format(_L("%d FFF/FDM section(s) of the bundle were skipped: this application supports SLA/MSLA printers only."), int(skipped_fff));
     Slic3r::GUI::show_info(this, message, wxString("Info"));
 }
 
-// Load a provied DynamicConfig into the Print / Filament / Printer tabs, thus modifying the active preset.
+// Load a provied DynamicConfig into the SLA print / material / printer tabs, thus modifying the active preset.
 // Also update the plater with the new presets.
 void MainFrame::load_config(const DynamicPrintConfig& config)
 {
@@ -2310,23 +1699,17 @@ void MainFrame::load_config(const DynamicPrintConfig& config)
 #if 0
 	for (auto tab : wxGetApp().tabs_list)
 		if (tab->supports_printer_technology(printer_technology)) {
-			if (tab->type() == Slic3r::Preset::TYPE_PRINTER)
-				static_cast<TabPrinter*>(tab)->update_pages();
 			tab->load_config(config);
 		}
     if (m_plater)
         m_plater->on_config_change(config);
 #else
 	// Load the currently selected preset into the GUI, update the preset selection box.
-    //FIXME this is not quite safe for multi-extruder printers,
-    // as the number of extruders is not adjusted for the vector values.
-    // (see PresetBundle::update_multi_material_filament_presets())
-    // Better to call PresetBundle::load_config() instead?
     for (auto tab : wxGetApp().tabs_list)
         if (tab->supports_printer_technology(printer_technology)) {
             // Only apply keys, which are present in the tab's config. Ignore the other keys.
 			for (const std::string &opt_key : tab->get_config()->diff(config))
-				// Ignore print_settings_id, printer_settings_id, filament_settings_id etc.
+				// Ignore sla_print_settings_id, printer_settings_id, sla_material_settings_id etc.
 				if (! boost::algorithm::ends_with(opt_key, "_settings_id"))
 					tab->get_config()->option(opt_key)->set(config.option(opt_key));
         }
@@ -2443,7 +1826,7 @@ void MainFrame::on_presets_changed(SimpleEvent &event)
         return;
     }
 
-    // Update preset combo boxes(Print settings, Filament, Material, Printer) from their respective tabs.
+    // Update preset combo boxes(SLA print settings, Material, Printer) from their respective tabs.
     auto presets = tab->get_presets();
     if (m_plater != nullptr && presets != nullptr) {
 
@@ -2496,22 +1879,6 @@ void MainFrame::remember_layer_document(const std::string &path)
     persist_recent_layer_documents();
 }
 
-void MainFrame::technology_changed()
-{
-    PrinterTechnology pt = plater()->printer_technology();
-    m_tmp_top_bar->SetSettingsButtonTooltip(GetTooltipForSettingsButton(pt));
-
-    if (!m_menubar)
-        return;
-    // update menu titles
-    if (int id = m_menubar->FindMenu(_L("Material Settings")); id != wxNOT_FOUND)
-        m_menubar->SetMenuLabel(id, _L("Material Settings"));
-
-    //if (wxGetApp().tab_panel()->GetSelection() != wxGetApp().tab_panel()->GetPageCount() - 1)
-    //    wxGetApp().tab_panel()->SetSelection(wxGetApp().tab_panel()->GetPageCount() - 1);
-
-}
-
 //
 // Called after the Preferences dialog is closed and the program settings are saved.
 // Update the UI based on the current preferences.
@@ -2555,9 +1922,6 @@ SettingsDialog::SettingsDialog(MainFrame* mainframe)
 //        wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER | wxMINIMIZE_BOX | wxMAXIMIZE_BOX, "settings_dialog"),
     m_main_frame(mainframe)
 {
-    if (wxGetApp().is_gcode_viewer())
-        return;
-
     // Load the icon either from the exe, or from the ico file.
 #if _WIN32
     {
@@ -2636,9 +2000,6 @@ SettingsDialog::SettingsDialog(MainFrame* mainframe)
 
 void SettingsDialog::on_dpi_changed(const wxRect& suggested_rect)
 {
-    if (wxGetApp().is_gcode_viewer())
-        return;
-
 // #ysFIXME - delete_after_testing
 //    const int& em = em_unit();
 //    const wxSize& size = wxSize(85 * em, 50 * em);

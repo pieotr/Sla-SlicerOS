@@ -3,6 +3,7 @@
 #include <cstring>
 #include <iostream>
 
+#include <boost/algorithm/string.hpp>
 #include <boost/filesystem.hpp>
 #include <boost/nowide/args.hpp>
 #include <boost/nowide/iostream.hpp>
@@ -27,12 +28,6 @@ PrinterTechnology get_printer_technology(const DynamicConfig &config)
 // may be "validate_and_apply_printer_technology" will be better? 
 static bool can_apply_printer_technology(PrinterTechnology& printer_technology, const PrinterTechnology& other_printer_technology)
 {
-#ifdef SLIC3R_SLA_ONLY
-    if (printer_technology == ptFFF || other_printer_technology == ptFFF) {
-        boost::nowide::cerr << "This application requires an SLA printer configuration" << std::endl;
-        return false;
-    }
-#endif
     if (printer_technology == ptUnknown) {
         printer_technology = other_printer_technology;
         return true;
@@ -90,9 +85,6 @@ static bool load_print_config(DynamicPrintConfig &print_config, PrinterTechnolog
 
             print_config_substitutions(config_substitutions, file);
 
-#ifndef SLIC3R_SLA_ONLY
-            config.normalize_fdm();
-#endif
             print_config.apply(config);
         }
     }
@@ -114,9 +106,6 @@ static bool load_print_config(DynamicPrintConfig &print_config, PrinterTechnolog
         if (!can_apply_printer_technology(printer_technology, get_printer_technology(config)))
             return false;
 
-#ifndef SLIC3R_SLA_ONLY
-        config.normalize_fdm();
-#endif
 
         // config is applied with print_config loaded before
         config += std::move(print_config);
@@ -133,6 +122,14 @@ static bool process_input_files(std::vector<Model>& models, DynamicPrintConfig& 
             boost::nowide::cerr << "Only local input files are supported: " << file << std::endl;
             return false;
         }
+        {
+            std::string lower = boost::algorithm::to_lower_copy(file);
+            if (boost::algorithm::ends_with(lower, ".gcode") || boost::algorithm::ends_with(lower, ".gco") ||
+                boost::algorithm::ends_with(lower, ".g") || boost::algorithm::ends_with(lower, ".bgcode")) {
+                boost::nowide::cerr << "G-code files are not supported: this application is an SLA/MSLA-only slicer (" << file << ")" << std::endl;
+                return false;
+            }
+        }
         if (!boost::filesystem::exists(file)) {
             boost::nowide::cerr << "No such file: " << file << std::endl;
             return false;
@@ -144,6 +141,8 @@ static bool process_input_files(std::vector<Model>& models, DynamicPrintConfig& 
                 // we have full banch of options from profiles set
                 // so, just load a geometry
                 model = FileReader::load_model(file);
+                if (model.loaded_from_fff_project)
+                    boost::nowide::cerr << "Warning: " << file << ": This project was created for an FFF printer; only the geometry was loaded." << std::endl;
             }
             else {
                 // load model and configuration from the file
@@ -154,6 +153,11 @@ static bool process_input_files(std::vector<Model>& models, DynamicPrintConfig& 
                 //FIXME should we check the version here? // | Model::LoadAttribute::CheckVersion ?
                 model = FileReader::load_model_with_config(file, &config, &config_substitutions_ctxt, prusaslicer_generator_version, FileReader::LoadAttribute::AddDefaultInstances);
 
+                if (model.loaded_from_fff_project || config_substitutions_ctxt.legacy_fff_technology) {
+                    // The FFF technology only exists as a raw "printer_technology = FFF" string of the embedded config.
+                    boost::nowide::cerr << "FFF/FDM configurations are not supported: this application is an SLA/MSLA-only slicer and requires an SLA printer configuration" << std::endl;
+                    return false;
+                }
                 if (!can_apply_printer_technology(printer_technology, get_printer_technology(config)))
                     return false;
 
@@ -191,29 +195,17 @@ static bool finalize_print_config(DynamicPrintConfig& print_config, PrinterTechn
     // (command line options override --load files or congiguration which is loaded prom profiles)
     print_config.apply(cli.overrides_config, true);
     // Normalizing after importing the 3MFs / AMFs
-#ifndef SLIC3R_SLA_ONLY
-    print_config.normalize_fdm();
-#else
     if (!can_apply_printer_technology(printer_technology, get_printer_technology(print_config)))
         return false;
     printer_technology = ptSLA;
-#endif
 
     if (printer_technology == ptUnknown)
-        printer_technology = cli.actions_config.has("export_sla") ? ptSLA : ptFFF;
+        printer_technology = ptSLA;
     print_config.option<ConfigOptionEnum<PrinterTechnology>>("printer_technology", true)->value = printer_technology;
 
     SLAFullPrintConfig sla_print_config;
 
     // Synchronize the default parameters and the ones received on the command line.
-#ifndef SLIC3R_SLA_ONLY
-    FullPrintConfig fff_print_config;
-    if (printer_technology == ptFFF) {
-        fff_print_config.apply(print_config, true);
-        print_config.apply(fff_print_config, true);
-    }
-    else
-#endif
     {
         assert(printer_technology == ptSLA);
         sla_print_config.output_filename_format.value = "[input_filename_base][default_output_extension]";
@@ -255,26 +247,6 @@ bool load_print_data(std::vector<Model>& models,
         return false;
 
     return true;
-}
-
-bool is_needed_post_processing(const DynamicPrintConfig& print_config)
-{
-    if (print_config.has("post_process")) {
-        const std::vector<std::string>& post_process = print_config.opt<ConfigOptionStrings>("post_process")->values;
-        if (!post_process.empty()) {
-            boost::nowide::cout << "\nA post-processing script has been detected in the config data:\n\n";
-            for (const std::string& s : post_process) {
-                boost::nowide::cout << "> " << s << "\n";
-            }
-            boost::nowide::cout << "\nContinue(Y/N) ? ";
-            char in;
-            boost::nowide::cin >> in;
-            if (in != 'Y' && in != 'y')
-                return true;
-        }
-    }
-
-    return false;
 }
 
 }

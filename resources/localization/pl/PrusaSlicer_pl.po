@@ -7940,11 +7940,11 @@ msgstr "Zaznacz wszystkie podstawowe drukarki"
 
 #: src/slic3r/GUI/ConfigWizard.cpp:3966
 msgid "< &Back"
-msgstr "<&Wstecz"
+msgstr "< &Wstecz"
 
 #: src/slic3r/GUI/ConfigWizard.cpp:3967
 msgid "&Next >"
-msgstr "&Dalej>"
+msgstr "&Dalej >"
 
 #: src/slic3r/GUI/ConfigWizard.cpp:3968
 msgid "&Finish"
@@ -25065,7 +25065,7 @@ msgstr "Wyświetla pomoc podczas przeglądania książek po lewej."
 #. TRANSLATORS: Name of keyboard key
 #: ../src/common/accelcmn.cpp:85
 msgid "Divide"
-msgstr ""
+msgstr "Podziel"
 
 #: ../src/common/docview.cpp:533
 #, c-format
@@ -28681,7 +28681,7 @@ msgstr "Indeks &dolny"
 #. TRANSLATORS: Name of keyboard key
 #: ../src/common/accelcmn.cpp:83
 msgid "Subtract"
-msgstr ""
+msgstr "Odejmij"
 
 #: ../src/richtext/richtextfontpage.cpp:296
 msgid "Supe&rscript"
@@ -31103,3 +31103,3132 @@ msgstr "Pionowe"
 #: src/libslic3r/PrintConfig.cpp
 msgid "Horizontal and vertical"
 msgstr "Poziome i pionowe"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerCalculatorDialog.cpp:42
+msgid "No per-layer parameters in this document"
+msgstr "Brak parametrów warstw w tym dokumencie"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerCalculatorDialog.cpp:50
+msgid "Calculator"
+msgstr "Kalkulator"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerCalculatorDialog.cpp:64
+msgid "Millimeters to pixels"
+msgstr "Milimetry na piksele"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerCalculatorDialog.cpp:65
+msgid "Resolution X (px)"
+msgstr "Rozdzielczość X (px)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerCalculatorDialog.cpp:66
+msgid "Resolution Y (px)"
+msgstr "Rozdzielczość Y (px)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerCalculatorDialog.cpp:67
+msgid "Display width (mm)"
+msgstr "Szerokość wyświetlacza (mm)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerCalculatorDialog.cpp:68
+msgid "Display height (mm)"
+msgstr "Wysokość wyświetlacza (mm)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerCalculatorDialog.cpp:69
+msgid "Length (mm)"
+msgstr "Długość (mm)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerCalculatorDialog.cpp:70
+msgid "Pixels per millimeter"
+msgstr "Piksele na milimetr"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerCalculatorDialog.cpp:71
+msgid "Length in pixels"
+msgstr "Długość w pikselach"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerCalculatorDialog.cpp:72 /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerCalculatorDialog.cpp:77
+msgid "Light-off delay"
+msgstr "Opóźnienie wyłączenia światła"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerCalculatorDialog.cpp:73 /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorInternal.hpp:362
+msgid "Lift height (mm)"
+msgstr "Wysokość podnoszenia (mm)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerCalculatorDialog.cpp:74 /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorInternal.hpp:362 /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:177
+msgid "Lift speed (mm/min)"
+msgstr "Prędkość podnoszenia (mm/min)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerCalculatorDialog.cpp:75 /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorInternal.hpp:364 /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:179
+msgid "Retract speed (mm/min)"
+msgstr "Prędkość powrotu (mm/min)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerCalculatorDialog.cpp:76
+msgid "Extra wait (s)"
+msgstr "Dodatkowe oczekiwanie (s)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerCalculatorDialog.cpp:78
+msgid "Optimal model tilt"
+msgstr "Optymalne pochylenie modelu"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerCalculatorDialog.cpp:79 /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:313
+msgid "Layer height (mm)"
+msgstr "Wysokość warstwy (mm)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerCalculatorDialog.cpp:80
+msgid "XY resolution"
+msgstr "Rozdzielczość XY"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerCalculatorDialog.cpp:81
+msgid "Optimal tilt angle"
+msgstr "Optymalny kąt pochylenia"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerCalculatorDialog.cpp:82
+msgid "Print time"
+msgstr "Czas druku"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerCalculatorDialog.cpp:83
+msgid "Estimated time (h:mm:ss)"
+msgstr "Szacowany czas (g:mm:ss)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorCommon.cpp:15
+msgid "Island"
+msgstr "Wyspa"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorCommon.cpp:16
+msgid "Overhang"
+msgstr "Zwis"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorCommon.cpp:17
+msgid "Resin trap"
+msgstr "Pułapka żywicy"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorCommon.cpp:18
+msgid "Suction cup"
+msgstr "Przyssawka"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorCommon.cpp:19
+msgid "Touching bound"
+msgstr "Dotknięcie granicy"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorCommon.cpp:20
+msgid "Print height"
+msgstr "Wysokość wydruku"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorCommon.cpp:21
+msgid "Empty layer"
+msgstr "Pusta warstwa"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent.cpp:109 /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent.cpp:434
+msgid "Radius (pixels)"
+msgstr "Promień (piksele)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent.cpp:140
+msgid "Tools panel resizer"
+msgstr "Zmiana szerokości panelu narzędzi"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent.cpp:141
+msgid "Drag to resize the tools panel. Double-click resets the width; Left/Right arrow keys resize it when focused."
+msgstr "Przeciągnij, aby zmienić szerokość panelu narzędzi. Dwukrotne kliknięcie przywraca szerokość; po zaznaczeniu strzałki w lewo/w prawo też ją zmieniają."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent.cpp:147
+msgid "Side panel resizer"
+msgstr "Zmiana szerokości panelu bocznego"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent.cpp:148
+msgid "Drag to resize the Issues and Export panel. Double-click resets the width; Left/Right arrow keys resize it when focused."
+msgstr "Przeciągnij, aby zmienić szerokość panelu Problemy i Eksport. Dwukrotne kliknięcie przywraca szerokość; po zaznaczeniu strzałki w lewo/w prawo też ją zmieniają."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent.cpp:243 /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent.cpp:716
+msgid "Hide side panel"
+msgstr "Ukryj panel"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent.cpp:243
+msgid "Show side panel"
+msgstr "Pokaż panel"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent.cpp:244
+msgid "Hide the Issues and Export column to give the mask more room."
+msgstr "Ukrywa kolumnę Problemy i Eksport, aby maska miała więcej miejsca."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent.cpp:245
+msgid "Show the Issues and Export column again."
+msgstr "Ponownie pokazuje kolumnę Problemy i Eksport."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent.cpp:293
+#, c-format
+msgid "Layer %d/%zu"
+msgstr "Warstwa %d/%zu"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent.cpp:297
+#, c-format, boost-format
+msgid "%s, %s, %s tip, radius %d px, grayscale value %d"
+msgstr "%s, %s, końcówka: %s, promień %d px, wartość szarości %d"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent.cpp:301 /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent.cpp:442 /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent.cpp:642
+msgid "Fit"
+msgstr "Dopasuj"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent.cpp:350
+msgid "paints the selected grayscale value. Drag directly on the mask."
+msgstr "maluje wybraną wartością skali szarości. Przeciągaj bezpośrednio po masce."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent.cpp:352
+msgid "Eraser"
+msgstr "Gumka"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent.cpp:352
+msgid "clears pixels (paints the palette's black level)."
+msgstr "usuwa piksele (maluje czarnym poziomem palety)."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent.cpp:355
+msgid "Round brush"
+msgstr "Pędzel okrągły"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent.cpp:355
+msgid "round stamp for Freehand and Line, 2r+1 pixels across."
+msgstr "okrągła końcówka dla Odręcznie i Linii, szerokość 2r+1 pikseli."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent.cpp:357
+msgid "Square brush"
+msgstr "Pędzel kwadratowy"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent.cpp:357
+msgid "square stamp for Freehand and Line, 2r+1 pixels across."
+msgstr "kwadratowa końcówka dla Odręcznie i Linii, szerokość 2r+1 pikseli."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent.cpp:363
+msgid "Rectangle"
+msgstr "Prostokąt"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent.cpp:363
+msgid "drag a corner to the opposite corner; it becomes the region offered to Operations."
+msgstr "przeciągnij od rogu do przeciwległego rogu; powstaje obszar oferowany operacjom."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent.cpp:364
+msgid "Ellipse"
+msgstr "Elipsa"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent.cpp:364
+msgid "drag across the bounding box."
+msgstr "przeciągnij po ramce otaczającej."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent.cpp:365
+msgid "Flood fill"
+msgstr "Wypełnianie"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent.cpp:365
+msgid "fills the connected region of identical grey on click. Each use is one Undo step for the whole layer range."
+msgstr "po kliknięciu wypełnia spójny obszar o identycznej szarości. Każde użycie to jeden krok cofania dla całego zakresu warstw."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent.cpp:376 /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Canvas.cpp:46 /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Canvas.cpp:364 /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Events.cpp:36 /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Operations.cpp:289 /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Operations.cpp:413 /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Operations.cpp:417
+msgid "Layer editor"
+msgstr "Edytor warstw"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent.cpp:421
+msgid "Navigate"
+msgstr "Nawigacja"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent.cpp:424
+msgid "Layer shown and painted. PageUp / PageDown on the mask moves one layer."
+msgstr "Wyświetlana i malowana warstwa. PageUp / PageDown na masce przechodzą o jedną warstwę."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent.cpp:426
+msgid "Mask plane"
+msgstr "Płaszczyzna maski"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent.cpp:427
+msgid "Main mask"
+msgstr "Maska główna"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent.cpp:427
+msgid "SUBIMGS mask"
+msgstr "Maska SUBIMGS"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent.cpp:431
+msgid "Draw"
+msgstr "Rysowanie"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent.cpp:436
+msgid "Grayscale / threshold"
+msgstr "Skala szarości / próg"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent.cpp:444
+msgid "Ctrl+wheel zooms at the cursor, wheel scrolls, middle-drag or Space+drag pans, keys + - zoom in/out, 0 fits the window, 1 shows 100%."
+msgstr "Ctrl+kółko powiększa w miejscu kursora, kółko przewija, przeciąganie środkowym przyciskiem lub Spacja+przeciąganie przesuwa widok, klawisze + - powiększają/pomniejszają, 0 dopasowuje do okna, 1 pokazuje 100%."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent.cpp:446
+msgid "Fit view"
+msgstr "Dopasuj widok"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent.cpp:463
+msgid "Brush source palette: "
+msgstr "Paleta źródłowa pędzla: "
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent.cpp:463
+msgid " levels. Allowed source paint values: "
+msgstr " poziomów. Dozwolone źródłowe wartości malowania: "
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent.cpp:471
+msgid "The requested value is kept. Brush and Fill follow the source palette; Threshold compares against this raw value."
+msgstr "Żądana wartość zostaje zachowana. Pędzel i Wypełnianie korzystają z palety źródłowej; Próg porównuje z tą surową wartością."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent.cpp:475
+msgid "A stroke edits the current layer only, or every layer of the selected range when 'Overlay and paint selected range' is on. One Undo restores the whole stroke."
+msgstr "Pociągnięcie zmienia tylko bieżącą warstwę albo każdą warstwę wybranego zakresu, gdy włączono „Nakładka i malowanie zakresu”. Jedno Cofnij cofa całe pociągnięcie."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent.cpp:543
+msgid "Selection range"
+msgstr "Zakres zaznaczenia"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent.cpp:544
+msgid "Range: first / last layer"
+msgstr "Zakres: pierwsza / ostatnia warstwa"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent.cpp:554
+msgid "Overlay and paint selected range"
+msgstr "Nakładka i malowanie zakresu"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent.cpp:556
+msgid "Maximum-intensity overlay for preview. A stroke edits every layer in the inclusive range, preserving pixels outside the stroke. One Undo restores the entire range."
+msgstr "Nakładka maksymalnej intensywności w podglądzie. Pociągnięcie zmienia każdą warstwę włącznie z zakresem, zachowując piksele poza pociągnięciem. Jedno Cofnij przywraca cały zakres."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent.cpp:559
+msgid "Refresh preview"
+msgstr "Odśwież podgląd"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent.cpp:560
+msgid "Prepare the selected layer or overlay again after cancelling. This does not change masks or Undo history."
+msgstr "Ponownie przygotowuje wybraną warstwę lub nakładkę po anulowaniu. Nie zmienia masek ani historii cofania."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent.cpp:584
+msgid "Single layer"
+msgstr "Pojedyncza warstwa"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent.cpp:587
+msgid "Checked: show and paint only the current layer. Unchecked: use both handles and overlay the selected range. The previous range is kept."
+msgstr "Zaznaczone: pokazuje i maluje tylko bieżącą warstwę. Odznaczone: używa obu uchwytów i nakłada wybrany zakres. Poprzedni zakres zostaje zapamiętany."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent.cpp:606 /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:123 /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:124 /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:208
+msgid "Threshold"
+msgstr "Próg"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent.cpp:606
+msgid "Invert"
+msgstr "Negatyw"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent.cpp:606
+msgid "Mirror horizontal"
+msgstr "Odbij w poziomie"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent.cpp:606
+msgid "Mirror vertical"
+msgstr "Odbij w pionie"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent.cpp:606
+msgid "Rotate 180 degrees"
+msgstr "Obróć o 180 stopni"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent.cpp:606
+msgid "Fill with grayscale"
+msgstr "Wypełnij skalą szarości"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent.cpp:607
+msgid "Erode"
+msgstr "Erozja"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent.cpp:607
+msgid "Dilate"
+msgstr "Dylatacja"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent.cpp:607
+msgid "Morphological open"
+msgstr "Otwarcie morfologiczne"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent.cpp:607
+msgid "Morphological close"
+msgstr "Zamknięcie morfologiczne"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent.cpp:607
+msgid "Gradient"
+msgstr "Gradient"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent.cpp:607
+msgid "White top hat"
+msgstr "Biały top hat"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent.cpp:607
+msgid "Black top hat"
+msgstr "Czarny top hat"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent.cpp:607
+msgid "Box blur"
+msgstr "Rozmycie uśredniające"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent.cpp:607
+msgid "Median blur"
+msgstr "Rozmycie medianowe"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent.cpp:610
+msgid "Filters use Radius (pixels) and an odd square kernel. Morphology and box blur reflect edges; median blur replicates edges and removes isolated noise. Grayscale is preserved without thresholding."
+msgstr "Filtry używają Promienia (piksele) i nieparzystego, kwadratowego jądra. Morfologia i rozmycie uśredniające odbijają krawędzie; rozmycie medianowe powiela krawędzie i usuwa pojedynczy szum. Skala szarości zostaje zachowana bez progowania."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent.cpp:614
+msgid "Apply to range"
+msgstr "Zastosuj do zakresu"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent.cpp:615
+msgid "Modify the inclusive range as one undo step. Cancellation preserves all layers."
+msgstr "Zmienia cały zakres jako jeden krok cofania. Anulowanie zachowuje wszystkie warstwy."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent.cpp:637 /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Canvas.cpp:318
+msgid "Pixel: move the cursor over the mask"
+msgstr "Piksel: najedź kursorem na maskę"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent.cpp:668 /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Export.cpp:244
+msgid "Convert archive"
+msgstr "Konwertuj archiwum"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent.cpp:670
+msgid "Export current mask"
+msgstr "Eksportuj bieżącą maskę"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent.cpp:671 /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Export.cpp:301
+msgid "Export mask range"
+msgstr "Eksportuj zakres masek"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent.cpp:677
+msgid "Back to 3D"
+msgstr "Wróć do 3D"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent.cpp:703
+msgid "Load current slices"
+msgstr "Wczytaj cięcie"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent.cpp:704
+msgid "Replace the editing session with the current sliced result. Unsaved edits are confirmed first."
+msgstr "Zastępuje sesję edycji bieżącym wynikiem cięcia. Niezapisane zmiany zostaną najpierw potwierdzone."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent.cpp:705
+msgid "Open layer file"
+msgstr "Otwórz plik"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent.cpp:706
+msgid "Open an archive, image or layer project as an independent editing document."
+msgstr "Otwiera archiwum, obraz lub projekt warstw jako niezależny dokument edycji."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent.cpp:722 /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Operations.cpp:72
+msgid "Layer parameters"
+msgstr "Parametry warstwy"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent.cpp:724
+msgid "Range parameters"
+msgstr "Parametry zakresu"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent.cpp:725
+msgid "Operations..."
+msgstr "Operacje..."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent.cpp:727
+msgid "Threshold layer"
+msgstr "Próg dla warstwy"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent.cpp:728
+msgid "Invert layer"
+msgstr "Negatyw warstwy"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent.cpp:732
+msgid "Export and project"
+msgstr "Eksport i projekt"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent.cpp:778
+msgid "Apply to sliced result"
+msgstr "Zastosuj do pociętego wyniku"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent.cpp:788
+msgid "About this format"
+msgstr "O tym formacie"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent.cpp:800
+msgid "Anycubic edits keep the original file version, per-layer parameters, previews and manufacturer metadata. Masks are quantized to the original grayscale or PWS AA levels. Volume and model bounds follow the edited masks when physical dimensions are known. Weight and cost scale existing estimates; zero values do not provide material properties. Changed masks append payloads; older unused payloads remain in the file."
+msgstr "Edycje Anycubic zachowują oryginalną wersję pliku, parametry warstw, podglądy i metadane producenta. Maski są kwantyzowane do oryginalnych poziomów skali szarości lub AA PWS. Objętość i granice modelu podążają za edytowanymi maskami, gdy znane są wymiary fizyczne. Masa i koszt skalują istniejące szacunki; wartości zerowe nie podają właściwości materiału. Zmienione maski dopisują nowe bloki danych; starsze nieużywane bloki pozostają w pliku."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent.cpp:802
+msgid "Use saved project context for resin estimates"
+msgstr "Użyj zapisanego kontekstu projektu do szacunków żywicy"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent.cpp:802 /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Dialogs.cpp:155
+msgid "Use selected printer and material for resin estimates"
+msgstr "Użyj wybranej drukarki i materiału do szacunków żywicy"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent.cpp:805
+msgid "Opt in to recalculate volume, weight and cost. The selected printer must match the mask resolution and known screen dimensions. Masks and exposure settings are preserved. Legacy PWC cannot store physical screen dimensions; keep its matching profile when reopening."
+msgstr "Włącz, aby ponownie obliczyć objętość, masę i koszt. Wybrana drukarka musi odpowiadać rozdzielczości maski i znanym wymiarom ekranu. Maski i ustawienia naświetlania zostają zachowane. Starszy format PWC nie przechowuje fizycznych wymiarów ekranu; przy ponownym otwarciu zachowaj jego pasujący profil."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent.cpp:807 /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Dialogs.cpp:189 /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Dialogs.cpp:203
+msgid "Resin estimates: original file values"
+msgstr "Szacunki żywicy: wartości z oryginalnego pliku"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent.cpp:813 /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Dialogs.cpp:193
+#, c-format, boost-format
+msgid "Saved project estimates: %.4g x %.4g mm; %.4g g/ml; %.4g per ml; max Z %.4g mm. Active presets are unchanged."
+msgstr "Szacunki zapisane w projekcie: %.4g x %.4g mm; %.4g g/ml; %.4g za ml; maks. Z %.4g mm. Aktywne profile bez zmian."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent.cpp:823
+msgid "Chitubox edits are quantized immediately to the original grayscale or AA levels. Undo and preview match saved pixels. Unchanged layers, original parameters and previews are preserved. Edited masks append new payloads; original unused payloads remain in the file."
+msgstr "Edycje Chitubox są natychmiast kwantyzowane do oryginalnych poziomów skali szarości lub AA. Cofnij i podgląd odpowiadają zapisanym pikselom. Niezmienione warstwy, oryginalne parametry i podglądy zostają zachowane. Edytowane maski dopisują nowe bloki danych; oryginalne nieużywane bloki pozostają w pliku."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent.cpp:825
+msgid "CXDLPv4 edits use 7-bit grayscale. Values 0 and 1 are off; other values are quantized immediately so Undo and the preview match the saved file. Original per-layer settings and previews are preserved."
+msgstr "Edycje CXDLPv4 używają 7-bitowej skali szarości. Wartości 0 i 1 oznaczają wyłączenie; pozostałe są natychmiast kwantyzowane, aby Cofnij i podgląd odpowiadały zapisanemu plikowi. Oryginalne ustawienia warstw i podglądy zostają zachowane."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent.cpp:828
+msgid "PBM has only black and white pixels. Zero stays black; nonzero values become white so the preview and Undo match the saved mask."
+msgstr "PBM ma tylko piksele czarne i białe. Zero pozostaje czarne; wartości niezerowe stają się białe, aby podgląd i Cofnij odpowiadały zapisanej masce."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent.cpp:829
+msgid "JPEG is lossy. Edits remain lossless in this session; saving JPEG may change pixel values. Export a PNG mask to preserve them exactly."
+msgstr "JPEG jest stratny. W tej sesji edycje pozostają bezstratne; zapis JPEG może zmienić wartości pikseli. Wyeksportuj maskę PNG, aby zachować je dokładnie."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent.cpp:830
+msgid "This file contains one mask. It has no physical printer dimensions, exposure settings or layer height."
+msgstr "Ten plik zawiera jedną maskę. Nie ma fizycznych wymiarów drukarki, ustawień naświetlania ani wysokości warstwy."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent.cpp:832
+msgid "This archive contains masks and geometry. Exposure and motion are configured on the receiving printer."
+msgstr "To archiwum zawiera maski i geometrię. Naświetlanie i ruch konfiguruje się w drukarce docelowej."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent.cpp:838 /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Operations.cpp:130 /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Operations.cpp:333 /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Operations.cpp:340 /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Operations.cpp:347
+msgid "Save layer project"
+msgstr "Zapisz projekt warstw"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent.cpp:844 /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Dialogs.cpp:126
+msgid "Calibration recipe"
+msgstr "Przepis kalibracji"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent.cpp:846
+msgid "Capture selected SLA settings"
+msgstr "Zapisz wybrane ustawienia SLA"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent.cpp:847 /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Dialogs.cpp:164
+msgid "Project SLA settings"
+msgstr "Ustawienia SLA projektu"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Canvas.cpp:15
+msgid "Applying layer operation..."
+msgstr "Stosowanie operacji na warstwach..."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Canvas.cpp:15
+msgid "Applying operation..."
+msgstr "Stosowanie operacji..."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Canvas.cpp:17
+msgid "Layer document: modified. Save a layer project to keep masks and settings."
+msgstr "Dokument warstw: zmodyfikowany. Zapisz projekt warstw, aby zachować maski i ustawienia."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Canvas.cpp:17
+msgid "Layer document: modified"
+msgstr "Dokument: zmodyfikowany"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Canvas.cpp:18
+msgid "Generated layers: not saved or exported. Save a layer project or export a copy."
+msgstr "Wygenerowane warstwy: niezapisane ani niewyeksportowane. Zapisz projekt warstw lub wyeksportuj kopię."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Canvas.cpp:18
+msgid "Generated: not saved/exported"
+msgstr "Wygenerowane: niezapisane/niewyeksportowane"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Canvas.cpp:19
+msgid "Layer document: saved. Edits use this document's own settings."
+msgstr "Dokument warstw: zapisany. Edycje używają własnych ustawień tego dokumentu."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Canvas.cpp:19
+msgid "Layer document: saved"
+msgstr "Dokument: zapisany"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Canvas.cpp:20
+msgid "Older slices: your edits are kept. Export a copy or load current slices. Apply is unavailable."
+msgstr "Starsze warstwy: edycje zachowane. Wyeksportuj kopię lub wczytaj bieżące warstwy. Zastosowanie jest niedostępne."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Canvas.cpp:20
+msgid "Older slices: edits kept"
+msgstr "Starsze: edycje zachowane"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Canvas.cpp:22
+msgid "Sliced layers: modified. Save the project or Apply to keep these edits in the model result."
+msgstr "Pocięte warstwy: zmodyfikowane. Zapisz projekt lub użyj Zastosuj, aby zachować te zmiany w wyniku modelu."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Canvas.cpp:22
+msgid "Sliced layers: modified"
+msgstr "Pocięte: zmodyfikowane"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Canvas.cpp:23
+msgid "Sliced layers: applied to the model. Save the 3D project to keep these edits after restart."
+msgstr "Pocięte warstwy: zastosowane do modelu. Zapisz projekt 3D, aby zachować te zmiany po ponownym uruchomieniu."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Canvas.cpp:23
+msgid "Sliced layers: applied"
+msgstr "Pocięte: zastosowane"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Canvas.cpp:24
+msgid "Sliced layers: edits use the captured printer settings."
+msgstr "Pocięte warstwy: edycje używają zapisanych ustawień drukarki."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Canvas.cpp:24
+msgid "Sliced layers: captured settings"
+msgstr "Pocięte: zapisane ustawienia"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Canvas.cpp:69
+#, c-format, boost-format
+msgid "Eraser paints %u (requested %d kept)"
+msgstr "Gumka maluje %u (zachowano żądane %d)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Canvas.cpp:71
+msgid "Grayscale must be 0–255; input kept"
+msgstr "Skala szarości musi mieścić się w 0–255; wprowadzoną wartość zachowano"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Canvas.cpp:72
+#, c-format, boost-format
+msgid "Requested %d"
+msgstr "Żądane %d"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Canvas.cpp:72
+#, c-format, boost-format
+msgid "paints %u"
+msgstr "maluje %u"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Canvas.cpp:84
+#, c-format, boost-format
+msgid "Painting layers %d–%d"
+msgstr "Malowanie warstw %d–%d"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Canvas.cpp:85
+#, c-format, boost-format
+msgid "Painting layer %d"
+msgstr "Malowanie warstwy %d"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Canvas.cpp:99
+msgid "Choose a valid layer range to see which masks will change."
+msgstr "Wybierz poprawny zakres warstw, aby zobaczyć, które maski się zmienią."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Canvas.cpp:106
+#, c-format
+msgid "Selected range: %zu shared %s, %zu independent %s. Shared layers update both masks; independent layers update only the selected mask."
+msgstr "Wybrany zakres: %zu wspólnych (%s), %zu niezależnych (%s). Warstwy wspólne aktualizują obie maski; niezależne tylko wybraną maskę."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Canvas.cpp:113
+msgid "Shared mask: main and SUBIMGS stay linked when edited."
+msgstr "Maska wspólna: główna i SUBIMGS pozostają połączone podczas edycji."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Canvas.cpp:114
+msgid "Independent masks: edits affect only the selected image."
+msgstr "Maski niezależne: edycje dotyczą tylko wybranego obrazu."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Canvas.cpp:149
+msgid "Preparing layer preview…"
+msgstr "Przygotowywanie podglądu warstwy…"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Canvas.cpp:158
+msgid "Prepare layer preview"
+msgstr "Przygotowanie podglądu warstwy"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Canvas.cpp:167
+msgid "Preview cancelled. Use Refresh preview or choose another layer or range."
+msgstr "Podgląd anulowany. Użyj Odśwież podgląd lub wybierz inną warstwę albo zakres."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Canvas.cpp:173
+msgid "Preview unavailable. Use Refresh preview or choose another layer or range."
+msgstr "Podgląd niedostępny. Użyj Odśwież podgląd lub wybierz inną warstwę albo zakres."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Canvas.cpp:241
+#, c-format
+msgid "Exposure %zu/%zu; physical layer %zu/%zu; Z %.6g mm"
+msgstr "Naświetlanie %zu/%zu; warstwa fizyczna %zu/%zu; Z %.6g mm"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Canvas.cpp:324
+#, c-format, boost-format
+msgid "Pixel x=%d y=%d"
+msgstr "Piksel x=%d y=%d"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Canvas.cpp:329
+#, c-format, boost-format
+msgid "  |  grey %u%s"
+msgstr "  |  szarość %u%s"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Canvas.cpp:329
+msgid " (range overlay)"
+msgstr " (nakładka zakresu)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Canvas.cpp:425
+msgid "Paint layers"
+msgstr "Malowanie warstw"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Dialogs.cpp:8
+msgid "Edit layer range"
+msgstr "Edycja zakresu warstw"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Dialogs.cpp:10
+msgid "Preparing masks"
+msgstr "Przygotowywanie masek"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Dialogs.cpp:36
+msgid "Cancelling…"
+msgstr "Anulowanie…"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Dialogs.cpp:52
+#, c-format
+msgid "Layers: %zu / %zu"
+msgstr "Warstwy: %zu / %zu"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Dialogs.cpp:60
+msgid "XYZ blocks"
+msgstr "Bloki XYZ"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Dialogs.cpp:60
+msgid "Grayscale patches"
+msgstr "Pola skali szarości"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Dialogs.cpp:60
+msgid "Lift area"
+msgstr "Pole podnoszenia"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Dialogs.cpp:61
+msgid "Original generation recipe. Current masks may contain later edits.\n\n"
+msgstr "Oryginalny przepis generowania. Bieżące maski mogą zawierać późniejsze edycje.\n\n"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Dialogs.cpp:63
+#, c-format, boost-format
+msgid "\nPattern X: %.17g mm\nPattern Y: %.17g mm\nHeight: %.17g mm\n"
+msgstr "\nWzór X: %.17g mm\nWzór Y: %.17g mm\nWysokość: %.17g mm\n"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Dialogs.cpp:65
+#, c-format, boost-format
+msgid "Spacing / margin: %.17g mm\n"
+msgstr "Odstęp / margines: %.17g mm\n"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Dialogs.cpp:67
+#, c-format, boost-format
+msgid "\nLift size step: %u%% (0 = disabled)\nMinimum lift size: %u%%\nPercentages apply to both X and Y dimensions; decreasing layers are included in total height.\n"
+msgstr "\nKrok rozmiaru podnoszenia: %u%% (0 = wyłączony)\nMinimalny rozmiar podnoszenia: %u%%\nProcenty dotyczą obu wymiarów X i Y; warstwy malejące są wliczone do całkowitej wysokości.\n"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Dialogs.cpp:71
+#, c-format, boost-format
+msgid "\nTest table: %s\nRows: %u\nHeight (mm) | Bottom (s) | Normal (s) | Requested brightness\n"
+msgstr "\nTabela testowa: %s\nWiersze: %u\nWysokość (mm) | Dolne (s) | Normalne (s) | Żądana jasność\n"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Dialogs.cpp:72
+msgid "Generated"
+msgstr "Wygenerowane"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Dialogs.cpp:78
+msgid "Showing first 100 rows. The project retains the complete table.\n"
+msgstr "Pokazano pierwsze 100 wierszy. Projekt przechowuje pełną tabelę.\n"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Dialogs.cpp:81
+msgid "Iterative"
+msgstr "Iteracyjny"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Dialogs.cpp:81
+msgid "First table row"
+msgstr "Pierwszy wiersz tabeli"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Dialogs.cpp:81
+msgid "Middle table row"
+msgstr "Środkowy wiersz tabeli"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Dialogs.cpp:81
+msgid "Last table row"
+msgstr "Ostatni wiersz tabeli"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Dialogs.cpp:82
+msgid "Bottom and base"
+msgstr "Dolne i podstawa"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Dialogs.cpp:83
+#, c-format, boost-format
+msgid "\nExposure schedule\nBase height: %.9g mm\nFeature height: %.9g mm\nBottom layers per test: %u\nBase exposure mode: %s\nCustom base exposure: %.9g s (cure grid 0.01 s)\n"
+msgstr "\nHarmonogram naświetlania\nWysokość podstawy: %.9g mm\nWysokość elementu: %.9g mm\nWarstwy dolne na test: %u\nTryb naświetlania podstawy: %s\nWłasne naświetlanie podstawy: %.9g s (siatka utwardzania 0,01 s)\n"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Dialogs.cpp:85
+#, c-format, boost-format
+msgid "Multiple exposures: %s\nMultiple brightness: %s\nStored brightness: "
+msgstr "Wiele naświetlań: %s\nWiele jasności: %s\nZapisana jasność: "
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Dialogs.cpp:91
+#, c-format, boost-format
+msgid "\nBrightness exclusion: %s\nRepeated-Z settings: %s\nTotal lift override: %.9g mm (%s)\nWait before override: %.9g s (%s)\n"
+msgstr "\nWyłączenie jasności: %s\nUstawienia powtarzanego Z: %s\nNadpisanie całkowitego podnoszenia: %.9g mm (%s)\nNadpisanie oczekiwania przed: %.9g s (%s)\n"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Dialogs.cpp:99
+msgid "\nPattern geometry\nHoles (px): "
+msgstr "\nGeometria wzoru\nOtwory (px): "
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Dialogs.cpp:102
+#, c-format, boost-format
+msgid "\nHole shape: %s\nBars (px): "
+msgstr "\nKształt otworu: %s\nPręty (px): "
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Dialogs.cpp:105
+msgid "\nBullseyes diameter:thickness (px): "
+msgstr "\nŚrednica:grubość tarcz (px): "
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Dialogs.cpp:108
+#, c-format, boost-format
+msgid "\nFeature margin: %.9g mm\nBar length: %.9g mm\nBar spacing: %.9g mm\nBar splitter: %d px\nBar fence: %d px\nBar fence offset: %d px\n"
+msgstr "\nMargines elementu: %.9g mm\nDługość pręta: %.9g mm\nOdstęp prętów: %.9g mm\nPodział prętów: %d px\nOgrodzenie prętów: %d px\nPrzesunięcie ogrodzenia prętów: %d px\n"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Dialogs.cpp:110
+#, c-format, boost-format
+msgid "Bullseye fence: %d px\nBullseye fence offset: %d px\nInvert bullseye quadrants: %s\nCounter triangles: %s\nTriangle fence: %s\nTriangle tip offset: %d px\nStaircase thickness: %u px\nAnti-aliasing: %s\n"
+msgstr "Ogrodzenie tarczy: %d px\nPrzesunięcie ogrodzenia tarczy: %d px\nOdwróć ćwiartki tarczy: %s\nTrójkąty licznikowe: %s\nOgrodzenie trójkąta: %s\nPrzesunięcie czubka trójkąta: %d px\nGrubość schodków: %u px\nWygładzanie: %s\n"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Dialogs.cpp:113
+msgid "Text: "
+msgstr "Tekst: "
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Dialogs.cpp:114
+#, c-format, boost-format
+msgid "Font: %s%s\nText scale: %.9g (rounded to 0.01)\nText thickness: %d px\n"
+msgstr "Czcionka: %s%s\nSkala tekstu: %.9g (zaokrąglona do 0,01)\nGrubość tekstu: %d px\n"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Dialogs.cpp:116
+msgid "\nLCD layout\nCell columns: "
+msgstr "\nUkład LCD\nKolumny komórek: "
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Dialogs.cpp:117
+msgid "\nCell rows: "
+msgstr "\nWiersze komórek: "
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Dialogs.cpp:118
+#, c-format, boost-format
+msgid "\nMargin X: %.9g mm\nMargin Y: %.9g mm\nGap X: %.9g mm\nGap Y: %.9g mm\nCenter cells: %s\nExtra mirror X: %s\nExtra mirror Y: %s\nBottom erosion: %u px\nChamfer layers: %u\n"
+msgstr "\nMargines X: %.9g mm\nMargines Y: %.9g mm\nOdstęp X: %.9g mm\nOdstęp Y: %.9g mm\nWyśrodkuj komórki: %s\nDodatkowe odbicie X: %s\nDodatkowe odbicie Y: %s\nErozja dolna: %u px\nWarstwy fazowania: %u\n"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Dialogs.cpp:168
+msgid "Saved project settings. Active presets are unchanged. Imported native layer parameters take precedence over their project defaults."
+msgstr "Zapisano ustawienia projektu. Aktywne profile bez zmian. Zaimportowane natywne parametry warstw mają pierwszeństwo przed domyślnymi wartościami projektu."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Dialogs.cpp:175
+msgid "Profile relationships (resolved values work without the referenced base):\n"
+msgstr "Powiązania profili (wartości rozwiązane działają bez profilu bazowego):\n"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Dialogs.cpp:178
+msgid "Profile relationships were not stored in this legacy project.\n"
+msgstr "Powiązania profili nie zostały zapisane w tym starszym projekcie.\n"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Dialogs.cpp:181
+msgid "Process"
+msgstr "Przetwarzanie"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Dialogs.cpp:194
+#, c-format, boost-format
+msgid "Resin estimates: %.4g x %.4g mm; %.4g g/ml; %.4g per ml; max Z %.4g mm. Screen dimensions and layer heights are checked on save."
+msgstr "Szacunki żywicy: %.4g x %.4g mm; %.4g g/ml; %.4g za ml; maks. Z %.4g mm. Wymiary ekranu i wysokości warstw są sprawdzane przy zapisie."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Dialogs.cpp:239
+msgid "Layer export profile"
+msgstr "Profil eksportu warstw"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Export.cpp:29
+msgid "This ZIP format saves masks and geometry. Set exposure and motion on the receiving printer."
+msgstr "Ten format ZIP zapisuje maski i geometrię. Naświetlanie i ruch ustaw w drukarce docelowej."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Export.cpp:36
+msgid "CBDDLP/Photon v1 uses one binary plane: only input value 255 exposes. It cannot store custom lift/retract settings; the decoder assumes normal lift 0.05 mm, bottom lift 6 mm and speeds 100 mm/min. Verify firmware motion separately."
+msgstr "CBDDLP/Photon v1 używa jednej płaszczyzny binarnej: naświetla tylko wartość wejściowa 255. Nie przechowuje własnych ustawień podnoszenia/powrotu; dekoder zakłada normalne podnoszenie 0,05 mm, dolne 6 mm i prędkości 100 mm/min. Ruch sprawdź osobno w oprogramowaniu drukarki."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Export.cpp:69 /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Export.cpp:80
+msgid "Save edited layers"
+msgstr "Zapisz edytowane warstwy"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Export.cpp:73
+msgid "Saving JPEG may change exposure pixels. Continue?"
+msgstr "Zapis JPEG może zmienić piksele naświetlania. Kontynuować?"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Export.cpp:73
+msgid "Save edited image"
+msgstr "Zapisz edytowany obraz"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Export.cpp:79 /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Export.cpp:244
+msgid "Replace the existing file?\n"
+msgstr "Zastąpić istniejący plik?\n"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Export.cpp:92
+msgid "Check exposure transition"
+msgstr "Sprawdzenie przejścia naświetlania"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Export.cpp:102
+#, c-format, boost-format
+msgid "SL1 uses a global exposure transition. Exporting will project %llu transition exposures; the largest change is %.6g seconds.\n\nContinue? The original project parameters will be kept."
+msgstr "SL1 używa globalnego przejścia naświetlania. Eksport rzutuje %llu naświetlań przejścia; największa zmiana to %.6g s.\n\nKontynuować? Oryginalne parametry projektu zostaną zachowane."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Export.cpp:104
+msgid "Confirm exposure transition"
+msgstr "Potwierdź przejście naświetlania"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Export.cpp:108
+msgid "Check export times"
+msgstr "Sprawdzenie czasów eksportu"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Export.cpp:111
+#, c-format, boost-format
+msgid "CWS uses whole milliseconds. Exporting will round %llu time values; the largest change is %.6g seconds.\n\nContinue? The original project parameters will be kept."
+msgstr "CWS używa pełnych milisekund. Eksport zaokrągli %llu wartości czasu; największa zmiana to %.6g s.\n\nKontynuować? Oryginalne parametry projektu zostaną zachowane."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Export.cpp:113
+msgid "Confirm export times"
+msgstr "Potwierdź czasy eksportu"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Export.cpp:122
+msgid "Check export palette"
+msgstr "Sprawdzenie palety eksportu"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Export.cpp:129
+#, c-format, boost-format
+msgid " uses %u grayscale levels. Exporting will change %llu pixels; the largest change is %u of 255.\n\nExport a converted copy? Your original layers and Undo history will be kept."
+msgstr " używa %u poziomów szarości. Eksport zmieni %llu pikseli; największa zmiana to %u z 255.\n\nWyeksportować skonwertowaną kopię? Oryginalne warstwy i historia cofania zostaną zachowane."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Export.cpp:131 /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Export.cpp:132
+msgid "Convert export palette"
+msgstr "Konwersja palety eksportu"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Export.cpp:144 /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Export.cpp:251
+msgid "CXDLP"
+msgstr "CXDLP"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Export.cpp:153
+msgid "Export layers"
+msgstr "Eksportuj warstwy"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Export.cpp:185
+msgid "Save layer archive"
+msgstr "Zapisz archiwum warstw"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Export.cpp:207
+msgid "Convert layer archive"
+msgstr "Konwertuj archiwum warstw"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Export.cpp:211
+msgid "Destination printer: "
+msgstr "Drukarka docelowa: "
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Export.cpp:212
+msgid "\nPer-layer parameters must be representable by the destination printer format."
+msgstr "\nParametry poszczególnych warstw muszą dać się wyrazić w formacie drukarki docelowej."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Export.cpp:214
+msgid "Destination format"
+msgstr "Format docelowy"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Export.cpp:238
+msgid "Save converted layers"
+msgstr "Zapisz skonwertowane warstwy"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Export.cpp:257
+msgid "Convert layers"
+msgstr "Konwertuj warstwy"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Export.cpp:283
+msgid "Choose the mask image format"
+msgstr "Wybierz format obrazu maski"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Export.cpp:285
+msgid "Export selected mask"
+msgstr "Eksportuj wybraną maskę"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Export.cpp:285
+msgid "Export range to a new mask folder"
+msgstr "Eksportuj zakres do nowego folderu masek"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Export.cpp:294
+msgid "PBM keeps zero black and converts every nonzero value to white, like UVtools. Continue?"
+msgstr "PBM zachowuje zero jako czerń i zamienia każdą wartość niezerową na biel, jak UVtools. Kontynuować?"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Export.cpp:295
+msgid "JPEG is lossy and may change exposure pixels. Continue?"
+msgstr "JPEG jest stratny i może zmienić piksele naświetlania. Kontynuować?"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Export.cpp:296 /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Export.cpp:305 /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Export.cpp:308
+msgid "Export masks"
+msgstr "Eksport masek"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Export.cpp:300
+#, c-format
+msgid "Export layers %zu–%zu as separate images into a new folder?\n"
+msgstr "Wyeksportować warstwy %zu–%zu jako osobne obrazy do nowego folderu?\n"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Export.cpp:304
+msgid "Replace the existing mask?\n"
+msgstr "Zastąpić istniejącą maskę?\n"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Issues.cpp:9
+msgid "Issues"
+msgstr "Problemy"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Issues.cpp:11
+msgid "Islands, overhangs, resin traps, suction cups, touching bounds and empty layers."
+msgstr "Wyspy, zwisy, pułapki żywicy, przyssawki, dotknięcia granic i puste warstwy."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Issues.cpp:15
+msgid "Detection settings"
+msgstr "Ustawienia wykrywania"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Issues.cpp:35
+msgid "Islands"
+msgstr "Wyspy"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Issues.cpp:37
+msgid "Support (% of area above)"
+msgstr "Podparcie (% powierzchni powyżej)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Issues.cpp:39
+msgid "Overhangs"
+msgstr "Zwisy"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Issues.cpp:40
+msgid "Erode (px)"
+msgstr "Erozja (px)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Issues.cpp:41
+msgid "Resin traps"
+msgstr "Pułapki żywicy"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Issues.cpp:43
+msgid "Suction cups"
+msgstr "Przyssawki"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Issues.cpp:45
+msgid "Touching bounds"
+msgstr "Dotknięcia granic"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Issues.cpp:46
+msgid "Margin (px)"
+msgstr "Margines (px)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Issues.cpp:47
+msgid "Empty layers"
+msgstr "Puste warstwy"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Issues.cpp:53
+msgid "Detect issues"
+msgstr "Wykryj problemy"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Issues.cpp:54
+msgid "Scans every layer in the background (progress and Cancel are shown). Masks stay untouched; results are marked out of date after any edit."
+msgstr "Skanuje każdą warstwę w tle (widać postęp i Anuluj). Maski pozostają nietknięte; wyniki są oznaczane jako nieaktualne po każdej edycji."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Issues.cpp:57 /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Issues.cpp:167
+msgid "Issues have not been detected yet."
+msgstr "Problemy nie zostały jeszcze wykryte."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Issues.cpp:65 /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationsDialog.cpp:317
+msgid "Pixels"
+msgstr "Piksele"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Issues.cpp:66
+msgid "Bounding box (x, y, w × h px)"
+msgstr "Ramka (x, y, szer. × wys. px)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Issues.cpp:118
+msgid "Detect layer issues"
+msgstr "Wykrywanie problemów warstw"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Issues.cpp:129
+msgid "Detection cancelled; previous results are unchanged."
+msgstr "Wykrywanie anulowane; poprzednie wyniki bez zmian."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Issues.cpp:168
+msgid "Results are out of date: masks changed after detection. Run Detect issues again."
+msgstr "Wyniki są nieaktualne: maski zmieniły się po wykryciu. Uruchom Wykryj problemy ponownie."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Issues.cpp:169
+msgid "No issues found."
+msgstr "Nie znaleziono problemów."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Issues.cpp:170
+#, c-format
+msgid "%zu issue(s) found. Select a row to jump to it."
+msgstr "Znaleziono problemów: %zu. Zaznacz wiersz, aby do niego przejść."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Operations.cpp:32
+#, c-format
+msgid "Layer parameters — range %zu–%zu"
+msgstr "Parametry warstw — zakres %zu–%zu"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Operations.cpp:33
+#, c-format
+msgid "Layer parameters — layer %zu"
+msgstr "Parametry warstwy — warstwa %zu"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Operations.cpp:37
+msgid "Exposure and movement apply to this record. Z comes from generated layers and is read-only here.\nChanges keep the current layer schedule independent of preset updates."
+msgstr "Naświetlanie i ruch dotyczą tego rekordu. Z pochodzi z wygenerowanych warstw i jest tu tylko do odczytu.\nZmiany zachowują bieżący harmonogram warstw niezależnie od aktualizacji profili."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Operations.cpp:38
+msgid "Parameters apply to this print layer and its mask planes. Read-only fields cannot be changed in this format."
+msgstr "Parametry dotyczą tej warstwy druku i jej płaszczyzn masek. Pól tylko do odczytu nie można zmienić w tym formacie."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Operations.cpp:40
+msgid "Values shown come from the first selected record. Only fields you change are applied to the range.\nOther settings and masks are preserved. The whole range is one Undo step."
+msgstr "Pokazane wartości pochodzą z pierwszego zaznaczonego rekordu. Do zakresu stosowane są tylko pola, które zmienisz.\nPozostałe ustawienia i maski zostają zachowane. Cały zakres to jeden krok cofania."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Operations.cpp:54
+msgid "Apply parameters"
+msgstr "Zastosuj parametry"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Operations.cpp:90
+msgid "Layer count, heights and resolution of a sliced model result are fixed by the slicing. Pixel operations are available here; to clone, remove or re-height layers export the layers and open them as a layer file, or change the layer height and slice again."
+msgstr "Liczba warstw, wysokości i rozdzielczość pociętego wyniku modelu są ustalone przez cięcie. Operacje na pikselach są tu dostępne; aby powielić, usunąć lub zmienić wysokość warstw, wyeksportuj warstwy i otwórz je jako plik warstw albo zmień wysokość warstwy i potnij ponownie."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Operations.cpp:117
+msgid "Build lithophane"
+msgstr "Utwórz litofanię"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Operations.cpp:124
+msgid "Save the lithophane layer project"
+msgstr "Zapisz projekt warstw litofanii"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Operations.cpp:125 /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Operations.cpp:335
+msgid "SLA layer project (*.sla-project)|*.sla-project"
+msgstr "Projekt warstw SLA (*.sla-project)|*.sla-project"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Operations.cpp:339
+msgid "Replace the existing layer project?\n"
+msgstr "Zastąpić istniejący projekt warstw?\n"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Operations.cpp:412
+msgid "Discard the older sliced edits? They are separate from the current 3D project. Exported files will be kept."
+msgstr "Odrzucić starsze edycje pociętych warstw? Są oddzielone od bieżącego projektu 3D. Wyeksportowane pliki zostaną zachowane."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Operations.cpp:414
+msgid "Close without saving changes to the layer project? Exported files will be kept."
+msgstr "Zamknąć bez zapisywania zmian w projekcie warstw? Wyeksportowane pliki zostaną zachowane."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Operations.cpp:415
+msgid "Discard generated layers that have not been saved or exported?"
+msgstr "Odrzucić wygenerowane warstwy, które nie zostały zapisane ani wyeksportowane?"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Operations.cpp:416
+msgid "Close without saving these layer edits in the 3D project? Exported files will be kept."
+msgstr "Zamknąć bez zapisywania tych edycji warstw w projekcie 3D? Wyeksportowane pliki zostaną zachowane."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorContent_Operations.cpp:417
+msgid "Discard unsaved layer edits or export context?"
+msgstr "Odrzucić niezapisane edycje warstw lub kontekst eksportu?"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorDialog.cpp:9
+msgid "Open sliced layers"
+msgstr "Otwórz pocięte warstwy"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorDialog.cpp:27 /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorDialog.cpp:47
+msgid "Open layer archive"
+msgstr "Otwórz archiwum warstw"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorInternal.hpp:275
+msgid "Top left"
+msgstr "Lewy górny"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorInternal.hpp:275
+msgid "Top center"
+msgstr "Górny środkowy"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorInternal.hpp:275
+msgid "Top right"
+msgstr "Prawy górny"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorInternal.hpp:275
+msgid "Middle left"
+msgstr "Lewy środkowy"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorInternal.hpp:275
+msgid "Middle center"
+msgstr "Środek"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorInternal.hpp:276
+msgid "Middle right"
+msgstr "Prawy środkowy"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorInternal.hpp:276
+msgid "Bottom left"
+msgstr "Lewy dolny"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorInternal.hpp:276
+msgid "Bottom center"
+msgstr "Dolny środkowy"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorInternal.hpp:276
+msgid "Bottom right"
+msgstr "Prawy dolny"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorInternal.hpp:279
+msgid "None (keep centred)"
+msgstr "Brak (zachowaj środek)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorInternal.hpp:282
+msgid "Binary"
+msgstr "Binarny"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorInternal.hpp:282
+msgid "Binary inverted"
+msgstr "Binarny odwrócony"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorInternal.hpp:282
+msgid "Trunc"
+msgstr "Obcięcie"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorInternal.hpp:282
+msgid "To zero"
+msgstr "Do zera"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorInternal.hpp:282
+msgid "To zero inverted"
+msgstr "Do zera odwrócony"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorInternal.hpp:282
+msgid "Otsu (auto)"
+msgstr "Otsu (auto)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorInternal.hpp:282
+msgid "Triangle (auto)"
+msgstr "Trójkąt (auto)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorInternal.hpp:306
+msgid "The layer range is outside of the document."
+msgstr "Zakres warstw wykracza poza dokument."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorInternal.hpp:343 /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:70
+msgid "Flip"
+msgstr "Odbicie"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorInternal.hpp:343 /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:71 /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:248
+msgid "Both"
+msgstr "Oba"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorInternal.hpp:343
+msgid "Mirror the picture the way the LCD shows it."
+msgstr "Odbija obraz tak, jak pokazuje go wyświetlacz LCD."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorInternal.hpp:344 /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:317
+msgid "90 clockwise"
+msgstr "90 w prawo"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorInternal.hpp:344 /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:317
+msgid "90 counter-clockwise"
+msgstr "90 w lewo"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorInternal.hpp:360
+msgid "Exposure time (s)"
+msgstr "Czas naświetlania (s)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorInternal.hpp:360
+msgid "Wait before cure (s)"
+msgstr "Oczekiwanie przed utwardzaniem (s)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorInternal.hpp:361
+msgid "Wait after cure (s)"
+msgstr "Oczekiwanie po utwardzaniu (s)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorInternal.hpp:361 /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:175
+msgid "Wait after lift (s)"
+msgstr "Oczekiwanie po podniesieniu (s)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorInternal.hpp:363
+msgid "Lift height 2 (mm)"
+msgstr "Wysokość podnoszenia 2 (mm)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorInternal.hpp:363 /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:178
+msgid "Lift speed 2 (mm/min)"
+msgstr "Prędkość podnoszenia 2 (mm/min)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorInternal.hpp:364
+msgid "Retract height 2 (mm)"
+msgstr "Wysokość powrotu 2 (mm)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorInternal.hpp:365 /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:179
+msgid "Retract speed 2 (mm/min)"
+msgstr "Prędkość powrotu 2 (mm/min)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorInternal.hpp:388
+msgid "Choose an image file first."
+msgstr "Najpierw wybierz plik obrazu."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerEditorInternal.hpp:390
+msgid "The image could not be loaded: "
+msgstr "Nie udało się wczytać obrazu: "
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:17
+msgid "Moves the model (or the region of interest) to an anchor with margins."
+msgstr "Przesuwa model (lub obszar zainteresowania) do punktu zakotwiczenia z marginesami."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:18 /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:86
+msgid "Anchor"
+msgstr "Zakotwiczenie"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:19
+msgid "Margin left (px)"
+msgstr "Margines lewy (px)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:19
+msgid "Margin top (px)"
+msgstr "Margines górny (px)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:20
+msgid "Margin right (px)"
+msgstr "Margines prawy (px)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:20
+msgid "Margin bottom (px)"
+msgstr "Margines dolny (px)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:21
+msgid "Cut (unchecked = copy)"
+msgstr "Wytnij (odznaczone = kopiuj)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:37
+msgid "Resize"
+msgstr "Zmień rozmiar"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:37
+msgid "Scales the layers around the image centre (bilinear)."
+msgstr "Skaluje warstwy względem środka obrazu (dwuliniowo)."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:38
+msgid "X scale (%)"
+msgstr "Skala X (%)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:38
+msgid "Y scale (%)"
+msgstr "Skala Y (%)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:39
+msgid "Constrain proportions (Y follows X)"
+msgstr "Zachowaj proporcje (Y podąża za X)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:40
+msgid "Fade the scale back to 100 % across the range"
+msgstr "Stopniowo wróć do skali 100 % w obrębie zakresu"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:55
+msgid "Rotates the layers around the image centre. Positive angles are clockwise."
+msgstr "Obraca warstwy względem środka obrazu. Kąty dodatnie oznaczają obrót w prawo."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:56
+msgid "Angle (degrees)"
+msgstr "Kąt (stopnie)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:70
+msgid "Mirrors the layers horizontally, vertically or both."
+msgstr "Odbija warstwy w poziomie, w pionie lub w obu kierunkach."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:72
+msgid "Keep the original and blend the flipped copy over it"
+msgstr "Zachowaj oryginał i nałóż na niego odbitą kopię"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:85
+msgid "Duplicates the model (or the region of interest) into a grid of copies."
+msgstr "Powiela model (lub obszar zainteresowania) w siatkę kopii."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:87
+msgid "Columns"
+msgstr "Kolumny"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:87
+msgid "Rows"
+msgstr "Wiersze"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:88
+msgid "Column spacing (px)"
+msgstr "Odstęp kolumn (px)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:88
+msgid "Row spacing (px)"
+msgstr "Odstęp wierszy (px)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:104
+msgid "Change resolution"
+msgstr "Zmień rozdzielczość"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:105
+msgid "Copies the model bounds to the centre of a new canvas size (crop or pad). Only for documents that store their own resolution (not sliced documents)."
+msgstr "Kopiuje granice modelu na środek nowego rozmiaru płótna (przycięcie lub dopełnienie). Tylko dla dokumentów przechowujących własną rozdzielczość (nie dla pociętych dokumentów)."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:107
+msgid "New width (px)"
+msgstr "Nowa szerokość (px)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:107
+msgid "New height (px)"
+msgstr "Nowa wysokość (px)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:108
+msgid "Fix pixel ratio"
+msgstr "Popraw proporcję pikseli"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:108
+msgid "Scale the model by the pixel pitch ratio old/new."
+msgstr "Skaluje model o stosunek rozstawu pikseli stary/nowy."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:109
+msgid "Pixel ratio X (old/new)"
+msgstr "Proporcja pikseli X (stary/nowy)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:109
+msgid "Pixel ratio Y (old/new)"
+msgstr "Proporcja pikseli Y (stary/nowy)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:123
+msgid "Applies an OpenCV-style threshold to the pixel values."
+msgstr "Stosuje do wartości pikseli próg w stylu OpenCV."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:124 /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:207
+msgid "Maximum"
+msgstr "Maksimum"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:138
+msgid "Solidify"
+msgstr "Utwardzenie"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:138
+msgid "Fills holes inside the model."
+msgstr "Wypełnia otwory wewnątrz modelu."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:139
+msgid "Minimum hole area (px^2, 0 = off)"
+msgstr "Minimalna powierzchnia otworu (px^2, 0 = wył.)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:140
+msgid "Fill holes"
+msgstr "Wypełnij otwory"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:140
+msgid "larger than or equal to the area"
+msgstr "większe lub równe powierzchni"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:140
+msgid "smaller than or equal to the area"
+msgstr "mniejsze lub równe powierzchni"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:155
+msgid "Pixel dimming"
+msgstr "Przyciemnianie pikseli"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:155
+msgid "Dims or lightens pixels of the model's walls or inside with a tiled pattern."
+msgstr "Przyciemnia lub rozjaśnia piksele ścian lub wnętrza modelu kafelkowym wzorem."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:156
+msgid "Lighten instead of dim"
+msgstr "Rozjaśnij zamiast przyciemniać"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:156 /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:211
+msgid "Wall thickness start (px)"
+msgstr "Początek grubości ściany (px)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:157 /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:211
+msgid "Wall thickness end (px)"
+msgstr "Koniec grubości ściany (px)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:157
+msgid "Dim only the walls"
+msgstr "Przyciemnij tylko ściany"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:159
+msgid "Pattern (rows of values 0..255)"
+msgstr "Wzór (wiersze wartości 0..255)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:159 /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:217
+msgid "Alternate pattern"
+msgstr "Wzór naprzemienny"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:160 /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:216
+msgid "Alternate every N layers"
+msgstr "Zmieniaj co N warstw"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:181
+msgid "Replaces the model interior with a hollow infill pattern (needs neighbouring layers)."
+msgstr "Zastępuje wnętrze modelu wzorem pustego wypełnienia (wymaga sąsiednich warstw)."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:182
+msgid "Infill type"
+msgstr "Rodzaj wypełnienia"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:182
+msgid "Pillars"
+msgstr "Filary"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:182
+msgid "Waves"
+msgstr "Fale"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:182
+msgid "Cubic cross"
+msgstr "Krzyż sześcienny"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:182
+msgid "Cubic cross alternating"
+msgstr "Krzyż sześcienny naprzemienny"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:182
+msgid "Cubic star"
+msgstr "Gwiazda sześcienna"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:184
+msgid "Floor / ceiling thickness (mm)"
+msgstr "Grubość podłogi / sufitu (mm)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:184
+msgid "Wall thickness (px)"
+msgstr "Grubość ściany (px)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:185
+msgid "Infill thickness (px)"
+msgstr "Grubość wypełnienia (px)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:185
+msgid "Infill spacing (px)"
+msgstr "Odstęp wypełnienia (px)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:186
+msgid "Infill brightness"
+msgstr "Jasność wypełnienia"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:186
+msgid "Reinforce infill"
+msgstr "Wzmocnij wypełnienie"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:206
+msgid "Pixel arithmetic"
+msgstr "Arytmetyka pikseli"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:206
+msgid "Combines every pixel with a value or pattern (set, add, multiply, bitwise, keep region, ...)."
+msgstr "Łączy każdy piksel z wartością lub wzorem (ustaw, dodaj, pomnóż, bitowo, zachowaj obszar, ...)."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:207
+msgid "Operator"
+msgstr "Operator"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:207
+msgid "Multiply"
+msgstr "Pomnóż"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:207
+msgid "Minimum"
+msgstr "Minimum"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:207
+msgid "Bitwise NOT"
+msgstr "NOT bitowe"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:207
+msgid "Bitwise AND"
+msgstr "AND bitowe"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:208
+msgid "Bitwise OR"
+msgstr "OR bitowe"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:208
+msgid "Bitwise XOR"
+msgstr "XOR bitowe"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:208
+msgid "Absolute difference"
+msgstr "Różnica bezwzględna"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:208
+msgid "Keep region (needs ROI)"
+msgstr "Zachowaj obszar (wymaga ROI)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:208
+msgid "Discard region (needs ROI)"
+msgstr "Odrzuć obszar (wymaga ROI)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:209
+msgid "Apply to"
+msgstr "Zastosuj do"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:209
+msgid "All pixels"
+msgstr "Wszystkie piksele"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:209
+msgid "Model surface"
+msgstr "Powierzchnia modelu"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:209
+msgid "Model surface and inset"
+msgstr "Powierzchnia modelu i wcięcie"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:209
+msgid "Model inner"
+msgstr "Wnętrze modelu"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:209
+msgid "Model walls"
+msgstr "Ściany modelu"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:212
+msgid "Fade the wall thickness over the range"
+msgstr "Zmieniaj grubość ściany w obrębie zakresu"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:213
+msgid "Value (threshold level for Threshold)"
+msgstr "Wartość (poziom progu dla Próg)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:213
+msgid "Value change per layer"
+msgstr "Zmiana wartości na warstwę"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:214
+msgid "Threshold type"
+msgstr "Rodzaj progu"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:214
+msgid "Threshold maximum"
+msgstr "Maksimum progu"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:215
+msgid "Use pattern instead of the value"
+msgstr "Użyj wzoru zamiast wartości"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:215
+msgid "Invert the pattern"
+msgstr "Odwróć wzór"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:240
+msgid "Raft relief"
+msgstr "Odciążenie tratwy"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:240
+msgid "Relieves the raft with holes, dimming, decimation or tabs. Works on the whole document; the optional region of interest limits it."
+msgstr "Odciąża tratwę otworami, przyciemnieniem, decymacją lub zakładkami. Działa na cały dokument; opcjonalny obszar zainteresowania go ogranicza."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:242
+msgid "Relief type"
+msgstr "Rodzaj odciążenia"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:242
+msgid "Relief (holes)"
+msgstr "Odciążenie (otwory)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:242
+msgid "Dimming"
+msgstr "Przyciemnienie"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:242
+msgid "Decimate"
+msgstr "Decymacja"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:243
+msgid "First layer with supports (0 = auto-detect)"
+msgstr "Pierwsza warstwa z podporami (0 = wykryj automatycznie)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:243
+msgid "Ignore first layers"
+msgstr "Pomiń pierwsze warstwy"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:244
+msgid "Low brightness"
+msgstr "Niska jasność"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:244
+msgid "Dilate iterations"
+msgstr "Iteracje dylatacji"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:244
+msgid "Wall margin (px)"
+msgstr "Margines ściany (px)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:245
+msgid "Hole diameter (px)"
+msgstr "Średnica otworu (px)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:245
+msgid "Hole spacing (px)"
+msgstr "Odstęp otworów (px)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:246
+msgid "Tab brightness"
+msgstr "Jasność zakładek"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:246
+msgid "Tab triangle base (px)"
+msgstr "Podstawa trójkąta zakładki (px)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:247
+msgid "Tab triangle height (px)"
+msgstr "Wysokość trójkąta zakładki (px)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:261 /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:265
+msgid "No raft or support layers were found, so nothing was changed."
+msgstr "Nie znaleziono warstw tratwy ani podpór, więc nic nie zmieniono."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:275
+msgid "Clone layers"
+msgstr "Klonuj warstwy"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:275
+msgid "Repeats every layer of the range N more times (later layers move up)."
+msgstr "Powtarza każdą warstwę zakresu jeszcze N razy (późniejsze warstwy przesuwają się w górę)."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:276
+msgid "Clones per layer"
+msgstr "Klonów na warstwę"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:276
+msgid "Keep the same Z (repeated exposure)"
+msgstr "Zachowaj to samo Z (powtórne naświetlanie)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:290
+msgid "Remove layers"
+msgstr "Usuń warstwy"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:290
+msgid "Removes the layers of the range (optionally only nearly empty ones)."
+msgstr "Usuwa warstwy zakresu (opcjonalnie tylko prawie puste)."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:291
+msgid "Only remove layers with few pixels"
+msgstr "Usuń tylko warstwy z małą liczbą pikseli"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:291
+msgid "Remove layers with at most N lit pixels"
+msgstr "Usuń warstwy z co najwyżej N zapalonymi pikselami"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:304
+msgid "Change layer height"
+msgstr "Zmień wysokość warstwy"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:304
+msgid "Splits or merges layers to a new height, or shifts the Z position of a range."
+msgstr "Dzieli lub łączy warstwy do nowej wysokości albo przesuwa pozycję Z zakresu."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:305 /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:24
+msgid "Method"
+msgstr "Metoda"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:305
+msgid "Re-height (split / merge layers)"
+msgstr "Zmiana wysokości (dziel / łącz warstwy)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:305
+msgid "Offset Z position of the range"
+msgstr "Przesuń pozycję Z zakresu"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:306
+msgid "New layer height"
+msgstr "Nowa wysokość warstwy"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:307
+msgid "Anti-aliasing when merging"
+msgstr "Wygładzanie przy łączeniu"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:307
+msgid "Difference"
+msgstr "Różnica"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:307
+msgid "Average"
+msgstr "Średnia"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:308
+msgid "Z offset (mm)"
+msgstr "Przesunięcie Z (mm)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:313
+msgid "This layer height cannot be split or merged exactly."
+msgstr "Tej wysokości warstwy nie można dokładnie podzielić ani połączyć."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:326
+msgid "Layer arithmetic"
+msgstr "Arytmetyka warstw"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:326
+msgid "Computes layers from other layers, e.g. \"10,11 = 11+12-10*5; 3:7 = 3|4\" (operators + - * / & | ^ $ evaluated left to right). Layer numbers in the sentence are 0-based, like UVtools."
+msgstr "Oblicza warstwy z innych warstw, np. „10,11 = 11+12-10*5; 3:7 = 3|4” (operatory + - * / & | ^ $ liczone od lewej do prawej). Numery warstw w zdaniu liczone są od 0, jak w UVtools."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:328
+msgid "Sentence"
+msgstr "Zdanie"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:343
+msgid "Double exposure"
+msgstr "Podwójne naświetlanie"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:343
+msgid "Prints every layer of the range twice (second pass uses an eroded copy). Needs a document with exposure data."
+msgstr "Drukuje każdą warstwę zakresu dwukrotnie (drugie przejście używa zerodowanej kopii). Wymaga dokumentu z danymi naświetlania."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:344 /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:314
+msgid "Bottom layer count"
+msgstr "Liczba warstw dolnych"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:345
+msgid "First pass bottom exposure (s)"
+msgstr "Naświetlanie dolne, 1. przejście (s)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:345
+msgid "First pass normal exposure (s)"
+msgstr "Naświetlanie normalne, 1. przejście (s)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:346
+msgid "Second pass bottom exposure (s)"
+msgstr "Naświetlanie dolne, 2. przejście (s)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:346
+msgid "Second pass normal exposure (s)"
+msgstr "Naświetlanie normalne, 2. przejście (s)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:347
+msgid "First pass bottom erode (px)"
+msgstr "Erozja dolna, 1. przejście (px)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:347
+msgid "Second pass bottom erode (px)"
+msgstr "Erozja dolna, 2. przejście (px)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:348
+msgid "First pass normal erode (px)"
+msgstr "Erozja normalna, 1. przejście (px)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:348
+msgid "Second pass normal erode (px)"
+msgstr "Erozja normalna, 2. przejście (px)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:349
+msgid "Second layer = difference to the first"
+msgstr "Druga warstwa = różnica względem pierwszej"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:349
+msgid "Difference overlap erode (px)"
+msgstr "Erozja nakładania różnicy (px)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:350
+msgid "Lift before the second pass"
+msgstr "Podniesienie przed drugim przejściem"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:350
+msgid "Second pass lift (mm)"
+msgstr "Podniesienie w 2. przejściu (mm)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:351
+msgid "Wait before the second pass"
+msgstr "Oczekiwanie przed drugim przejściem"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog.cpp:351
+msgid "Second pass wait before cure (s)"
+msgstr "Oczekiwanie przed utwardzaniem w 2. przejściu (s)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:21
+msgid "Dynamic lifts"
+msgstr "Dynamiczne podnoszenie"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:22
+msgid "Sets lift height and speed of every layer from its lit area: big layers lift higher and slower. Reads the pixels, writes only per-layer lift parameters."
+msgstr "Ustawia wysokość i prędkość podnoszenia każdej warstwy według jej oświetlonej powierzchni: duże warstwy podnoszą wyżej i wolniej. Czyta piksele, zapisuje tylko parametry podnoszenia warstw."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:24
+msgid "Traditional"
+msgstr "Tradycyjne"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:24
+msgid "Full range"
+msgstr "Cały zakres"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:25
+msgid "Smallest bottom lift height (mm)"
+msgstr "Najmniejsza dolna wysokość podnoszenia (mm)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:26
+msgid "Largest bottom lift height (mm)"
+msgstr "Największa dolna wysokość podnoszenia (mm)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:27
+msgid "Smallest lift height (mm)"
+msgstr "Najmniejsza wysokość podnoszenia (mm)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:28
+msgid "Largest lift height (mm)"
+msgstr "Największa wysokość podnoszenia (mm)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:29
+msgid "Slowest bottom lift speed (mm/min)"
+msgstr "Najwolniejsza dolna prędkość podnoszenia (mm/min)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:30
+msgid "Fastest bottom lift speed (mm/min)"
+msgstr "Najszybsza dolna prędkość podnoszenia (mm/min)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:31
+msgid "Slowest lift speed (mm/min)"
+msgstr "Najwolniejsza prędkość podnoszenia (mm/min)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:32
+msgid "Fastest lift speed (mm/min)"
+msgstr "Najszybsza prędkość podnoszenia (mm/min)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:53
+msgid "Fade exposure time"
+msgstr "Płynna zmiana czasu naświetlania"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:54
+msgid "Changes the exposure time step by step across N layers, starting at the first layer of the range."
+msgstr "Zmienia czas naświetlania krok po kroku na N warstwach, zaczynając od pierwszej warstwy zakresu."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:55
+msgid "Number of layers"
+msgstr "Liczba warstw"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:56
+msgid "From exposure (s)"
+msgstr "Od naświetlania (s)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:56
+msgid "To exposure (s)"
+msgstr "Do naświetlania (s)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:57
+msgid "Disable firmware transition layers"
+msgstr "Wyłącz warstwy przejściowe firmware"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:81
+msgid "Use a third phase"
+msgstr "Użyj trzeciej fazy"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:82
+msgid "bottom exposure (s)"
+msgstr "naświetlanie dolne (s)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:83
+msgid "bottom iterations (px)"
+msgstr "iteracje dolne (px)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:84
+msgid "exposure (s)"
+msgstr "naświetlanie (s)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:85
+msgid "iterations (px)"
+msgstr "iteracje (px)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:87
+msgid "Later phases print only what earlier ones did not cure"
+msgstr "Późniejsze fazy drukują tylko to, czego wcześniejsze nie utwardziły"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:88
+msgid "Difference overlap (px)"
+msgstr "Nakładanie różnicy (px)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:89
+msgid "Different settings for the sequential layers"
+msgstr "Inne ustawienia dla warstw sekwencyjnych"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:90
+msgid "Lift before sequential layers"
+msgstr "Podniesienie przed warstwami sekwencyjnymi"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:91
+msgid "Sequential lift (mm)"
+msgstr "Podniesienie sekwencyjne (mm)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:92
+msgid "Wait before cure of sequential layers"
+msgstr "Oczekiwanie przed utwardzaniem warstw sekwencyjnych"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:93
+msgid "Sequential wait before cure (s)"
+msgstr "Oczekiwanie przed utwardzaniem, sekwencyjne (s)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:94
+msgid "Phased exposure"
+msgstr "Naświetlanie fazowe"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:95
+msgid "Cures every layer of the range in several phases (eroded copies). Adds layers, so it needs a sliced or generated document; the result is one Undo step."
+msgstr "Utwardza każdą warstwę zakresu w kilku fazach (zerodowane kopie). Dodaje warstwy, więc wymaga pociętego lub wygenerowanego dokumentu; wynik to jeden krok cofania."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:120
+msgid "Raise on print finish"
+msgstr "Podniesienie po zakończeniu druku"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:121
+msgid "Appends a dummy layer that lifts the platform to a height and waits there when the print ends. Adds a layer: sliced or generated documents only."
+msgstr "Dopisuje warstwę zastępczą, która po zakończeniu druku unosi platformę na zadaną wysokość i czeka. Dodaje warstwę: tylko dokumenty pocięte lub wygenerowane."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:123
+msgid "Platform position Z (mm, 0 = machine Z)"
+msgstr "Pozycja platformy Z (mm, 0 = Z maszyny)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:123
+msgid "Wait time (s)"
+msgstr "Czas oczekiwania (s)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:124
+msgid "Output a dummy pixel"
+msgstr "Wyślij piksel zastępczy"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:138
+msgid "Edit mode"
+msgstr "Tryb edycji"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:138
+msgid "Per layer (every N layers)"
+msgstr "Na warstwę (co N warstw)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:138
+msgid "Global (bottom and normal layers)"
+msgstr "Globalnie (warstwy dolne i normalne)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:139
+msgid "Per layer: edit N layers"
+msgstr "Na warstwę: edytuj N warstw"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:139
+msgid "Per layer: then skip M layers"
+msgstr "Na warstwę: potem pomiń M warstw"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:142
+msgid "Light PWM (0-255)"
+msgstr "PWM światła (0-255)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:143
+msgid "Bottom: "
+msgstr "Dolne: "
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:144
+msgid "Global mode only: value for the bottom layers."
+msgstr "Tylko w trybie globalnym: wartość dla warstw dolnych."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:145
+msgid "Bottom: Light PWM (0-255)"
+msgstr "Dolne: PWM światła (0-255)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:146
+msgid "Edit parameters"
+msgstr "Edytuj parametry"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:147
+msgid "Sets exposure, lift, wait and speed values. Leave a field empty to keep the stored value. Global mode writes the bottom fields to the bottom layers and the other fields to all others. Fields the file format cannot store are refused."
+msgstr "Ustawia naświetlanie, podnoszenie, oczekiwanie i prędkości. Pozostaw pole puste, aby zachować zapisaną wartość. Tryb globalny zapisuje pola dolne w warstwach dolnych, a pozostałe w całej reszcie. Pola, których format pliku nie przechowuje, są odrzucane."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:170
+msgid "Timelapse"
+msgstr "Timelapse"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:171
+msgid "Raises the platform every N mm of height so a camera can take a picture. Lift height mode only changes lift values; Virtual layer mode inserts extra layers (sliced or generated documents only)."
+msgstr "Unosi platformę co N mm wysokości, aby kamera mogła zrobić zdjęcie. Tryb wysokości podnoszenia zmienia tylko wartości podnoszenia; tryb warstwy wirtualnej wstawia dodatkowe warstwy (tylko dokumenty pocięte lub wygenerowane)."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:173
+msgid "Virtual layer"
+msgstr "Warstwa wirtualna"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:173
+msgid "Raise position Z (mm, 0 = machine Z)"
+msgstr "Pozycja podniesienia Z (mm, 0 = Z maszyny)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:174
+msgid "Output a dummy pixel (virtual layer)"
+msgstr "Wyślij piksel zastępczy (warstwa wirtualna)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:174
+msgid "Raise every N mm of height"
+msgstr "Unieś co N mm wysokości"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:175
+msgid "Photo layer exposure (s, 0 = default)"
+msgstr "Naświetlanie warstwy zdjęcia (s, 0 = domyślne)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:176
+msgid "Ensure the last layer is a timelapse layer"
+msgstr "Upewnij się, że ostatnia warstwa jest warstwą timelapse"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:176
+msgid "Use custom lift"
+msgstr "Użyj własnego podnoszenia"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:177
+msgid "Slow lift height (mm)"
+msgstr "Wysokość wolnego podnoszenia (mm)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:178
+msgid "Slow retract height (mm)"
+msgstr "Wysokość wolnego powrotu (mm)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:211
+msgid "Dynamic layer height"
+msgstr "Dynamiczna wysokość warstwy"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:212
+msgid "Stacks identical-looking layers into thicker ones (within the minimum and maximum height) and sets the exposure for each new height. Sliced or generated documents only."
+msgstr "Łączy warstwy wyglądające identycznie w grubsze (w granicach wysokości minimalnej i maksymalnej) i ustawia naświetlanie dla każdej nowej wysokości. Tylko dokumenty pocięte lub wygenerowane."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:214
+msgid "Minimum layer height (mm)"
+msgstr "Minimalna wysokość warstwy (mm)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:215
+msgid "Maximum layer height (mm)"
+msgstr "Maksymalna wysokość warstwy (mm)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:216
+msgid "Strip anti-aliasing before comparing"
+msgstr "Usuń wygładzanie przed porównaniem"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:217
+msgid "Reconstruct anti-aliasing afterwards"
+msgstr "Odtwórz wygładzanie po operacji"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:218
+msgid "Maximum erodes"
+msgstr "Maksymalna liczba erozji"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:219
+msgid "Exposure for the new heights"
+msgstr "Naświetlanie dla nowych wysokości"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:219
+msgid "Linear"
+msgstr "Liniowe"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:219
+msgid "Multiplier"
+msgstr "Mnożnik"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:220
+msgid "Iterate the bottom exposure too"
+msgstr "Iteruj także naświetlanie dolne"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:221 /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:315
+msgid "Bottom exposure (s)"
+msgstr "Naświetlanie dolne (s)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:221 /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:316
+msgid "Normal exposure (s)"
+msgstr "Naświetlanie normalne (s)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:222
+msgid "Bottom exposure step (s)"
+msgstr "Krok naświetlania dolnego (s)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:222
+msgid "Normal exposure step (s)"
+msgstr "Krok naświetlania normalnego (s)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:246
+msgid "Light bleed compensation"
+msgstr "Kompensacja prześwietlenia światłem"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:247
+msgid "Dims pixels that are lit in the neighbouring layers to compensate light bleeding through thin layers."
+msgstr "Przyciemnia piksele oświetlone w sąsiednich warstwach, aby skompensować prześwietlanie przez cienkie warstwy."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:248
+msgid "Dim"
+msgstr "Przyciemnij"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:248
+msgid "Similarities"
+msgstr "Podobieństwa"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:248
+msgid "Compare with"
+msgstr "Porównaj z"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:248
+msgid "Previous layer"
+msgstr "Poprzednia warstwa"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:248
+msgid "Next layer"
+msgstr "Następna warstwa"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:249
+msgid "Dim by (comma separated brightness steps)"
+msgstr "Przyciemnij o (kroki jasności oddzielone przecinkami)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:268
+msgid "Repair layers"
+msgstr "Napraw warstwy"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:269
+msgid "Removes islands, fills resin traps, drills suction cups, closes gaps and removes noise. Removing empty layers changes the layer list (sliced or generated documents only), so it is off by default on a sliced model result."
+msgstr "Usuwa wyspy, wypełnia pułapki żywicy, przewierca przyssawki, zamyka szczeliny i usuwa szum. Usunięcie pustych warstw zmienia listę warstw (tylko dokumenty pocięte lub wygenerowane), dlatego w pociętym wyniku modelu jest domyślnie wyłączone."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:271
+msgid "Repair islands"
+msgstr "Napraw wyspy"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:271
+msgid "Repair resin traps"
+msgstr "Napraw pułapki żywicy"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:271
+msgid "Repair suction cups"
+msgstr "Napraw przyssawki"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:272
+msgid "Remove empty layers"
+msgstr "Usuń puste warstwy"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:273
+msgid "Remove islands with at most N pixels"
+msgstr "Usuń wyspy mające co najwyżej N pikseli"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:273
+msgid "Island removal passes (0 = until done)"
+msgstr "Przejścia usuwania wysp (0 = do skutku)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:274
+msgid "Attach islands to support below (layers)"
+msgstr "Przymocuj wyspy do podpory poniżej (warstwy)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:274
+msgid "Resin trap overlap (px)"
+msgstr "Nakładanie pułapki żywicy (px)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:275
+msgid "Suction cup vent hole diameter (px)"
+msgstr "Średnica otworu odpowietrzającego przyssawki (px)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:275 /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:320
+msgid "Gap closing iterations"
+msgstr "Iteracje zamykania szczelin"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:276 /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:321
+msgid "Noise removal iterations"
+msgstr "Iteracje usuwania szumu"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:309
+msgid "Lithophane"
+msgstr "Litofania"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:310
+msgid "Builds a lithophane from a picture: darker pixels become taller columns. REPLACES all layers. Applied to the open document when it can take a different layer list, otherwise saved as a new generated layer project and opened."
+msgstr "Buduje litofanię z obrazu: ciemniejsze piksele stają się wyższymi słupkami. ZASTĘPUJE wszystkie warstwy. Stosowana do otwartego dokumentu, gdy ten przyjmie inną listę warstw, w przeciwnym razie zapisywana jako nowy wygenerowany projekt warstw i otwierana."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:312
+msgid "Picture"
+msgstr "Obraz"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:318
+msgid "Invert colours"
+msgstr "Odwróć kolory"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:319
+msgid "Resize (%)"
+msgstr "Zmień rozmiar (%)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:319
+msgid "Enhance contrast"
+msgstr "Popraw kontrast"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:320
+msgid "Brightness gain (-127..127)"
+msgstr "Wzmocnienie jasności (-127..127)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:321
+msgid "Gaussian blur (px)"
+msgstr "Rozmycie Gaussa (px)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:322
+msgid "Separate grey levels into layers"
+msgstr "Rozdziel poziomy szarości na warstwy"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:322
+msgid "Start threshold"
+msgstr "Próg początkowy"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:322
+msgid "End threshold"
+msgstr "Próg końcowy"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:323
+msgid "Base thickness (mm)"
+msgstr "Grubość podstawy (mm)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:323
+msgid "Base"
+msgstr "Podstawa"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:323
+msgid "Model outline"
+msgstr "Obrys modelu"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:324
+msgid "Base margin (px)"
+msgstr "Margines podstawy (px)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:324
+msgid "Lithophane height (mm)"
+msgstr "Wysokość litofanii (mm)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:325
+msgid "One layer per threshold"
+msgstr "Jedna warstwa na próg"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:325
+msgid "Anti-aliasing"
+msgstr "Wygładzanie"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:365
+msgid "Format"
+msgstr "Format"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:365
+msgid "PNG"
+msgstr "PNG"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:365
+msgid "PGM (8-bit)"
+msgstr "PGM (8-bitowy)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:365
+msgid "Pad the layer number with zeros"
+msgstr "Dopełnij numer warstwy zerami"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:366 /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:409 /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:428
+msgid "Crop to the region of interest"
+msgstr "Przytnij do obszaru zainteresowania"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:368
+msgid "Layer images"
+msgstr "Obrazy warstw"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:368
+msgid "Writes the selected layers as numbered PNG (or PGM) pictures into a folder. Files are staged and renamed, so Cancel leaves the folder untouched."
+msgstr "Zapisuje wybrane warstwy jako numerowane obrazy PNG (lub PGM) w folderze. Pliki są przygotowywane i przemianowywane, więc Anuluj nie zmienia folderu."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:387
+msgid "Frames per second"
+msgstr "Klatki na sekundę"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:387
+msgid "Loop count (0 = forever)"
+msgstr "Liczba powtórzeń (0 = bez końca)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:388
+msgid "Layers skipped between frames"
+msgstr "Warstwy pomijane między klatkami"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:388
+msgid "Scale (%)"
+msgstr "Skala (%)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:389
+msgid "Crop to the model bounds"
+msgstr "Przytnij do granic modelu"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:391
+msgid "Animated GIF"
+msgstr "Animowany GIF"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:391
+msgid "Renders the layers as an animated GIF (256 grey levels)."
+msgstr "Renderuje warstwy jako animowany GIF (256 poziomów szarości)."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:400
+msgid "GIF animation (*.gif)|*.gif"
+msgstr "Animacja GIF (*.gif)|*.gif"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:409
+msgid "Count layers with the same Z once"
+msgstr "Licz warstwy o tym samym Z jeden raz"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:411
+msgid "Heat map"
+msgstr "Mapa cieplna"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:411
+msgid "Adds up the layers into one picture: bright = exposed in many layers."
+msgstr "Sumuje warstwy w jeden obraz: jasne = naświetlone w wielu warstwach."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:428
+msgid "Skeleton"
+msgstr "Szkielet"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:428
+msgid "Morphological skeleton of every layer, summed into one picture."
+msgstr "Szkielet morfologiczny każdej warstwy, zsumowany w jeden obraz."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:444
+msgid "Per-layer settings table"
+msgstr "Tabela ustawień warstw"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:444
+msgid "Layer preview with slider"
+msgstr "Podgląd warstw z suwakiem"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:445
+msgid "Preview every Nth layer"
+msgstr "Podgląd co N-tej warstwy"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:445
+msgid "Preview scale (%)"
+msgstr "Skala podglądu (%)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:447
+msgid "HTML report"
+msgstr "Raport HTML"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:447
+msgid "One self-contained HTML file with file information, per-layer settings and a layer preview (no external resources)."
+msgstr "Jeden samodzielny plik HTML z informacjami o pliku, ustawieniami warstw i podglądem warstw (bez zewnętrznych zasobów)."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:452
+msgid "Layer export"
+msgstr "Eksport warstw"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:459
+msgid "HTML report (*.html)|*.html"
+msgstr "Raport HTML (*.html)|*.html"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:464
+msgid "Resolution"
+msgstr "Rozdzielczość"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:464
+msgid " px"
+msgstr " px"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:465
+msgid "Total height"
+msgstr "Całkowita wysokość"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:465
+#, c-format, boost-format
+msgid "%.3f mm"
+msgstr "%.3f mm"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:466
+msgid "Estimated print time"
+msgstr "Szacowany czas druku"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:477
+msgid "Pixel width (mm)"
+msgstr "Szerokość piksela (mm)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:477
+msgid "Pixel height (mm)"
+msgstr "Wysokość piksela (mm)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:478
+msgid "1 - accurate"
+msgstr "1 - dokładnie"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:478
+msgid "2 - average"
+msgstr "2 - średnio"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:478
+msgid "3 - quick"
+msgstr "3 - szybko"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:478
+msgid "6 - dirty"
+msgstr "6 - zgrubnie"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:478
+msgid "8 - blocky"
+msgstr "8 - blokowo"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:479
+msgid "Merge coplanar faces"
+msgstr "Scal współpłaszczyznowe ściany"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:481
+msgid "STL mesh"
+msgstr "Siatka STL"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationCatalog_Batch2.cpp:493
+msgid "STL mesh (*.stl)|*.stl"
+msgstr "Siatka STL (*.stl)|*.stl"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationsDialog.cpp:82
+msgid "Browse..."
+msgstr "Przeglądaj..."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationsDialog.cpp:84
+msgid "Choose an image"
+msgstr "Wybierz obraz"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationsDialog.cpp:116
+msgid "Pattern preset"
+msgstr "Wzór predefiniowany"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationsDialog.cpp:122
+msgid "Generate pattern"
+msgstr "Generuj wzór"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationsDialog.cpp:123
+msgid "Preset"
+msgstr "Predefiniowane"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationsDialog.cpp:125
+msgid "Brightness"
+msgstr "Jasność"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationsDialog.cpp:180 /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationsDialog.cpp:319
+msgid "Export..."
+msgstr "Eksportuj..."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationsDialog.cpp:182
+msgid "Show the result on the current layer only. Nothing is changed."
+msgstr "Pokazuje wynik tylko na bieżącej warstwie. Nic nie jest zmieniane."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationsDialog.cpp:183
+msgid "This operation needs several layers and has no single-layer preview."
+msgstr "Ta operacja wymaga kilku warstw i nie ma podglądu pojedynczej warstwy."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationsDialog.cpp:194
+msgid "Choose an operation first."
+msgstr "Najpierw wybierz operację."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationsDialog.cpp:212
+msgid "Preview of the current layer only. Press Apply to change the selected layers."
+msgstr "Podgląd tylko bieżącej warstwy. Naciśnij Zastosuj, aby zmienić wybrane warstwy."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationsDialog.cpp:219
+msgid "Choose the export folder"
+msgstr "Wybierz folder eksportu"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationsDialog.cpp:231
+msgid "Exported to "
+msgstr "Wyeksportowano do "
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationsDialog.cpp:232
+msgid "Cancelled. Nothing was written."
+msgstr "Anulowano. Nic nie zostało zapisane."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationsDialog.cpp:242
+msgid "Export "
+msgstr "Eksport "
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationsDialog.cpp:244
+msgid "Apply "
+msgstr "Zastosuj "
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationsDialog.cpp:282
+msgid "Applied. Use Undo in the editor to revert (one step)."
+msgstr "Zastosowano. Użyj Cofnij w edytorze, aby przywrócić (jeden krok)."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationsDialog.cpp:284
+msgid "Done. The result was opened as a new layer project."
+msgstr "Gotowe. Wynik został otwarty jako nowy projekt warstw."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationsDialog.cpp:285
+msgid "Cancelled. The layers were not changed."
+msgstr "Anulowano. Warstwy nie zostały zmienione."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationsDialog.cpp:305
+msgid "Operations"
+msgstr "Operacje"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationsDialog.cpp:308
+msgid "Close the operations panel and return to the Issues and Export panel. Previews are discarded."
+msgstr "Zamyka panel operacji i wraca do panelu Problemy i Eksport. Podglądy są odrzucane."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationsDialog.cpp:317
+msgid "Transform"
+msgstr "Przekształcenia"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationsDialog.cpp:318
+msgid "Parameters"
+msgstr "Parametry"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationsDialog.cpp:326
+msgid "Choose an operation on the left."
+msgstr "Wybierz operację po lewej."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationsDialog.cpp:341
+msgid "Layers (1-based) from"
+msgstr "Warstwy (od 1) od"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationsDialog.cpp:357
+msgid "Region of interest (px)"
+msgstr "Obszar ROI (px)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationsDialog.cpp:358
+msgid "Limit the operation to a rectangle: x, y, width, height. Unchecked = whole image (or model bounds)."
+msgstr "Ogranicza operację do prostokąta: x, y, szerokość, wysokość. Odznaczone = cały obraz (lub granice modelu)."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationsDialog.cpp:360
+msgid "Use last rectangle"
+msgstr "Użyj ostatniego prostokąta"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationsDialog.cpp:361
+msgid "Takes the last rectangle drawn with the Rectangle tool in the editor."
+msgstr "Bierze ostatni prostokąt narysowany narzędziem Prostokąt w edytorze."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationsDialog.cpp:368
+msgid "ROI x"
+msgstr "ROI x"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationsDialog.cpp:368
+msgid "ROI y"
+msgstr "ROI y"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationsDialog.cpp:368
+msgid "ROI width"
+msgstr "ROI szerokość"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationsDialog.cpp:368
+msgid "ROI height"
+msgstr "ROI wysokość"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationsDialog.cpp:381
+msgid "Draw a rectangle with the Rectangle tool in the editor first."
+msgstr "Najpierw narysuj prostokąt narzędziem Prostokąt w edytorze."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationsDialog.cpp:396
+msgid "Runs in the background with progress and Cancel. The whole operation is one Undo step."
+msgstr "Działa w tle z postępem i przyciskiem Anuluj. Cała operacja to jeden krok cofania."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationsDialog.cpp:397
+msgid "Calculator..."
+msgstr "Kalkulator..."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/LayerOperationsDialog.cpp:398
+msgid "Pixel size, light-off delay, optimal model tilt and print time estimate."
+msgstr "Rozmiar piksela, opóźnienie wyłączenia światła, optymalne pochylenie modelu i szacowany czas druku."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:415
+msgid "Alternate variants:"
+msgstr "Warianty alternatywne:"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:664
+#, boost-format
+msgid "Step %1% of %2% (optional)"
+msgstr "Krok %1% z %2% (opcjonalny)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:665
+#, boost-format
+msgid "Step %1% of %2%"
+msgstr "Krok %1% z %2%"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:847
+msgid "Your printer"
+msgstr "Twoja drukarka"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:850
+#, c-format, boost-format
+msgid "Welcome to %s. It takes only a few steps to get your printer ready."
+msgstr "Witaj w %s. Przygotowanie drukarki zajmie tylko kilka kroków."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:852
+msgid "Where does your printer come from? Pick one; the following steps depend on your choice. Nothing is installed or changed until you click Finish."
+msgstr "Skąd pochodzi Twoja drukarka? Wybierz jedną opcję; kolejne kroki zależą od wyboru. Nic nie zostanie zainstalowane ani zmienione, dopóki nie klikniesz Zakończ."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:859
+msgid "A printer from a vendor"
+msgstr "Drukarka producenta"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:860
+msgid "Ready-made profiles for supported printer models. The default materials are chosen for you."
+msgstr "Gotowe profile dla obsługiwanych modeli drukarek. Materiały domyślne dobierane są za Ciebie."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:861
+msgid "A profile from the library"
+msgstr "Profil z biblioteki"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:862
+msgid "Community printer profiles and profile files shipped with the application. Preview a profile before you pick it."
+msgstr "Profile drukarek społeczności i pliki profili dostarczane z aplikacją. Obejrzyj profil, zanim go wybierzesz."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:863
+msgid "Define my own printer"
+msgstr "Własna drukarka"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:864
+msgid "Enter the display size, resolution and build height of a printer that is not listed."
+msgstr "Podaj rozmiar wyświetlacza, rozdzielczość i wysokość druku drukarki, której nie ma na liście."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:875
+msgid "Just one printer? Ignore the rest. Need more? Finish this one, then use \"Add another printer\" on the Summary step."
+msgstr "Tylko jedna drukarka? Pomiń resztę. Potrzebujesz więcej? Dokończ tę, a potem użyj „Dodaj kolejną drukarkę” w kroku Podsumowanie."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:901
+msgid "Queued:"
+msgstr "W kolejce:"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:907 /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:2300
+#, boost-format
+msgid "Remove queued printer \"%1%\""
+msgstr "Usuń drukarkę z kolejki „%1%”"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:923
+msgid "No vendor printer profiles are available in this installation."
+msgstr "W tej instalacji nie ma profili drukarek producentów."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:924
+msgid "No library profiles were found in this installation."
+msgstr "W tej instalacji nie znaleziono profili z biblioteki."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:956
+msgid "Tick every printer model you own. Installed models are already ticked. The default materials of each model are selected for you in the next step."
+msgstr "Zaznacz każdy model drukarki, który posiadasz. Zainstalowane modele są już zaznaczone. Materiały domyślne każdego modelu zostaną wybrane za Ciebie w następnym kroku."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:1111 /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:3410
+msgid "Tick at least one printer model to continue."
+msgstr "Zaznacz co najmniej jeden model drukarki, aby kontynuować."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:1136
+msgid "Tick the resins you use. The defaults for your printer are already ticked, so you can simply continue."
+msgstr "Zaznacz używane żywice. Domyślne dla Twojej drukarki są już zaznaczone, więc możesz po prostu kontynuować."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:1705
+#, boost-format
+msgid "Select at least one material for: %1%."
+msgstr "Wybierz co najmniej jeden materiał dla: %1%."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:1723
+msgid "Library profile"
+msgstr "Profil z biblioteki"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:1726
+msgid "Pick a profile from the library. It is saved as a new printer profile when you click Finish; nothing is activated before that."
+msgstr "Wybierz profil z biblioteki. Zostanie zapisany jako nowy profil drukarki po kliknięciu Zakończ; wcześniej nic nie jest aktywowane."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:1729
+msgid "Filter profiles"
+msgstr "Filtruj profile"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:1730
+msgid "Type to filter the list"
+msgstr "Wpisz tekst, aby przefiltrować listę"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:1737
+msgid "Library profiles"
+msgstr "Profile z biblioteki"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:1742 /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:1849
+msgid "No profile selected"
+msgstr "Nie wybrano profilu"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:1744 /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:1850
+msgid "Select a profile on the left to see its display, resolution and build height."
+msgstr "Wybierz profil po lewej, aby zobaczyć jego wyświetlacz, rozdzielczość i wysokość druku."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:1863
+#, boost-format
+msgid "Display: %1% x %2% mm"
+msgstr "Wyświetlacz: %1% x %2% mm"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:1864
+#, boost-format
+msgid "Resolution: %1% x %2% px"
+msgstr "Rozdzielczość: %1% x %2% px"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:1867
+#, boost-format
+msgid "Max print height: %1% mm"
+msgstr "Maks. wysokość druku: %1% mm"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:1869
+msgid "Output format"
+msgstr "Format wyjściowy"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:1872
+msgid "Will be saved as a new printer profile when you click Finish."
+msgstr "Zostanie zapisany jako nowy profil drukarki po kliknięciu Zakończ."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:1883
+msgid "Select a printer profile from the list to continue."
+msgstr "Wybierz profil drukarki z listy, aby kontynuować."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:1888
+msgid "The selected file is not an SLA printer profile."
+msgstr "Wybrany plik nie jest profilem drukarki SLA."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:1947
+msgid "Custom printer"
+msgstr "Własna drukarka"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:1950
+msgid "Name your printer and pick a profile to start from. The next step sets its display and build volume."
+msgstr "Nazwij drukarkę i wybierz profil, od którego zaczniesz. Następny krok ustawia jej wyświetlacz i pole druku."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:1952 /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:1955
+msgid "Printer name"
+msgstr "Nazwa drukarki"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:1966
+msgid "Start from"
+msgstr "Zacznij od"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:1967
+msgid "The display and build volume of the chosen profile are the starting values of the next step."
+msgstr "Wyświetlacz i pole druku wybranego profilu są wartościami początkowymi następnego kroku."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:1970
+msgid "Base printer profile"
+msgstr "Bazowy profil drukarki"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:2019
+msgid "Enter a unique printer name (the name is already used or not allowed)."
+msgstr "Wpisz unikalną nazwę drukarki (nazwa jest już zajęta lub niedozwolona)."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:2060
+msgid "Custom material"
+msgstr "Własny materiał"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:2064
+msgid "Optional. Skip this step to use the materials you picked. Turn the option on only if you want an own resin profile with its own exposure times."
+msgstr "Opcjonalne. Pomiń ten krok, aby użyć wybranych materiałów. Włącz opcję tylko wtedy, gdy chcesz mieć własny profil żywicy z własnymi czasami naświetlania."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:2067 /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:2070
+msgid "Create my own material profile"
+msgstr "Utwórz własny profil materiału"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:2078
+msgid "Start from material:"
+msgstr "Zacznij od materiału:"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:2081
+msgid "Base material profile"
+msgstr "Bazowy profil materiału"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:2092
+msgid "Material name"
+msgstr "Nazwa materiału"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:2093
+msgid "Brand"
+msgstr "Marka"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:2093
+msgid "Material brand"
+msgstr "Marka materiału"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:2094
+msgid "Material type"
+msgstr "Typ materiału"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:2095
+msgid "Bottle cost"
+msgstr "Cena butelki"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:2095
+msgid "currency"
+msgstr "waluta"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:2096
+msgid "Required exposure"
+msgstr "Wymagane naświetlanie"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:2097
+msgid "Initial exposure"
+msgstr "Naświetlanie początkowe"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:2097
+msgid "Required initial exposure"
+msgstr "Wymagane naświetlanie początkowe"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:2098
+msgid "Hop height (below)"
+msgstr "Wysokość podskoku (dolna)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:2098
+msgid "Required hop height below"
+msgstr "Wymagana dolna wysokość podskoku"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:2099
+msgid "Hop height (above)"
+msgstr "Wysokość podskoku (górna)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:2099
+msgid "Required hop height above"
+msgstr "Wymagana górna wysokość podskoku"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:2100
+msgid "Material notes"
+msgstr "Uwagi o materiale"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:2105
+msgid "My Resin"
+msgstr "Moja żywica"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:2193
+msgid "Enter a name for the material profile (or turn the option off)."
+msgstr "Wpisz nazwę profilu materiału (lub wyłącz opcję)."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:2199
+#, boost-format
+msgid "A material profile named \"%1%\" already exists. Choose another name."
+msgstr "Profil materiału o nazwie „%1%” już istnieje. Wybierz inną nazwę."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:2201
+msgid "Exposure: enter a number of seconds between 0.1 and 1000."
+msgstr "Naświetlanie: wpisz liczbę sekund z zakresu od 0,1 do 1000."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:2203
+msgid "Initial exposure: enter a number of seconds between 0.1 and 10000."
+msgstr "Naświetlanie początkowe: wpisz liczbę sekund z zakresu od 0,1 do 10000."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:2205
+msgid "Bottle cost: enter a number (0 or more)."
+msgstr "Cena butelki: wpisz liczbę (0 lub więcej)."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:2207
+msgid "Hop height: enter a number of millimetres (0 or more)."
+msgstr "Wysokość podskoku: wpisz liczbę milimetrów (0 lub więcej)."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:2239
+msgid "Optional. The defaults are fine for most people; you can change all of this later in Preferences. The application never checks for updates or downloads anything on its own."
+msgstr "Opcjonalne. Ustawienia domyślne są dobre dla większości osób; wszystko to można później zmienić w Preferencjach. Aplikacja nigdy sama nie sprawdza aktualizacji ani niczego nie pobiera."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:2242 /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:2244
+msgid "Show object sizes in inches"
+msgstr "Pokazuj rozmiary obiektów w calach"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:2247
+msgid "Remember where model files came from (Reload from disk)"
+msgstr "Zapamiętaj, skąd pochodzą pliki modeli (Wczytaj ponownie z dysku)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:2249
+msgid "Remember where model files came from"
+msgstr "Zapamiętaj, skąd pochodzą pliki modeli"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:2251
+msgid "When on, full file paths of the models are stored in 3MF files so that Reload from disk finds them by itself. When off, Reload from disk asks for each file."
+msgstr "Po włączeniu pełne ścieżki plików modeli są zapisywane w plikach 3MF, dzięki czemu Wczytaj ponownie z dysku znajduje je samo. Po wyłączeniu Wczytaj ponownie z dysku pyta o każdy plik."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:2260
+msgid "Summary"
+msgstr "Podsumowanie"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:2262
+msgid "This is exactly what happens when you click Finish. Nothing has been installed, created or activated yet."
+msgstr "Dokładnie to się stanie po kliknięciu Zakończ. Nic nie zostało jeszcze zainstalowane, utworzone ani aktywowane."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:2349
+#, boost-format
+msgid "Library profile \"%1%\" is saved as a new printer profile."
+msgstr "Profil z biblioteki „%1%” zostanie zapisany jako nowy profil drukarki."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:2351
+#, boost-format
+msgid "New custom printer \"%1%\" (%2%), based on \"%3%\"."
+msgstr "Nowa własna drukarka „%1%” (%2%), na bazie „%3%”."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:2358
+msgid "No new vendor printer. Your existing printers are kept."
+msgstr "Brak nowej drukarki producenta. Dotychczasowe drukarki zostają bez zmian."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:2363
+#, boost-format
+msgid "Library profile \"%1%\" is saved as a new printer profile and activated."
+msgstr "Profil z biblioteki „%1%” zostanie zapisany jako nowy profil drukarki i aktywowany."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:2366
+msgid "No library profile selected yet."
+msgstr "Nie wybrano jeszcze profilu z biblioteki."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:2371
+#, boost-format
+msgid "New custom printer \"%1%\", based on \"%2%\"."
+msgstr "Nowa własna drukarka „%1%”, na bazie „%2%”."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:2374
+#, boost-format
+msgid "Display %1% x %2% mm, %3% x %4% px, %5%; build height %6% mm."
+msgstr "Wyświetlacz %1% x %2% mm, %3% x %4% px, %5%; wysokość druku %6% mm."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:2377
+msgid "landscape"
+msgstr "poziomo"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:2377
+msgid "portrait"
+msgstr "pionowo"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:2380
+msgid "mirrored horizontally"
+msgstr "odbicie poziome"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:2381
+msgid "mirrored vertically"
+msgstr "odbicie pionowe"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:2382
+msgid "tilt function on"
+msgstr "funkcja pochylania włączona"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:2382
+msgid "tilt function off"
+msgstr "funkcja pochylania wyłączona"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:2388
+msgid "No printer chosen yet."
+msgstr "Nie wybrano jeszcze drukarki."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:2396 /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:2400
+msgid "Add another printer"
+msgstr "Dodaj kolejną drukarkę"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:2398
+msgid "Optional: keep what you chose so far and add one more printer in this run. Nothing is installed before Finish."
+msgstr "Opcjonalne: zachowaj dotychczasowy wybór i dodaj jeszcze jedną drukarkę w tym przebiegu. Nic nie jest instalowane przed Zakończ."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:2403
+msgid "Optional - only if you have more than one printer."
+msgstr "Opcjonalne - tylko jeśli masz więcej niż jedną drukarkę."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:2420
+msgid "No material selected."
+msgstr "Nie wybrano materiału."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:2429
+#, boost-format
+msgid " and %1% more"
+msgstr " i %1% więcej"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:2430
+#, boost-format
+msgid "%1% material profile(s): %2%"
+msgstr "Profile materiałów: %1% (%2%)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:2439
+#, boost-format
+msgid "Material profile \"%1%\" is created with the defaults of the new printer."
+msgstr "Profil materiału „%1%” zostanie utworzony z ustawieniami domyślnymi nowej drukarki."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:2442
+#, boost-format
+msgid "New custom material \"%1%\" (exposure %2% s, initial exposure %3% s) becomes the active material."
+msgstr "Nowy własny materiał „%1%” (naświetlanie %2% s, naświetlanie początkowe %3% s) zostanie aktywnym materiałem."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:2447
+msgid "No custom material is created."
+msgstr "Własny materiał nie zostanie utworzony."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:2452
+msgid "Object sizes in inches."
+msgstr "Rozmiary obiektów w calach."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:2452
+msgid "Object sizes in millimetres."
+msgstr "Rozmiary obiektów w milimetrach."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:2453
+msgid "Model file paths are stored in 3MF files."
+msgstr "Ścieżki plików modeli są zapisywane w plikach 3MF."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:2453
+msgid "Model file paths are not stored."
+msgstr "Ścieżki plików modeli nie są zapisywane."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:2458
+#, boost-format
+msgid "Not ready: step \"%1%\" - %2%"
+msgstr "Niegotowe: krok „%1%” - %2%"
+
+#. TRN ConfigWizard : Size of possible print, related on printer size
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:2687
+msgid "Display and build volume"
+msgstr "Wyświetlacz i pole druku"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:2687
+msgid "Display and volume"
+msgstr "Wyświetlacz i pole"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:2696 /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:2713
+msgid "Enable tilt function"
+msgstr "Włącz funkcję pochylania"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:2699
+msgid "The values of your printer's LCD and Z axis. They are checked while you type; you can find them in the printer's manual."
+msgstr "Wartości wyświetlacza LCD i osi Z Twojej drukarki. Są sprawdzane w trakcie wpisywania; znajdziesz je w instrukcji drukarki."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:2709 /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:2746
+msgid "Display pixels X"
+msgstr "Piksele wyświetlacza X"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:2710 /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:2747
+msgid "Display pixels Y"
+msgstr "Piksele wyświetlacza Y"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:2740
+msgid "Display (LCD)"
+msgstr "Wyświetlacz (LCD)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:2752
+msgid "Mechanics"
+msgstr "Mechanika"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:2858
+msgid "Wizard steps"
+msgstr "Kroki kreatora"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:3038
+msgid "optional"
+msgstr "opcjonalny"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:3264
+#, boost-format
+msgid "%1% (vendor)"
+msgstr "%1% (producent)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:3273
+#, boost-format
+msgid "%1% (library)"
+msgstr "%1% (biblioteka)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:3273
+#, boost-format
+msgid "%1% (custom)"
+msgstr "%1% (własna)"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:3414
+msgid "Choose how to add your printer to continue."
+msgstr "Wybierz sposób dodania drukarki, aby kontynuować."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:3561
+msgid "printers"
+msgstr "drukarki"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:4109
+msgid "The selected printer profile will be saved and activated."
+msgstr "Wybrany profil drukarki zostanie zapisany i aktywowany."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:4118
+msgid "Cannot add printer"
+msgstr "Nie można dodać drukarki"
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/ConfigWizard.cpp:4155
+msgid "A new SLA material was created and it will be activated."
+msgstr "Utworzono nowy materiał SLA i zostanie on aktywowany."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/SavePresetDialog.cpp:279
+msgid "Choose an unused name to rename this preset."
+msgstr "Wybierz nieużywaną nazwę, aby zmienić nazwę tego profilu."
+
+#: /home/pie0tr/Desktop/Studia/SLA-SLicer/Sla-SlicerOS/src/slic3r/GUI/SavePresetDialog.cpp:289
+msgid "This name is already used by a printer queued in this wizard, use another."
+msgstr "Ta nazwa jest już używana przez drukarkę w kolejce tego kreatora, wybierz inną."
+
+#: src/slic3r/GUI/LayerEditorContent.cpp:637
+msgid "Pixel: –"
+msgstr "Piksel: –"
+
+#: src/slic3r/GUI/LayerEditorContent_Issues.cpp:72
+msgid "Bounding box: x, y, width × height in mask pixels. Scroll the list sideways when a column is cut off."
+msgstr "Ramka: x, y, szerokość × wysokość w pikselach maski. Gdy kolumna jest ucięta, przewiń listę w bok."
+
+#: src/slic3r/GUI/ConfigWizard.cpp:2810
+msgid "enter a finite number within the printer setting limits"
+msgstr "wpisz skończoną liczbę mieszczącą się w limitach ustawień drukarki"
+
+#: src/slic3r/GUI/ConfigWizard.cpp:2810
+msgid "enter an integer between 100 and 32768 pixels"
+msgstr "wpisz liczbę całkowitą od 100 do 32768 pikseli"
+
+msgid "Export generated layers"
+msgstr "Eksportuj wygenerowane warstwy"
+
+msgid "Export edited layers"
+msgstr "Eksportuj edytowane warstwy"
+
+msgid "Save edited archive"
+msgstr "Zapisz edytowane archiwum"
+
+msgid "built-in default settings"
+msgstr "wbudowane ustawienia domyślne"

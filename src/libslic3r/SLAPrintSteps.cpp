@@ -765,10 +765,11 @@ void SLAPrint::Steps::support_points(SLAPrintObject &po)
         
     switch (cfg.support_tree_type) {
     case SupportTreeType::Default:
-    case SupportTreeType::Organic:
         config.head_diameter = float(cfg.support_head_front_diameter);
         break;
     case SupportTreeType::Branching:
+    case SupportTreeType::Organic:
+    case SupportTreeType::OrganicBranching:
         config.head_diameter = float(cfg.branchingsupport_head_front_diameter);
         break;
     }

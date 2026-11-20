@@ -1,7 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include <test_utils.hpp>
 
-#include <libslic3r/GCode/Thumbnails.hpp>
+#include <libslic3r/Thumbnails/Thumbnails.hpp>
 
 using namespace Slic3r;
 using namespace GCodeThumbnails;

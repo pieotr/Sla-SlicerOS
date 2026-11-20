@@ -33,7 +33,7 @@ namespace ModelProcessing
     static constexpr const double volume_threshold_inches = 9.0;    // 9 = 3*3*3;
     static constexpr const double volume_threshold_meters = 0.001;  // 0.001 = 0.1*0.1*0.1
 
-    void    convert_to_multipart_object(Model& model, unsigned int max_extruders);
+    void    convert_to_multipart_object(Model& model);
 
     void    convert_from_imperial_units(Model& model, bool only_small_volumes);
     void    convert_from_imperial_units(ModelVolume* volume);
@@ -53,7 +53,7 @@ namespace ModelProcessing
     // Split this volume, append the result to the object owning this volume.
     // Return the number of volumes created from this one.
     // This is useful to assign different materials to different volumes of an object.
-    size_t  split(ModelVolume* volume, unsigned int max_extruders);
+    size_t  split(ModelVolume* volume);
 
     void    split(ModelObject* object, std::vector<ModelObject*>* new_objects);
     void    merge(ModelObject* object);

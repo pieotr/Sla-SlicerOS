@@ -45,11 +45,9 @@ static opts_map get_opts_map(const Data& data)
                                                   &data.actions_config     }) 
     {
         for (const auto& oit : config->def()->options) {
-#ifdef SLIC3R_SLA_ONLY
             if (config->type() == Type::Overrides &&
-                (oit.second.printer_technology == ptFFF || oit.first == "thumbnails_format"))
+                (oit.second.printer_technology == ptUnknown || oit.first == "thumbnails_format"))
                 continue;
-#endif
             for (const std::string& t : oit.second.cli_args(oit.first))
                 ret[t] = { oit.first , config->type()};
         }
@@ -194,10 +192,6 @@ static bool read(Data& data, int argc, const char* const argv[])
         }
     }
 
-    // normalize override options 
-    if (!data.overrides_config.empty())
-        data.overrides_config.normalize_fdm();
-
     if (!data.misc_config.has("config_compatibility")) {
         // "config_compatibility" can be used during the loading configuration
         // So, if this option wasn't set, then initialise it from default value
@@ -311,7 +305,6 @@ static bool setup_common()
     set_var_dir((path_resources / "icons").string());
     set_local_dir((path_resources / "localization").string());
     set_sys_shapes_dir((path_resources / "shapes").string());
-    set_custom_gcodes_dir((path_resources / "custom_gcodes").string());
 
     return true;
 }

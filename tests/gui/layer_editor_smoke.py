@@ -647,8 +647,9 @@ def main():
         if args.range_brush:
             from brush_range_ui import assert_paint_controls_above_preview
             report['painting_discoverability'] = assert_paint_controls_above_preview(dialog)
-            tool=wait_for(lambda:find(dialog,lambda n:n.get_name() in ('Brush','Drawing tool') and n.get_role_name()=='combo box'),'explicit brush selector')
-            assert tool.get_selection_iface().select_child(0)
+            from toolbuttons import select_tool, canvas_bounds
+            wait_for(lambda:find(dialog,lambda n:n.get_name()=='Brush' and n.get_role_name()=='toggle button'),'explicit brush selector')
+            select_tool(dialog,'Brush')
             overlay=wait_for(lambda:named(dialog,'Overlay and paint selected range'),'range overlay control')
             spins=[]
             def scan_spins(node):
@@ -668,13 +669,13 @@ def main():
             xt.XTestFakeMotionEvent.argtypes=[ctypes.c_void_p,ctypes.c_int,ctypes.c_int,ctypes.c_int,ctypes.c_ulong]
             xt.XTestFakeButtonEvent.argtypes=[ctypes.c_void_p,ctypes.c_uint,ctypes.c_int,ctypes.c_ulong]
             def drag_mask():
-                bounds=preview.get_component_iface().get_extents(Atspi.CoordType.SCREEN)
+                bounds=canvas_bounds(dialog)   # the mask is centred in its viewport (wave 33)
                 display=x.XOpenDisplay(None);assert display
                 try:
                     assert bounds.width>30 and bounds.height>30
-                    xt.XTestFakeMotionEvent(display,-1,bounds.x+14,bounds.y+14,0)
+                    xt.XTestFakeMotionEvent(display,-1,bounds.x+10,bounds.y+10,0)
                     xt.XTestFakeButtonEvent(display,1,1,0);x.XFlush(display);time.sleep(.2)
-                    xt.XTestFakeMotionEvent(display,-1,bounds.x+29,bounds.y+14,0)
+                    xt.XTestFakeMotionEvent(display,-1,bounds.x+25,bounds.y+10,0)
                     x.XFlush(display);time.sleep(.2)
                     xt.XTestFakeButtonEvent(display,1,0,0);x.XFlush(display)
                 finally:x.XCloseDisplay(display)
@@ -683,8 +684,7 @@ def main():
             click(named(dialog,'Undo'));wait_for(lambda:not editor_changed(dialog),'single Undo range stroke')
             click(named(dialog,'Redo'));wait_for(lambda:editor_changed(dialog),'Redo range stroke')
             click(named(dialog,'Undo'));wait_for(lambda:not editor_changed(dialog),'restored original masks')
-            assert tool.get_selection_iface().select_child(1),'Eraser choice missing'
-            assert tool.get_selection_iface().select_child(0)
+            select_tool(dialog,'Eraser');select_tool(dialog,'Brush')
             click(overlay)
             report['checks'].append('explicit Brush/Eraser, range overlay, real mouse stroke and single Undo/Redo')
         def model_exposure(editor, value=None):

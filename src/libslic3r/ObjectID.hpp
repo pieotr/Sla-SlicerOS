@@ -131,9 +131,6 @@ private:
 	template<class Archive> void serialize(Archive &ar) { ar(m_timestamp); }
 };
 
-// Unique object / instance ID for the wipe tower.
-ObjectID wipe_tower_instance_id(size_t bed_idx);
-
 } // namespace Slic3r
 
 #endif /* slic3r_ObjectID_hpp_ */

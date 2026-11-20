@@ -19,7 +19,6 @@
 #include <cstddef>
 
 typedef double                          coordf_t;
-typedef std::pair<coordf_t, coordf_t>   t_layer_height_range;
 
 namespace Slic3r {
 
@@ -62,14 +61,10 @@ struct SnapshotData
 	PrinterTechnology 	printer_technology { ptUnknown };
 	// Bitmap of Flags (see the Flags enum).
 	unsigned int        flags { 0 };
-    int                 layer_range_idx { -1 };
 
 	// Bitmask of various binary flags to be stored with the snapshot.
 	enum Flags {
-		VARIABLE_LAYER_EDITING_ACTIVE = 1,
 		SELECTED_SETTINGS_ON_SIDEBAR  = 2,
-		SELECTED_LAYERROOT_ON_SIDEBAR = 4,
-		SELECTED_LAYER_ON_SIDEBAR     = 8,
         RECALCULATE_SLA_SUPPORTS      = 16
 	};
 };

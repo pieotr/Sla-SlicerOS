@@ -41,8 +41,6 @@ option(SLIC3R_PCH               "Use precompiled headers" 1)
 option(SLIC3R_MSVC_COMPILE_PARALLEL "Compile on Visual Studio in parallel" 1)
 option(SLIC3R_ASAN              "Enable ASan on Clang and GCC" 0)
 option(SLIC3R_UBSAN             "Enable UBSan on Clang and GCC" 0)
-option(SLIC3R_OFFLINE_ONLY      "Disable all network access and external links" ON)
-option(SLIC3R_SLA_ONLY          "Disable FFF/FDM workflows and keep SLA-only mode" ON)
 option(SLIC3R_ENABLE_FORMAT_STEP "Enable compilation of STEP file support" ON)
 option(SLIC3R_LOG_TO_FILE       "Enable logging into file")
 option(SLIC3R_REPO_URL          "Preset repo URL")
@@ -85,14 +83,7 @@ if (APPLE)
     endif ()
 endif ()
 
-option(SLIC3R_BUILD_SANDBOXES   "Build development sandboxes" OFF)
 option(SLIC3R_BUILD_TESTS       "Build unit tests" ON)
-
-if (SLIC3R_SLA_ONLY)
-    # Sandboxes may require FFF, but SLA and shared geometry tests remain useful.
-    # Respect SLIC3R_BUILD_TESTS instead of silently overriding the caller.
-    set(SLIC3R_BUILD_SANDBOXES OFF CACHE BOOL "" FORCE)
-endif ()
 
 if (IS_CROSS_COMPILE)
     message("Detected cross compilation setup. Tests and encoding checks will be forcedly disabled!")
@@ -116,14 +107,6 @@ if (SLIC3R_REPO_URL)
 endif()
 if (SLIC3R_GUI)
     add_definitions(-DSLIC3R_GUI)
-endif ()
-
-if (SLIC3R_OFFLINE_ONLY)
-    add_definitions(-DSLIC3R_OFFLINE_ONLY)
-endif ()
-
-if (SLIC3R_SLA_ONLY)
-    add_definitions(-DSLIC3R_SLA_ONLY)
 endif ()
 
 if (SLIC3R_OPENGL_ES)
@@ -461,10 +444,6 @@ slic3r_remap_configs(TBB::tbbmalloc RelWithDebInfo Release)
 # The Intel TBB library will use the std::exception_ptr feature of C++11.
 # add_definitions(-DTBB_USE_CAPTURED_EXCEPTION=0)
 
-if (NOT SLIC3R_OFFLINE_ONLY)
-    message(FATAL_ERROR "This application is offline-only. Build with SLIC3R_OFFLINE_ONLY=ON.")
-endif()
-
 ## OPTIONAL packages
 
 # Find expat. We have our overriden FindEXPAT which exports libexpat target
@@ -633,44 +612,21 @@ if(SLIC3R_BUILD_TESTS)
 endif()
 
 
-# Resource subtrees that an SLA-only package never needs: udev rules are for
-# 3Dconnexion/FFF USB devices, and the G-code viewer icons belong to the FFF viewer.
-set(SLIC3R_INSTALL_RESOURCE_EXCLUDES)
-if (SLIC3R_SLA_ONLY)
-    list(APPEND SLIC3R_INSTALL_RESOURCE_EXCLUDES
-        PATTERN "udev" EXCLUDE
-        PATTERN "*gcodeviewer*" EXCLUDE
-        PATTERN "web" EXCLUDE)
-endif ()
 
 if (WIN32)
-    install(DIRECTORY "${SLIC3R_RESOURCES_DIR}/" DESTINATION "${CMAKE_INSTALL_PREFIX}/resources"
-        ${SLIC3R_INSTALL_RESOURCE_EXCLUDES})
+    install(DIRECTORY "${SLIC3R_RESOURCES_DIR}/" DESTINATION "${CMAKE_INSTALL_PREFIX}/resources")
 elseif (SLIC3R_FHS)
     # CMAKE_INSTALL_FULL_DATAROOTDIR: read-only architecture-independent data root (share)
     set(SLIC3R_FHS_RESOURCES "${CMAKE_INSTALL_FULL_DATAROOTDIR}/SLA-Slicer")
     install(DIRECTORY ${SLIC3R_RESOURCES_DIR}/ DESTINATION ${SLIC3R_FHS_RESOURCES}
-        PATTERN "*/udev" EXCLUDE
-        ${SLIC3R_INSTALL_RESOURCE_EXCLUDES}
     )
     install(FILES src/platform/unix/PrusaSlicer.desktop DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/applications
         RENAME SLA-Slicer.desktop)
-    if (NOT SLIC3R_SLA_ONLY)
-        install(FILES src/platform/unix/PrusaGcodeviewer.desktop DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/applications)
-    endif ()
     foreach(SIZE 32 128 192)
         install(FILES ${SLIC3R_RESOURCES_DIR}/icons/PrusaSlicer_${SIZE}px.png
             DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/${SIZE}x${SIZE}/apps RENAME SLA-Slicer.png
         )
-        if (NOT SLIC3R_SLA_ONLY)
-            install(FILES ${SLIC3R_RESOURCES_DIR}/icons/PrusaSlicer-gcodeviewer_${SIZE}px.png
-                DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/${SIZE}x${SIZE}/apps RENAME PrusaSlicer-gcodeviewer.png
-            )
-        endif ()
     endforeach()
-    if (NOT SLIC3R_SLA_ONLY)
-        install(DIRECTORY ${SLIC3R_RESOURCES_DIR}/udev/ DESTINATION lib/udev/rules.d)
-    endif ()
     target_compile_definitions(PrusaSlicer PUBLIC SLIC3R_FHS SLIC3R_FHS_RESOURCES="${SLIC3R_FHS_RESOURCES}")
 else ()
     # Relocatable layout: <prefix>/bin/prusa-slicer finds <prefix>/resources (exe/../resources).
@@ -678,9 +634,5 @@ else ()
     # (an absolute ${CMAKE_INSTALL_PREFIX} would freeze the configure-time /usr/local).
     install(FILES src/platform/unix/PrusaSlicer.desktop DESTINATION resources/applications
         RENAME SLA-Slicer.desktop)
-    if (NOT SLIC3R_SLA_ONLY)
-        install(FILES src/platform/unix/PrusaGcodeviewer.desktop DESTINATION resources/applications)
-    endif ()
-    install(DIRECTORY "${SLIC3R_RESOURCES_DIR}/" DESTINATION resources
-        ${SLIC3R_INSTALL_RESOURCE_EXCLUDES})
+    install(DIRECTORY "${SLIC3R_RESOURCES_DIR}/" DESTINATION resources)
 endif ()

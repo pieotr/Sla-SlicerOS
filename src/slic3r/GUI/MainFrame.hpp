@@ -40,14 +40,10 @@ namespace GUI
 {
 
 class Tab;
-class PrintHostQueueDialog;
 class Plater;
 class MainFrame;
 class PreferencesDialog;
 class GalleryDialog;
-class ConnectWebViewPanel; 
-class PrinterWebViewPanel;
-class PrintablesWebViewPanel;
 
 enum QuickSlice
 {
@@ -100,13 +96,6 @@ class MainFrame : public DPIFrame
     size_t      m_last_selected_tab;
     Search::OptionsSearcher m_searcher;
 
-    ConnectWebViewPanel*    m_connect_webview{ nullptr };
-    bool                    m_connect_webview_added{ false };
-    PrintablesWebViewPanel* m_printables_webview{ nullptr };
-    bool                    m_printables_webview_added{ false };
-    PrinterWebViewPanel*    m_printer_webview{ nullptr };
-    bool                    m_printer_webview_added{ false };
-
     std::string     get_base_name(const wxString &full_name, const char *extension = nullptr) const;
     std::string     get_dir_name(const wxString &full_name) const;
 
@@ -114,12 +103,8 @@ class MainFrame : public DPIFrame
 
     bool can_start_new_project() const;
     bool can_export_model() const;
-#ifndef SLIC3R_SLA_ONLY
-    bool can_export_toolpaths() const;
-#endif
     bool can_export_supports() const;
     bool can_export_gcode() const;
-    bool can_send_gcode() const;
 	bool can_export_gcode_sd() const;
 	bool can_eject() const;
     bool can_slice() const;
@@ -130,17 +115,14 @@ class MainFrame : public DPIFrame
     bool can_delete_all() const;
     bool can_reslice() const;
 
-    void    add_connect_webview_tab();
-    void    remove_connect_webview_tab();
-    void    on_tab_change_rename_reload_item(int new_tab);
     bool    reload_item_condition_cb();
     void    reload_item_function_cb();
     // MenuBar items changeable in respect to printer technology 
     enum MenuItems
-    {                   //   FFF                  SLA
-        miExport = 0,   // Export G-code        Export
-        miSend,         // Send G-code          Send to print
-        miMaterialTab,  // Filament Settings    Material Settings
+    {
+        miExport = 0,   // Export
+        miSend,         // Send to print
+        miMaterialTab,  // Material Settings
         miPrinterTab,   // Different bitmap for Printer Settings
         miLogin,
     };
@@ -157,8 +139,7 @@ class MainFrame : public DPIFrame
     {
         Unknown,
         Old,
-        Dlg,
-        GCodeViewer
+        Dlg
     };
     
     ESettingsLayout m_layout{ ESettingsLayout::Unknown };
@@ -207,7 +188,7 @@ public:
     void        load_config_file();
     // Open a config file. Return true if loaded.
     bool        load_config_file(const std::string &path);
-    void        export_configbundle(bool export_physical_printers = false);
+    void        export_configbundle();
     void        load_configbundle(wxString file = wxEmptyString);
     void        load_config(const DynamicPrintConfig& config);
     void        update_search_lines(const std::string search_line);
@@ -226,31 +207,7 @@ public:
 
     void        add_to_recent_projects(const wxString& filename);
     void        remember_layer_document(const std::string &path);
-    void        technology_changed();
 
-    void    on_account_login(const std::string& token);
-    void    on_account_will_refresh();
-    void    on_account_did_refresh(const std::string& token);
-    void    on_account_logout();
-    void    show_connect_tab(const wxString& url);
-    void    show_printables_tab(const std::string& url);
-
-    void    add_printables_webview_tab();
-    void    remove_printables_webview_tab();
-
-    void    show_printer_webview_tab(DynamicPrintConfig* dpc);
-
-    void    add_printer_webview_tab(const wxString& url);
-    void    remove_printer_webview_tab();
-    bool    get_printer_webview_tab_added() const { return m_printer_webview_added; }
-    void    set_printer_webview_api_key(const std::string& key);
-    void    set_printer_webview_credentials(const std::string& usr, const std::string& psk);
-    bool    is_any_webview_selected();
-    void    reload_selected_webview();
-
-    void    refresh_account_menu(bool avatar = false);
-
-    PrintHostQueueDialog* printhost_queue_dlg() { return m_printhost_queue_dlg; }
 
     Plater*               m_plater { nullptr };
     TopBar*               m_tmp_top_bar { nullptr };
@@ -260,7 +217,6 @@ public:
     wxWindow*             m_plater_page{ nullptr };
 //    wxProgressDialog*     m_progress_dialog { nullptr };
     PreferencesDialog*    preferences_dialog { nullptr };
-    PrintHostQueueDialog* m_printhost_queue_dlg;
     GalleryDialog*        m_gallery_dialog{ nullptr };
     
 #ifdef __APPLE__

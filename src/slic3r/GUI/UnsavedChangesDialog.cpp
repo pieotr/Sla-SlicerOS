@@ -47,9 +47,7 @@ namespace GUI {
 // ----------------------------------------------------------------------------
 
 static const std::map<Preset::Type, std::string> type_icon_names = {
-    {Preset::TYPE_PRINT,        "cog"           },
     {Preset::TYPE_SLA_PRINT,    "cog"           },
-    {Preset::TYPE_FILAMENT,     "spool"         },
     {Preset::TYPE_SLA_MATERIAL, "resin"         },
     {Preset::TYPE_PRINTER,      "printer"       },
 };
@@ -1192,15 +1190,6 @@ static wxString get_string_value(std::string opt_key, const DynamicPrintConfig& 
                 out.RemoveLast(1);
                 return out;
             }
-            if (opt_key == "gcode_substitutions") {
-                if (!strings->empty())
-                    for (size_t id = 0; id < strings->size(); id += 4)
-                        out +=  from_u8(strings->get_at(id))     + ";\t" + 
-                                from_u8(strings->get_at(id + 1)) + ";\t" + 
-                                from_u8(strings->get_at(id + 2)) + ";\t" +
-                                from_u8(strings->get_at(id + 3)) + ";\n";
-                return out;
-            }
             if (!strings->empty() && opt_idx < strings->values.size())
                 return from_u8(strings->get_at(opt_idx));
         }
@@ -1322,48 +1311,22 @@ void UnsavedChangesDialog::update_tree(Preset::Type type, PresetCollection* pres
         m_tree->model->AddPreset(type, from_u8(presets->get_edited_preset().name), old_pt, from_u8(new_selected_preset));
 
         // Collect dirty options.
-        const bool deep_compare = type != Preset::TYPE_FILAMENT;
-        auto dirty_options = presets->current_dirty_options(deep_compare);
-
-        // process changes of extruders count
-        if (type == Preset::TYPE_PRINTER && old_pt == ptFFF &&
-            old_config.opt<ConfigOptionStrings>("extruder_colour")->values.size() != mod_config.opt<ConfigOptionStrings>("extruder_colour")->values.size()) {
-            wxString local_label = _L("Extruders count");
-            wxString old_val = from_u8((boost::format("%1%") % old_config.opt<ConfigOptionStrings>("extruder_colour")->values.size()).str());
-            wxString mod_val = from_u8((boost::format("%1%") % mod_config.opt<ConfigOptionStrings>("extruder_colour")->values.size()).str());
-            wxString new_val = !m_tree->has_new_value_column() ? "" : from_u8((boost::format("%1%") % new_config.opt<ConfigOptionStrings>("extruder_colour")->values.size()).str());
-
-            m_tree->Append("extruders_count", type, _L("General"), _L("Capabilities"), local_label, old_val, mod_val, new_val, category_icon_map.at("General"));
-        }
-
-        wxString custom_gcode_local_name = wxEmptyString;
+        auto dirty_options = presets->current_dirty_options(true);
 
         for (const std::string& opt_key : dirty_options) {
             const Search::Option& option = searcher.get_option(opt_key, type);
             if (option.opt_key() != opt_key) {
                 // When founded option isn't the correct one.
-                // It can be for dirty_options: "default_print_profile", "printer_model", "printer_settings_id",
+                // It can be for dirty_options: "default_sla_print_profile", "printer_model", "printer_settings_id",
                 // because of they don't exist in searcher
                 continue;
             }
-
-            if (custom_gcode_local_name.IsEmpty() && boost::nowide::narrow(option.category) == "Custom G-code")
-                custom_gcode_local_name = option.category_local;
 
             m_tree->Append(opt_key, type, option.category_local, option.group_local, option.label_local,
                 get_string_value(opt_key, old_config), get_string_value(opt_key, mod_config), 
                 m_tree->has_new_value_column() ? get_string_value(opt_key, new_config) : "", category_icon_map.at(option.category));
         }
 
-        // Unselect all Custom-Gcodes
-        if (!custom_gcode_local_name.IsEmpty()) {
-            wxDataViewItem item = m_tree->model->GetItemByName(custom_gcode_local_name);
-            if (item.IsOk()) {
-                wxVariant variant = false;
-                m_tree->model->SetValue(variant, item, DiffModel::colToggle);
-                m_tree->update_item_enabling(item);
-            }
-        }
     }
 
     // Revert sort of searcher back
@@ -1496,9 +1459,7 @@ FullCompareDialog::FullCompareDialog(const wxString& option_name, const wxString
 static PresetCollection* get_preset_collection(Preset::Type type, PresetBundle* preset_bundle = nullptr) {
     if (!preset_bundle)
         preset_bundle = wxGetApp().preset_bundle;
-    return  type == Preset::Type::TYPE_PRINT        ? &preset_bundle->prints :
-            type == Preset::Type::TYPE_SLA_PRINT    ? &preset_bundle->sla_prints :
-            type == Preset::Type::TYPE_FILAMENT     ? &preset_bundle->filaments :
+    return  type == Preset::Type::TYPE_SLA_PRINT    ? &preset_bundle->sla_prints :
             type == Preset::Type::TYPE_SLA_MATERIAL ? &preset_bundle->sla_materials :
             type == Preset::Type::TYPE_PRINTER      ? &preset_bundle->printers :
             nullptr;
@@ -1516,7 +1477,7 @@ void DiffPresetDialog::create_presets_sizer()
 {
     m_presets_sizer = new wxBoxSizer(wxVERTICAL);
 
-    for (auto new_type : { Preset::TYPE_PRINT, Preset::TYPE_SLA_PRINT, Preset::TYPE_FILAMENT, Preset::TYPE_SLA_MATERIAL, Preset::TYPE_PRINTER })
+    for (auto new_type : { Preset::TYPE_SLA_PRINT, Preset::TYPE_SLA_MATERIAL, Preset::TYPE_PRINTER })
     {
         const PresetCollection* collection = get_preset_collection(new_type);
         wxBoxSizer* sizer = new wxBoxSizer(wxHORIZONTAL);
@@ -1603,7 +1564,7 @@ void DiffPresetDialog::create_tree()
 
 std::array<Preset::Type, 3> DiffPresetDialog::types_list() const
 {
-    return PresetBundle::types_list(m_pr_technology);
+    return PresetBundle::types_list();
 }
 
 void DiffPresetDialog::create_buttons()
@@ -1714,8 +1675,7 @@ void DiffPresetDialog::complete_dialog_creation()
 }
 
 DiffPresetDialog::DiffPresetDialog(MainFrame* mainframe)
-    : DPIDialog(mainframe, wxID_ANY, wxEmptyString, wxDefaultPosition, wxDefaultSize, wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER, "diff_presets_dialog", mainframe->normal_font().GetPointSize()),
-    m_pr_technology(wxGetApp().preset_bundle->printers.get_edited_preset().printer_technology())
+    : DPIDialog(mainframe, wxID_ANY, wxEmptyString, wxDefaultPosition, wxDefaultSize, wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER, "diff_presets_dialog", mainframe->normal_font().GetPointSize())
 {    
     // Init bundles
 
@@ -1745,20 +1705,12 @@ void DiffPresetDialog::update_controls_visibility(Preset::Type type /* = Preset:
         Preset::Type cb_type = preset_combos.presets_left->get_type();
         bool show = type != Preset::TYPE_INVALID    ? type == cb_type :
                     cb_type == Preset::TYPE_PRINTER ? true : 
-                    m_pr_technology == ptFFF        ? cb_type == Preset::TYPE_PRINT || cb_type == Preset::TYPE_FILAMENT :
-                                                      cb_type == Preset::TYPE_SLA_PRINT || cb_type == Preset::TYPE_SLA_MATERIAL;
+                    cb_type == Preset::TYPE_SLA_PRINT || cb_type == Preset::TYPE_SLA_MATERIAL;
         preset_combos.presets_left->Show(show);
         preset_combos.equal_bmp->Show(show);
         preset_combos.presets_right->Show(show);
 
         if (show) {
-            if (cb_type == Preset::TYPE_FILAMENT) {
-                int extruder_id = 0;
-                if (type == Preset::TYPE_FILAMENT)
-                    extruder_id = dynamic_cast<TabFilament*>(wxGetApp().get_tab(Preset::TYPE_FILAMENT))->get_active_extruder();
-                preset_combos.presets_left->set_extruder_idx(extruder_id);
-                preset_combos.presets_right->set_extruder_idx(extruder_id);
-            }
             preset_combos.presets_left->update_from_bundle();
             preset_combos.presets_right->update_from_bundle();
         }
@@ -1771,8 +1723,6 @@ void DiffPresetDialog::update_bundles_from_app()
 {
     m_preset_bundle_left  = *wxGetApp().preset_bundle;
     m_preset_bundle_right = *wxGetApp().preset_bundle;
-
-    m_pr_technology = m_preset_bundle_left.printers.get_edited_preset().printer_technology();
 
     for (auto preset_combos : m_preset_combos) {
         if (m_view_type == Preset::TYPE_INVALID || m_view_type == preset_combos.presets_left->get_type()) {
@@ -1882,11 +1832,7 @@ void DiffPresetDialog::update_tree()
         }
 
         // Collect dirty options.
-        const bool deep_compare = type != Preset::TYPE_FILAMENT;
-        auto dirty_options = type == Preset::TYPE_PRINTER && left_pt == ptFFF &&
-                             left_config.opt<ConfigOptionStrings>("extruder_colour")->values.size() < right_congig.opt<ConfigOptionStrings>("extruder_colour")->values.size() ?
-                             presets->dirty_options(right_preset, left_preset, deep_compare) :
-                             presets->dirty_options(left_preset, right_preset, deep_compare);
+        auto dirty_options = presets->dirty_options(left_preset, right_preset, true);
 
         if (dirty_options.empty()) {
             bottom_info = _L("Presets are the same");
@@ -1904,16 +1850,6 @@ void DiffPresetDialog::update_tree()
 
         const std::map<wxString, std::string>& category_icon_map = wxGetApp().get_tab(type)->get_category_icon_map();
 
-        // process changes of extruders count
-        if (type == Preset::TYPE_PRINTER && left_pt == ptFFF &&
-            left_config.opt<ConfigOptionStrings>("extruder_colour")->values.size() != right_congig.opt<ConfigOptionStrings>("extruder_colour")->values.size()) {
-            wxString local_label = _L("Extruders count");
-            wxString left_val = from_u8((boost::format("%1%") % left_config.opt<ConfigOptionStrings>("extruder_colour")->values.size()).str());
-            wxString right_val = from_u8((boost::format("%1%") % right_congig.opt<ConfigOptionStrings>("extruder_colour")->values.size()).str());
-
-            m_tree->Append("extruders_count", type, _L("General"), _L("Capabilities"), local_label, left_val, right_val, "", category_icon_map.at("General"));
-        }
-
         for (const std::string& opt_key : dirty_options) {
             wxString left_val = get_string_value(opt_key, left_config);
             wxString right_val = get_string_value(opt_key, right_congig);
@@ -1925,7 +1861,7 @@ void DiffPresetDialog::update_tree()
                 m_tree->Append(opt_key, type, _L("Undef category"), _L("Undef group"), opt_key, left_val, right_val, "", "question");
 #endif
                 // When founded option isn't the correct one.
-                // It can be for dirty_options: "default_print_profile", "printer_model", "printer_settings_id",
+                // It can be for dirty_options: "default_sla_print_profile", "printer_model", "printer_settings_id",
                 // because of they don't exist in searcher
                 continue;
             }
@@ -2007,57 +1943,30 @@ void DiffPresetDialog::update_compatibility(const std::string& preset_name, Pres
 {
     PresetCollection* presets = get_preset_collection(type, preset_bundle);
 
-    bool print_tab = type == Preset::TYPE_PRINT || type == Preset::TYPE_SLA_PRINT;
+    bool print_tab = type == Preset::TYPE_SLA_PRINT;
     bool printer_tab = type == Preset::TYPE_PRINTER;
-    bool technology_changed = false;
-
-    if (printer_tab) {
-        const Preset& new_printer_preset = *presets->find_preset(preset_name, true);
-        PrinterTechnology    old_printer_technology = presets->get_selected_preset().printer_technology();
-        PrinterTechnology    new_printer_technology = new_printer_preset.printer_technology();
-
-        technology_changed = old_printer_technology != new_printer_technology;
-    }
 
     // select preset 
     presets->select_preset_by_name(preset_name, false);
 
-    // Mark the print & filament enabled if they are compatible with the currently selected preset.
-    // The following method should not discard changes of current print or filament presets on change of a printer profile,
+    // Mark the print & material enabled if they are compatible with the currently selected preset.
+    // The following method should not discard changes of current print or material presets on change of a printer profile,
     // if they are compatible with the current printer.
-    auto update_compatible_type = [](bool technology_changed, bool on_page, bool show_incompatible_presets) {
-        return  technology_changed ? PresetSelectCompatibleType::Always :
-            on_page ? PresetSelectCompatibleType::Never :
-            show_incompatible_presets ? PresetSelectCompatibleType::OnlyIfWasCompatible : PresetSelectCompatibleType::Always;
-    };
     if (print_tab || printer_tab)
         preset_bundle->update_compatible(
-            update_compatible_type(technology_changed, print_tab, true),
-            update_compatible_type(technology_changed, false, true));
+            print_tab ? PresetSelectCompatibleType::Never : PresetSelectCompatibleType::OnlyIfWasCompatible,
+            PresetSelectCompatibleType::OnlyIfWasCompatible);
 
     bool is_left_presets = preset_bundle == &m_preset_bundle_left;
-    PrinterTechnology pr_tech = preset_bundle->printers.get_selected_preset().printer_technology();
 
     // update preset comboboxes
     for (auto preset_combos : m_preset_combos)
     {
         PresetComboBox* cb = is_left_presets ? preset_combos.presets_left : preset_combos.presets_right;
         Preset::Type presets_type = cb->get_type();
-        if ((print_tab && (
-                (pr_tech == ptFFF && presets_type == Preset::TYPE_FILAMENT) ||
-                (pr_tech == ptSLA && presets_type == Preset::TYPE_SLA_MATERIAL) )) ||
-            (printer_tab && (
-                (pr_tech == ptFFF && (presets_type == Preset::TYPE_PRINT || presets_type == Preset::TYPE_FILAMENT) ) ||
-                (pr_tech == ptSLA && (presets_type == Preset::TYPE_SLA_PRINT || presets_type == Preset::TYPE_SLA_MATERIAL) )) ))
+        if ((print_tab && presets_type == Preset::TYPE_SLA_MATERIAL) ||
+            (printer_tab && (presets_type == Preset::TYPE_SLA_PRINT || presets_type == Preset::TYPE_SLA_MATERIAL)))
             cb->update();
-    }
-
-    if (technology_changed &&
-        m_preset_bundle_left.printers.get_selected_preset().printer_technology() ==
-        m_preset_bundle_right.printers.get_selected_preset().printer_technology())
-    {
-        m_pr_technology = m_preset_bundle_left.printers.get_edited_preset().printer_technology();
-        update_controls_visibility();
     }
 }
 
@@ -2075,7 +1984,7 @@ bool DiffPresetDialog::is_save_confirmed()
     }
 
     if (!types_for_save.empty()) {
-        SavePresetDialog save_dlg(this, types_for_save, _u8L("Modified"), false, &m_preset_bundle_right);
+        SavePresetDialog save_dlg(this, types_for_save, _u8L("Modified"), &m_preset_bundle_right);
         if (save_dlg.ShowModal() != wxID_OK)
             return false;
 
@@ -2096,11 +2005,6 @@ std::vector<std::string> DiffPresetDialog::get_options_to_save(Preset::Type type
     if (const auto it = std::find(options.begin(), options.end(), "inherits"); it != options.end())
         options.erase(it);
 
-    if (type == Preset::TYPE_PRINTER) {
-        // erase "extruders_count" option from the list if it exists there
-        if (const auto it = std::find(options.begin(), options.end(), "extruders_count"); it != options.end())
-            options.erase(it);
-    }
     return options;
 }
 
@@ -2156,13 +2060,13 @@ void DiffPresetDialog::process_options(std::function<void(Preset::Type)> process
 
 std::string DiffPresetDialog::get_left_preset_name(Preset::Type type)
 {
-    PresetComboBox* cb = m_preset_combos[int(type - Preset::TYPE_PRINT)].presets_left;
+    PresetComboBox* cb = m_preset_combos[int(type - Preset::TYPE_SLA_PRINT)].presets_left;
     return Preset::remove_suffix_modified(get_selection(cb));
 }
 
 std::string DiffPresetDialog::get_right_preset_name(Preset::Type type)
 {
-    PresetComboBox* cb = m_preset_combos[int(type - Preset::TYPE_PRINT)].presets_right;
+    PresetComboBox* cb = m_preset_combos[int(type - Preset::TYPE_SLA_PRINT)].presets_right;
     return Preset::remove_suffix_modified(get_selection(cb));
 }
 

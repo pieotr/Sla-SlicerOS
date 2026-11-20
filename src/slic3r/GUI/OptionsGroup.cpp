@@ -108,14 +108,6 @@ const t_field& OptionsGroup::build_field(const t_config_option_key& id, const Co
 	};
     field->m_parent = parent();
 
-    if (edit_custom_gcode && opt.is_code) {
-        field->m_fn_edit_value = [this](std::string opt_id) {
-            if (!m_disabled)
-                this->edit_custom_gcode(opt_id);
-        };
-        field->set_edit_tooltip(_L("Edit Custom G-code"));
-    }
-
 	field->m_back_to_initial_value = [this](std::string opt_id) {
 		if (!m_disabled)
 			this->back_to_initial_value(opt_id);
@@ -197,7 +189,7 @@ void OptionsGroup::change_opt_value(DynamicPrintConfig& config, const t_config_o
             config.set_key_value(opt_key, new ConfigOptionString(boost::any_cast<std::string>(value)));
             break;
         case coStrings: {
-            if (opt_key == "compatible_prints" || opt_key == "compatible_printers" || opt_key == "gcode_substitutions") {
+            if (opt_key == "compatible_prints" || opt_key == "compatible_printers") {
                 config.option<ConfigOptionStrings>(opt_key)->values =
                     boost::any_cast<std::vector<std::string>>(value);
             }
@@ -776,11 +768,7 @@ void ConfigOptionsGroup::back_to_config_value(const DynamicPrintConfig& config, 
             this->change_opt_value(key, value);
         }
 	}
-	if (opt_key == "extruders_count") {
-		auto   *nozzle_diameter = dynamic_cast<const ConfigOptionFloats*>(config.option("nozzle_diameter"));
-		value = int(nozzle_diameter->values.size());
-	}
-    else if (m_opt_map.find(opt_key) == m_opt_map.end() ||
+    if (m_opt_map.find(opt_key) == m_opt_map.end() ||
 		    // This option doesn't have corresponded field
              is_option_without_field(opt_key) ) {
         value = get_config_value(config, opt_key);
@@ -1128,12 +1116,8 @@ boost::any ConfigOptionsGroup::get_config_value(const DynamicPrintConfig& config
         break;
     }
 	case coStrings:
-		if (opt_key == "compatible_printers" || opt_key == "compatible_prints" || opt_key == "gcode_substitutions") {
+		if (opt_key == "compatible_printers" || opt_key == "compatible_prints") {
 			ret = config.option<ConfigOptionStrings>(opt_key)->values;
-			break;
-		}
-		if (opt_key == "filament_ramming_parameters") {
-			ret = config.opt_string(opt_key, static_cast<unsigned int>(idx));
 			break;
 		}
 		if (config.option<ConfigOptionStrings>(opt_key)->values.empty())
@@ -1239,8 +1223,6 @@ static const std::set<std::string> options_without_field = {
     "compatible_printers",
     "compatible_prints",
     "bed_shape",
-    "filament_ramming_parameters",
-    "gcode_substitutions",
 };
 
 bool OptionsGroup::is_option_without_field(const std::string& opt_key)

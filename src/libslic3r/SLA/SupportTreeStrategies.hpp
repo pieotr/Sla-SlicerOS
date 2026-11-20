@@ -9,7 +9,9 @@
 
 namespace Slic3r { namespace sla {
 
-enum class SupportTreeType { Default, Branching, Organic };
+// Organic:          full organic growth (SLA/OrganicGrowthSLA)
+// OrganicBranching: branching layout routing smoothed into tapered tubes (SLA/OrganicTreeSLA)
+enum class SupportTreeType { Default, Branching, Organic, OrganicBranching };
 enum class PillarConnectionMode { zigzag, cross, dynamic };
 
 }} // namespace Slic3r::sla

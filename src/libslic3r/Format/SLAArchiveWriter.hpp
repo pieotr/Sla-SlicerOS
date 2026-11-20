@@ -16,7 +16,7 @@
 #include "libslic3r/SLA/RasterBase.hpp"
 #include "libslic3r/SLA/LayerMaskValidation.hpp"
 #include "libslic3r/Execution/ExecutionTBB.hpp"
-#include "libslic3r/GCode/ThumbnailData.hpp"
+#include "libslic3r/Thumbnails/ThumbnailData.hpp"
 #include "libslic3r/Execution/Execution.hpp"
 
 namespace Slic3r {

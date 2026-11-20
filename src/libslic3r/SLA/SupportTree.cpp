@@ -11,6 +11,8 @@
 #include <libslic3r/SLA/SupportTreeBuilder.hpp>
 #include <libslic3r/SLA/DefaultSupportTree.hpp>
 #include <libslic3r/SLA/BranchingTreeSLA.hpp>
+#include <libslic3r/SLA/OrganicTreeSLA.hpp>
+#include <libslic3r/SLA/OrganicGrowthSLA.hpp>
 #include <libslic3r/MTUtils.hpp>
 #include <libslic3r/TriangleMeshSlicer.hpp>
 #include <boost/log/trivial.hpp>
@@ -46,8 +48,13 @@ indexed_triangle_set create_support_tree(const SupportableMesh &sm,
             create_branching_tree(*builder, sm);
             break;
         }
+        case SupportTreeType::OrganicBranching: {
+            create_organic_tree(*builder, sm);
+            break;
+        }
         case SupportTreeType::Organic: {
-            // TODO
+            create_organic_growth_tree(*builder, sm);
+            break;
         }
         default:;
         }

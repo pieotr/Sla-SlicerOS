@@ -18,11 +18,9 @@ target_compile_definitions(test_common INTERFACE TEST_DATA_DIR=R"\(${TEST_DATA_D
 target_link_libraries(test_common INTERFACE Catch2::Catch2WithMain)
 
 # This policy is std-only and can run without a GUI backend or core library.
-if (SLIC3R_SLA_ONLY)
-    add_subdirectory(gui_window_geometry)
-    if (SLIC3R_GUI)
-        add_subdirectory(gui_background_events)
-    endif ()
+add_subdirectory(gui_window_geometry)
+if (SLIC3R_GUI)
+    add_subdirectory(gui_background_events)
 endif ()
 
 if (APPLE)
@@ -39,14 +37,7 @@ foreach(suite IN LISTS SLIC3R_TEST_SUITES)
     endif()
     add_subdirectory(${suite})
 endforeach()
-if (NOT SLIC3R_SLA_ONLY)
-    add_subdirectory(fff_print)
-endif()
 add_subdirectory(cpp17 EXCLUDE_FROM_ALL)    # does not have to be built all the time
-
-if (SLIC3R_GUI AND NOT SLIC3R_SLA_ONLY)
-    add_subdirectory(slic3rutils)
-endif()
 
 
 # add_subdirectory(example)

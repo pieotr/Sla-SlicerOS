@@ -51,6 +51,7 @@
 #include <wx/choice.h>
 #include <wx/checkbox.h>
 #include <wx/wrapsizer.h>
+#include <wx/statline.h>
 #include <wx/scrolwin.h>
 #include <wx/gauge.h>
 #include <wx/timer.h>
@@ -258,27 +259,27 @@ struct OpDef {
 };
 
 namespace ops_detail {
-inline OpField num(const char *key, const char *label, double lo, double hi, double def, const char *tip = "")
+inline OpField num(const char *key, const wxString &label, double lo, double hi, double def, const wxString &tip = wxString())
 { OpField f; f.kind = OpField::Int; f.key = key; f.label = label; f.lo = lo; f.hi = hi; f.def = def; f.tip = tip; return f; }
-inline OpField dbl(const char *key, const char *label, double lo, double hi, double def, int digits, const char *tip = "")
+inline OpField dbl(const char *key, const wxString &label, double lo, double hi, double def, int digits, const wxString &tip = wxString())
 { OpField f; f.kind = OpField::Dbl; f.key = key; f.label = label; f.lo = lo; f.hi = hi; f.def = def; f.digits = digits; f.tip = tip; return f; }
-inline OpField flag(const char *key, const char *label, bool def, const char *tip = "")
+inline OpField flag(const char *key, const wxString &label, bool def, const wxString &tip = wxString())
 { OpField f; f.kind = OpField::Bool; f.key = key; f.label = label; f.def = def; f.tip = tip; return f; }
-inline OpField pick(const char *key, const char *label, std::vector<wxString> choices, int def = 0, const char *tip = "")
+inline OpField pick(const char *key, const wxString &label, std::vector<wxString> choices, int def = 0, const wxString &tip = wxString())
 { OpField f; f.kind = OpField::Choice; f.key = key; f.label = label; f.choices = std::move(choices); f.def = def; f.tip = tip; return f; }
-inline OpField txt(const char *key, const char *label, const std::string &def, const char *tip = "")
+inline OpField txt(const char *key, const wxString &label, const std::string &def, const wxString &tip = wxString())
 { OpField f; f.kind = OpField::Text; f.key = key; f.label = label; f.text = def; f.tip = tip; return f; }
 
 inline const std::vector<wxString> &anchor_names()
 {
-    static const std::vector<wxString> names{"Top left", "Top center", "Top right", "Middle left", "Middle center",
-        "Middle right", "Bottom left", "Bottom center", "Bottom right"};
+    static const std::vector<wxString> names{_L("Top left"), _L("Top center"), _L("Top right"), _L("Middle left"), _L("Middle center"),
+        _L("Middle right"), _L("Bottom left"), _L("Bottom center"), _L("Bottom right")};
     return names;
 }
-inline std::vector<wxString> with_none(std::vector<wxString> names) { names.push_back("None (keep centred)"); return names; }
+inline std::vector<wxString> with_none(std::vector<wxString> names) { names.push_back(_L("None (keep centred)")); return names; }
 inline const std::vector<wxString> &threshold_names()
 {
-    static const std::vector<wxString> n{"Binary", "Binary inverted", "Trunc", "To zero", "To zero inverted", "Otsu (auto)", "Triangle (auto)"};
+    static const std::vector<wxString> n{_L("Binary"), _L("Binary inverted"), _L("Trunc"), _L("To zero"), _L("To zero inverted"), _L("Otsu (auto)"), _L("Triangle (auto)")};
     return n;
 }
 
@@ -287,7 +288,7 @@ inline std::vector<wxString> reheight_labels(const std::vector<layerops::ReHeigh
 {
     std::vector<wxString> labels;
     for (const auto &p : presets)
-        labels.push_back(wxString::Format("%s x%u -> %.3f mm, %zu layers", p.is_multiply ? "Merge" : "Split",
+        labels.push_back(wxString::Format("%s x%u -> %.3f mm, %zu layers", p.is_multiply ? _L("Merge") : _L("Split"),
                                           unsigned(p.modifier), p.layer_height_mm, p.layer_count));
     return labels;
 }
@@ -302,13 +303,13 @@ inline void require_valid(const std::string &message) { if (!message.empty()) in
 // The selection's range is validated against the layer count here; the backend clamps otherwise.
 inline void require_range(const OpContext &c)
 {
-    if (c.first > c.last || c.last >= c.layer_count) invalid("The layer range is outside of the document.");
+    if (c.first > c.last || c.last >= c.layer_count) invalid(_u8L("The layer range is outside of the document."));
 }
 } // namespace ops_detail
 
 // Defined in LayerEditorCommon.cpp
 void set_dataview_accessible_name(wxWindow *view, const char *name);
-const char *issue_type_label(sla::LayerIssue::Type type);
+wxString issue_type_label(sla::LayerIssue::Type type);
 std::vector<double> issue_layer_positions_z(const sla::LayerDocument &document);
 
 // LayerOperationCatalog.cpp / LayerOperationCatalog_Batch2.cpp
@@ -318,9 +319,9 @@ std::vector<OpDef> make_layer_operation_defs(const OpContext &initial);
 namespace batch2_detail {
 using namespace ops_detail;
 
-inline OpField opt_field(const std::string &key, const std::string &label, const std::string &def = "", const char *tip = "")
+inline OpField opt_field(const std::string &key, const std::string &label, const std::string &def = "", const wxString &tip = wxString())
 { OpField f; f.kind = OpField::Opt; f.key = key; f.label = wxString::FromUTF8(label); f.text = def; f.tip = tip; return f; }
-inline OpField file_field(const char *key, const char *label, const char *tip = "")
+inline OpField file_field(const char *key, const wxString &label, const wxString &tip = wxString())
 { OpField f; f.kind = OpField::File; f.key = key; f.label = label; f.tip = tip; return f; }
 
 inline const layerops::LayerParams &first_bottom(const std::vector<layerops::LayerParams> &t)
@@ -339,8 +340,8 @@ inline void require_parameters(const OpContext &c) { if (!c.parameter_refusal.em
 // Orientation of exported pictures: flip first, rotate afterwards (UVtools order).
 inline std::vector<OpField> orientation_fields()
 {
-    return {pick("flip", "Flip", {"None", "Horizontal", "Vertical", "Both"}, 0, "Mirror the picture the way the LCD shows it."),
-            pick("rot", "Rotate", {"None", "90 clockwise", "180", "90 counter-clockwise"}, 0)};
+    return {pick("flip", _L("Flip"), {_L("None"), _L("Horizontal"), _L("Vertical"), _L("Both")}, 0, _L("Mirror the picture the way the LCD shows it.")),
+            pick("rot", _L("Rotate"), {_L("None"), _L("90 clockwise"), "180", _L("90 counter-clockwise")}, 0)};
 }
 inline layerexport::Orientation read_orientation(const OpValues &v)
 {
@@ -351,17 +352,17 @@ inline layerexport::Orientation read_orientation(const OpValues &v)
 }
 
 // The editable fields of LayerParamEdit, shared by the "normal" and "bottom" sets of Edit parameters.
-struct EditFieldSpec { const char *suffix, *label; std::optional<double> layerops::LayerParamEdit::*member; };
+struct EditFieldSpec { const char *suffix; wxString label; std::optional<double> layerops::LayerParamEdit::*member; };
 inline const std::vector<EditFieldSpec> &edit_field_specs()
 {
     using E = layerops::LayerParamEdit;
     static const std::vector<EditFieldSpec> specs{
-        {"exp", "Exposure time (s)", &E::exposure_s}, {"wbc", "Wait before cure (s)", &E::wait_before_cure_s},
-        {"wac", "Wait after cure (s)", &E::wait_after_cure_s}, {"wal", "Wait after lift (s)", &E::wait_after_lift_s},
-        {"lh", "Lift height (mm)", &E::lift_height_mm}, {"ls", "Lift speed (mm/min)", &E::lift_speed},
-        {"lh2", "Lift height 2 (mm)", &E::lift_height2_mm}, {"ls2", "Lift speed 2 (mm/min)", &E::lift_speed2},
-        {"rs", "Retract speed (mm/min)", &E::retract_speed}, {"rh2", "Retract height 2 (mm)", &E::retract_height2_mm},
-        {"rs2", "Retract speed 2 (mm/min)", &E::retract_speed2}};
+        {"exp", _L("Exposure time (s)"), &E::exposure_s}, {"wbc", _L("Wait before cure (s)"), &E::wait_before_cure_s},
+        {"wac", _L("Wait after cure (s)"), &E::wait_after_cure_s}, {"wal", _L("Wait after lift (s)"), &E::wait_after_lift_s},
+        {"lh", _L("Lift height (mm)"), &E::lift_height_mm}, {"ls", _L("Lift speed (mm/min)"), &E::lift_speed},
+        {"lh2", _L("Lift height 2 (mm)"), &E::lift_height2_mm}, {"ls2", _L("Lift speed 2 (mm/min)"), &E::lift_speed2},
+        {"rs", _L("Retract speed (mm/min)"), &E::retract_speed}, {"rh2", _L("Retract height 2 (mm)"), &E::retract_height2_mm},
+        {"rs2", _L("Retract speed 2 (mm/min)"), &E::retract_speed2}};
     return specs;
 }
 inline layerops::LayerParamEdit read_edit(const OpValues &v, const std::string &prefix, bool with_z)
@@ -384,9 +385,9 @@ inline std::vector<size_t> identity_sources(size_t count, size_t extra_from_last
 
 inline layerops::Mask load_grey_image(const std::string &path)
 {
-    if (path.empty()) invalid("Choose an image file first.");
+    if (path.empty()) invalid(_u8L("Choose an image file first."));
     wxImage image;
-    if (!image.LoadFile(wxString::FromUTF8(path))) invalid("The image could not be loaded: " + path);
+    if (!image.LoadFile(wxString::FromUTF8(path))) invalid(_u8L("The image could not be loaded: ") + path);
     layerops::Mask mask(size_t(image.GetWidth()), size_t(image.GetHeight()));
     const unsigned char *rgb = image.GetData();
     for (size_t i = 0; i < mask.px.size(); ++i) // Rec.601 luma, like an 8-bit grey conversion
@@ -404,8 +405,9 @@ inline std::string format_duration(double seconds)
 // LayerCalculatorDialog.cpp: modal UVtools-style calculator.
 void show_layer_calculator(wxWindow *parent, size_t res_x, size_t res_y, std::optional<std::pair<double, double>> display_mm,
                            std::vector<layerops::LayerParams> table, double layer_height_mm);
-// LayerOperationsDialog.cpp: modeless operations dialog (a LayerOperationsDialog).
-wxDialog *create_layer_operations_dialog(wxWindow *parent, LayerOpsHost host);
+// LayerOperationsDialog.cpp: the operations panel docked inside the editor layout (a LayerOperationsPanel). `on_close`
+// is called when the user presses its Close button; the editor then removes the panel.
+wxPanel *create_layer_operations_panel(wxWindow *parent, LayerOpsHost host, std::function<void()> on_close);
 } // namespace layer_editor_detail
 } // namespace Slic3r::GUI
 namespace Slic3r::GUI { using namespace layer_editor_detail; }

@@ -12,7 +12,7 @@
 #include "libslic3r/Geometry/Voronoi.hpp"
 #include "libslic3r/Geometry/VoronoiUtils.hpp"
 #include "libslic3r/Arachne/utils/PolygonsSegmentIndex.hpp"
-#include "libslic3r/MultiMaterialSegmentation.hpp"
+#include "libslic3r/Geometry/ColoredLine.hpp"
 #include "VoronoiUtilsCgal.hpp"
 #include "libslic3r/Line.hpp"
 #include "libslic3r/Point.hpp"

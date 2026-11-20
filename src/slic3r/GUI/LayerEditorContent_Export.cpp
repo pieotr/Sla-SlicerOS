@@ -26,14 +26,14 @@ void LayerEditorContent::update_format_note() {
     const auto *legacy = machine_table ? nullptr : anycubic_legacy_geometry(id);
     wxString note;
     if (!version_error.empty()) note = version_error;
-    else if (images_only) note = "This ZIP format saves masks and geometry. Set exposure and motion on the receiving printer.";
+    else if (images_only) note = _L("This ZIP format saves masks and geometry. Set exposure and motion on the receiving printer.");
     else if(std::strcmp(id,"klipper")==0 || std::strcmp(id,"klipper_rgb")==0)
         note="Klipper ZIP requires matching MSLA firmware macros for image display, timed UV exposure and layer changes. Configure two-stage lift/retract, PWM and waits in Material Settings > LCD exposure and motion. A positive first lift and retract stage and PWM 1–255 are required by this encoder. RGB uses full-width PNG24 masks.";
     else if(std::strcmp(id,"cwsrgb")==0) note = "RGB.CWS packs three horizontal mask pixels into one PNG pixel. The LCD raster width after orientation must be divisible by three. Full LCD dimensions and all grayscale values are preserved.";
     else if(std::strcmp(id,"cbddlp")==0 || std::strcmp(id,"photon")==0)
         note=wxString::Format("CBDDLP/Photon v2 uses %d AA exposure planes from the printer preset. Counts other than powers of two decode maximum white below 255 and may change pixels on re-encoding. Configure AA in Printer Settings > General > Output.", m_print->printer_config().sla_cbddlp_aa.value);
     else if(std::strcmp(id,"cbddlp_v1")==0 || std::strcmp(id,"photon_v1")==0)
-        note="CBDDLP/Photon v1 uses one binary plane: only input value 255 exposes. It cannot store custom lift/retract settings; the decoder assumes normal lift 0.05 mm, bottom lift 6 mm and speeds 100 mm/min. Verify firmware motion separately.";
+        note=_L("CBDDLP/Photon v1 uses one binary plane: only input value 255 exposes. It cannot store custom lift/retract settings; the decoder assumes normal lift 0.05 mm, bottom lift 6 mm and speeds 100 mm/min. Verify firmware motion separately.");
     else if((std::strcmp(id,"cxdlp")==0 || std::strcmp(id,"cxdlpv2")==0)) note = "CXDLP v2/v3 requires a CL/CT printer model, fixed layer height, integer speeds in mm/s, normal exposure in 0.1 s, integer bottom exposure and a shared wait of at least 1 s. Machine Z is not stored.";
     else if(std::strcmp(id,"cxdlpv4")==0) note = "CXDLPv4 stores 7-bit grayscale: values 0 and 1 are off; other values are quantized. Volume and contour metadata describe the encoded masks.";
     else if(std::strcmp(id,"cxdlpv1")==0) note = "CXDLPv1 requires fixed layer height, integer exposure/motion values and a shared wait of at least 1 second. This format does not store machine Z.";
@@ -46,7 +46,7 @@ void LayerEditorContent::update_format_note() {
     else if (!versions.empty() && version < 516)
         note = "PWC 1/515 saves masks, pixel pitch, exposure and single-stage motion, but has no machine table or printer identity. UVtools reports screen dimensions and machine Z as zero. Select PWC 516 or newer in Printer Settings > General > Output to preserve physical dimensions.";
     m_format_note->SetLabel(note);
-    m_format_note->Wrap(650); m_format_note->Show(!note.empty()); Layout();
+    m_format_note->Wrap(side_width()); m_format_note->Show(!note.empty()); Layout();
 }
 
 void LayerEditorContent::run_export_action() {
@@ -66,18 +66,18 @@ void LayerEditorContent::run_export_action() {
     const char *project = m_print && m_print->is_raster_job() ? "generated" : "edited";
     const auto name = filename(project);
     const auto filter = png ? wxString::FromUTF8(image_format->description) + " (*." + image_format->id + ")|*." + image_format->id : wxString::FromUTF8(entry->desc) + " (*." + entry->ext + ")|*." + entry->ext;
-    wxFileDialog save(this, "Save edited layers", "", wxString::FromUTF8(name), filter,
+    wxFileDialog save(this, _L("Save edited layers"), "", wxString::FromUTF8(name), filter,
                       wxFD_SAVE | wxFD_OVERWRITE_PROMPT);
     if (save.ShowModal() == wxID_OK) {
         if (image_format && image_format->lossy && !image_format->binary &&
-            wxMessageBox("Saving JPEG may change exposure pixels. Continue?", "Save edited image",
+            wxMessageBox(_L("Saving JPEG may change exposure pixels. Continue?"), _L("Save edited image"),
                 wxYES_NO | wxNO_DEFAULT | wxICON_QUESTION, this) != wxYES) return;
         const auto path = filename(save.GetPath().ToUTF8().data());
         // The native dialog checks the typed path. A corrected suffix
         // can target a different existing file; confirm that one too.
         if (wxString::FromUTF8(path) != save.GetPath() && boost::filesystem::exists(path) &&
-            wxMessageBox("Replace the existing file?\n" + wxString::FromUTF8(path),
-                "Save edited layers", wxYES_NO | wxNO_DEFAULT | wxICON_QUESTION, this) != wxYES)
+            wxMessageBox(_L("Replace the existing file?\n") + wxString::FromUTF8(path),
+                _L("Save edited layers"), wxYES_NO | wxNO_DEFAULT | wxICON_QUESTION, this) != wxYES)
             return;
         TaskLock working(m_working);
         if (m_print) export_through_print(entry, path, project);
@@ -89,7 +89,7 @@ void LayerEditorContent::export_through_print(const ArchiveEntry *entry, const s
     bool times_projected=false;
     if((std::string(entry->id)=="SL1" || std::string(entry->id)=="SL1S") && m_document.fresh_job()) {
         std::optional<sla::SL1ExposureTransitionPreview> transition_plan;
-        const bool analyzed = run_background_layers(this, "Check exposure transition",
+        const bool analyzed = run_background_layers(this, _L("Check exposure transition"),
             [&](const sla::LayerProgress &progress) {
                 try {
                     transition_plan = sla::sl1_exposure_transition_preview(m_document, progress);
@@ -99,18 +99,18 @@ void LayerEditorContent::export_through_print(const ArchiveEntry *entry, const s
         if (!analyzed) return;
         times_projected=transition_plan->projected_transition_exposures!=0;
         if(times_projected && wxMessageBox(wxString::Format(
-            "SL1 uses a global exposure transition. Exporting will project %llu transition exposures; the largest change is %.6g seconds.\n\nContinue? The original project parameters will be kept.",
+            _L("SL1 uses a global exposure transition. Exporting will project %llu transition exposures; the largest change is %.6g seconds.\n\nContinue? The original project parameters will be kept."),
             static_cast<unsigned long long>(transition_plan->projected_transition_exposures),transition_plan->maximum_exposure_change),
-            "Confirm exposure transition",wxYES_NO|wxNO_DEFAULT|wxICON_QUESTION,this)!=wxYES)return;
+            _L("Confirm exposure transition"),wxYES_NO|wxNO_DEFAULT|wxICON_QUESTION,this)!=wxYES)return;
     }
     if(std::string(entry->id)=="cws" && m_document.fresh_job()) {
         std::optional<sla::CWSFreshExportPlan> time_plan;
-        run_background_write(this,"Check export times",[&] {time_plan=sla::cws_fresh_export_plan(m_document);});
+        run_background_write(this,_L("Check export times"),[&] {time_plan=sla::cws_fresh_export_plan(m_document);});
         times_projected=time_plan->projected_time_fields!=0;
         if(time_plan->projected_time_fields && wxMessageBox(wxString::Format(
-            "CWS uses whole milliseconds. Exporting will round %llu time values; the largest change is %.6g seconds.\n\nContinue? The original project parameters will be kept.",
+            _L("CWS uses whole milliseconds. Exporting will round %llu time values; the largest change is %.6g seconds.\n\nContinue? The original project parameters will be kept."),
             static_cast<unsigned long long>(time_plan->projected_time_fields),time_plan->maximum_time_change),
-            "Confirm export times",wxYES_NO|wxNO_DEFAULT|wxICON_QUESTION,this)!=wxYES)return;
+            _L("Confirm export times"),wxYES_NO|wxNO_DEFAULT|wxICON_QUESTION,this)!=wxYES)return;
     }
     std::optional<sla::LayerDocument> projected_copy;
     const auto &anycubic_versions=anycubic_available_versions(entry->id);
@@ -119,17 +119,17 @@ void LayerEditorContent::export_through_print(const ArchiveEntry *entry, const s
     if(m_document.fresh_job() && (cxdlpv4 || std::any_of(anycubic_versions.begin(),anycubic_versions.end(),
         [](uint16_t version){return version>=516 && version<=518;}))) {
         sla::LayerPaletteLoss loss;
-        const bool analyzed=run_background_layers(this,"Check export palette",[&](const sla::LayerProgress &progress) {
+        const bool analyzed=run_background_layers(this,_L("Check export palette"),[&](const sla::LayerProgress &progress) {
             try {loss=sla::layer_palette_loss(m_document,precision,progress);return true;}
             catch(const sla::LayerOperationCancelled &){return false;}
         });
         if(!analyzed)return;
         if(loss.changed_pixels) {
             const auto family=cxdlpv4?wxString("CXDLPv4"):std::string(entry->id)=="pwc"?wxString("PWC"):wxString("Anycubic");
-            const auto message=family+wxString::Format(" uses %u grayscale levels. Exporting will change %llu pixels; the largest change is %u of 255.\n\nExport a converted copy? Your original layers and Undo history will be kept.",
+            const auto message=family+wxString::Format(_L(" uses %u grayscale levels. Exporting will change %llu pixels; the largest change is %u of 255.\n\nExport a converted copy? Your original layers and Undo history will be kept."),
                 cxdlpv4?128u:16u,static_cast<unsigned long long>(loss.changed_pixels),loss.maximum_change);
-            if(wxMessageBox(message,"Convert export palette",wxYES_NO|wxNO_DEFAULT|wxICON_QUESTION,this)!=wxYES)return;
-            const bool converted=run_background_layers(this,"Convert export palette",[&](const sla::LayerProgress &progress) {
+            if(wxMessageBox(message,_L("Convert export palette"),wxYES_NO|wxNO_DEFAULT|wxICON_QUESTION,this)!=wxYES)return;
+            const bool converted=run_background_layers(this,_L("Convert export palette"),[&](const sla::LayerProgress &progress) {
                 try {projected_copy=sla::project_layer_palette_copy(m_document,precision,progress);return true;}
                 catch(const sla::LayerOperationCancelled &){return false;}
             });
@@ -141,7 +141,7 @@ void LayerEditorContent::export_through_print(const ArchiveEntry *entry, const s
         auto representation=sla::plan_export_representation(entry->id,m_print->full_print_config(),&m_document);
         if(!representation.blockers.empty()) throw ExportError(representation.strict_message("CXDLP"));
         if(!representation.adjustments.empty()) {
-            if(!confirm_export_adjustments(this,"CXDLP",representation.adjustments)) return;
+            if(!confirm_export_adjustments(this,_L("CXDLP"),representation.adjustments)) return;
             approval=std::move(representation.adjustments);
         }
     }
@@ -150,7 +150,7 @@ void LayerEditorContent::export_through_print(const ArchiveEntry *entry, const s
     // Every attempt has a fresh cancellation flag, while the
     // context's commit mutex protects the existing destination.
     BackgroundRequestOwner<sla::ExportGenerationGuard> request_owner;
-    const bool saved=run_background_layers(this, "Export layers", [&](const sla::LayerProgress &progress) {
+    const bool saved=run_background_layers(this, _L("Export layers"), [&](const sla::LayerProgress &progress) {
         try {
             const auto request=std::make_shared<const sla::ExportGenerationGuard>(
                 m_print->export_generation_guard().with_cancellation());
@@ -182,7 +182,7 @@ void LayerEditorContent::export_through_print(const ArchiveEntry *entry, const s
 
 void LayerEditorContent::export_native_archive(const std::string &path) {
     BackgroundRequestOwner<sla::NativeArchiveExportRequest> request_owner;
-    const bool saved=run_background_layers(this,"Save layer archive",[&](const sla::LayerProgress &progress) {
+    const bool saved=run_background_layers(this,_L("Save layer archive"),[&](const sla::LayerProgress &progress) {
         try {
             const auto request=std::make_shared<const sla::NativeArchiveExportRequest>(m_document,path,m_export_profile,progress);
             if (!request_owner.bind(request)) return false;
@@ -204,14 +204,14 @@ void LayerEditorContent::convert_archive() {
     if(!m_project_settings)
         throw RuntimeError("Capture selected SLA settings before converting to another printer format");
     const auto configuration=sla::restore_project_settings(*m_project_settings);
-    wxDialog conversion(this,wxID_ANY,"Convert layer archive",wxDefaultPosition,wxSize(620,260),
+    wxDialog conversion(this,wxID_ANY,_L("Convert layer archive"),wxDefaultPosition,wxSize(620,260),
         wxDEFAULT_DIALOG_STYLE|wxRESIZE_BORDER);
     auto *layout=new wxBoxSizer(wxVERTICAL);
     auto *description=new wxStaticText(&conversion,wxID_ANY,
-        "Destination printer: "+wxString::FromUTF8(m_project_settings->printer.name)+
-        "\nPer-layer parameters must be representable by the destination printer format.");
+        _L("Destination printer: ")+wxString::FromUTF8(m_project_settings->printer.name)+
+        _L("\nPer-layer parameters must be representable by the destination printer format."));
     description->Wrap(570);layout->Add(description,0,wxEXPAND|wxALL,10);
-    auto *choice=create_readonly_combo(&conversion,"Destination format");
+    auto *choice=create_readonly_combo(&conversion,_L("Destination format"));
     std::vector<const ArchiveEntry *> formats;
     const auto source_fields=m_document.parameter_capabilities();
     for(const auto &entry:registered_sla_archives()) {
@@ -230,31 +230,31 @@ void LayerEditorContent::convert_archive() {
     choice->SetMinSize(wxSize(420,-1));layout->Add(choice,0,wxEXPAND|wxALL,10);
     auto *actions=conversion.CreateButtonSizer(wxOK|wxCANCEL);
     auto *confirm=dynamic_cast<wxButton *>(conversion.FindWindow(wxID_OK));
-    if(confirm)confirm->SetLabel("Convert");
+    if(confirm)confirm->SetLabel(_L("Convert"));
     layout->Add(actions,0,wxEXPAND|wxALL,10);conversion.SetSizer(layout);
     if(conversion.ShowModal()!=wxID_OK)return;
     const auto *entry=formats.at(size_t(choice->GetSelection()));
     const auto default_name=sla_archive_filename("converted",entry->ext);
-    wxFileDialog save(this,"Save converted layers","",wxString::FromUTF8(default_name),
+    wxFileDialog save(this,_L("Save converted layers"),"",wxString::FromUTF8(default_name),
         wxString::FromUTF8(entry->desc)+" (*."+wxString::FromUTF8(entry->ext)+")|*."+wxString::FromUTF8(entry->ext),
         wxFD_SAVE|wxFD_OVERWRITE_PROMPT);
     if(save.ShowModal()!=wxID_OK)return;
     const auto typed=into_u8(save.GetPath());const auto path=sla_archive_filename(typed,entry->ext);
     if(path!=typed && boost::filesystem::exists(path) &&
-        wxMessageBox("Replace the existing file?\n"+wxString::FromUTF8(path),"Convert archive",
+        wxMessageBox(_L("Replace the existing file?\n")+wxString::FromUTF8(path),_L("Convert archive"),
             wxYES_NO|wxNO_DEFAULT|wxICON_QUESTION,this)!=wxYES)return;
     sla::RepresentationApproval approval;
     if(sla::has_representation_rules(entry->id)) {
         auto representation=sla::plan_export_representation(entry->id,configuration,&m_document);
         if(!representation.blockers.empty()) throw ExportError(representation.strict_message("CXDLP"));
         if(!representation.adjustments.empty()) {
-            if(!confirm_export_adjustments(this,"CXDLP",representation.adjustments)) return;
+            if(!confirm_export_adjustments(this,_L("CXDLP"),representation.adjustments)) return;
             approval=std::move(representation.adjustments);
         }
     }
     TaskLock working(m_working);
     BackgroundRequestOwner<sla::NativeArchiveConversionRequest> request_owner;
-    const bool converted=run_background_layers(this,"Convert layers",[&](const sla::LayerProgress &progress) {
+    const bool converted=run_background_layers(this,_L("Convert layers"),[&](const sla::LayerProgress &progress) {
         try {
             const auto request=std::make_shared<const sla::NativeArchiveConversionRequest>(m_document,configuration,entry->id,path,progress,approval);
             if (!request_owner.bind(request)) return false;
@@ -280,9 +280,9 @@ void LayerEditorContent::export_mask_images(bool range) {
     std::vector<ExportFormatOption> image_options;
     for (const auto &format : sla::layer_image_formats())
         image_options.push_back({ wxString::FromUTF8(format.description) + " (*." + format.id + ")", format.id, format.id });
-    int image_index = choose_export_format(this, "Choose the mask image format", image_options, 0);
+    int image_index = choose_export_format(this, _L("Choose the mask image format"), image_options, 0);
     if (image_index < 0) return;
-    wxFileDialog save(this, first == last ? "Export selected mask" : "Export range to a new mask folder",
+    wxFileDialog save(this, first == last ? _L("Export selected mask") : _L("Export range to a new mask folder"),
         "", wxString("mask.") + image_options[size_t(image_index)].ext, image_options[size_t(image_index)].label + "|*." + image_options[size_t(image_index)].ext,
         wxFD_SAVE | wxFD_OVERWRITE_PROMPT);
     if (save.ShowModal() != wxID_OK) return;
@@ -291,21 +291,21 @@ void LayerEditorContent::export_mask_images(bool range) {
     auto output = boost::filesystem::path(into_u8(save.GetPath()));
     output.replace_extension(std::string(".")+format.id);
     if (format.lossy && wxMessageBox(format.binary ?
-        "PBM keeps zero black and converts every nonzero value to white, like UVtools. Continue?" :
-        "JPEG is lossy and may change exposure pixels. Continue?",
-        "Export masks", wxYES_NO | wxNO_DEFAULT | wxICON_QUESTION, this) != wxYES) return;
+        _L("PBM keeps zero black and converts every nonzero value to white, like UVtools. Continue?") :
+        _L("JPEG is lossy and may change exposure pixels. Continue?"),
+        _L("Export masks"), wxYES_NO | wxNO_DEFAULT | wxICON_QUESTION, this) != wxYES) return;
     if (first != last) {
         output = output.parent_path() / (output.stem().string()+"_layers");
         if (boost::filesystem::exists(output)) throw RuntimeError("Choose a new folder name; the mask export folder already exists");
-        if (wxMessageBox(wxString::Format("Export layers %zu–%zu as separate images into a new folder?\n", first+1,last+1) +
-            wxString::FromUTF8(output.string()), "Export mask range",
+        if (wxMessageBox(wxString::Format(_L("Export layers %zu–%zu as separate images into a new folder?\n"), first+1,last+1) +
+            wxString::FromUTF8(output.string()), _L("Export mask range"),
             wxYES_NO | wxICON_QUESTION, this) != wxYES) return;
     } else if (wxString::FromUTF8(output.string()) != save.GetPath() && boost::filesystem::exists(output) &&
-        wxMessageBox("Replace the existing mask?\n"+wxString::FromUTF8(output.string()),
-            "Export masks", wxYES_NO | wxNO_DEFAULT | wxICON_QUESTION, this) != wxYES) return;
+        wxMessageBox(_L("Replace the existing mask?\n")+wxString::FromUTF8(output.string()),
+            _L("Export masks"), wxYES_NO | wxNO_DEFAULT | wxICON_QUESTION, this) != wxYES) return;
     const auto plane=selected_plane();
     TaskLock working(m_working);
-    run_background_layers(this, "Export masks", [&](const auto &progress) {
+    run_background_layers(this, _L("Export masks"), [&](const auto &progress) {
         return m_document.export_images(output.string(), format.id, first,last,progress,plane);
     });
 }

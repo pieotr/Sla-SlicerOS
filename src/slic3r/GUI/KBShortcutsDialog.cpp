@@ -19,7 +19,7 @@ namespace Slic3r {
 namespace GUI {
 
 KBShortcutsDialog::KBShortcutsDialog()
-    : DPIDialog(static_cast<wxWindow*>(wxGetApp().mainframe), wxID_ANY, wxString(wxGetApp().is_editor() ? SLIC3R_APP_NAME : GCODEVIEWER_APP_NAME) + " - " + _L("Keyboard Shortcuts"),
+    : DPIDialog(static_cast<wxWindow*>(wxGetApp().mainframe), wxID_ANY, wxString(SLIC3R_APP_NAME) + " - " + _L("Keyboard Shortcuts"),
     wxDefaultPosition, wxDefaultSize, wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER)
 {
     // fonts
@@ -85,7 +85,7 @@ void KBShortcutsDialog::fill_shortcuts()
     const std::string& ctrl = GUI::shortkey_ctrl_prefix();
     const std::string& alt = GUI::shortkey_alt_prefix();
 
-    if (wxGetApp().is_editor()) {
+    {
         Shortcuts commands_shortcuts = {
             // File
             { ctrl + "N", L("New project, clear plater") },
@@ -99,9 +99,6 @@ void KBShortcutsDialog::fill_shortcuts()
             { ctrl + "Shift+" + "P", L("Import Config from project (3mf)") },
             // File>Export
             { ctrl + "G", L("Export sliced layers") },
-#ifndef SLIC3R_OFFLINE_ONLY
-            { ctrl + "Shift+" + "G", L("Send to print") },
-#endif
             { ctrl + "E", L("Export config") },
             { ctrl + "U", L("Export sliced result to removable drive") },
             { ctrl + "T", L("Eject removable drive") },
@@ -127,9 +124,6 @@ void KBShortcutsDialog::fill_shortcuts()
             { ctrl + "4", L("Select Printer Settings Tab") },
             { ctrl + "5", L("Switch to 3D") },
             { ctrl + "6", L("Switch to Preview") },
-#ifndef SLIC3R_OFFLINE_ONLY
-            { ctrl + "J", L("Print host upload queue") },
-#endif
             { ctrl + alt + "L", L("Edit sliced layers") },
             { ctrl + "Shift+" + "L", L("Open layer archive") },
             { ctrl + "Shift+" + "I", L("Open new instance") },

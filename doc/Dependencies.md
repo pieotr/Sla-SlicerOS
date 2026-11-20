@@ -2,9 +2,9 @@
 
 Current override (2026-10-03): CURL and OpenSSL are excluded from the dependency
 build and are not directly linked by the application. Network transports and
-printer upload backends are excluded. AVRDUDE is excluded from the SLA target.
+printer upload backends are excluded. AVRDUDE, LibBGCode (with heatshrink) and OpenCSG were removed in W11.
 Hidapi remains for the 3D mouse/controller; it is not solely an FFF dependency.
-WebView platform libraries and the remaining FFF core still require separation.
+The FFF core was removed (W3-W9); WebView platform libraries are filtered out of the link line.
 The original upstream inventory below is historical and does not determine the
 current target graph. See CMakeLists.txt, src/slic3r/CMakeLists.txt and deps/CMakeLists.txt.
 
@@ -27,7 +27,6 @@ current target graph. See CMakeLists.txt, src/slic3r/CMakeLists.txt and deps/CMa
 
 ## External libraries in source tree
 * ad-mesh: Lots of customization, have to be bundled in the source tree.
-* avrdude: Like ad-mesh, many customization, need to be in the source tree.
 * clipper: An important library we have to have full control over it. We also have some slicer specific modifications.
 * glu-libtess: This is an extract of the mesa/glu library not officially available as a package.
 * imgui: no packages for debian, author suggests using in the source tree

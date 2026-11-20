@@ -15,7 +15,7 @@
 
 #include "libslic3r/PrintConfig.hpp"
 #include "libslic3r/enum_bitmask.hpp"
-#include "libslic3r/GCode/Thumbnails.hpp"
+#include "libslic3r/Thumbnails/Thumbnails.hpp"
 
 #include <regex>
 #include <wx/numformatter.h>
@@ -234,11 +234,8 @@ wxString Field::get_tooltip_text(const wxString& default_string)
         opt_id += "]";
     }
 
-    bool newline_after_name = boost::iends_with(opt_id, "_gcode") && opt_id != "binary_gcode";
-
 	return from_u8(m_opt.tooltip) + "\n" + _L("default value") + "\t: " +
-        (newline_after_name ? "\n" : "") + default_string +
-        (newline_after_name ? "" : "\n") +
+        default_string + "\n" +
         _L("parameter name") + "\t: " + opt_id;
 }
 
@@ -315,31 +312,12 @@ void Field::get_value_by_opt_type(wxString& str, const bool check_value/* = true
                     m_value.clear();
                     break;
                 }
-                if (m_opt_id == "extrusion_multiplier") {
-                    if (m_value.empty() || boost::any_cast<double>(m_value) != val) {
-                        wxString msg_text = format_wxstr(_L("Input value is out of range\n"
-                            "Are you sure that %s is a correct value and that you want to continue?"), str);
-//                        wxMessageDialog dialog(m_parent, msg_text, _L("Parameter validation") + ": " + m_opt_id, wxICON_WARNING | wxYES | wxNO);
-                        WarningDialog dialog(m_parent, msg_text, _L("Parameter validation") + ": " + m_opt_id, wxYES | wxNO);
-                        if (dialog.ShowModal() == wxID_NO) {
-                            if (m_value.empty()) {
-                                if (m_opt.min > val) val = m_opt.min;
-                                if (val > m_opt.max) val = m_opt.max;
-                            }
-                            else
-                                val = boost::any_cast<double>(m_value);
-                            set_value(double_to_string(val), true);
-                        }
-                    }
+                if (val < (m_opt.min - EPSILON) || val > (m_opt.max + EPSILON)) {
+                    show_error(m_parent, _L("Input value is out of range"));
                 }
-                else {
-                    if (val < (m_opt.min - EPSILON) || val > (m_opt.max + EPSILON)) {
-                        show_error(m_parent, _L("Input value is out of range"));
-                    }
 
-                    val = std::clamp(static_cast<float>(val), m_opt.min, m_opt.max);
-                    set_value(double_to_string(val), true);
-                }
+                val = std::clamp(static_cast<float>(val), m_opt.min, m_opt.max);
+                set_value(double_to_string(val), true);
             }
         }
         m_value = val;
@@ -348,16 +326,6 @@ void Field::get_value_by_opt_type(wxString& str, const bool check_value/* = true
 	case coStrings:
     case coFloatsOrPercents:
     case coFloatOrPercent: {
-        if (m_opt.type == coFloatOrPercent && m_opt.opt_key == "first_layer_height" && !str.IsEmpty() && str.Last() == '%') {
-            // Workaroud to avoid of using of the % for first layer height
-            // see https://github.com/prusa3d/PrusaSlicer/issues/7418
-            wxString label = m_opt.full_label.empty() ? _(m_opt.label) : _(m_opt.full_label);
-            show_error(m_parent, format_wxstr(_L("%s doesn't support percentage"), label));
-            const wxString stVal = double_to_string(0.01, 2);
-            set_value(stVal, true);
-            m_value = into_u8(stVal);;
-            break;
-        }
         if ((m_opt.type == coFloatOrPercent || m_opt.type == coFloatsOrPercents) && !str.IsEmpty() &&  str.Last() != '%')
         {
             double val = 0.;
@@ -393,8 +361,6 @@ void Field::get_value_by_opt_type(wxString& str, const bool check_value/* = true
                     break;
                 }
 
-                bool infill_anchors = m_opt.opt_key == "infill_anchor" || m_opt.opt_key == "infill_anchor_max";
-
                 const std::string sidetext = m_opt.sidetext.rfind("mm/s") != std::string::npos ? "mm/s" : "mm";
                 const wxString stVal = double_to_string(val, 2);
                 // TRN %1% = Value, %2% = units
@@ -402,7 +368,7 @@ void Field::get_value_by_opt_type(wxString& str, const bool check_value/* = true
                     "Select YES if you want to change this value to %1%%%, \n"
                     "or NO if you are sure that %1% %2% is a correct value."), stVal, sidetext);
                 WarningDialog dialog(m_parent, msg_text, _L("Parameter validation") + ": " + m_opt_id, wxYES | wxNO);
-                if ((!infill_anchors || val > 100) && dialog.ShowModal() == wxID_YES) {
+                if (dialog.ShowModal() == wxID_YES) {
                     set_value(from_u8((boost::format("%s%%") % stVal).str()), false/*true*/);
                     str += "%%";
                 }
@@ -558,7 +524,7 @@ void TextCtrl::BUILD() {
 	{
 		//! to allow the default handling
 		event.Skip();
-		//! eliminating the g-code pop up text description
+		//! eliminating the pop up text description
 		bool flag = false;
 #ifdef __WXGTK__
 		// I have no idea why, but on GTK flag works in other way
@@ -900,7 +866,7 @@ void SpinCtrl::BUILD() {
 		default_value = m_opt.get_default_value<ConfigOptionInts>()->get_at(m_opt_idx);
         if (m_opt.nullable) {
             if (default_value == ConfigOptionIntsNullable::nil_value())
-                m_last_meaningful_value = m_opt.opt_key == "idle_temperature" ? 30 : static_cast<int>(m_opt.max);
+                m_last_meaningful_value = static_cast<int>(m_opt.max);
             else
                 m_last_meaningful_value = default_value;
         }
@@ -1288,14 +1254,6 @@ void Choice::set_value(const boost::any& value, bool change_event)
             // otherwise selection doesn't be changed
             field->SetSelection(-1);
             field->SetValue(text_value);
-        }
-
-        if (!m_value.empty() && m_opt.opt_key == "fill_density") {
-            // If m_value was changed before, then update m_value here too to avoid case 
-            // when control's value is already changed from the ConfigManipulation::update_print_fff_config(),
-            // but m_value doesn't respect it.
-            if (double val; text_value.ToDouble(&val))
-                m_value = val;
         }
 
 		break;

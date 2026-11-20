@@ -623,11 +623,7 @@ TEMPLATE_TEST_CASE("Bed needs to be completely filled with 1cm cubes",
     using namespace Slic3r;
     using ArrItem = TestType;
 
-    std::string basepath = TEST_DATA_DIR PATH_SEPARATOR;
-
-    DynamicPrintConfig cfg;
-    cfg.load_from_ini(basepath + "default_fff.ini",
-                      ForwardCompatibilitySubstitutionRule::Enable);
+    DynamicPrintConfig cfg = DynamicPrintConfig::full_print_config();
     cfg.set_key_value("bed_shape",
                       new ConfigOptionPoints(
                           {{0., 0.}, {100., 0.}, {100., 100.}, {0, 100.}}));
@@ -808,9 +804,9 @@ TEST_CASE("Testing arrangement involving virtual beds", "[arrange2][integration]
     using namespace Slic3r;
 
     Model model = get_example_model_with_arranged_primitives();
-    DynamicPrintConfig cfg;
-    cfg.load_from_ini(std::string(TEST_DATA_DIR PATH_SEPARATOR) + "default_fff.ini",
-                      ForwardCompatibilitySubstitutionRule::Enable);
+    DynamicPrintConfig cfg = DynamicPrintConfig::full_print_config();
+    cfg.set_key_value("bed_shape",
+                      new ConfigOptionPoints({{0, 0}, {250, 0}, {250, 210}, {0, 210}}));
     auto bed = arr2::to_arrange_bed(get_bed_shape(cfg), Point::new_scale(10, 10));
     auto bedbb = bounding_box(bed);
     auto bedsz = unscaled(bedbb.size());
@@ -887,42 +883,6 @@ bool settings_eq(const Slic3r::arr2::ArrangeSettingsView &v1,
         ;
 }
 
-namespace Slic3r { namespace arr2 {
-
-class MocWT: public ArrangeableWipeTowerBase {
-public:
-    using ArrangeableWipeTowerBase::ArrangeableWipeTowerBase;
-};
-
-class MocWTH : public WipeTowerHandler {
-    std::function<bool(int)> m_sel_pred;
-    ObjectID m_id;
-
-public:
-    MocWTH(const ObjectID &id) : m_id{id} {}
-
-    void visit(std::function<void(Arrangeable &)> fn) override
-    {
-        MocWT wt{m_id, Polygon{}, 0, m_sel_pred};
-        fn(wt);
-    }
-    void visit(std::function<void(const Arrangeable &)> fn) const override
-    {
-        MocWT wt{m_id, Polygon{}, 0, m_sel_pred};
-        fn(wt);
-    }
-    void set_selection_predicate(std::function<bool(int)> pred) override
-    {
-        m_sel_pred = std::move(pred);
-    }
-
-    ObjectID get_id() const override {
-        return m_id;
-    }
-};
-
-}} // namespace Slic3r::arr2
-
 TEST_CASE("Test SceneBuilder", "[arrange2][integration]")
 {
     using namespace Slic3r;
@@ -982,11 +942,9 @@ TEST_CASE("Test SceneBuilder", "[arrange2][integration]")
 
     GIVEN("An instance of DynamicPrintConfig with rectangular bed")
     {
-        std::string basepath = TEST_DATA_DIR PATH_SEPARATOR;
-
-        DynamicPrintConfig cfg;
-        cfg.load_from_ini(basepath + "default_fff.ini",
-                          ForwardCompatibilitySubstitutionRule::Enable);
+        DynamicPrintConfig cfg = DynamicPrintConfig::full_print_config();
+        cfg.set_key_value("bed_shape",
+                          new ConfigOptionPoints({{0, 0}, {250, 0}, {250, 210}, {0, 210}}));
 
         WHEN("a scene is built with a bed initialized from this DynamicPrintConfig")
         {
@@ -1008,38 +966,6 @@ TEST_CASE("Test SceneBuilder", "[arrange2][integration]")
                         REQUIRE(bedbb.size().y() == bed.height());
                     }
                 });
-            }
-        }
-    }
-
-    GIVEN("A wipe tower handler that uses the builder's selection mask")
-    {
-        arr2::SceneBuilder bld;
-        Model mdl;
-        bld.set_model(mdl);
-
-        std::vector<AnyPtr<arr2::WipeTowerHandler>> handlers;
-        handlers.push_back(std::make_unique<arr2::MocWTH>(wipe_tower_instance_id(0)));
-        bld.set_wipe_tower_handlers(std::move(handlers));
-
-        WHEN("the selection mask is initialized as a fallback default in the created scene")
-        {
-            arr2::Scene scene{std::move(bld)};
-
-            THEN("the wipe tower should use the fallback selmask (created after set_wipe_tower)")
-            {
-                // Should be the wipe tower
-                REQUIRE(scene.model().arrangeable_count() == 1);
-
-                bool wt_selected = false;
-                scene.model()
-                    .visit_arrangeable(wipe_tower_instance_id(0),
-                                       [&wt_selected](
-                                           const arr2::Arrangeable &arrbl) {
-                                           wt_selected = arrbl.is_selected();
-                                       });
-
-                REQUIRE(wt_selected);
             }
         }
     }

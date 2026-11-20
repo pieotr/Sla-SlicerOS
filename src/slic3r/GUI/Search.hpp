@@ -213,7 +213,7 @@ protected:
 class SearchListModel : public wxDataViewVirtualListModel
 {
     std::vector<std::pair<wxString, int>>   m_values;
-    ScalableBitmap                          m_icon[6];
+    ScalableBitmap                          m_icon[4];
 
 public:
     enum {

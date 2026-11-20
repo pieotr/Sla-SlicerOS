@@ -66,7 +66,7 @@ void BedShape::append_option_line(ConfigOptionsGroupShp optgroup, Parameter para
         def.min = -600;
         def.max = 600;
         def.label = get_option_label(param);
-        def.tooltip = L("Distance of the 0,0 G-code coordinate from the front left corner of the rectangle.");
+        def.tooltip = L("Distance of the 0,0 coordinate from the front left corner of the rectangle.");
         key = "rect_origin";
         break;
     case Parameter::Diameter:

@@ -89,9 +89,7 @@ namespace GUI {
 
 static const std::map<const wchar_t, std::string> font_icons = {
     {ImGui::PrintIconMarker       , "cog"                           },
-    {ImGui::PrinterIconMarker     , "printer"                       },
     {ImGui::PrinterSlaIconMarker  , "sla_printer"                   },
-    {ImGui::FilamentIconMarker    , "spool"                         },
     {ImGui::MaterialIconMarker    , "resin"                         },
     {ImGui::MinimalizeButton      , "notification_minimalize"       },
     {ImGui::MinimalizeHoverButton , "notification_minimalize_hover" },
@@ -118,18 +116,6 @@ static const std::map<const wchar_t, std::string> font_icons = {
 };
 
 static const std::map<const wchar_t, std::string> font_icons_large = {
-    {ImGui::LegendTravel            , "legend_travel"                   },
-    {ImGui::LegendWipe              , "legend_wipe"                     },
-    {ImGui::LegendRetract           , "legend_retract"                  },
-    {ImGui::LegendDeretract         , "legend_deretract"                },
-    {ImGui::LegendSeams             , "legend_seams"                    },
-    {ImGui::LegendToolChanges       , "legend_toolchanges"              },
-    {ImGui::LegendColorChanges      , "legend_colorchanges"             },
-    {ImGui::LegendPausePrints       , "legend_pauseprints"              },
-    {ImGui::LegendCustomGCodes      , "legend_customgcodes"             },
-    {ImGui::LegendCOG               , "legend_cog"                      },
-    {ImGui::LegendShells            , "legend_shells"                   },
-    {ImGui::LegendToolMarker        , "legend_toolmarker"               },
     {ImGui::CloseNotifButton        , "notification_close"              },
     {ImGui::CloseNotifHoverButton   , "notification_close_hover"        },
     {ImGui::EjectButton             , "notification_eject_sd"           },
@@ -139,10 +125,6 @@ static const std::map<const wchar_t, std::string> font_icons_large = {
     {ImGui::CancelButton            , "notification_cancel"             },
     {ImGui::CancelHoverButton       , "notification_cancel_hover"       },
 //    {ImGui::SinkingObjectMarker     , "move"                            },
-//    {ImGui::CustomSupportsMarker    , "fdm_supports"                    },
-//    {ImGui::CustomSeamMarker        , "seam"                            },
-//    {ImGui::MmuSegmentationMarker   , "mmu_segmentation"                },
-//    {ImGui::VarLayerHeightMarker    , "layers"                          },
     {ImGui::DocumentationButton     , "notification_documentation"      },
     {ImGui::DocumentationHoverButton, "notification_documentation_hover"},
     {ImGui::InfoMarker              , "notification_info"               },
@@ -168,12 +150,6 @@ static const std::map<const wchar_t, std::string> font_icons_medium = {
 
     {ImGui::ErrorTick               , "error_tick"                      },
     {ImGui::ErrorTickHovered        , "error_tick_f"                    },
-    {ImGui::PausePrint              , "pause_print"                     },
-    {ImGui::PausePrintHovered       , "pause_print_f"                   },
-    {ImGui::EditGCode               , "edit_gcode"                      },
-    {ImGui::EditGCodeHovered        , "edit_gcode_f"                    },
-    {ImGui::RemoveTick              , "colorchange_del"                 },
-    {ImGui::RemoveTickHovered       , "colorchange_del_f"               },
 };
 
 static const std::map<const wchar_t, std::string> font_icons_extra_large = {

@@ -148,7 +148,9 @@ sla::SupportTreeConfig make_support_cfg(const SLAPrintObjectConfig& c)
     }
     case sla::SupportTreeType::Branching:
         [[fallthrough]];
-    case sla::SupportTreeType::Organic:{
+    case sla::SupportTreeType::Organic:
+        [[fallthrough]];
+    case sla::SupportTreeType::OrganicBranching:{
         scfg.head_front_radius_mm = 0.5*c.branchingsupport_head_front_diameter.getFloat();
         double pillar_r = 0.5 * c.branchingsupport_pillar_diameter.getFloat();
         scfg.head_back_radius_mm = pillar_r;
@@ -690,7 +692,6 @@ SLAPrint::ApplyStatus SLAPrint::apply(const Model &model, DynamicPrintConfig con
     config.option("sla_print_settings_id",        true);
     config.option("sla_material_settings_id",     true);
     config.option("printer_settings_id",          true);
-    config.option("physical_printer_settings_id", true);
     // Collect changes to print config.
     DynamicPrintConfig mat_overrides;
     t_config_option_keys print_diff    = m_print_config.diff(config);
@@ -749,7 +750,6 @@ SLAPrint::ApplyStatus SLAPrint::apply(const Model &model, DynamicPrintConfig con
         m_placeholder_parser.set("print_preset",            config.option("sla_print_settings_id")->clone());
         m_placeholder_parser.set("material_preset",         config.option("sla_material_settings_id")->clone());
         m_placeholder_parser.set("printer_preset",          config.option("printer_settings_id")->clone());
-        m_placeholder_parser.set("physical_printer_preset", config.option("physical_printer_settings_id")->clone());
     }
 
     // It is also safe to change m_config now after this->invalidate_state_by_config_options() call.
@@ -3163,12 +3163,23 @@ bool SLAPrintObject::invalidate_all_steps()
     return object_invalidated || print_invalidated;
 }
 
+// The object elevation is a per tree type option: Default uses support_object_elevation, the branching family
+// (Branching, Organic, Organic (branching layout)) uses branchingsupport_object_elevation. It has to be the same value
+// that make_support_cfg() hands to the support tree, otherwise the slice grid starts at a different height than the
+// support tree and its pad (the pad ends up below the first layer and is cut off).
+static double tree_object_elevation(const SLAPrintObjectConfig &c)
+{
+    return c.support_tree_type.value == sla::SupportTreeType::Default ?
+               c.support_object_elevation.getFloat() :
+               c.branchingsupport_object_elevation.getFloat();
+}
+
 double SLAPrintObject::get_elevation() const {
     if (is_zero_elevation(m_config)) return 0.;
 
     bool en = m_config.supports_enable.getBool();
 
-    double ret = en ? m_config.support_object_elevation.getFloat() : 0.;
+    double ret = en ? tree_object_elevation(m_config) : 0.;
 
     if(m_config.pad_enable.getBool()) {
         // Normally the elevation for the pad itself would be the thickness of
@@ -3192,7 +3203,7 @@ double SLAPrintObject::get_current_elevation() const
     if(!has_supports && !has_pad)
         return 0;
     else if(has_supports && !has_pad) {
-        return m_config.support_object_elevation.getFloat();
+        return tree_object_elevation(m_config);
     }
 
     return get_elevation();

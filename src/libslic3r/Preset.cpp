@@ -46,7 +46,7 @@
 #include "libslic3r.h"
 #include "Utils.hpp"
 #include "PlaceholderParser.hpp"
-#include "libslic3r/GCode/Thumbnails.hpp"
+#include "libslic3r/Thumbnails/Thumbnails.hpp"
 
 #include "PresetBundle.hpp"
 #include "SLA/PrinterGeometry.hpp"
@@ -98,19 +98,12 @@ VendorProfile VendorProfile::from_ini(const boost::filesystem::path &path, bool 
 }
 
 static const std::unordered_map<std::string, std::string> pre_family_model_map {{
-    { "MK3",        "MK3" },
-    { "MK3MMU2",    "MK3" },
-    { "MK2.5",      "MK2.5" },
-    { "MK2.5MMU2",  "MK2.5" },
-    { "MK2S",       "MK2" },
-    { "MK2SMM",     "MK2" },
     { "SL1",        "SL1" },
 }};
 
 VendorProfile VendorProfile::from_ini(const ptree &tree, const boost::filesystem::path &path, bool load_all)
 {
     static const std::string printer_model_key = "printer_model:";
-    static const std::string filaments_section = "default_filaments";
     static const std::string materials_section = "default_sla_materials";
 
     const std::string id = path.stem().string();
@@ -154,11 +147,6 @@ VendorProfile VendorProfile::from_ini(const ptree &tree, const boost::filesystem
         res.changelog_url = changelog_url->second.data();
     }
 
-    const auto templates_profile = vendor_section.find("templates_profile");
-    if (templates_profile != vendor_section.not_found()) {
-        res.templates_profile = templates_profile->second.data() == "1";
-    }
-
     const auto repo_id = vendor_section.find("repo_id");
     if (repo_id != vendor_section.not_found()) {
         res.repo_id = repo_id->second.data();
@@ -189,13 +177,14 @@ VendorProfile VendorProfile::from_ini(const ptree &tree, const boost::filesystem
             const char *technology_fallback = boost::algorithm::starts_with(model.id, "SL") ? "SLA" : "FFF";
 
             auto technology_field = section.second.get<std::string>("technology", technology_fallback);
+            if (is_legacy_fff_technology(technology_field)) {
+                // FFF printer models of an old vendor bundle are not supported: ignore them, the SLA models stay.
+                BOOST_LOG_TRIVIAL(info) << boost::format("Vendor bundle: `%1%`: ignoring FFF printer model `%2%` (SLA/MSLA-only application)") % id % model.id;
+                continue;
+            }
             if (! ConfigOptionEnum<PrinterTechnology>::from_string(technology_field, model.technology)) {
                 BOOST_LOG_TRIVIAL(error) << boost::format("Vendor bundle: `%1%`: Invalid printer technology field: `%2%`") % id % technology_field;
-#ifdef SLIC3R_SLA_ONLY
                 model.technology = ptSLA;
-#else
-                model.technology = ptFFF;
-#endif
             }
 
             model.family = section.second.get<std::string>("family", std::string());
@@ -220,9 +209,7 @@ VendorProfile VendorProfile::from_ini(const ptree &tree, const boost::filesystem
             } else {
                 BOOST_LOG_TRIVIAL(error) << boost::format("Vendor bundle: `%1%`: Malformed variants field: `%2%`") % id % variants_field;
             }
-            auto default_materials_field = section.second.get<std::string>("default_materials", "");
-            if (default_materials_field.empty())
-            	default_materials_field = section.second.get<std::string>("default_filaments", "");
+            const auto default_materials_field = section.second.get<std::string>("default_materials", "");
             if (Slic3r::unescape_strings_cstyle(default_materials_field, model.default_materials)) {
             	Slic3r::sort_remove_duplicates(model.default_materials);
             	if (! model.default_materials.empty() && model.default_materials.front().empty())
@@ -242,15 +229,7 @@ VendorProfile VendorProfile::from_ini(const ptree &tree, const boost::filesystem
         }
     }
 
-    // Load filaments and sla materials to be installed by default
-    const auto filaments = tree.find(filaments_section);
-    if (filaments != tree.not_found()) {
-        for (auto &pair : filaments->second) {
-            if (pair.second.data() == "1") {
-                res.default_filaments.insert(pair.first);
-            }
-        }
-    }
+    // Load sla materials to be installed by default (the [default_filaments] section of old FFF bundles is ignored).
     const auto materials = tree.find(materials_section);
     if (materials != tree.not_found()) {
         for (auto &pair : materials->second) {
@@ -298,49 +277,9 @@ std::string Preset::remove_suffix_modified(const std::string &name)
         name;
 }
 
-// Update new extruder fields at the printer profile.
+// Normalize a loaded SLA profile (legacy keys, bed shape derived from the display).
 void Preset::normalize(DynamicPrintConfig &config)
 {
-    auto *nozzle_diameter = dynamic_cast<const ConfigOptionFloats*>(config.option("nozzle_diameter"));
-    if (nozzle_diameter != nullptr)
-        // Loaded the FFF Printer settings. Verify, that all extruder dependent values have enough values.
-        config.set_num_extruders((unsigned int)nozzle_diameter->values.size());
-    if (config.option("filament_diameter") != nullptr) {
-        // This config contains single or multiple filament presets.
-        // Ensure that the filament preset vector options contain the correct number of values.
-        size_t n = (nozzle_diameter == nullptr) ? 1 : nozzle_diameter->values.size();
-        const auto &defaults = FullPrintConfig::defaults();
-        for (const std::string &key : Preset::filament_options()) {
-            if (key == "compatible_prints" || key == "compatible_printers")
-                continue;
-            auto *opt = config.option(key, false);
-            /*assert(opt != nullptr);
-            assert(opt->is_vector());*/
-            if (opt != nullptr && opt->is_vector())
-                static_cast<ConfigOptionVectorBase*>(opt)->resize(n, defaults.option(key));
-        }
-        // The following keys are mandatory for the UI, but they are not part of FullPrintConfig, therefore they are handled separately.
-        for (const char *key : { "filament_settings_id" }) {
-            auto *opt = config.option(key, false);
-            assert(opt == nullptr || opt->type() == coStrings);
-            if (opt != nullptr && opt->type() == coStrings)
-                static_cast<ConfigOptionStrings*>(opt)->values.resize(n, std::string());
-        }
-    }
-    if (const auto *gap_fill_speed = config.option<ConfigOptionFloat>("gap_fill_speed", false); gap_fill_speed && gap_fill_speed->value <= 0.) {
-        // Legacy conversion. If the gap fill speed is zero, it means the gap fill is not enabled.
-        // Set the new gap_fill_enabled value, so that it will show up in the UI as disabled.
-        if (auto *gap_fill_enabled = config.option<ConfigOptionBool>("gap_fill_enabled", false); gap_fill_enabled)
-            gap_fill_enabled->value = false;
-    }
-    if (auto *first_layer_height = config.option<ConfigOptionFloatOrPercent>("first_layer_height", false); first_layer_height && first_layer_height->percent)
-        if (const auto *layer_height = config.option<ConfigOptionFloat>("layer_height", false); layer_height) {
-            // Legacy conversion - first_layer_height moved from PrintObject setting to a Print setting, thus we are getting rid of the dependency
-            // of first_layer_height on PrintObject specific layer_height. Covert the first layer heigth to an absolute value.
-            first_layer_height->value   = first_layer_height->get_abs_value(layer_height->value);
-            first_layer_height->percent = false;
-        }
-
     handle_legacy_sla(config);
     sla::synchronize_bed_shape(config);
 }
@@ -390,8 +329,7 @@ const std::string &compatibility_identity(const Preset &preset)
 
 PresetCompatibilityResult evaluate_compatibility_with_print(const PresetWithVendorProfile &preset, const PresetWithVendorProfile &active_print, const PresetWithVendorProfile &active_printer)
 {
-    // templates_profile vendor profiles should be decided as same vendor profiles
-	if (preset.vendor != nullptr && preset.vendor != active_printer.vendor && !preset.vendor->templates_profile)
+	if (preset.vendor != nullptr && preset.vendor != active_printer.vendor)
 		// The current profile has a vendor assigned and it is different from the active print's vendor.
 		return {false, {}};
     auto &condition             = preset.preset.compatible_prints_condition();
@@ -413,8 +351,7 @@ PresetCompatibilityResult evaluate_compatibility_with_print(const PresetWithVend
 
 PresetCompatibilityResult evaluate_compatibility_with_printer(const PresetWithVendorProfile &preset, const PresetWithVendorProfile &active_printer, const DynamicPrintConfig *extra_config)
 {
-    // templates_profile vendor profiles should be decided as same vendor profiles
-	if (preset.vendor != nullptr && preset.vendor != active_printer.vendor && !preset.vendor->templates_profile)
+	if (preset.vendor != nullptr && preset.vendor != active_printer.vendor)
 		// The current profile has a vendor assigned and it is different from the active print's vendor.
 		return {false, {}};
     auto &condition               = preset.preset.compatible_printers_condition();
@@ -436,9 +373,6 @@ PresetCompatibilityResult evaluate_compatibility_with_printer(const PresetWithVe
 {
     DynamicPrintConfig config;
     config.set_key_value("printer_preset", new ConfigOptionString(compatibility_identity(active_printer.preset)));
-    const ConfigOption *opt = active_printer.preset.config.option("nozzle_diameter");
-    if (opt)
-        config.set_key_value("num_extruders", new ConfigOptionInt((int)static_cast<const ConfigOptionFloats*>(opt)->values.size()));
     return evaluate_compatibility_with_printer(preset, active_printer, &config);
 }
 
@@ -467,11 +401,9 @@ void Preset::set_visible_from_appconfig(const AppConfig &app_config)
         if (model.empty() || variant.empty())
         	return;
         is_visible = app_config.get_variant(vendor->id, model, variant);
-    } else if (type == TYPE_FILAMENT || type == TYPE_SLA_MATERIAL) {
-    	const std::string &section_name = (type == TYPE_FILAMENT) ? AppConfig::SECTION_FILAMENTS : AppConfig::SECTION_MATERIALS;
-        if (type == TYPE_FILAMENT && app_config.get_bool("no_templates") && vendor && vendor->templates_profile)
-            is_visible = false;
-    	else if (app_config.has_section(section_name)) {
+    } else if (type == TYPE_SLA_MATERIAL) {
+    	const std::string &section_name = AppConfig::SECTION_MATERIALS;
+    	if (app_config.has_section(section_name)) {
     		// Check whether this profile is marked as "installed" in PrusaSlicer.ini,
     		// or whether a profile is marked as "installed", which this profile may have been renamed from.
 	    	const std::map<std::string, std::string> &installed = app_config.get_section(section_name);
@@ -504,101 +436,6 @@ std::string Preset::trim_vendor_repo_prefix(const std::string& id, const VendorP
     }
     return res;
 }
-
-static std::vector<std::string> s_Preset_print_options {
-    "layer_height", "first_layer_height", "perimeters", "spiral_vase", "slice_closing_radius", "slicing_mode",
-    "top_solid_layers", "top_solid_min_thickness", "bottom_solid_layers", "bottom_solid_min_thickness",
-    "ensure_vertical_shell_thickness", "extra_perimeters", "extra_perimeters_on_overhangs",
-    "avoid_crossing_curled_overhangs", "avoid_crossing_perimeters", "thin_walls", "overhangs",
-    "seam_position", "staggered_inner_seams", "seam_gap_distance",
-    "external_perimeters_first", "fill_density", "fill_pattern", "top_fill_pattern", "bottom_fill_pattern",
-    "scarf_seam_placement", "scarf_seam_only_on_smooth", "scarf_seam_start_height", "scarf_seam_entire_loop", "scarf_seam_length", "scarf_seam_max_segment_length", "scarf_seam_on_inner_perimeters",
-    "infill_every_layers", /*"infill_only_where_needed",*/ "solid_infill_every_layers", "fill_angle", "bridge_angle",
-    "solid_infill_below_area", "only_retract_when_crossing_perimeters", "infill_first",
-    "ironing", "ironing_type", "ironing_flowrate", "ironing_speed", "ironing_spacing",
-    "max_print_speed", "max_volumetric_speed", "avoid_crossing_perimeters_max_detour",
-    "fuzzy_skin", "fuzzy_skin_thickness", "fuzzy_skin_point_dist",
-    "max_volumetric_extrusion_rate_slope_positive", "max_volumetric_extrusion_rate_slope_negative",
-    "perimeter_speed", "small_perimeter_speed", "external_perimeter_speed", "infill_speed", "solid_infill_speed",
-    "enable_dynamic_overhang_speeds", "overhang_speed_0", "overhang_speed_1", "overhang_speed_2", "overhang_speed_3",
-    "top_solid_infill_speed", "support_material_speed", "support_material_xy_spacing", "support_material_interface_speed",
-    "bridge_speed", "over_bridge_speed", "gap_fill_speed", "gap_fill_enabled", "travel_speed", "travel_speed_z", "first_layer_speed", "first_layer_infill_speed", "first_layer_speed_over_raft", "perimeter_acceleration", "infill_acceleration",
-    "external_perimeter_acceleration", "top_solid_infill_acceleration", "solid_infill_acceleration", "travel_acceleration", "wipe_tower_acceleration",
-    "bridge_acceleration", "first_layer_acceleration", "first_layer_acceleration_over_raft", "default_acceleration", "skirts", "skirt_distance", "skirt_height", "draft_shield",
-    "min_skirt_length", "brim_width", "brim_separation", "brim_type", "support_material", "support_material_auto", "support_material_threshold", "support_material_enforce_layers",
-    "raft_layers", "raft_first_layer_density", "raft_first_layer_expansion", "raft_contact_distance", "raft_expansion",
-    "support_material_pattern", "support_material_with_sheath", "support_material_spacing", "support_material_closing_radius", "support_material_style",
-    "support_material_synchronize_layers", "support_material_angle", "support_material_interface_layers", "support_material_bottom_interface_layers",
-    "support_material_interface_pattern", "support_material_interface_spacing", "support_material_interface_contact_loops", 
-    "support_material_contact_distance", "support_material_bottom_contact_distance",
-    "support_material_buildplate_only", 
-    "support_tree_angle", "support_tree_angle_slow", "support_tree_branch_diameter", "support_tree_branch_diameter_angle", "support_tree_branch_diameter_double_wall", 
-    "support_tree_top_rate", "support_tree_branch_distance", "support_tree_tip_diameter",
-    "dont_support_bridges", "thick_bridges", "notes", "custom_parameters_print", "complete_objects",
-    "gcode_comments", "gcode_label_objects", "output_filename_format", "post_process", "gcode_substitutions", "perimeter_extruder",
-    "infill_extruder", "solid_infill_extruder", "support_material_extruder", "support_material_interface_extruder",
-    "ooze_prevention", "standby_temperature_delta", "interface_shells", "extrusion_width", "first_layer_extrusion_width",
-    "perimeter_extrusion_width", "external_perimeter_extrusion_width", "infill_extrusion_width", "solid_infill_extrusion_width",
-    "top_infill_extrusion_width", "support_material_extrusion_width", "infill_overlap", "infill_anchor", "infill_anchor_max", "bridge_flow_ratio",
-    "elefant_foot_compensation", "xy_size_compensation", "resolution", "gcode_resolution", "arc_fitting",
-    "wipe_tower",
-    "wipe_tower_width", "wipe_tower_cone_angle", "wipe_tower_brim_width", "wipe_tower_bridging", "single_extruder_multi_material_priming", "mmu_segmented_region_max_width",
-    "mmu_segmented_region_interlocking_depth", "wipe_tower_extruder", "wipe_tower_no_sparse_layers", "wipe_tower_extra_flow", "wipe_tower_extra_spacing", "compatible_printers", "compatible_printers_condition", "inherits",
-    "perimeter_generator", "wall_transition_length", "wall_transition_filter_deviation", "wall_transition_angle",
-    "wall_distribution_count", "min_feature_size", "min_bead_width",
-    "top_one_perimeter_type", "only_one_perimeter_first_layer",
-    "automatic_extrusion_widths", "automatic_infill_combination", "automatic_infill_combination_max_layer_height",
-    "bed_temperature_extruder", "interlocking_beam", "interlocking_orientation", "interlocking_beam_layer_count", "interlocking_depth", "interlocking_boundary_avoidance", "interlocking_beam_width",
-    "travel_short_distance_acceleration",
-};
-
-static std::vector<std::string> s_Preset_filament_options {
-    "filament_colour", "filament_diameter", "filament_type", "filament_soluble", "filament_abrasive", "filament_notes", "filament_max_volumetric_speed", "filament_infill_max_speed", "filament_infill_max_crossing_speed",
-    "extrusion_multiplier", "filament_density", "filament_cost", "filament_spool_weight", "filament_loading_speed", "filament_loading_speed_start", "filament_load_time",
-    "filament_unloading_speed", "filament_unloading_speed_start", "filament_unload_time", "filament_toolchange_delay", "filament_cooling_moves", "filament_stamping_loading_speed", "filament_stamping_distance",
-    "filament_cooling_initial_speed", "filament_purge_multiplier", "filament_cooling_final_speed", "filament_ramming_parameters", "filament_minimal_purge_on_wipe_tower",
-    "filament_multitool_ramming", "filament_multitool_ramming_volume", "filament_multitool_ramming_flow", 
-    "temperature", "idle_temperature", "first_layer_temperature", "bed_temperature", "first_layer_bed_temperature", "fan_always_on", "cooling", "cooling_slowdown_logic",
-    "cooling_perimeter_transition_distance", "min_fan_speed",
-    "max_fan_speed", "bridge_fan_speed", "disable_fan_first_layers", "full_fan_speed_layer", "fan_below_layer_time", "slowdown_below_layer_time", "min_print_speed",
-    "custom_parameters_filament", "start_filament_gcode", "end_filament_gcode", "enable_dynamic_fan_speeds", "chamber_temperature", "chamber_minimal_temperature",
-    "overhang_fan_speed_0", "overhang_fan_speed_1", "overhang_fan_speed_2", "overhang_fan_speed_3",
-    // Retract overrides
-    "filament_retract_length", "filament_retract_lift", "filament_retract_lift_above", "filament_retract_lift_below", "filament_retract_speed", "filament_deretract_speed", "filament_retract_restart_extra", "filament_retract_before_travel",
-    "filament_retract_layer_change", "filament_wipe", "filament_retract_before_wipe", "filament_retract_length_toolchange", "filament_retract_restart_extra_toolchange", "filament_travel_ramping_lift",
-    "filament_travel_slope", "filament_travel_max_lift", "filament_travel_lift_before_obstacle",
-    // Profile compatibility
-    "filament_vendor", "compatible_prints", "compatible_prints_condition", "compatible_printers", "compatible_printers_condition", "inherits",
-    // Shrinkage compensation
-    "filament_shrinkage_compensation_xy", "filament_shrinkage_compensation_z",
-    // Seams overrides
-    "filament_seam_gap_distance"
-};
-
-static std::vector<std::string> s_Preset_machine_limits_options {
-    "machine_max_acceleration_extruding", "machine_max_acceleration_retracting", "machine_max_acceleration_travel",
-    "machine_max_acceleration_x", "machine_max_acceleration_y", "machine_max_acceleration_z", "machine_max_acceleration_e",
-    "machine_max_feedrate_x", "machine_max_feedrate_y", "machine_max_feedrate_z", "machine_max_feedrate_e",
-    "machine_min_extruding_rate", "machine_min_travel_rate",
-    "machine_max_jerk_x", "machine_max_jerk_y", "machine_max_jerk_z", "machine_max_jerk_e",
-    "machine_max_junction_deviation",
-};
-
-static std::vector<std::string> s_Preset_printer_options {
-    "printer_technology", "autoemit_temperature_commands",
-    "bed_shape", "bed_custom_texture", "bed_custom_model", "binary_gcode", "z_offset", "gcode_flavor", "use_relative_e_distances",
-    "use_firmware_retraction", "use_volumetric_e", "variable_layer_height", "prefer_clockwise_movements",
-    //FIXME the print host keys are left here just for conversion from the Printer preset to Physical Printer preset.
-    "host_type", "print_host", "printhost_apikey", "printhost_cafile",
-    "single_extruder_multi_material", "custom_parameters_printer", "start_gcode", "end_gcode", "before_layer_gcode", "layer_gcode", "toolchange_gcode",
-    "color_change_gcode", "pause_print_gcode", "template_custom_gcode",
-    "between_objects_gcode", "printer_vendor", "printer_model", "printer_variant", "printer_notes", "cooling_tube_retraction",
-    "cooling_tube_length", "high_current_on_filament_swap", "parking_pos_retraction", "extra_loading_move", "multimaterial_purging",
-    "max_print_height", "default_print_profile", "inherits",
-    "remaining_times", "silent_mode",
-    "machine_limits_usage", "thumbnails", "thumbnails_format",
-    "nozzle_high_flow", "extruder_clearance_radius", "extruder_clearance_height"
-};
 
 static std::vector<std::string> s_Preset_sla_print_options {
     "layer_height",
@@ -753,21 +590,10 @@ static std::vector<std::string> s_Preset_sla_printer_options {
     "gamma_correction",
     "min_exposure_time", "max_exposure_time",
     "min_initial_exposure_time", "max_initial_exposure_time", "sla_archive_format", "sla_anycubic_version", "sla_cbddlp_aa", "sla_archive_header_mirror", "sla_phz_encryption_key", "nanodlp_device_profile", "sla_output_precision",
-#ifndef SLIC3R_OFFLINE_ONLY
-    //FIXME the print host keys are left here just for conversion from the Printer preset to Physical Printer preset.
-    // The offline build has no print hosts; legacy INIs carrying these keys are cleaned by remove_invalid_keys().
-    "print_host", "printhost_apikey", "printhost_cafile",
-#endif
     "printer_notes",
     "inherits"
 };
 
-const std::vector<std::string>& Preset::print_options()          { return s_Preset_print_options; }
-const std::vector<std::string>& Preset::filament_options()       { return s_Preset_filament_options; }
-const std::vector<std::string>& Preset::machine_limits_options() { return s_Preset_machine_limits_options; }
-// The following nozzle options of a printer profile will be adjusted to match the size
-// of the nozzle_diameter vector.
-const std::vector<std::string>& Preset::nozzle_options()         { return print_config_def.extruder_option_keys(); }
 const std::vector<std::string>& Preset::sla_print_options()      { return s_Preset_sla_print_options; }
 const std::vector<std::string>& Preset::sla_material_options()   { return s_Preset_sla_material_options_all; }
 const std::vector<std::string>& Preset::sla_printer_options()    { return s_Preset_sla_printer_options; }
@@ -783,22 +609,8 @@ const std::vector<std::string>& Preset::sla_hidden_option_keys()
         "compatible_prints", "compatible_prints_condition",
         // Written by vendor profiles, shown only as a description line.
         "default_sla_print_profile", "default_sla_material_profile"
-#ifndef SLIC3R_OFFLINE_ONLY
-        , "print_host", "printhost_apikey", "printhost_cafile" // legacy, moved to physical printers
-#endif
     };
     return s_keys;
-}
-
-const std::vector<std::string>& Preset::printer_options()
-{
-    static std::vector<std::string> s_opts = [](){
-        std::vector<std::string> opts = s_Preset_printer_options;
-        append(opts, s_Preset_machine_limits_options);
-        append(opts, Preset::nozzle_options());
-        return opts;
-    }();
-    return s_opts;
 }
 
 PresetCollection::PresetCollection(Preset::Type type, const std::vector<std::string> &keys, const Slic3r::StaticPrintConfig &defaults, const std::string &default_name) :
@@ -870,10 +682,17 @@ void PresetCollection::load_presets(
                 // Load the preset file, apply preset values on top of defaults.
                 try {
                     DynamicPrintConfig config;
-                    ConfigSubstitutions config_substitutions = config.load_from_ini(preset.file, substitution_rule);
+                    ConfigSubstitutions config_substitutions;
+                    try {
+                        config_substitutions = config.load_from_ini(preset.file, substitution_rule);
+                    } catch (const FffConfigurationException &) {
+                        // "printer_technology = FFF": a leftover of an FFF-capable version. Ignore it (no dialog, no data loss:
+                        // the file stays on disk untouched).
+                        BOOST_LOG_TRIVIAL(info) << "Ignoring FFF preset in the SLA/MSLA-only application: " << preset.file;
+                        continue;
+                    }
                     if (! config_substitutions.empty())
                         substitutions.push_back({ preset.name, m_type, PresetConfigSubstitutions::Source::UserFile, preset.file, std::move(config_substitutions) });
-#ifdef SLIC3R_SLA_ONLY
                     // A legacy FFF printer profile (or one without printer_technology, which has always
                     // meant FFF) cannot be represented in the SLA-only schema. Skip it explicitly instead of
                     // grafting it onto the SLA default and silently dropping its nozzle/extruder keys.
@@ -884,7 +703,6 @@ void PresetCollection::load_presets(
                             continue;
                         }
                     }
-#endif
                     // Find a default preset for the config. The PrintPresetCollection provides different default preset based on the "printer_technology" field.
                     const Preset &default_preset = this->default_preset_for(config);
                     preset.config = default_preset.config;
@@ -933,13 +751,12 @@ static bool profile_import_matches(const DynamicPrintConfig &cfg_old, const Dyna
 {
     t_config_option_keys diff = cfg_old.diff(cfg_new);
     // SLA project metadata belongs to the imported preset contract even when
-    // raster settings match. Preserve the legacy FFF comparison policy.
+    // raster settings match. Preserve the legacy comparison policy.
     const bool sla_import=sla_preset_import(type,cfg_new);
     for (const char *key : { "compatible_prints", "compatible_prints_condition",
                              "compatible_printers", "compatible_printers_condition", "inherits",
-                             "print_settings_id", "filament_settings_id", "sla_print_settings_id", "sla_material_settings_id", "printer_settings_id", "filament_vendor",
-                             "printer_model", "printer_variant", "default_print_profile", "default_filament_profile", "default_sla_print_profile", "default_sla_material_profile",
-                             "print_host", "printhost_apikey", "printhost_cafile" })
+                             "sla_print_settings_id", "sla_material_settings_id", "printer_settings_id",
+                             "printer_model", "printer_variant", "default_sla_print_profile", "default_sla_material_profile" })
         if(!sla_import || (!sla::is_sla_preset_metadata_key(key) && std::string(key)!="printer_model"))
             diff.erase(std::remove(diff.begin(), diff.end(), key), diff.end());
     return diff.empty();
@@ -947,8 +764,6 @@ static bool profile_import_matches(const DynamicPrintConfig &cfg_old, const Dyna
 
 // Load a preset from an already parsed config file, insert it into the sorted sequence of presets
 // and select it, losing previous modifications.
-// Only a single profile could be edited at at the same time, which introduces complexity when loading
-// filament profiles for multi-extruder printers.
 std::string PresetCollection::get_selected_preset_source_name(const char *settings_id) const
 {
     if (m_idx_selected == size_t(-1)) return {};
@@ -961,7 +776,7 @@ std::string PresetCollection::get_selected_preset_source_name(const char *settin
 }
 
 ExternalPreset PresetCollection::load_external_preset(
-    // Path to the profile source file (a G-code, an AMF or 3MF file, a config file)
+    // Path to the profile source file (an AMF or 3MF file, a config file)
     const std::string           &path,
     // Name of the profile, derived from the source file name.
     const std::string           &name,
@@ -979,7 +794,7 @@ ExternalPreset PresetCollection::load_external_preset(
     std::string                 &inherits = Preset::inherits(cfg);
     const bool sla_import=sla_preset_import(m_type,cfg);
     if (select == LoadAndSelect::Never) {
-        // Some filament profile has been selected and modified already.
+        // Some profile has been selected and modified already.
         // Check whether this profile is equal to the modified edited profile.
         const Preset &edited = this->get_edited_preset();
         if ((edited.name == original_name || edited.name == inherits) && profile_import_matches(edited.config, cfg,m_type))
@@ -994,7 +809,7 @@ ExternalPreset PresetCollection::load_external_preset(
 		it = this->find_preset_renamed(original_name);
 		found = it != m_presets.end();
     }
-    // A same-name nozzle profile cannot provide an SLA import baseline.
+    // A same-name legacy FFF profile cannot provide an SLA import baseline.
     if(found && sla_import && m_type==Preset::TYPE_PRINTER && it->printer_technology()!=ptSLA) {
         it=m_presets.end(); found=false;
     }
@@ -1039,8 +854,8 @@ ExternalPreset PresetCollection::load_external_preset(
 
                 // Following keys are not used neither by the UI nor by the slicing core, therefore they are not important 
                 // Erase them from config apply to avoid redundant "dirty" parameter in loaded preset.
-                for (const char* key : { "print_settings_id", "filament_settings_id", "sla_print_settings_id", "sla_material_settings_id", "printer_settings_id", "filament_vendor", 
-                                         "printer_model", "printer_variant", "default_print_profile", "default_filament_profile", "default_sla_print_profile", "default_sla_material_profile" })
+                for (const char* key : { "sla_print_settings_id", "sla_material_settings_id", "printer_settings_id",
+                                         "printer_model", "printer_variant", "default_sla_print_profile", "default_sla_material_profile" })
                     if(!sla_import || (!sla::is_sla_preset_metadata_key(key) && std::string(key)!="printer_model"))
                         keys.erase(std::remove(keys.begin(), keys.end(), key), keys.end());
 
@@ -1684,18 +1499,11 @@ size_t PresetCollection::first_visible_idx() const
     size_t idx = m_default_suppressed ? m_num_default_presets : 0;
     for (; idx < m_presets.size(); ++ idx)
         if (m_presets[idx].is_visible
-#ifdef SLIC3R_SLA_ONLY
             && (m_type != Preset::TYPE_PRINTER || m_presets[idx].printer_technology() == ptSLA)
-#endif
         )
             break;
     if (idx == m_presets.size())
         idx = 0;
-#ifdef SLIC3R_SLA_ONLY
-    if (m_type == Preset::TYPE_PRINTER && m_num_default_presets > 1 &&
-        m_presets[idx].printer_technology() != ptSLA)
-        idx = 1;
-#endif
     return idx;
 }
 
@@ -1713,11 +1521,7 @@ size_t PresetCollection::update_compatible_internal(const PresetWithVendorProfil
 {
     DynamicPrintConfig config;
     config.set_key_value("printer_preset", new ConfigOptionString(compatibility_identity(active_printer.preset)));
-    const ConfigOption *opt = active_printer.preset.config.option("nozzle_diameter");
-    if (opt)
-        config.set_key_value("num_extruders", new ConfigOptionInt((int)static_cast<const ConfigOptionFloats*>(opt)->values.size()));
     bool some_compatible = false;
-    std::vector<size_t> indices_of_template_presets;
     for (size_t idx_preset = m_num_default_presets; idx_preset < m_presets.size(); ++ idx_preset) {
         bool    selected        = idx_preset == m_idx_selected;
         Preset &preset_selected = m_presets[idx_preset];
@@ -1734,33 +1538,6 @@ size_t PresetCollection::update_compatible_internal(const PresetWithVendorProfil
             m_idx_selected = size_t(-1);
         if (selected)
             preset_selected.is_compatible = preset_edited.is_compatible;
-        if (preset_edited.vendor && preset_edited.vendor->templates_profile) {
-            if (preset_selected.is_visible)
-                indices_of_template_presets.push_back(idx_preset);
-            else {
-                preset_selected.is_compatible = false;
-                if (selected)
-                    m_idx_selected = size_t(-1);
-            }
-        }
-    }
-    // filter out template profiles where profile with same alias and compability exists
-    if (!indices_of_template_presets.empty()) {
-        for (size_t idx_preset = m_num_default_presets; idx_preset < m_presets.size(); ++idx_preset) {
-            if (m_presets[idx_preset].vendor && !m_presets[idx_preset].vendor->templates_profile && m_presets[idx_preset].is_compatible) {
-                std::string preset_alias = m_presets[idx_preset].alias;
-                for (size_t idx_of_template_in_presets : indices_of_template_presets) {
-                    if (m_presets[idx_of_template_in_presets].alias == preset_alias) {
-                        // unselect selected template filament if there is non-template alias compatible
-                        if (idx_of_template_in_presets == m_idx_selected && (unselect_if_incompatible == PresetSelectCompatibleType::Always || unselect_if_incompatible == PresetSelectCompatibleType::OnlyIfWasCompatible)) {
-                            m_idx_selected = size_t(-1);
-                        }
-                        m_presets[idx_of_template_in_presets].is_compatible = false;
-                        break;
-                    }
-                }
-            }
-        }
     }
     
     // Update visibility of the default profiles here if the defaults are suppressed, the current profile is not compatible and we don't want to select another compatible profile.
@@ -1796,22 +1573,19 @@ void add_correct_opts_to_diff(const std::string &opt_key, t_config_option_keys& 
     }
 }
 
-// list of options with vector variable, which is independent from number of extruders
-static const std::set<std::string> independent_from_extruder_number_options = {
+// list of options with vector variable, which is presented to the user as a single input
+static const std::set<std::string> single_input_vector_options = {
     "bed_shape",
     "compatible_printers",
     "compatible_prints",
-    "filament_ramming_parameters",
-    "gcode_substitutions",
-    "post_process",
 };
 
-bool PresetCollection::is_independent_from_extruder_number_option(const std::string& opt_key)
+bool PresetCollection::is_single_input_vector_option(const std::string& opt_key)
 {
-    return independent_from_extruder_number_options.find(opt_key) != independent_from_extruder_number_options.end();
+    return single_input_vector_options.find(opt_key) != single_input_vector_options.end();
 }
 
-// Use deep_diff to correct return of changed options, considering individual options for each extruder.
+// Use deep_diff to correct return of changed options, considering vector options with several values.
 inline t_config_option_keys deep_diff(const ConfigBase &config_this, const ConfigBase &config_other)
 {
     t_config_option_keys diff;
@@ -1820,13 +1594,10 @@ inline t_config_option_keys deep_diff(const ConfigBase &config_this, const Confi
         const ConfigOption *other_opt = config_other.option(opt_key);
         if (this_opt != nullptr && other_opt != nullptr && *this_opt != *other_opt)
         {
-            if (PresetCollection::is_independent_from_extruder_number_option(opt_key)) {
-                // Scalar variable, or a vector variable, which is independent from number of extruders,
+            if (PresetCollection::is_single_input_vector_option(opt_key)) {
+                // Scalar variable, or a vector variable, which is presented as a single input,
                 // thus the vector is presented to the user as a single input.
                 diff.emplace_back(opt_key);
-            } else if (opt_key == "default_filament_profile") {
-                // Ignore this field, it is not presented to the user, therefore showing a "modified" flag for this parameter does not help.
-                // Also the length of this field may differ, which may lead to a crash if the block below is used.
             } else if (opt_key == "thumbnails") {
                 // "thumbnails" can not contain extensions in old config but they are valid and use PNG extension by default
                 // So, check if "thumbnails" is really changed
@@ -1848,12 +1619,6 @@ inline t_config_option_keys deep_diff(const ConfigBase &config_this, const Confi
                 case coEnums:   add_correct_opts_to_diff<ConfigOptionEnumsGeneric>(opt_key, diff, config_other, config_this);  break;
                 default:        diff.emplace_back(opt_key);     break;
                 }
-                // "nozzle_diameter" is a vector option which contain info about diameter for each nozzle
-                // But in the same time size of this vector indicates about count of extruders,
-                // So, we need to add it to the diff if its size is changed.
-                if (opt_key == "nozzle_diameter" && 
-                    static_cast<const ConfigOptionFloats*>(this_opt)->size() != static_cast<const ConfigOptionFloats*>(other_opt)->size())
-                    diff.emplace_back(opt_key);
             }
         }
     }
@@ -1867,8 +1632,8 @@ bool PresetCollection::is_dirty(const Preset *edited, const Preset *reference)
     if (edited != nullptr && reference != nullptr) {
         // Only compares options existing in both configs.
         bool is_dirty = !reference->config.equals(edited->config);
-        if (is_dirty && edited->type != Preset::TYPE_FILAMENT) {
-            // for non-filaments preset check deep difference for compared configs
+        if (is_dirty) {
+            // check deep difference for compared configs
             // there can be cases (as for thumbnails), when configs can logically equal
             // even when their values are not equal.
             is_dirty = !deep_diff(edited->config, reference->config).empty();
@@ -1911,17 +1676,6 @@ Preset& PresetCollection::select_preset(size_t idx)
         preset.is_dirty = false;
     if (idx >= m_presets.size())
         idx = first_visible_idx();
-#ifdef SLIC3R_SLA_ONLY
-    // Empty/stale application selections used to fall back to default FFF.
-    // Keep its schema available for migration, but never activate it in SLA UI.
-    if (m_type == Preset::TYPE_PRINTER && m_num_default_presets > 1 &&
-        m_presets[idx].printer_technology() != ptSLA)
-        idx = first_visible_idx();
-    // Slot 0 is the legacy "- default FFF -" printer kept only so stored selections still resolve;
-    // the SLA-only UI must show "- default SLA -" (slot 1) instead (e.g. after a cancelled first-run wizard).
-    if (m_type == Preset::TYPE_PRINTER && m_num_default_presets > 1 && idx == 0)
-        idx = 1;
-#endif
     m_idx_selected = idx;
     if (!m_presets[idx].is_visible)
         // The newly selected preset can be activated -> make it visible.
@@ -1931,10 +1685,6 @@ Preset& PresetCollection::select_preset(size_t idx)
     bool default_visible = ! m_default_suppressed || m_idx_selected < m_num_default_presets;
     for (size_t i = 0; i < m_num_default_presets; ++i)
         m_presets[i].is_visible = default_visible;
-#ifdef SLIC3R_SLA_ONLY
-    if (m_type == Preset::TYPE_PRINTER && m_num_default_presets > 1)
-        m_presets[0].is_visible = false;
-#endif
     return m_presets[idx];
 }
 
@@ -2046,8 +1796,6 @@ void PresetCollection::update_map_system_profile_renamed()
 std::string PresetCollection::name() const
 {
     switch (this->type()) {
-    case Preset::TYPE_PRINT:        return L("print");
-    case Preset::TYPE_FILAMENT:     return L("filament");
     case Preset::TYPE_SLA_PRINT:    return L("SLA print");
     case Preset::TYPE_SLA_MATERIAL: return L("SLA material");
     case Preset::TYPE_PRINTER:      return L("printer");
@@ -2058,8 +1806,6 @@ std::string PresetCollection::name() const
 std::string PresetCollection::section_name() const
 {
     switch (this->type()) {
-    case Preset::TYPE_PRINT:        return "print";
-    case Preset::TYPE_FILAMENT:     return "filament";
     case Preset::TYPE_SLA_PRINT:    return "sla_print";
     case Preset::TYPE_SLA_MATERIAL: return "sla_material";
     case Preset::TYPE_PRINTER:      return "printer";
@@ -2093,14 +1839,6 @@ std::string PresetCollection::path_from_name(const std::string &new_name) const
     return (boost::filesystem::path(m_dir_path) / file_name).make_preferred().string();
 }
 
-const Preset& PrinterPresetCollection::default_preset_for(const DynamicPrintConfig &config) const
-{
-    // Configs loaded from INI use a generic enum; configs assembled by the
-    // wizard can use ConfigOptionEnum<PrinterTechnology>. Accept both forms.
-    const auto *technology = config.option("printer_technology");
-    return this->default_preset(technology && technology->getInt() == ptSLA ? 1 : 0);
-}
-
 const Preset* PrinterPresetCollection::find_system_preset_by_model_and_variant(const std::string &model_id, const std::string& variant) const
 {
     if (model_id.empty()) { return nullptr; }
@@ -2124,737 +1862,6 @@ bool  PrinterPresetCollection::only_default_printers() const
     }
     return true;
 }
-// -------------------------
-// ***  PhysicalPrinter  ***
-// -------------------------
-
-std::string PhysicalPrinter::separator()
-{
-    return " * ";
-}
-
-static std::vector<std::string> s_PhysicalPrinter_opts {
-    "preset_name", // temporary option to compatibility with older Slicer
-    "preset_names",
-    "printer_technology",
-    "host_type",
-    "print_host",
-    "printhost_apikey",
-    "printhost_cafile",
-    "printhost_port",
-    "printhost_authorization_type",
-    // HTTP digest authentization (RFC 2617)
-    "printhost_user",
-    "printhost_password",
-    "printhost_ssl_ignore_revoke"
-};
-
-const std::vector<std::string>& PhysicalPrinter::printer_options()
-{
-    return s_PhysicalPrinter_opts;
-}
-
-static constexpr auto legacy_print_host_options = {
-    "print_host",
-    "printhost_apikey",
-    "printhost_cafile",
-};
-
-std::vector<std::string> PhysicalPrinter::presets_with_print_host_information(const PrinterPresetCollection& printer_presets)
-{
-    std::vector<std::string> presets;
-    for (const Preset& preset : printer_presets)
-        if (has_print_host_information(preset.config))
-            presets.emplace_back(preset.name);
-
-    return presets;
-}
-
-bool PhysicalPrinter::has_print_host_information(const DynamicPrintConfig& config)
-{
-#ifdef SLIC3R_OFFLINE_ONLY
-    // Offline printer presets do not carry the legacy print host keys (opt_string() would throw).
-    (void) config;
-    return false;
-#endif
-    for (const char *opt : legacy_print_host_options)
-        if (!config.opt_string(opt).empty())
-            return true;
-
-    return false;
-}
-
-const std::set<std::string>& PhysicalPrinter::get_preset_names() const
-{
-    return preset_names;
-}
-
-bool PhysicalPrinter::has_empty_config() const
-{
-    return  config.opt_string("print_host"        ).empty() &&
-            config.opt_string("printhost_apikey"  ).empty() &&
-            config.opt_string("printhost_cafile"  ).empty() &&
-            config.opt_string("printhost_port"    ).empty() &&
-            config.opt_string("printhost_user"    ).empty() &&
-            config.opt_string("printhost_password").empty();
-}
-
-// temporary workaround for compatibility with older Slicer
-static void update_preset_name_option(const std::set<std::string>& preset_names, DynamicPrintConfig& config)
-{
-    std::string name;
-    for (auto el : preset_names)
-        name += el + ";";
-    name.pop_back();
-    config.set_key_value("preset_name", new ConfigOptionString(name));
-}
-
-void PhysicalPrinter::update_preset_names_in_config()
-{
-    if (!preset_names.empty()) {
-        std::vector<std::string>& values = config.option<ConfigOptionStrings>("preset_names")->values;
-        values.clear();
-        for (const std::string& preset : preset_names)
-            values.push_back(preset);
-
-        // temporary workaround for compatibility with older Slicer
-        update_preset_name_option(preset_names, config);
-    }
-}
-
-void PhysicalPrinter::save(const std::string& file_name_from, const std::string& file_name_to)
-{
-    // rename the file
-    boost::nowide::rename(file_name_from.data(), file_name_to.data());
-    this->file = file_name_to;
-    // save configuration
-    this->config.save(this->file);
-}
-
-void PhysicalPrinter::update_from_preset(const Preset& preset)
-{
-    config.apply_only(preset.config, printer_options(), true);
-    // add preset names to the options list
-    preset_names.emplace(preset.name);
-    update_preset_names_in_config();
-}
-
-void PhysicalPrinter::update_from_config(const DynamicPrintConfig& new_config)
-{
-    config.apply_only(new_config, printer_options(), false);
-
-    const std::vector<std::string>& values = config.option<ConfigOptionStrings>("preset_names")->values;
-
-    if (values.empty())
-        preset_names.clear();
-    else {
-        for (const std::string& val : values)
-            preset_names.emplace(val);
-        // temporary workaround for compatibility with older Slicer
-        update_preset_name_option(preset_names, config);
-    }
-}
-
-void PhysicalPrinter::reset_presets()
-{
-    return preset_names.clear();
-}
-
-bool PhysicalPrinter::add_preset(const std::string& preset_name)
-{
-    return preset_names.emplace(preset_name).second;
-}
-
-bool PhysicalPrinter::delete_preset(const std::string& preset_name)
-{
-    return preset_names.erase(preset_name) > 0;
-}
-
-PhysicalPrinter::PhysicalPrinter(const std::string& name, const DynamicPrintConfig& default_config) :
-    name(name), config(default_config)
-{
-    update_from_config(config);
-}
-
-PhysicalPrinter::PhysicalPrinter(const std::string& name, const DynamicPrintConfig &default_config, const Preset& preset) :
-    name(name), config(default_config)
-{
-    update_from_preset(preset);
-}
-
-void PhysicalPrinter::set_name(const std::string& name)
-{
-    this->name = name;
-}
-
-std::string PhysicalPrinter::get_full_name(const std::string& preset_name) const
-{
-    return name + separator() + preset_name;
-}
-
-std::string PhysicalPrinter::get_short_name(std::string full_name)
-{
-    int pos = full_name.find(separator());
-    if (pos > 0)
-        boost::erase_tail(full_name, full_name.length() - pos);
-    return full_name;
-}
-
-std::string PhysicalPrinter::get_preset_name(std::string name)
-{
-    int pos = name.find(separator());
-    boost::erase_head(name, pos + 3);
-    return Preset::remove_suffix_modified(name);
-}
-
-
-// -----------------------------------
-// ***  PhysicalPrinterCollection  ***
-// -----------------------------------
-
-PhysicalPrinterCollection::PhysicalPrinterCollection( const std::vector<std::string>& keys, PresetBundle* preset_bundle)
-    :m_preset_bundle_owner(preset_bundle)
-{
-    // Default config for a physical printer containing all key/value pairs of PhysicalPrinter::printer_options().
-    for (const std::string &key : keys) {
-        const ConfigOptionDef *opt = print_config_def.get(key);
-        assert(opt);
-        assert(opt->default_value);
-        m_default_config.set_key_value(key, opt->default_value->clone());
-    }
-}
-
-static void update_preset_names_if_were_renamed(std::set<std::string>& preset_names, const PrinterPresetCollection& printer_presets)
-{
-    std::set<std::string> new_names;
-
-    bool was_renamed{ false };
-    for (const std::string& preset_name : preset_names) {
-        const Preset* preset = printer_presets.find_preset(preset_name);
-        if (preset)
-            new_names.emplace(preset_name);
-        else {
-            if (const std::string* new_name = printer_presets.get_preset_name_renamed(preset_name)) {
-                BOOST_LOG_TRIVIAL(warning) << "Printer preset present " << preset_name << "was renamed to: " << *new_name << std::endl;
-                new_names.emplace(*new_name);
-                was_renamed = true;
-            }
-        }
-    }
-
-    if (was_renamed)
-        preset_names = new_names;
-}
-
-// Load all printers found in dir_path.
-// Throws an exception on error.
-void PhysicalPrinterCollection::load_printers(
-    const std::string& dir_path, const std::string& subdir, 
-    PresetsConfigSubstitutions& substitutions, ForwardCompatibilitySubstitutionRule substitution_rule)
-{
-    // Don't use boost::filesystem::canonical() on Windows, it is broken in regard to reparse points,
-    // see https://github.com/prusa3d/PrusaSlicer/issues/732
-    boost::filesystem::path dir = boost::filesystem::absolute(boost::filesystem::path(dir_path) / subdir).make_preferred();
-    m_dir_path = dir.string();
-    std::string errors_cummulative;
-    // Store the loaded printers into a new vector, otherwise the binary search for already existing presets would be broken.
-    std::deque<PhysicalPrinter> printers_loaded;
-    for (auto& dir_entry : boost::filesystem::directory_iterator(dir))
-        if (Slic3r::is_ini_file(dir_entry)) {
-            std::string name = dir_entry.path().filename().string();
-            // Remove the .ini suffix.
-            name.erase(name.size() - 4);
-            if (PhysicalPrinter* found_printer = this->find_printer(name, false)) {
-                // This happens when there's is a preset (most likely legacy one) with the same name as a system preset
-                // that's already been loaded from a bundle.
-                BOOST_LOG_TRIVIAL(warning) << "Printer already present, not loading: " << name;
-
-                // But some of used printer_preset might have been renamed.
-                // Check it and replace with new name(s) if it's needed
-                update_preset_names_if_were_renamed(found_printer->preset_names, m_preset_bundle_owner->printers);
-
-                continue;
-            }
-            try {
-                PhysicalPrinter printer(name, this->default_config());
-                printer.file = dir_entry.path().string();
-                // Load the preset file, apply preset values on top of defaults.
-                try {
-                    DynamicPrintConfig config;
-                    ConfigSubstitutions config_substitutions = config.load_from_ini(printer.file, substitution_rule);
-                    if (! config_substitutions.empty())
-                        substitutions.push_back({ name, Preset::TYPE_PHYSICAL_PRINTER, PresetConfigSubstitutions::Source::UserFile, printer.file, std::move(config_substitutions) });
-                    printer.update_from_config(config);
-                    printer.loaded = true;
-                    // Some of used printer_preset might have been renamed.
-                    // Check it and replace with new name(s) if it's needed
-                    update_preset_names_if_were_renamed(printer.preset_names, m_preset_bundle_owner->printers);
-                }
-                catch (const std::ifstream::failure& err) {
-                    throw Slic3r::RuntimeError(std::string("The selected preset cannot be loaded: ") + printer.file + "\n\tReason: " + err.what());
-                }
-                catch (const std::runtime_error& err) {
-                    throw Slic3r::RuntimeError(std::string("Failed loading the preset file: ") + printer.file + "\n\tReason: " + err.what());
-                }
-                printers_loaded.emplace_back(printer);
-            }
-            catch (const std::runtime_error& err) {
-                errors_cummulative += err.what();
-                errors_cummulative += "\n";
-            }
-        }
-    m_printers.insert(m_printers.end(), std::make_move_iterator(printers_loaded.begin()), std::make_move_iterator(printers_loaded.end()));
-    std::sort(m_printers.begin(), m_printers.end());
-    if (!errors_cummulative.empty())
-        throw Slic3r::RuntimeError(errors_cummulative);
-}
-
-void PhysicalPrinterCollection::load_printer(const std::string& path, const std::string& name, DynamicPrintConfig&& config, bool select, bool save/* = false*/)
-{
-    auto it = this->find_printer_internal(name);
-    if (it == m_printers.end() || it->name != name) {
-        // The preset was not found. Create a new preset.
-        it = m_printers.emplace(it, PhysicalPrinter(name, config));
-    }
-
-    it->file = path;
-    it->config = std::move(config);
-    it->loaded = true;
-    // Some of used printer_preset might have been renamed.
-    // Check it and replace with new name(s) if it's needed
-    update_preset_names_if_were_renamed(it->preset_names, m_preset_bundle_owner->printers);
-    if (select)
-        this->select_printer(*it);
-
-    if (save)
-        it->save();
-}
-
-// if there is saved user presets, contains information about "Print Host upload",
-// Create default printers with this presets
-// Note! "Print Host upload" options will be cleared after physical printer creations
-void PhysicalPrinterCollection::load_printers_from_presets(PrinterPresetCollection& printer_presets)
-{
-#ifdef SLIC3R_OFFLINE_ONLY
-    // No physical printers offline, nothing to migrate.
-    (void) printer_presets;
-    return;
-#endif
-    int cnt=0;
-    for (Preset& preset: printer_presets) {
-        DynamicPrintConfig& config = preset.config;
-        for(const char* option : legacy_print_host_options) {
-            if (!config.opt_string(option).empty()) {
-                // check if printer with those "Print Host upload" options already exist
-                PhysicalPrinter* existed_printer = find_printer_with_same_config(config);
-                if (existed_printer)
-                    // just add preset for this printer
-                    existed_printer->add_preset(preset.name);
-                else {
-                    std::string new_printer_name = (boost::format("Printer %1%") % ++cnt ).str();
-                    while (find_printer(new_printer_name))
-                        new_printer_name = (boost::format("Printer %1%") % ++cnt).str();
-
-                    // create new printer from this preset
-                    PhysicalPrinter printer(new_printer_name, this->default_config(), preset);
-                    printer.loaded = true;
-                    save_printer(printer);
-                }
-
-                // erase "Print Host upload" information from the preset
-                for (const char *opt : legacy_print_host_options)
-                    config.opt_string(opt).clear();
-                // save changes for preset
-                preset.save();
-
-                // update those changes for edited preset if it's equal to the preset
-                Preset& edited = printer_presets.get_edited_preset();
-                if (preset.name == edited.name) {
-                    for (const char *opt : legacy_print_host_options)
-                        edited.config.opt_string(opt).clear();
-                }
-
-                break;
-            }
-        }
-    }
-}
-
-PhysicalPrinter* PhysicalPrinterCollection::find_printer( const std::string& name, bool case_sensitive_search)
-{
-    auto it = this->find_printer_internal(name, case_sensitive_search);
-
-    // Ensure that a temporary copy is returned if the preset found is currently selected.
-    auto is_equal_name = [name, case_sensitive_search](const std::string& in_name) {
-        if (case_sensitive_search)
-            return in_name == name;
-        return boost::to_lower_copy<std::string>(in_name) == boost::to_lower_copy<std::string>(name);
-    };
-
-    if (it == m_printers.end() || !is_equal_name(it->name))
-        return nullptr;
-    return &this->printer(it - m_printers.begin());
-}
-
-std::deque<PhysicalPrinter>::iterator PhysicalPrinterCollection::find_printer_internal(const std::string& name, bool case_sensitive_search/* = true*/)
-{
-    if (case_sensitive_search)
-        return Slic3r::lower_bound_by_predicate(m_printers.begin(), m_printers.end(), [&name](const auto& l) { return l.name < name;  });
-
-    std::string low_name = boost::to_lower_copy<std::string>(name);
-
-    size_t i = 0;
-    for (const PhysicalPrinter& printer : m_printers) {
-        if (boost::to_lower_copy<std::string>(printer.name) == low_name)
-            break;
-        i++;
-    }
-    if (i == m_printers.size())
-        return m_printers.end();
-
-    return m_printers.begin() + i;
-}
-
-PhysicalPrinter* PhysicalPrinterCollection::find_printer_with_same_config(const DynamicPrintConfig& config)
-{
-    for (const PhysicalPrinter& printer :*this) {
-        bool is_equal = true;
-        for (const char *opt : legacy_print_host_options)
-            if (is_equal && printer.config.opt_string(opt) != config.opt_string(opt))
-                is_equal = false;
-
-        if (is_equal)
-            return find_printer(printer.name);
-    }
-    return nullptr;
-}
-
-// Generate a file path from a profile name. Add the ".ini" suffix if it is missing.
-std::string PhysicalPrinterCollection::path_from_name(const std::string& new_name) const
-{
-    std::string file_name = boost::iends_with(new_name, ".ini") ? new_name : (new_name + ".ini");
-    return (boost::filesystem::path(m_dir_path) / file_name).make_preferred().string();
-}
-
-void PhysicalPrinterCollection::save_printer(PhysicalPrinter& edited_printer, const std::string& renamed_from/* = ""*/)
-{
-    // controll and update preset_names in edited_printer config
-    edited_printer.update_preset_names_in_config();
-
-    std::string name = renamed_from.empty() ? edited_printer.name : renamed_from;
-    // 1) Find the printer with a new_name or create a new one,
-    // initialize it with the edited config.
-    auto it = this->find_printer_internal(name);
-    if (it != m_printers.end() && it->name == name) {
-        // Printer with the same name found.
-        // Overwriting an existing preset.
-        it->config = std::move(edited_printer.config);
-        it->name = edited_printer.name;
-        it->preset_names = edited_printer.preset_names;
-        // sort printers and get new it
-        std::sort(m_printers.begin(), m_printers.end());
-        it = this->find_printer_internal(edited_printer.name);
-    }
-    else {
-        // Creating a new printer.
-        it = m_printers.emplace(it, edited_printer);
-    }
-    assert(it != m_printers.end());
-
-    // 2) Save printer
-    PhysicalPrinter& printer = *it;
-    if (printer.file.empty())
-        printer.file = this->path_from_name(printer.name);
-
-    if (printer.file == this->path_from_name(printer.name))
-        printer.save();
-    else
-        // if printer was renamed, we should rename a file and than save the config
-        printer.save(printer.file, this->path_from_name(printer.name));
-
-    // update idx_selected
-    m_idx_selected = it - m_printers.begin();
-}
-
-bool PhysicalPrinterCollection::delete_printer(const std::string& name)
-{
-    auto it = this->find_printer_internal(name);
-    if (it == m_printers.end())
-        return false;
-
-    const PhysicalPrinter& printer = *it;
-    // Erase the preset file.
-    boost::nowide::remove(printer.file.c_str());
-    m_printers.erase(it);
-    return true;
-}
-
-bool PhysicalPrinterCollection::delete_selected_printer()
-{
-    if (!has_selection())
-        return false;
-    const PhysicalPrinter& printer = this->get_selected_printer();
-
-    // Erase the preset file.
-    boost::nowide::remove(printer.file.c_str());
-    // Remove the preset from the list.
-    m_printers.erase(m_printers.begin() + m_idx_selected);
-    // unselect all printers
-    unselect_printer();
-
-    return true;
-}
-
-bool PhysicalPrinterCollection::delete_preset_from_printers( const std::string& preset_name)
-{
-    std::vector<std::string> printers_for_delete;
-    for (PhysicalPrinter& printer : m_printers) {
-        if (printer.preset_names.size() == 1 && *printer.preset_names.begin() == preset_name)
-            printers_for_delete.emplace_back(printer.name);
-        else if (printer.delete_preset(preset_name))
-            save_printer(printer);
-    }
-
-    if (!printers_for_delete.empty())
-        for (const std::string& printer_name : printers_for_delete)
-            delete_printer(printer_name);
-
-    unselect_printer();
-    return true;
-}
-
-void PhysicalPrinterCollection::rename_preset_in_printers(const std::string& old_preset_name, const std::string& new_preset_name)
-{
-    for (PhysicalPrinter& printer : m_printers)
-        if (printer.delete_preset(old_preset_name)) {
-            printer.add_preset(new_preset_name);
-            printer.update_preset_names_in_config();
-            printer.save();
-        }
-}
-
-// Get list of printers which have more than one preset and "preset_names" preset is one of them
-std::vector<std::string> PhysicalPrinterCollection::get_printers_with_preset(const std::string& preset_name, bool respect_only_preset /*= true*/)
-{
-    std::vector<std::string> printers;
-
-    for (auto printer : m_printers) {
-        if (!respect_only_preset && printer.preset_names.size() == 1)
-            continue;
-        if (printer.preset_names.find(preset_name) != printer.preset_names.end())
-            printers.emplace_back(printer.name);
-    }
-
-    return printers;
-}
-
-// Get list of printers which has only "preset_names" preset
-std::vector<std::string> PhysicalPrinterCollection::get_printers_with_only_preset(const std::string& preset_name)
-{
-    std::vector<std::string> printers;
-
-    for (const PhysicalPrinter& printer : m_printers)
-        if (printer.preset_names.size() == 1 && *printer.preset_names.begin() == preset_name)
-            printers.emplace_back(printer.name);
-
-    return printers;
-}
-
-std::string PhysicalPrinterCollection::get_selected_full_printer_name() const
-{
-    return (m_idx_selected == size_t(-1)) ? std::string() : this->get_selected_printer().get_full_name(m_selected_preset);
-}
-
-void PhysicalPrinterCollection::select_printer(const std::string& full_name)
-{
-    std::string printer_name = PhysicalPrinter::get_short_name(full_name);
-    auto it = this->find_printer_internal(printer_name);
-    if (it == m_printers.end()) {
-        unselect_printer();
-        return;
-    }
-
-    // update idx_selected
-    m_idx_selected = it - m_printers.begin();
-
-    // update name of the currently selected preset
-    if (printer_name == full_name)
-        // use first preset in the list
-        m_selected_preset = *it->preset_names.begin();
-    else
-        m_selected_preset = it->get_preset_name(full_name);
-
-    // Check if selected preset wasn't renamed and replace it with new name
-    if (const std::string* new_name = m_preset_bundle_owner->printers.get_preset_name_renamed(m_selected_preset))
-        m_selected_preset = *new_name;
-}
-
-void PhysicalPrinterCollection::select_printer(const std::string& printer_name, const std::string& preset_name)
-{
-    if (preset_name.empty())
-        return select_printer(printer_name);
-    return select_printer(printer_name + PhysicalPrinter::separator() + preset_name);
-}
-
-void PhysicalPrinterCollection::select_printer(const PhysicalPrinter& printer)
-{
-    return select_printer(printer.name);
-}
-
-bool PhysicalPrinterCollection::has_selection() const
-{
-    return m_idx_selected != size_t(-1);
-}
-
-void PhysicalPrinterCollection::unselect_printer()
-{
-    m_idx_selected = size_t(-1);
-    m_selected_preset.clear();
-}
-
-bool PhysicalPrinterCollection::is_selected(PhysicalPrinterCollection::ConstIterator it, const std::string& preset_name) const
-{
-    return  m_idx_selected      == size_t(it - m_printers.begin()) &&
-            m_selected_preset   == preset_name;
-}
-
-ExtruderFilaments::ExtruderFilaments(PresetCollection* filaments_collection, size_t extruder_id, std::string selected_name/* = std::string()*/)
-: m_filaments (filaments_collection)
-, m_extruder_id(extruder_id)
-{
-    const std::deque<Preset>& presets = m_filaments->get_presets();
-    for (size_t id = 0; id < presets.size(); id ++)
-        m_extr_filaments.emplace_back(&(presets[id]));
-
-    select_filament(selected_name.empty() ? m_filaments->get_selected_preset_name() : selected_name);
-}
-
-const std::string& ExtruderFilaments::get_preset_name_by_alias(const std::string& alias) const
-{
-    const auto& aliases_map = m_filaments->map_alias_to_profile_name();
-    for (
-        // Find the 1st profile name with the alias.
-        auto it = Slic3r::lower_bound_by_predicate(aliases_map.begin(), aliases_map.end(), [&alias](auto& l) { return l.first < alias; });
-        // Continue over all profile names with the same alias.
-        it != aliases_map.end() && it->first == alias; ++it)
-        if (auto it_filament = find_filament_internal(it->second);
-            it_filament != m_extr_filaments.end() && it_filament->preset->name == it->second &&
-            it_filament->preset->is_visible && (it_filament->is_compatible || size_t(it_filament - m_extr_filaments.begin()) == m_idx_selected))
-            return it_filament->preset->name;
-    return alias;
-}
-
-void ExtruderFilaments::select_filament(size_t idx) 
-{ 
-    assert(idx == size_t(-1) || idx < m_extr_filaments.size());
-    // Check idx befor saving it's value to m_idx_selected.
-    // Invalidate m_idx_selected, if idx is out of range m_extr_filaments
-    m_idx_selected = (idx == size_t(-1) || idx < m_extr_filaments.size()) ? idx : size_t(-1); 
-}
-
-bool ExtruderFilaments::select_filament(const std::string &name_w_suffix, bool force/*= false*/)
-{
-    std::string name = Preset::remove_suffix_modified(name_w_suffix);
-    // 1) Try to find the preset by its name.
-    auto it = this->find_filament_internal(name);
-    size_t idx = 0;
-    if (it != m_extr_filaments.end() && it->preset->name == name && it->preset->is_visible)
-        // Preset found by its name and it is visible.
-        idx = it - m_extr_filaments.begin();
-    else {
-        // Find the first visible preset.
-        for (size_t i = 0; i < m_extr_filaments.size(); ++i)
-            if (m_extr_filaments[i].preset->is_visible/* && m_extr_filaments[i].is_compatible*/) {
-                idx = i;
-                break;
-            }
-        // If the first visible preset was not found, return the 0th element, which is the default preset.
-    }
-    // 2) Select the new preset.
-    if (m_idx_selected != idx || force) {
-        this->select_filament(idx);
-        return true;
-    }
-
-    return false;
-}
-
-size_t ExtruderFilaments::update_compatible_internal(const PresetWithVendorProfile  &active_printer,
-                                                     const PresetWithVendorProfile  *active_print,
-                                                     PresetSelectCompatibleType      unselect_if_incompatible)
-{
-    DynamicPrintConfig config;
-    config.set_key_value("printer_preset", new ConfigOptionString(compatibility_identity(active_printer.preset)));
-    const ConfigOption* opt = active_printer.preset.config.option("nozzle_diameter");
-    if (opt)
-        config.set_key_value("num_extruders", new ConfigOptionInt((int)static_cast<const ConfigOptionFloats*>(opt)->values.size()));
-
-    // Adjust printer preset config to the first extruder from m_extruder_id 
-    Preset printer_preset_adjusted = active_printer.preset;
-    if (m_extruder_id > 0 && !printer_preset_adjusted.config.opt_bool("single_extruder_multi_material")) {
-        DynamicPrintConfig& active_printer_config = printer_preset_adjusted.config;
-        for (const std::string& key : print_config_def.extruder_option_keys()) {
-            if (key == "default_filament_profile")
-                continue;// Ignore this field, because this parameter is not related to the extruder but to whole printer.
-            auto* opt = active_printer_config.option(key, false);
-            if (opt != nullptr && opt->is_vector())
-                static_cast<ConfigOptionVectorBase*>(opt)->set_at(opt, 0, m_extruder_id);
-        }
-    }
-    PresetWithVendorProfile active_printer_adjusted(printer_preset_adjusted, active_printer.vendor);
-
-    std::vector<size_t> indices_of_template_presets;
-    indices_of_template_presets.reserve(m_extr_filaments.size());
-
-    size_t num_default_presets = m_filaments->num_default_presets();
-    for (size_t idx_preset = num_default_presets; idx_preset < m_extr_filaments.size(); ++idx_preset) {
-        const bool    is_selected   = idx_preset == m_idx_selected;
-        const Preset* preset        = m_extr_filaments[idx_preset].preset;
-        Filament& extr_filament = m_extr_filaments[idx_preset];
-
-        const PresetWithVendorProfile this_preset_with_vendor_profile = m_filaments->get_preset_with_vendor_profile(*preset);
-        bool    was_compatible = extr_filament.is_compatible;
-        extr_filament.is_compatible = is_compatible_with_printer(this_preset_with_vendor_profile, active_printer_adjusted, &config);
-        if (active_print != nullptr)
-            extr_filament.is_compatible &= is_compatible_with_print(this_preset_with_vendor_profile, *active_print, active_printer_adjusted);
-        if (!extr_filament.is_compatible && is_selected &&
-            (unselect_if_incompatible == PresetSelectCompatibleType::Always || (unselect_if_incompatible == PresetSelectCompatibleType::OnlyIfWasCompatible && was_compatible)))
-            m_idx_selected = size_t(-1);
-        if (preset->vendor && preset->vendor->templates_profile) {
-            if (preset->is_visible)
-                indices_of_template_presets.push_back(idx_preset);
-            else {
-                extr_filament.is_compatible = false;
-                if (is_selected)
-                    m_idx_selected = size_t(-1);
-            }
-        }
-    }
-
-    // filter out template profiles where profile with same alias and compability exists
-    if (!indices_of_template_presets.empty()) {
-        for (size_t idx = num_default_presets; idx < m_extr_filaments.size(); ++idx) {
-            const Filament& filament    = m_extr_filaments[idx];
-            const VendorProfile*    vendor      = filament.preset->vendor;
-            if (vendor && !vendor->templates_profile && filament.is_compatible) {
-                const std::string& preset_alias = filament.preset->alias;
-                for (const auto& template_idx : indices_of_template_presets) {
-                    if (m_extr_filaments[template_idx].preset->alias == preset_alias) {
-                        m_extr_filaments[template_idx].is_compatible = false;
-                        // unselect selected template filament if there is non-template alias compatible
-                        if (template_idx == m_idx_selected && (unselect_if_incompatible != PresetSelectCompatibleType::Never))
-                            m_idx_selected = size_t(-1);
-                        break;
-                    }
-                }
-            }
-        }
-    }
-
-    return m_idx_selected;
-}
-
-
 namespace PresetUtils {
 	const VendorProfile::PrinterModel* system_printer_model(const Preset &preset)
 	{

@@ -927,7 +927,7 @@ Offline i bezpieczeństwo
 - Brak fsync przy publikacji pliku (zapis tymczasowy + zmiana nazwy,
   bez wymuszania zapisu na dysk).
 - Kod uruchamiania zewnętrznych procesów jest nadal skompilowany.
-- Rdzeń FFF jest wycięty z buildu SLA (test sla_fff_core_cut); w nagłówkach
+- Rdzeń FFF jest wycięty z buildu SLA (test sla_fff_purge_guard); w nagłówkach
   zostały deklaracje FFF i nieosiągalne gałęzie w GUI.
 
 Instalacja i licencje

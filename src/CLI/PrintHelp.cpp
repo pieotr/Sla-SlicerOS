@@ -90,10 +90,8 @@ static void print_help(const ConfigDef& config_def, bool show_defaults, std::fun
 
             // right: option description
             std::string descr = def.tooltip;
-#ifdef SLIC3R_SLA_ONLY
             if (opt.first == "thumbnails") descr = "Preview dimensions stored in supported SLA archives.";
             if (opt.first == "printer_technology") descr = "Printer technology: SLA.";
-#endif
             bool show_defaults_this = show_defaults || def.opt_key == "config_compatibility";
             if (show_defaults_this && def.default_value && def.type != coBool
                 && (def.type != coString || !def.default_value->serialize().empty())) {
@@ -102,9 +100,7 @@ static void print_help(const ConfigDef& config_def, bool show_defaults, std::fun
                     descr += def.sidetext + ", ";
                 }
                 else if (def.enum_def && def.enum_def->has_values()
-#ifdef SLIC3R_SLA_ONLY
                          && opt.first != "printer_technology"
-#endif
                 ) {
                     descr += boost::algorithm::join(def.enum_def->values(), ", ") + "; ";
                 }
@@ -130,9 +126,7 @@ static void print_help(const ConfigDef& config_def, bool show_defaults, std::fun
 
 void print_help(bool include_print_options/* = false*/, PrinterTechnology printer_technology/* = ptAny*/)
 {
-#ifdef SLIC3R_SLA_ONLY
     printer_technology = ptSLA;
-#endif
     boost::nowide::cout
         << SLIC3R_BUILD_ID << " " << "based on Slic3r"
 #ifdef SLIC3R_GUI
@@ -180,19 +174,13 @@ void print_help(bool include_print_options/* = false*/, PrinterTechnology printe
         boost::nowide::cout << std::endl;
         print_help(print_config_def, true, [printer_technology](const ConfigOptionDef& def)
             { return
-#ifdef SLIC3R_SLA_ONLY
                 def.opt_key != "thumbnails_format" &&
-#endif
                 (printer_technology == ptAny || def.printer_technology == ptAny || printer_technology == def.printer_technology); });
     }
     else {
         boost::nowide::cout
             << std::endl
-#ifdef SLIC3R_SLA_ONLY
             << "Run --help-sla to see the full listing of print options." << std::endl;
-#else
-            << "Run --help-fff / --help-sla to see the full listing of print options." << std::endl;
-#endif
     }
 }
 

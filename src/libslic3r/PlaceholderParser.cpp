@@ -22,7 +22,6 @@
 #include <cstdlib>
 
 #include "Exception.hpp"
-#include "Flow.hpp"
 #include "Utils.hpp"
 #include "libslic3r/Point.hpp"
 #include "libslic3r/PrintConfig.hpp"
@@ -136,9 +135,9 @@ std::vector<std::string> PlaceholderParser::config_diff(const DynamicPrintConfig
 // Scalar configuration values are stored into m_single,
 // vector configuration values are stored into m_multiple.
 // All vector configuration values stored into the PlaceholderParser
-// are expected to be addressed by the extruder ID, therefore
+// are expected to be addressed by an index, therefore
 // if a vector configuration value is addressed without an index,
-// a current extruder ID is used.
+// a current index is used.
 bool PlaceholderParser::apply_config(const DynamicConfig &rhs)
 {
     bool modified = false;
@@ -804,7 +803,7 @@ namespace client
         mutable DynamicConfig   *config_outputs         = nullptr;
         // Local variables, read / write
         mutable DynamicConfig    config_local;
-        size_t                   current_extruder_id    = 0;
+        size_t                   current_index    = 0;
         // Random number generator and optionally global variables.
         PlaceholderParser::ContextData *context_data    = nullptr;
         // If false, the macro_processor will evaluate a full macro.
@@ -883,7 +882,7 @@ namespace client
 
             std::string         opt_key_str(opt_key.begin(), opt_key.end());
             const ConfigOption *opt = ctx->resolve_symbol(opt_key_str);
-            size_t              idx = ctx->current_extruder_id;
+            size_t              idx = ctx->current_index;
             if (opt == nullptr) {
                 // Check whether this is a legacy vector indexing.
                 idx = opt_key_str.rfind('_');
@@ -1018,10 +1017,7 @@ namespace client
             case coFloatOrPercent:
             {
                 std::string opt_key(opt.it_range.begin(), opt.it_range.end());
-                if (boost::ends_with(opt_key, "extrusion_width")) {
-                    // Extrusion width supports defaults and a complex graph of dependencies.
-                    output.set_d(Flow::extrusion_width(opt_key, *ctx, static_cast<unsigned int>(ctx->current_extruder_id)));
-                } else if (! static_cast<const ConfigOptionFloatOrPercent*>(opt.opt)->percent) {
+                if (! static_cast<const ConfigOptionFloatOrPercent*>(opt.opt)->percent) {
                     // Not a percent, just return the value.
                     output.set_d(opt.opt->getFloat());
                 } else {
@@ -1033,12 +1029,6 @@ namespace client
     			        const ConfigOption *opt_parent = opt_def->ratio_over.empty() ? nullptr : ctx->resolve_symbol(opt_def->ratio_over);
     			        if (opt_parent == nullptr)
     			            ctx->throw_exception("FloatOrPercent variable failed to resolve the \"ratio_over\" dependencies", opt.it_range);
-    			        if (boost::ends_with(opt_def->ratio_over, "extrusion_width")) {
-                    		// Extrusion width supports defaults and a complex graph of dependencies.
-                            assert(opt_parent->type() == coFloatOrPercent);
-                        	v *= Flow::extrusion_width(opt_def->ratio_over, static_cast<const ConfigOptionFloatOrPercent*>(opt_parent), *ctx, static_cast<unsigned int>(ctx->current_extruder_id));
-                        	break;
-                        }
                         if (opt_parent->type() == coFloat || opt_parent->type() == coFloatOrPercent) {
     			        	v *= opt_parent->getFloat();
     			        	if (opt_parent->type() == coFloat || ! static_cast<const ConfigOptionFloatOrPercent*>(opt_parent)->percent)
@@ -2360,14 +2350,14 @@ static std::string process_macro(const std::string &templ, client::MyContext &co
     return output;
 }
 
-std::string PlaceholderParser::process(const std::string &templ, unsigned int current_extruder_id, const DynamicConfig *config_override, DynamicConfig *config_outputs, ContextData *context_data) const
+std::string PlaceholderParser::process(const std::string &templ, unsigned int current_index, const DynamicConfig *config_override, DynamicConfig *config_outputs, ContextData *context_data) const
 {
     client::MyContext context;
     context.external_config 	= this->external_config();
     context.config              = &this->config();
     context.config_override     = config_override;
     context.config_outputs      = config_outputs;
-    context.current_extruder_id = current_extruder_id;
+    context.current_index = current_index;
     context.context_data        = context_data;
     return process_macro(templ, context);
 }

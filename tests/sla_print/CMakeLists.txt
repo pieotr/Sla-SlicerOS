@@ -3,6 +3,7 @@ add_executable(${_TEST_NAME}_tests ${_TEST_NAME}_tests_main.cpp
     sla_print_tests.cpp
     sla_test_utils.hpp sla_test_utils.cpp
     sla_supptgen_tests.cpp
+    sla_organic_supports_tests.cpp
     sla_raycast_tests.cpp
     sla_parabola_tests.cpp
     sla_voronoi_graph_tests.cpp
@@ -70,6 +71,9 @@ add_executable(${_TEST_NAME}_tests ${_TEST_NAME}_tests_main.cpp
     sla_cxdlp_edit_tests.cpp
     sla_fresh_direct_export_tests.cpp
     sla_representation_adjustment_tests.cpp
+    sla_fff_project_3mf_tests.cpp
+    sla_legacy_datadir_tests.cpp
+    sla_config_schema_tests.cpp
     ../../src/slic3r/Utils/HttpOffline.cpp)
 
 # mold linker for successful linking needs also to link TBB library and link it before libslic3r.
@@ -125,6 +129,11 @@ add_test(NAME sla_representation_adjustment COMMAND ${_TEST_NAME}_tests "[sla_re
 set_tests_properties(sla_representation_adjustment PROPERTIES LABELS "sla;formats;smoke" TIMEOUT 600)
 add_test(NAME sla_header_mirror COMMAND ${_TEST_NAME}_tests "[sla_header_mirror]")
 set_tests_properties(sla_header_mirror PROPERTIES LABELS "sla;formats;smoke" TIMEOUT 300)
+
+# W9b-2: the schema dump written by the first test is checked against the shipped SLA profiles by the second.
+add_test(NAME sla_config_schema_dump COMMAND ${CMAKE_COMMAND} -E env SLA_SCHEMA_DUMP=${CMAKE_CURRENT_BINARY_DIR}/config-schema
+    $<TARGET_FILE:${_TEST_NAME}_tests> "[sla_config_schema]")
+set_tests_properties(sla_config_schema_dump PROPERTIES LABELS "sla;profiles;smoke" TIMEOUT 60 FIXTURES_SETUP sla_config_schema)
 set_tests_properties(sla_printer_profiles PROPERTIES LABELS "sla;profiles;smoke")
 
 if (WIN32)
@@ -155,9 +164,12 @@ set_tests_properties(sla_offline_api PROPERTIES LABELS "sla;offline;smoke" TIMEO
 
 # The executable must also follow the SLA-only configuration contract. Native
 # writer tests do not exercise command parsing, exit codes or automatic suffixes.
-if(SLIC3R_SLA_ONLY AND TARGET PrusaSlicer)
+if(TARGET PrusaSlicer)
     find_package(Python3 COMPONENTS Interpreter QUIET)
     if(Python3_Interpreter_FOUND)
+        add_test(NAME sla_config_schema_keys COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_CURRENT_SOURCE_DIR}/verify_sla_schema_keys.py
+            ${CMAKE_CURRENT_BINARY_DIR}/config-schema ${CMAKE_SOURCE_DIR}/resources/profiles)
+        set_tests_properties(sla_config_schema_keys PROPERTIES LABELS "sla;profiles;smoke" TIMEOUT 60 FIXTURES_REQUIRED sla_config_schema)
         add_test(NAME sla_cli_smoke COMMAND ${Python3_EXECUTABLE}
             ${CMAKE_CURRENT_SOURCE_DIR}/cli_sla_smoke.py $<TARGET_FILE:PrusaSlicer>
             --output ${CMAKE_CURRENT_BINARY_DIR}/cli-sla-smoke)
@@ -168,48 +180,46 @@ endif()
 # Hidden native cases preserve actual historical project payloads. Register both
 # explicitly so the default CTest suite cannot silently omit migration coverage.
 # This dependency is reached only when building the SLA test suite.
-if(SLIC3R_SLA_ONLY)
-    find_package(Python3 3.9 COMPONENTS Interpreter REQUIRED)
-    # Test the actual intersection event order and a deterministic work bound;
-    # wall-clock assertions would be unstable across machines.
-    if(MSVC)
-        set(_clipper_contract_compiler_style msvc)
-    else()
-        set(_clipper_contract_compiler_style gnu)
-    endif()
-    add_test(NAME sla_clipper_intersection_order COMMAND ${Python3_EXECUTABLE} -B
-        ${CMAKE_CURRENT_SOURCE_DIR}/verify_clipper_intersection_order.py
-        --source ${CMAKE_SOURCE_DIR}/src/clipper/clipper.cpp
-        --work-dir ${CMAKE_CURRENT_BINARY_DIR}/clipper-order-runtime
-        --compiler ${CMAKE_CXX_COMPILER}
-        --compiler-style ${_clipper_contract_compiler_style})
-    set_tests_properties(sla_clipper_intersection_order PROPERTIES
-        LABELS "sla;geometry;performance-contract" TIMEOUT 90 RUN_SERIAL TRUE)
-    foreach(_legacy_kind IN ITEMS model pcb)
-        add_test(NAME sla_legacy_${_legacy_kind}_migration COMMAND ${Python3_EXECUTABLE}
-            ${CMAKE_CURRENT_SOURCE_DIR}/run_anycubic_515_legacy_migration.py
-            --kind ${_legacy_kind}
-            --executable $<TARGET_FILE:${_TEST_NAME}_tests>
-            --build-root ${CMAKE_BINARY_DIR}
-            --work-root ${CMAKE_CURRENT_BINARY_DIR}/migration-runtime
-            --fixtures ${CMAKE_SOURCE_DIR}/tests/data/anycubic_515_legacy_${_legacy_kind})
-        set_tests_properties(sla_legacy_${_legacy_kind}_migration PROPERTIES
-            LABELS "sla;migration;legacy;selfcontained;smoke" TIMEOUT 120 RUN_SERIAL TRUE)
-    endforeach()
-    # Genuine PM4n calibration/model/PCB projects include literal auto and 515.
-    # Their unknown Gray8 data must survive independently of new-job precision.
-    add_test(NAME sla_legacy_pm4n_migration COMMAND ${Python3_EXECUTABLE} -B
-        ${CMAKE_CURRENT_SOURCE_DIR}/run_pm4n_legacy_migration.py
+find_package(Python3 3.9 COMPONENTS Interpreter REQUIRED)
+# Test the actual intersection event order and a deterministic work bound;
+# wall-clock assertions would be unstable across machines.
+if(MSVC)
+    set(_clipper_contract_compiler_style msvc)
+else()
+    set(_clipper_contract_compiler_style gnu)
+endif()
+add_test(NAME sla_clipper_intersection_order COMMAND ${Python3_EXECUTABLE} -B
+    ${CMAKE_CURRENT_SOURCE_DIR}/verify_clipper_intersection_order.py
+    --source ${CMAKE_SOURCE_DIR}/src/clipper/clipper.cpp
+    --work-dir ${CMAKE_CURRENT_BINARY_DIR}/clipper-order-runtime
+    --compiler ${CMAKE_CXX_COMPILER}
+    --compiler-style ${_clipper_contract_compiler_style})
+set_tests_properties(sla_clipper_intersection_order PROPERTIES
+    LABELS "sla;geometry;performance-contract" TIMEOUT 90 RUN_SERIAL TRUE)
+foreach(_legacy_kind IN ITEMS model pcb)
+    add_test(NAME sla_legacy_${_legacy_kind}_migration COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/run_anycubic_515_legacy_migration.py
+        --kind ${_legacy_kind}
         --executable $<TARGET_FILE:${_TEST_NAME}_tests>
         --build-root ${CMAKE_BINARY_DIR}
         --work-root ${CMAKE_CURRENT_BINARY_DIR}/migration-runtime
-        --fixtures ${CMAKE_SOURCE_DIR}/tests/data/pm4n_515_legacy)
-    set_tests_properties(sla_legacy_pm4n_migration PROPERTIES
+        --fixtures ${CMAKE_SOURCE_DIR}/tests/data/anycubic_515_legacy_${_legacy_kind})
+    set_tests_properties(sla_legacy_${_legacy_kind}_migration PROPERTIES
         LABELS "sla;migration;legacy;selfcontained;smoke" TIMEOUT 120 RUN_SERIAL TRUE)
-endif()
+endforeach()
+# Genuine PM4n calibration/model/PCB projects include literal auto and 515.
+# Their unknown Gray8 data must survive independently of new-job precision.
+add_test(NAME sla_legacy_pm4n_migration COMMAND ${Python3_EXECUTABLE} -B
+    ${CMAKE_CURRENT_SOURCE_DIR}/run_pm4n_legacy_migration.py
+    --executable $<TARGET_FILE:${_TEST_NAME}_tests>
+    --build-root ${CMAKE_BINARY_DIR}
+    --work-root ${CMAKE_CURRENT_BINARY_DIR}/migration-runtime
+    --fixtures ${CMAKE_SOURCE_DIR}/tests/data/pm4n_515_legacy)
+set_tests_properties(sla_legacy_pm4n_migration PROPERTIES
+    LABELS "sla;migration;legacy;selfcontained;smoke" TIMEOUT 120 RUN_SERIAL TRUE)
 
 # Offline build must not link web view / network libraries (goal G12).
-if (SLIC3R_OFFLINE_ONLY AND UNIX AND NOT APPLE)
+if (UNIX AND NOT APPLE)
     add_test(NAME sla_offline_no_network_libs
              COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/architecture/verify_offline_no_network_libs.py
                      --binary $<TARGET_FILE:PrusaSlicer>)
@@ -242,17 +252,19 @@ if (Python3_EXECUTABLE)
     add_test(NAME sla_hint_translations
              COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tests/gui/test_offline_hint_caption_correspondence.py)
     set_tests_properties(sla_hint_catalog sla_hint_translations PROPERTIES LABELS "sla;gui;smoke" TIMEOUT 60)
+    # Polish catalog: .po compiles (msgfmt -c --check-format), committed .mo is current, key strings of the
+    # Configuration Wizard and the Layer editor are translated, no localizable string of those sources is missing.
+    add_test(NAME sla_pl_catalog
+             COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tests/gui/test_pl_catalog.py)
+    set_tests_properties(sla_pl_catalog PROPERTIES LABELS "sla;gui;smoke;localization" SKIP_RETURN_CODE 77 TIMEOUT 60)
 endif()
 
-# The SLA-only build must not compile the FFF printing core (goal G1).
-if (Python3_EXECUTABLE AND SLIC3R_SLA_ONLY)
-    add_test(NAME sla_fff_core_cut
-             COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/architecture/verify_sla_fff_core_cut.py --build ${CMAKE_BINARY_DIR})
-    set_tests_properties(sla_fff_core_cut PROPERTIES LABELS "sla;architecture;smoke" TIMEOUT 120)
-    # FFF headers (Print/Layer/Extrusion*/GCode...) must not leak back into the compiled SLA TUs.
-    add_test(NAME sla_fff_header_cut
-             COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/architecture/verify_sla_fff_header_cut.py --build ${CMAKE_BINARY_DIR})
-    set_tests_properties(sla_fff_header_cut PROPERTIES LABELS "sla;architecture;smoke" TIMEOUT 120)
+# Guard for the FFF dead-file purge (W3): removed libslic3r paths stay absent and no libslic3r
+# file includes a removed header (text scan, no build tree needed).
+if (Python3_EXECUTABLE)
+    add_test(NAME sla_fff_purge_guard
+             COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tests/architecture/verify_fff_purge_guard.py)
+    set_tests_properties(sla_fff_purge_guard PROPERTIES LABELS "sla;architecture;smoke" TIMEOUT 120)
 endif()
 
 # Runtime GUI acceptance (waves 1-9 were never run before). Each test starts a private, invisible

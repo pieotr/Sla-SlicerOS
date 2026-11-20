@@ -50,7 +50,6 @@ namespace Slic3r::CLI
                                         DynamicPrintConfig& print_config,
                                         PrinterTechnology& printer_technology,
                                         Data& cli);
-    bool                is_needed_post_processing(const DynamicPrintConfig& print_config);
 
     // Implemented in ProcessTransform.cpp
 
@@ -74,7 +73,6 @@ namespace Slic3r::CLI
             // and return state of start_gui
     bool    init_gui_params(GUI::GUI_InitParams& gui_params, int argc, char** argv, Data& cli);
     int     start_gui_with_params(GUI::GUI_InitParams& params);
-    int     start_as_gcode_viewer(GUI::GUI_InitParams& gui_params);
 #endif
 
 }

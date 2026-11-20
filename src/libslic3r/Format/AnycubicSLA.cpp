@@ -25,7 +25,7 @@
 #include <cassert>
 #include <cstdio>
 
-#include "libslic3r/GCode/ThumbnailData.hpp"
+#include "libslic3r/Thumbnails/ThumbnailData.hpp"
 #include "libslic3r/SLA/RasterBase.hpp"
 #include "libslic3r/SLAPrint.hpp"
 #include "libslic3r/SLA/PrintParameters.hpp"

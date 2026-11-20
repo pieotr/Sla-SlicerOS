@@ -5,9 +5,6 @@
 #include "DownloaderFileGet.hpp"
 
 #include <thread>
-#ifndef SLIC3R_OFFLINE_ONLY
-#include <curl/curl.h>
-#endif
 #include <boost/nowide/fstream.hpp>
 #include <boost/format.hpp>
 #include <boost/log/trivial.hpp>
@@ -28,42 +25,7 @@ const size_t DOWNLOAD_SIZE_LIMIT		= 1024 * 1024 * 1024;
 
 bool FileGet::is_subdomain(const std::string& url, const std::string& domain)
 {
-#ifdef SLIC3R_OFFLINE_ONLY
     return false; // No remote source is allowed in the offline application.
-#else
-	// domain should be f.e. printables.com (.com including)
-	char* host;
-	std::string host_string;
-	CURLUcode rc;
-	CURLU* curl = curl_url();
-	if (!curl) {
-		BOOST_LOG_TRIVIAL(error) << "Failed to init Curl library in function is_domain.";
-		return false;
-	}
-	rc = curl_url_set(curl, CURLUPART_URL, url.c_str(), 0);
-	if (rc != CURLUE_OK) {
-		curl_url_cleanup(curl);
-		return false;
-	}
-	rc = curl_url_get(curl, CURLUPART_HOST, &host, 0);
-	if (rc != CURLUE_OK || !host) {
-		curl_url_cleanup(curl);
-		return false;
-	}
-	host_string = std::string(host);
-	curl_free(host);
-	// now host should be subdomain.domain or just domain
-	if (domain == host_string) {
-		curl_url_cleanup(curl);
-		return true;
-	}
-	if(boost::ends_with(host_string, "." + domain)) {
-		curl_url_cleanup(curl);
-		return true;
-	}
-	curl_url_cleanup(curl);
-	return false;
-#endif
 }
 
 namespace {

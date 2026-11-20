@@ -8,20 +8,24 @@ void LayerEditorContent::update_source_status()
     if (!m_session_status) return;
     update_issue_state();
     const bool current = source_current();
-    const wxString text = m_working ? "Applying layer operation..." : !is_model_result() ?
-        (unsaved_changes() ? "Layer document: modified. Save a layer project to keep masks and settings." :
-         has_changes() ? "Generated layers: not saved or exported. Save a layer project or export a copy." :
-         "Layer document: saved. Edits use this document's own settings.") : !current ?
-        "Older slices: your edits are kept. Export a copy or load current slices. Apply is unavailable." :
-        unsaved_changes() ? (m_document.dirty() ?
-            "Sliced layers: modified. Save the project or Apply to keep these edits in the model result." :
-            "Sliced layers: applied to the model. Save the 3D project to keep these edits after restart.") :
-        "Sliced layers: edits use the captured printer settings.";
-    const int width = std::max(200, GetClientSize().x-24);
-    if (m_status_text != text || m_status_width != width) {
-        m_status_text = text; m_status_width = width;
-        m_session_status->SetLabel(text); m_session_status->Wrap(width);
-        Layout(); FitInside();
+    // Full sentence (tooltip + accessible name, the tests and screen readers rely on its prefix) and a short form for the
+    // header line: at 1280x800 the document buttons leave only ~270 px, so the long sentence used to end in an ellipsis.
+    wxString text, shorter;
+    const auto say = [&](const wxString &full, const wxString &brief) { text = full; shorter = brief; };
+    if (m_working) say(_L("Applying layer operation..."), _L("Applying operation..."));
+    else if (!is_model_result()) {
+        if (unsaved_changes()) say(_L("Layer document: modified. Save a layer project to keep masks and settings."), _L("Layer document: modified"));
+        else if (has_changes()) say(_L("Generated layers: not saved or exported. Save a layer project or export a copy."), _L("Generated: not saved/exported"));
+        else say(_L("Layer document: saved. Edits use this document's own settings."), _L("Layer document: saved"));
+    } else if (!current) say(_L("Older slices: your edits are kept. Export a copy or load current slices. Apply is unavailable."), _L("Older slices: edits kept"));
+    else if (unsaved_changes()) {
+        if (m_document.dirty()) say(_L("Sliced layers: modified. Save the project or Apply to keep these edits in the model result."), _L("Sliced layers: modified"));
+        else say(_L("Sliced layers: applied to the model. Save the 3D project to keep these edits after restart."), _L("Sliced layers: applied"));
+    } else say(_L("Sliced layers: edits use the captured printer settings."), _L("Sliced layers: captured settings"));
+    if (m_status_text != text) {   // one line in the header; the full text is the tooltip and the accessible name
+        m_status_text = text;
+        m_session_status->SetLabel(shorter); m_session_status->SetToolTip(text);
+        set_accessible_name(m_session_status, text);
         if (wxGetApp().mainframe) wxGetApp().mainframe->update_title();
     }
     if (m_apply_button) m_apply_button->Enable(current && !m_working);
@@ -39,7 +43,7 @@ void LayerEditorContent::perform(const std::function<void()> &action)
     m_op_preview.reset(); // any other action (layer change, brush, undo) ends an operation preview
     try { action(); refresh(); }
     catch (const std::exception &error) {
-        wxMessageBox(wxString::FromUTF8(error.what()), "Layer editor", wxOK | wxICON_ERROR, this);
+        wxMessageBox(wxString::FromUTF8(error.what()), _L("Layer editor"), wxOK | wxICON_ERROR, this);
     }
 }
 
@@ -59,15 +63,14 @@ void LayerEditorContent::update_brush_value_hint()
 {
     if(!m_brush_value_info)return;
     const int requested=m_value->GetValue();
-    const bool erasing=m_brush->GetSelection()==1;
+    const bool erasing=m_brush.GetSelection()==1;
+    const wxString arrow=wxString::FromUTF8(" \xe2\x86\x92 ");
     wxString message;
-    if(erasing)message=wxString::Format(
-        "Eraser paints %u; brush request %d is kept. Source palette: %u levels.",unsigned(m_edit_projection[0]),requested,m_edit_level_count);
+    if(erasing)message=wxString::Format(_L("Eraser paints %u (requested %d kept)"),unsigned(m_edit_projection[0]),requested);
     else if(requested<0 || requested>255)
-        message="Brush grayscale must be between 0 and 255. The requested input is kept.";
-    else message=wxString::Format("Brush source palette: %u levels. Requested %d -> paints %u. Threshold uses the requested value.",
-                                 m_edit_level_count,requested,unsigned(m_edit_projection[size_t(requested)]));
-    const int width=std::max(240,GetClientSize().x-24);
+        message=_L("Grayscale must be 0–255; input kept");
+    else message=wxString::Format(_L("Requested %d"),requested)+arrow+wxString::Format(_L("paints %u"),unsigned(m_edit_projection[size_t(requested)]));
+    const int width=tool_text_width();
     if(message==m_brush_hint_text && width==m_brush_hint_width)return;
     m_brush_hint_text=message;m_brush_hint_width=width;
     m_brush_value_info->SetLabel(message);m_brush_value_info->Wrap(width);
@@ -78,11 +81,9 @@ void LayerEditorContent::update_paint_scope()
 {
     if (m_paint_scope) {
         const bool range = m_paint_range->GetValue();
-        m_paint_scope->SetLabel(range ? wxString::Format(
-            "Painting layers %d–%d — drag on the overlay; one Undo restores the whole stroke.",
-            m_first->GetValue(), m_last->GetValue()) : wxString::Format(
-            "Painting layer %d only — enable the range below to paint several layers.", m_layer->GetValue()));
-        m_paint_scope->Wrap(std::max(240, GetClientSize().x - 24));
+        m_paint_scope->SetLabel(range ? wxString::Format(_L("Painting layers %d–%d"), m_first->GetValue(), m_last->GetValue()) :
+                                        wxString::Format(_L("Painting layer %d"), m_layer->GetValue()));
+        m_paint_scope->Wrap(tool_text_width());
     }
 }
 
@@ -95,24 +96,24 @@ void LayerEditorContent::update_mask_plane_info()
         // layer may lie outside it. Describe the actual brush targets.
         const int first = m_first->GetValue(), last = m_last->GetValue();
         if (first < 1 || last < first || size_t(last) > m_document.layer_count()) {
-            message = "Choose a valid layer range to see which masks will change.";
+            message = _L("Choose a valid layer range to see which masks will change.");
         } else {
             size_t shared = 0;
             for (size_t layer = size_t(first - 1); layer < size_t(last); ++layer)
                 shared += m_document.mask_is_shared(layer) ? 1 : 0;
             const size_t independent = size_t(last - first + 1) - shared;
             message = wxString::Format(
-                "Selected range: %zu shared %s, %zu independent %s. "
-                "Shared layers update both masks; independent layers update only the selected mask.",
+                _L("Selected range: %zu shared %s, %zu independent %s. "
+                "Shared layers update both masks; independent layers update only the selected mask."),
                 shared, wxString(shared == 1 ? "layer" : "layers"),
                 independent, wxString(independent == 1 ? "layer" : "layers"));
         }
     } else {
         message = m_document.mask_is_shared(size_t(m_layer->GetValue() - 1)) ?
-            "Shared mask: main and SUBIMGS stay linked when edited." :
-            "Independent masks: edits affect only the selected image.";
+            _L("Shared mask: main and SUBIMGS stay linked when edited.") :
+            _L("Independent masks: edits affect only the selected image.");
     }
-    const int width = std::max(240, GetClientSize().x - 24);
+    const int width = hint_width();
     if (message == m_plane_hint_text && width == m_plane_hint_width) return;
     m_plane_hint_text = message; m_plane_hint_width = width;
     m_plane_info->SetLabel(message); m_plane_info->Wrap(width);
@@ -127,7 +128,7 @@ void LayerEditorContent::clear_preview(const wxString &message)
     set_accessible_name(m_preview, "Layer mask preview", message.empty() ? wxString("No layer mask shown") : message, AccessibleRole::Image);
     m_preview->Refresh(false);
     m_paint_scope->SetLabel(message);
-    m_paint_scope->Wrap(std::max(240, GetClientSize().x - 24));
+    m_paint_scope->Wrap(tool_text_width());
 }
 
 const png::ImageGreyscale *LayerEditorContent::prepared_preview()
@@ -145,7 +146,7 @@ const png::ImageGreyscale *LayerEditorContent::prepared_preview()
     // Nested refreshes after a cancelled stroke/operation must not open a
     // second progress window. A subsequent user action can retry explicitly.
     if (m_preview_cancelled) return nullptr;
-    clear_preview("Preparing layer preview…");
+    clear_preview(_L("Preparing layer preview…"));
     std::optional<sla::LayerPreviewCache::Prepared> prepared;
     std::atomic<bool> cancel_requested{false};
     bool loaded = false;
@@ -154,7 +155,7 @@ const png::ImageGreyscale *LayerEditorContent::prepared_preview()
             // The modal worker excludes edits and panel destruction while
             // it borrows PNG bytes. Join before publishing or touching wx.
             TaskLock working(m_working);
-            loaded = run_background_layers(this, "Prepare layer preview", [&](const auto &progress) {
+            loaded = run_background_layers(this, _L("Prepare layer preview"), [&](const auto &progress) {
                 try {
                     prepared.emplace(sla::LayerPreviewCache::prepare(m_document, first, last, plane, progress));
                     return true;
@@ -163,13 +164,13 @@ const png::ImageGreyscale *LayerEditorContent::prepared_preview()
         }
         if (!loaded || cancel_requested.load(std::memory_order_relaxed)) {
             m_preview_cancelled = true;
-            clear_preview("Preview cancelled. Use Refresh preview or choose another layer or range.");
+            clear_preview(_L("Preview cancelled. Use Refresh preview or choose another layer or range."));
             return nullptr;
         }
         m_preview_cache.publish(std::move(*prepared), m_document, first, last, plane);
     } catch (...) {
         m_preview_cancelled = true;
-        clear_preview("Preview unavailable. Use Refresh preview or choose another layer or range.");
+        clear_preview(_L("Preview unavailable. Use Refresh preview or choose another layer or range."));
         throw;
     }
     if (std::getenv("SLA_TRACE_LAYER_PREVIEW"))
@@ -237,16 +238,20 @@ void LayerEditorContent::refresh()
             if (i <= selected) selected_physical = physical_count;
             previous_z = z;
         }
-        m_exposure_info->SetLabel(wxString::Format("Exposure %zu/%zu; physical layer %zu/%zu; Z %.6g mm",
+        m_exposure_info->SetLabel(wxString::Format(_L("Exposure %zu/%zu; physical layer %zu/%zu; Z %.6g mm"),
             selected+1, fresh.rows.size(), selected_physical, physical_count,
             fresh.rows[selected].at(sla::LayerParameter::PositionZ)));
     }
     static constexpr double zooms[] = {0., .25, .5, 1., 2., 4.};
     const auto available = m_viewport->GetClientSize();
+    m_fit_avail = available;
     const int zoom_choice = m_zoom->GetSelection();
     const double scale = m_zoom_scale > 0 ? m_zoom_scale : zoom_choice <= 0 ?
-        std::min({1., double(std::max(320, available.x-12)) / m_cols,
-                      double(std::max(200, available.y-12)) / m_rows}) : zooms[zoom_choice];
+        // Fit shows the whole mask in the viewport: it shrinks big masks and (wave 35) also enlarges small ones, up to the
+        // largest zoom. The scale may be fractional; picking and painting divide by the actual preview size, so every
+        // screen pixel still maps to exactly one mask pixel. "1:1" stays exactly 100%.
+        std::min({layer_zoom_max, double(std::max(320, available.x-2*kCanvasMargin-2)) / m_cols,
+                  double(std::max(200, available.y-2*kCanvasMargin-2)) / m_rows}) : zooms[zoom_choice];
     const int width = std::max(1, int(m_cols*scale));
     const int height = std::max(1, int(m_rows*scale));
     if (uint64_t(width)*height > 32*1024*1024 || width > 16384 || height > 16384)
@@ -266,8 +271,11 @@ void LayerEditorContent::refresh()
     m_preview->SetMinSize(wxSize(width, height));
     m_preview->SetSize(width, height);
     m_viewport->FitInside();
+    m_viewport->Layout();
+    m_viewport->Refresh(false);   // the surround and the frame around the mask follow the new size
     m_undo->Enable(m_document.can_undo()); m_redo->Enable(m_document.can_redo());
     update_source_status();
+    update_view_info();
     if (wxGetApp().mainframe) wxGetApp().mainframe->update_title();
     Layout();
     FitInside();
@@ -307,18 +315,18 @@ void LayerEditorContent::update_stroke_preview(wxPoint from, wxPoint to)
 void LayerEditorContent::update_pixel_info(const wxMouseEvent *event)
 {
     if (!m_pixel_info) return;
-    wxString text = "Pixel: move the cursor over the mask";
+    wxString text = _L("Pixel: –");
     const auto size = m_preview->GetClientSize();
     if (event && m_view_image && m_cols && m_rows &&
         layer_canvas_contains(event->GetX(), size.x) && layer_canvas_contains(event->GetY(), size.y)) {
         const auto pixel = pixel_at(*event);
         const unsigned grey = m_view_image->get(size_t(pixel.y), size_t(pixel.x));
-        text = wxString::Format("Pixel x=%d y=%d", pixel.x, pixel.y);
+        text = wxString::Format(_L("Pixel x=%d y=%d"), pixel.x, pixel.y);
         if (m_view_geometry && m_view_geometry->width_mm > 0 && m_view_geometry->height_mm > 0)
             text += wxString::Format("  |  %.3f, %.3f mm",
                 layer_pixel_to_mm(pixel.x, int(m_cols), m_view_geometry->width_mm),
                 layer_pixel_to_mm(pixel.y, int(m_rows), m_view_geometry->height_mm));
-        text += wxString::Format("  |  grey %u%s", grey, m_paint_range->GetValue() ? " (range overlay)" : "");
+        text += wxString::Format(_L("  |  grey %u%s"), grey, m_paint_range->GetValue() ? _L(" (range overlay)") : "");
     }
     if (text != m_pixel_info->GetLabel()) m_pixel_info->SetLabel(text);
 }
@@ -353,7 +361,7 @@ void LayerEditorContent::zoom_to(double new_scale, wxPoint viewport_point, bool 
     catch (const std::exception &error) {
         restore();
         try { refresh(); } catch (...) {}
-        wxMessageBox(wxString::FromUTF8(error.what()), "Layer editor", wxOK | wxICON_INFORMATION, this);
+        wxMessageBox(wxString::FromUTF8(error.what()), _L("Layer editor"), wxOK | wxICON_INFORMATION, this);
         return;
     }
     if (fit) { m_viewport->Scroll(0, 0); return; }
@@ -407,14 +415,14 @@ void LayerEditorContent::finish_stroke(bool commit)
     m_stroke.reset();
     if (m_preview->HasCapture()) m_preview->ReleaseMouse();
     m_layer->Enable();
-    m_first->Enable(); m_last->Enable(); m_paint_range->Enable(); m_brush->Enable();
-    m_tool->Enable(); m_shape->Enable();
+    m_first->Enable(); m_last->Enable(); m_paint_range->Enable(); m_brush.Enable();
+    m_tool.Enable(); m_shape.Enable();
     m_range_slider->Enable(); m_single_layer->Enable();
     m_radius->Enable(); m_value->Enable();
     if (m_plane) m_plane->Enable();
     if (commit) {
         TaskLock working(m_working);
-        run_background_layers(this, "Paint layers", [&](const auto &progress) {
+        run_background_layers(this, _L("Paint layers"), [&](const auto &progress) {
             if (tool != 0) return m_document.paint_shape(first, last, shape_op, selected_plane(), progress);
             return m_document.paint_stroke(first, last, points,
                 m_stroke_radius, m_stroke_value, selected_plane(), progress, m_stroke_shape);

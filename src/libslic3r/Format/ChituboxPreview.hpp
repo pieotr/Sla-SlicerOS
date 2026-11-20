@@ -1,6 +1,6 @@
 // UVtools RGB15 previews shared by PHZ and Creality CXDLPv4 (AGPLv3).
 #pragma once
-#include "libslic3r/GCode/ThumbnailData.hpp"
+#include "libslic3r/Thumbnails/ThumbnailData.hpp"
 #include <algorithm>
 #include <cmath>
 #include <cstdint>

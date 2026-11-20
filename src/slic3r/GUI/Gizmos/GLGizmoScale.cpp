@@ -125,7 +125,7 @@ std::string GLGizmoScale3D::on_get_name() const
 bool GLGizmoScale3D::on_is_activable() const
 {
     const Selection& selection = m_parent.get_selection();
-    return !selection.is_any_cut_volume() && !selection.is_any_connector() && !selection.is_empty() && !selection.is_wipe_tower();
+    return !selection.is_any_cut_volume() && !selection.is_any_connector() && !selection.is_empty();
 }
 
 void GLGizmoScale3D::on_start_dragging()

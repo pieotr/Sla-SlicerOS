@@ -362,7 +362,6 @@ class DiffPresetDialog : public DPIDialog
     wxBoxSizer*             m_edit_sizer        { nullptr };
 
     Preset::Type            m_view_type         { Preset::TYPE_INVALID };
-    PrinterTechnology       m_pr_technology;
     PresetBundle            m_preset_bundle_left;
     PresetBundle            m_preset_bundle_right;
 

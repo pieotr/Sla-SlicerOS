@@ -81,7 +81,6 @@ if [[ "$BUILD_DEPS" -eq 1 ]] || ! deps_ready; then
   echo "[2/5] Configuring dependencies"
   cmake -S "$ROOT_DIR/deps" -B "$DEPS_BUILD_DIR" \
     -DDEP_WX_GTK3=ON \
-    -DSLIC3R_OFFLINE_ONLY=ON \
     -DCMAKE_POLICY_VERSION_MINIMUM=3.5
 
   echo "[3/5] Building dependencies (top-level serial, inner builds parallelized by deps scripts)"
@@ -96,10 +95,8 @@ cmake -S "$ROOT_DIR" -B "$APP_BUILD_DIR" \
   -DSLIC3R_STATIC=1 \
   -DSLIC3R_GTK=3 \
   -DSLIC3R_PCH=OFF \
-  -DSLIC3R_SLA_ONLY=ON \
-  -DSLIC3R_OFFLINE_ONLY=ON \
   -DSLIC3R_BUILD_TESTS="$BUILD_TESTS" \
-  '-DSLIC3R_TEST_SUITES=sla_print;thumbnails' \
+  '-DSLIC3R_TEST_SUITES=libslic3r;arrange;sla_print;thumbnails' \
   -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=OFF \
   -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
   -DCMAKE_PREFIX_PATH="$PREFIX_PATH"

@@ -3,9 +3,30 @@
 // Private class of the layer editor (Sliced workspace panel); members are defined in LayerEditorContent*.cpp.
 #include "LayerEditorInternal.hpp"
 #include "Widgets/ComboBox.hpp"   // owner-drawn drop-down (DropDown popup): see make_choice() in LayerEditorContent.cpp
+#include <wx/tglbtn.h>
 
 namespace Slic3r::GUI {
 namespace layer_editor_detail {
+// A row of mutually exclusive icon toggle buttons. It replaces the drop-downs of the drawing tools (wave 33) and keeps
+// their index semantics: GetSelection() is the index of the pressed button in the order the buttons were added.
+class ToolGroup {
+public:
+    size_t add(wxToggleButton *button, const wxString &label) { m_buttons.push_back(button); m_labels.push_back(label); return m_buttons.size() - 1; }
+    int GetSelection() const { return m_selection; }
+    wxString GetStringSelection() const { return m_selection >= 0 ? m_labels[size_t(m_selection)] : wxString(); }
+    void SetSelection(int index) {
+        m_selection = index;
+        for (size_t i = 0; i < m_buttons.size(); ++i) m_buttons[i]->SetValue(int(i) == index);
+    }
+    void Enable(bool enable = true) { for (auto *button : m_buttons) button->Enable(enable); }
+    void Disable() { Enable(false); }
+    std::function<void()> on_change;   // called after the user picked another button
+private:
+    std::vector<wxToggleButton *> m_buttons;
+    std::vector<wxString> m_labels;
+    int m_selection = -1;
+};
+
 class LayerEditorContent final : public LayerEditorPanel {
     std::unique_ptr<sla::SlicedResultSession> m_session;
     sla::LayerDocument m_standalone_document;
@@ -35,9 +56,9 @@ class LayerEditorContent final : public LayerEditorPanel {
     }();
     bool m_preview_cancelled = false;
     std::vector<sla::LayerDocument::BrushPoint> m_stroke_points;
-    ComboBox *m_brush = nullptr;
     // Pixel-editor state. Tool indices: 0 freehand, 1 line, 2 rectangle, 3 ellipse, 4 flood fill.
-    ComboBox *m_tool = nullptr, *m_shape = nullptr;
+    // m_brush: 0 brush, 1 eraser; m_tool: shape tool; m_shape: 0 round, 1 square brush tip.
+    ToolGroup m_brush, m_tool, m_shape;
     wxStaticText *m_pixel_info = nullptr;
     int m_stroke_tool = 0;
     sla::LayerDocument::BrushShape m_stroke_shape = sla::LayerDocument::BrushShape::Round;
@@ -85,7 +106,17 @@ class LayerEditorContent final : public LayerEditorPanel {
     // rectangle drawn (offered as ROI) and the non-modal Operations dialog.
     std::optional<png::ImageGreyscale> m_op_preview;
     std::optional<layerops::Rect> m_last_rectangle;
-    wxDialog *m_ops_dialog = nullptr;
+    // The Operations panel is docked in the editor layout: while it is open it takes the place of the right column
+    // (Issues / Export) so the mask is never covered (wave 35).
+    wxPanel *m_ops_panel = nullptr;
+    int m_ops_dip = 380;
+    // Text scale relative to the 96 dpi design (GDK_DPI_SCALE / large system fonts): column widths are given in DIP, which
+    // follow GDK_SCALE but not the font size, so they are multiplied by this factor (>= 1) to keep captions unclipped.
+    double m_text_factor = 1.;
+    int sdip(int dip) const { return int(std::lround(dip * m_text_factor)); }
+    int right_dip() const { return m_ops_panel ? m_ops_dip : m_right_dip; }
+    void close_operations_panel();
+    void update_side_columns();
     wxPanel *m_preview;
     wxBitmap m_preview_bitmap;
     wxSpinCtrl *m_layer, *m_radius, *m_value;
@@ -140,7 +171,7 @@ class LayerEditorContent final : public LayerEditorPanel {
     // Export: decode the whole document in the worker, then hand it to the writer (which stages + renames).
     bool run_export_job(const LayerExportJob &job);
     LayerOpsHost make_operations_host();
-    void open_operations_dialog();
+    void open_operations_panel();
 
     bool save_layer_project_impl(bool save_as);
 
@@ -188,11 +219,52 @@ class LayerEditorContent final : public LayerEditorPanel {
     wxStaticText *m_format_note = nullptr;     // explanation of the selected export format
     wxStaticText *m_profile_summary = nullptr; // resin-estimate summary of native archives
     void build_paint_controls(wxBoxSizer *root);
+    void build_tool_toggles(wxSizer *column);
     void build_preview_canvas();
     void build_range_controls(wxBoxSizer *root);
     void build_range_filters(wxBoxSizer *root);
     void build_action_buttons(wxBoxSizer *root);
-    wxButton *add_action_button(wxSizer *buttons, const char *text, std::function<void()> action);
+    wxButton *add_action_button(wxSizer *buttons, const wxString &text, std::function<void()> action,
+                                int flags = wxALL, int border = 5, const char *icon = nullptr);
+    void set_button_icon(wxButton *button, const char *icon);
+    void add_format_note(wxBoxSizer *root, const wxString &text);
+    void build_project_settings_buttons(wxSizer *buttons);
+
+    // ---- Layout (LayerEditorContent.cpp) ----
+    // Column widths in DIP; the canvas gets everything else.
+    static constexpr int kLeftColumnDip = 220, kRightColumnDip = 250, kOpsColumnDip = 380;
+    static constexpr int kLeftMinDip = 200, kLeftMaxDip = 420, kRightMinDip = 200, kRightMaxDip = 480, kCanvasMinDip = 320, kCanvasMargin = 3, kRowDip = 30, kPrimaryRowDip = 36;
+    wxBoxSizer *m_body = nullptr, *m_left_col = nullptr, *m_center_col = nullptr, *m_right_col = nullptr;
+    wxBoxSizer *m_view_bar = nullptr, *m_canvas_row = nullptr, *m_info_bar = nullptr, *m_hint_box = nullptr, *m_header_tools = nullptr;
+    wxWrapSizer *m_ops_bar = nullptr;
+    // Status bar under the canvas: layer, tool, pixel inspector (m_pixel_info), zoom.
+    wxStaticText *m_view_info = nullptr, *m_status_layer = nullptr, *m_status_tool = nullptr;
+    wxButton *m_side_toggle = nullptr;
+    // Resizable columns (wave 33): drag handles between the columns, widths in DIP kept in AppConfig.
+    wxWindow *m_left_sash = nullptr, *m_right_sash = nullptr;
+    int m_left_dip = 0, m_right_dip = 0, m_sash_origin_dip = 0;
+    // Width (DIP) the tools column needs so that every caption + spin control fits without clipping.
+    int m_left_needed_dip = 0;
+    void set_column_width(bool left, int dip, bool persist);
+    int clamp_column_width(bool left, int dip) const;
+    // "Load current slices" / "Open layer file" live in the header; the Plater supplies the actions.
+    wxButton *m_load_slices_button = nullptr, *m_open_file_button = nullptr;
+    std::function<void()> m_load_slices_action, m_open_file_action;
+    void paint_viewport_background(wxDC &dc);
+    bool m_side_visible = true;
+    // Fit follows the window: the viewport size the current preview was fitted to.
+    wxSize m_fit_avail;
+    bool m_fit_pending = false;
+    int spin_min_width(wxSpinCtrl *ctrl) const;      // narrowest slot that shows the entry and both +/- buttons
+    int hint_width() const;      // wrap width of the hint texts under the canvas
+    int tool_text_width() const; // wrap width of the hints in the left column
+    int side_width() const;      // wrap width of texts in the right column
+    int status_width() const;    // wrap width of the document status in the header
+    void section_heading(wxSizer *column, const wxString &title, bool first = false);
+    void set_side_panel_visible(bool visible);
+    void schedule_fit_refresh();
+    void update_view_info();
+    wxPoint viewport_centre() const;
     void build_edit_buttons(wxSizer *buttons);
     void build_format_section(wxBoxSizer *root, wxSizer *buttons);
     void build_export_format_controls(wxBoxSizer *root, wxSizer *buttons);
@@ -248,6 +320,8 @@ public:
     void acknowledge_model_project_saved(uint64_t revision,
         const sla::ExportGenerationGuard *document_source) override;
     bool confirm_discard() override;
+    void set_document_actions(std::function<void()> load_slices, std::function<void()> open_file) override;
+    void set_document_actions_enabled(bool load_slices, bool open_file) override;
 };
 } // namespace layer_editor_detail
 } // namespace Slic3r::GUI

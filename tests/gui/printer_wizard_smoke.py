@@ -59,6 +59,37 @@ def wait_for(getter, description, timeout=20):
     raise RuntimeError('Timed out: ' + description)
 
 
+def fit_frame(frame, width, height, description, accept=None, timeout=45):
+    """Move/resize the main frame to (0, 0, width, height) of the private display and wait until it really is there.
+
+    Root cause of the one-off "Timed out: QA frame fitted to private display" (wave 35 analysis of the failed bundle
+    run): the request used to be sent ONCE right after the frame appeared, then only polled with a 20 s limit. On a slow
+    first start of a bundle the frame is still being mapped/placed by the window manager (and the model-load question
+    "The object is too small" opens a modal dialog around the same moment), so the single request could be overridden
+    or ignored and nothing ever asked again. Here the request is repeated every ~2 s while polling (an idempotent
+    call), the step gets a longer limit (45 s; every other wait keeps its own), and a real failure is NOT masked: the
+    timeout message carries the last bounds, whether the request was accepted and the visible modal dialogs.
+    `accept(bounds)` overrides the exact-match test (some tests only need the frame to lie within the display)."""
+    from gi.repository import Atspi as _A
+    comp = frame.get_component_iface()
+    if accept is None:
+        accept = lambda b: b.x == 0 and b.y == 0 and b.width == width and b.height == height
+    state = {'accepted': None, 'last': None, 'asked': 0.0}
+    def attempt():
+        now = time.monotonic()
+        if now - state['asked'] >= 2.0:
+            state['asked'] = now
+            state['accepted'] = comp.set_extents(0, 0, width, height, _A.CoordType.SCREEN)
+        b = comp.get_extents(_A.CoordType.SCREEN)
+        state['last'] = (b.x, b.y, b.width, b.height)
+        return b if accept(b) else None
+    try:
+        return wait_for(attempt, description, timeout)
+    except RuntimeError as error:
+        raise RuntimeError('%s (last bounds %r, last set_extents accepted=%r, requested %dx%d)' %
+                           (error, state['last'], state['accepted'], width, height)) from None
+
+
 def sliced_editor(app):
     """The Sliced editor is a permanent workspace view since wave 5 (no 'Layer editor' dialog any
     more): it is present exactly when its 'Back to 3D' button is showing. Returns the search root
@@ -130,6 +161,12 @@ def main():
             n.get_state_set().contains(Atspi.StateType.SHOWING)), 'visible wizard dialog')
 
     def select(dialog):
+        # Wave 34 flow: step 1 asks where the printer comes from; the library path marks a profile (nothing is saved
+        # until Finish).
+        click(wait_for(lambda: find(dialog, lambda n: n.get_role_name() == 'radio button' and
+            n.get_name() == 'A profile from the library' and n.get_state_set().contains(Atspi.StateType.SHOWING)), 'library path card'))
+        click(wait_for(lambda: find(dialog, lambda n: n.get_role_name() == 'button' and n.get_name() in ('Next >', '&Next >') and
+            n.get_state_set().contains(Atspi.StateType.SHOWING)), 'Next button'))
         cell = wait_for(lambda: find(dialog, lambda n: n.get_name() == args.profile and
             n.get_role_name() == 'table cell' and n.get_state_set().contains(Atspi.StateType.SHOWING)), 'visible library profile')
         table = cell.get_parent()
@@ -143,7 +180,7 @@ def main():
             'selected': cell.get_state_set().contains(Atspi.StateType.SELECTED)})
         wait_for(lambda: cell.get_state_set().contains(Atspi.StateType.SELECTED) or
                  row >= 0 and interface.add_row_selection(row), 'selected profile row')
-        wait_for(lambda: named(dialog, 'Use Selected Profile').get_state_set().contains(Atspi.StateType.SENSITIVE), 'enabled apply button')
+        wait_for(lambda: named(dialog, 'Finish').get_state_set().contains(Atspi.StateType.SENSITIVE), 'enabled Finish button')
 
     proc = None
     try:
@@ -151,8 +188,11 @@ def main():
         time.sleep(3)
         dialog = named(app, T('PrusaSlicer - Configuration Wizard')) or wizard(app)
         select(dialog)
-        click(named(dialog, 'Use Selected Profile'))
         original = datadir / ('printer/' + args.profile + '.ini')
+        time.sleep(1)
+        assert not original.exists(), 'library selection saved a profile before Finish'
+        report['checks'].append('library selection does not install anything before Finish')
+        click(named(dialog, 'Finish'))
         wait_for(original.exists, 'saved printer')
         original_bytes = original.read_bytes()
         assert b'printer_technology = SLA' in original_bytes

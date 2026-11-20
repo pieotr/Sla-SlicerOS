@@ -147,17 +147,11 @@ void Selection::add(unsigned int volume_idx, bool as_single_selection, bool chec
         m_model->objects[volume->object_idx()]->volumes[volume->volume_idx()]->is_modifier())
         return;
 
-    // wipe tower is already selected
-    if (is_wipe_tower() && volume->is_wipe_tower() && contains_volume(volume_idx))
-        return;
-
     bool keep_instance_mode = (m_mode == Instance) && !as_single_selection;
     bool already_contained = check_for_already_contained && contains_volume(volume_idx);
 
     // resets the current list if needed
     bool needs_reset = as_single_selection && !already_contained;
-    needs_reset |= volume->is_wipe_tower();
-    needs_reset |= is_wipe_tower() && !volume->is_wipe_tower();
     needs_reset |= as_single_selection && !is_any_modifier() && volume->is_modifier;
     needs_reset |= is_any_modifier() && !volume->is_modifier;
 
@@ -379,11 +373,7 @@ void Selection::add_all()
     if (!m_valid)
         return;
 
-    unsigned int count = 0;
-    for (unsigned int i = 0; i < (unsigned int)m_volumes->size(); ++i) {
-        if (!(*m_volumes)[i]->is_wipe_tower())
-            ++count;
-    }
+    const unsigned int count = (unsigned int)m_volumes->size();
 
     if ((unsigned int)m_list.size() == count)
         return;
@@ -393,10 +383,8 @@ void Selection::add_all()
     m_mode = Instance;
     clear();
 
-    for (unsigned int i = 0; i < (unsigned int)m_volumes->size(); ++i) {
-        if (!(*m_volumes)[i]->is_wipe_tower())
-            do_add_volume(i);
-    }
+    for (unsigned int i = 0; i < (unsigned int)m_volumes->size(); ++i)
+        do_add_volume(i);
 
     update_type();
     this->set_bounding_boxes_dirty();
@@ -973,7 +961,7 @@ void Selection::translate(const Vec3d& displacement, TransformationType transfor
     for (unsigned int i : m_list) {
         GLVolume& v = *(*m_volumes)[i];
         const VolumeCache& volume_data = m_cache.volumes_data[i];
-        if (m_mode == Instance && !is_wipe_tower()) {
+        if (m_mode == Instance) {
             assert(is_from_fully_selected_instance(i));
             if (transformation_type.instance()) {
                 const Geometry::Transformation& inst_trafo = volume_data.get_instance_transform();
@@ -1025,7 +1013,7 @@ void Selection::rotate(const Vec3d& rotation, TransformationType transformation_
         GLVolume& v = *(*m_volumes)[i];
         const VolumeCache& volume_data = m_cache.volumes_data[i];
         const Geometry::Transformation& inst_trafo = volume_data.get_instance_transform();
-        if (m_mode == Instance && !is_wipe_tower()) {
+        if (m_mode == Instance) {
             assert(is_from_fully_selected_instance(i));
             if (transformation_type.instance()) {
                 // ensure that the instance rotates as a rigid body
@@ -1266,25 +1254,6 @@ void Selection::scale_to_fit_print_volume(const BuildVolume& volume)
     case BuildVolume::Type::Circle:    { undoredo_snapshot = fit_circle(volume, !undoredo_snapshot); break; }
     default: { break; }
     }
-
-    if (wxGetApp().plater()->printer_technology() == ptFFF) {
-        // check whether the top layer exceeds the maximum height of the print volume
-        // and, in case, reduce the scale accordingly
-        const auto [slicing_parameters, profile] = wxGetApp().plater()->canvas3D()->get_layers_height_data(get_object_idx());
-        auto layers = generate_object_layers(slicing_parameters, profile);
-        auto layers_it = layers.rbegin();
-        while (layers_it != layers.rend() && *layers_it > volume.bounding_volume().max.z()) {
-            ++layers_it;
-        }
-        if (layers_it != layers.rbegin() && layers_it != layers.rend()) {
-            switch (volume.type())
-            {
-            case BuildVolume::Type::Rectangle: { fit_rectangle(volume, !undoredo_snapshot, &(*layers_it)); break; }
-            case BuildVolume::Type::Circle:    { fit_circle(volume, !undoredo_snapshot, &(*layers_it)); break; }
-            default: { break; }
-            }
-        }
-    }
 }
 
 void Selection::mirror(Axis axis, TransformationType transformation_type)
@@ -1445,9 +1414,6 @@ void Selection::translate(unsigned int object_idx, unsigned int instance_idx, co
     for (unsigned int i : m_list) {
         if (done.size() == m_volumes->size())
             break;
-
-        if ((*m_volumes)[i]->is_wipe_tower())
-            continue;
 
         const int object_idx = (*m_volumes)[i]->object_idx();
 
@@ -1757,8 +1723,6 @@ void Selection::copy_to_clipboard()
         dst_object->sla_support_points   = src_object->sla_support_points;
         dst_object->sla_points_status    = src_object->sla_points_status;
         dst_object->sla_drain_holes      = src_object->sla_drain_holes;
-        dst_object->layer_config_ranges  = src_object->layer_config_ranges;     // #ys_FIXME_experiment
-        dst_object->layer_height_profile.assign(src_object->layer_height_profile);
         dst_object->origin_translation   = src_object->origin_translation;
 
         for (int i : object.second) {
@@ -1918,9 +1882,7 @@ void Selection::update_type()
             m_type = Empty;
         else if (m_list.size() == 1) {
             const GLVolume* first = (*m_volumes)[*m_list.begin()];
-            if (first->is_wipe_tower())
-                m_type = WipeTower;
-            else if (first->is_modifier) {
+            if (first->is_modifier) {
                 m_type = SingleModifier;
                 requires_disable = true;
             }
@@ -2043,11 +2005,6 @@ void Selection::update_type()
     case Empty:
     {
         std::cout << "Empty" << std::endl;
-        break;
-    }
-    case WipeTower:
-    {
-        std::cout << "WipeTower" << std::endl;
         break;
     }
     case SingleModifier:
@@ -2518,9 +2475,6 @@ void Selection::render_debug_window() const
     if (m_list.empty())
         return;
 
-    if (get_first_volume()->is_wipe_tower)
-        return;
-
     ImGuiWrapper& imgui = *wxGetApp().imgui();
     ImGui::SetNextWindowCollapsed(true, ImGuiCond_Once);
     imgui.begin(std::string("Selection matrices"), ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoResize);
@@ -2739,9 +2693,6 @@ void Selection::synchronize_unselected_instances(SyncRotationType sync_rotation_
         if (done.size() == m_volumes->size())
             break;
         const GLVolume* volume_i = (*m_volumes)[i];
-        if (volume_i->is_wipe_tower())
-            continue;
-
         const int object_idx = volume_i->object_idx();
         const int instance_idx = volume_i->instance_idx();
         const Transform3d& curr_inst_trafo_i = volume_i->get_instance_transformation().get_matrix();
@@ -2784,9 +2735,6 @@ void Selection::synchronize_unselected_volumes()
 {
     for (unsigned int i : m_list) {
         const GLVolume* volume = (*m_volumes)[i];
-        if (volume->is_wipe_tower())
-            continue;
-
         const int object_idx = volume->object_idx();
         const int volume_idx = volume->volume_idx();
         const Geometry::Transformation& trafo = volume->get_volume_transformation();
@@ -2812,7 +2760,7 @@ void Selection::ensure_on_bed()
 
     for (size_t i = 0; i < m_volumes->size(); ++i) {
         GLVolume* volume = (*m_volumes)[i];
-        if (!volume->is_wipe_tower() && !volume->is_modifier && 
+        if (!volume->is_modifier && 
             std::find(m_cache.sinking_volumes.begin(), m_cache.sinking_volumes.end(), i) == m_cache.sinking_volumes.end()) {
             const double min_z = volume->transformed_convex_hull_bounding_box().min.z();
             std::pair<int, int> instance = std::make_pair(volume->object_idx(), volume->instance_idx());
@@ -2839,7 +2787,7 @@ void Selection::ensure_not_below_bed()
 
     for (size_t i = 0; i < m_volumes->size(); ++i) {
         GLVolume* volume = (*m_volumes)[i];
-        if (!volume->is_wipe_tower() && !volume->is_modifier) {
+        if (!volume->is_modifier) {
             const double max_z = volume->transformed_convex_hull_bounding_box().max.z();
             const std::pair<int, int> instance = std::make_pair(volume->object_idx(), volume->instance_idx());
             InstancesToZMap::iterator it = instances_max_z.find(instance);
@@ -2892,9 +2840,8 @@ bool Selection::is_from_fully_selected_instance(unsigned int volume_idx) const
 
     unsigned int count = (unsigned int)std::count_if(m_list.begin(), m_list.end(), SameInstance(object_idx, volume->instance_idx(), *m_volumes));
 
-    PrinterTechnology pt = wxGetApp().plater()->printer_technology();
     const ModelVolumePtrs& volumes = m_model->objects[object_idx]->volumes;
-    const unsigned int vol_cnt = (unsigned int)std::count_if(volumes.begin(), volumes.end(), [pt](const ModelVolume* volume) { return pt == ptFFF || !volume->is_modifier(); });
+    const unsigned int vol_cnt = (unsigned int)std::count_if(volumes.begin(), volumes.end(), [](const ModelVolume* volume) { return !volume->is_modifier(); });
 
     return count == vol_cnt;
 }

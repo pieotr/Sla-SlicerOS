@@ -165,6 +165,16 @@ public:
         ConfigurationError(std::string("Unknown option exception: ") + opt_key) {}
 };
 
+// Thrown when a configuration says "printer_technology = FFF". FFF/FDM is not supported by this SLA/MSLA-only
+// application; callers either report the message (CLI, config import) or skip the FFF data (user presets,
+// vendor bundles, 3MF geometry import).
+class FffConfigurationException : public ConfigurationError
+{
+public:
+    FffConfigurationException() :
+        ConfigurationError("FFF/FDM configurations are not supported: this application is an SLA/MSLA-only slicer and requires an SLA printer configuration") {}
+};
+
 // Indicate that the ConfigBase derived class does not provide config definition (the method def() returns null).
 class NoDefinitionException : public ConfigurationError
 {
@@ -209,9 +219,9 @@ enum ConfigOptionType {
     coString        = 3,
     // vector of strings
     coStrings       = coString + coVectorType,
-    // percent value. Currently only used for infill.
+    // percent value.
     coPercent       = 4,
-    // percents value. Currently used for retract before wipe only.
+    // percents value.
     coPercents      = coPercent + coVectorType,
     // a fraction or an absolute value
     coFloatOrPercent = 5,
@@ -219,7 +229,7 @@ enum ConfigOptionType {
     coFloatsOrPercents = coFloatOrPercent + coVectorType,
     // single 2d point (Point2f). Currently not used.
     coPoint         = 6,
-    // vector of 2d points (Point2f). Currently used for the definition of the print bed and for the extruder offsets.
+    // vector of 2d points (Point2f). Currently used for the definition of the print bed.
     coPoints        = coPoint + coVectorType,
     coPoint3        = 7,
 //    coPoint3s       = coPoint3 + coVectorType,
@@ -240,17 +250,27 @@ enum ConfigOptionMode {
     comUndef
 };
 
+// SLA/MSLA is the only supported technology. The former FFF enumerator was removed; configuration files written by
+// older versions may still say "printer_technology = FFF", which is recognised on the raw string only
+// (see is_legacy_fff_technology() and FffConfigurationException) and never becomes a PrinterTechnology value.
 enum PrinterTechnology : unsigned char
 {
-    // Fused Filament Fabrication
-    ptFFF,
     // Stereolitography
     ptSLA,
     // Unknown, useful for command line processing
     ptUnknown,
-    // Any technology, useful for parameters compatible with both ptFFF and ptSLA
+    // Any technology, useful for parameters compatible with SLA and with the legacy FFF-only options
     ptAny
 };
+
+// True if the raw value of a "printer_technology" key names the legacy (removed) FFF technology.
+inline bool is_legacy_fff_technology(const std::string &value)
+{
+    size_t b = 0, e = value.size();
+    while (b < e && (value[b] == ' ' || value[b] == '\t' || value[b] == '"')) ++ b;
+    while (e > b && (value[e - 1] == ' ' || value[e - 1] == '\t' || value[e - 1] == '"' || value[e - 1] == '\r')) -- e;
+    return e - b == 3 && (value[b] == 'F' || value[b] == 'f') && (value[b + 1] == 'F' || value[b + 1] == 'f') && (value[b + 2] == 'F' || value[b + 2] == 'f');
+}
 
 enum ForwardCompatibilitySubstitutionRule
 {
@@ -294,6 +314,9 @@ struct ConfigSubstitutionContext
 
     ForwardCompatibilitySubstitutionRule 	rule;
     ConfigSubstitutions					    substitutions;
+    // Set by the lenient parsers (3MF embedded config) that skip a "printer_technology = FFF" line
+    // instead of failing the whole load.
+    bool                                    legacy_fff_technology { false };
 };
 
 // A generic value of a configuration option.
@@ -490,10 +513,10 @@ public:
     // Set from a vector of ConfigOptions. 
     // If the rhs ConfigOption is scalar, then its value is used,
     // otherwise for each of rhs, the first value of a vector is used.
-    // This function is useful to collect values for multiple extrder / filament settings.
+    // This function is useful to collect values for multiple vector settings.
     virtual void set(const std::vector<const ConfigOption*> &rhs) = 0;
     // Set a single vector item from either a scalar option or the first value of a vector option.vector of ConfigOptions. 
-    // This function is useful to split values from multiple extrder / filament settings into separate configurations.
+    // This function is useful to split values from multiple vector settings into separate configurations.
     virtual void set_at(const ConfigOption *rhs, size_t i, size_t j) = 0;
     // Resize the vector of values, copy the newly added values from opt_default if provided.
     virtual void resize(size_t n, const ConfigOption *opt_default = nullptr) = 0;
@@ -543,7 +566,7 @@ public:
     // Set from a vector of ConfigOptions. 
     // If the rhs ConfigOption is scalar, then its value is used,
     // otherwise for each of rhs, the first value of a vector is used.
-    // This function is useful to collect values for multiple extrder / filament settings.
+    // This function is useful to collect values for multiple vector settings.
     void set(const std::vector<const ConfigOption*> &rhs) override
     {
         this->values.clear();
@@ -562,7 +585,7 @@ public:
     }
 
     // Set a single vector item from either a scalar option or the first value of a vector option.vector of ConfigOptions. 
-    // This function is useful to split values from multiple extrder / filament settings into separate configurations.
+    // This function is useful to split values from multiple vector settings into separate configurations.
     void set_at(const ConfigOption *rhs, size_t i, size_t j) override
     {
         // It is expected that the vector value has at least one value, which is the default, if not overwritten.
@@ -2406,7 +2429,7 @@ public:
     // With which printer technology is this configuration valid?
     PrinterTechnology                   printer_technology = ptUnknown;
     // Category of a configuration field, from the GUI perspective.
-    // One of: "Layers and Perimeters", "Infill", "Support material", "Speed", "Extruders", "Advanced", "Extrusion Width"
+    // For example: "Layers", "Support material", "Advanced"
     std::string                         category;
     // A tooltip text shown in the GUI.
     std::string                         tooltip;
@@ -2416,8 +2439,7 @@ public:
     std::string                         cli;
     // Set for type == coFloatOrPercent.
     // It provides a link to a configuration value, of which this option provides a ratio.
-    // For example, 
-    // For example external_perimeter_speed may be defined as a fraction of perimeter_speed.
+    // For example, a value may be defined as a fraction of another configuration value.
     t_config_option_key                 ratio_over;
     // True for multiline strings.
     bool                                multiline       = false;
@@ -2795,8 +2817,6 @@ public:
     // Loading a "will be one day a legacy format" of configuration stored into 3MF or AMF.
     // Accepts the same data as load_from_ini_string(), only with each configuration line possibly prefixed with a semicolon (G-code comment).
     ConfigSubstitutions load_from_ini_string_commented(std::string &&data, ForwardCompatibilitySubstitutionRule compatibility_rule);
-    ConfigSubstitutions load_from_gcode_file(const std::string &filename, ForwardCompatibilitySubstitutionRule compatibility_rule);
-    ConfigSubstitutions load_from_binary_gcode_file(const std::string& filename, ForwardCompatibilitySubstitutionRule compatibility_rule);
     ConfigSubstitutions load(const boost::property_tree::ptree &tree, ForwardCompatibilitySubstitutionRule compatibility_rule);
     void                save(const std::string &file) const;
 
@@ -2952,7 +2972,7 @@ private:
 };
 
 // Configuration store with a static definition of configuration values.
-// In Slic3r, the static configuration stores are during the slicing / g-code generation for efficiency reasons,
+// In Slic3r, the static configuration stores are during the slicing for efficiency reasons,
 // because the configuration values could be accessed directly.
 class StaticConfig : public virtual ConfigBase
 {

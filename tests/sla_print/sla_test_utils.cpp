@@ -3,6 +3,8 @@
 #include "libslic3r/SLA/AGGRaster.hpp"
 #include "libslic3r/SLA/DefaultSupportTree.hpp"
 #include "libslic3r/SLA/BranchingTreeSLA.hpp"
+#include "libslic3r/SLA/OrganicTreeSLA.hpp"
+#include "libslic3r/SLA/OrganicGrowthSLA.hpp"
 
 #include <iomanip>
 
@@ -119,6 +121,7 @@ void test_supports(const std::string          &obj_filename,
     // Create the special index-triangle mesh with spatial indexing which
     // is the input of the support point and support mesh generators
     sla::SupportableMesh  sm{mesh.its, {}, supportcfg};
+    sm.zoffset = zmin; // like SLAPrint does: the ground is relative to the object bottom
 
     #ifdef SLIC3R_HOLE_RAYCASTER
     if (hollowingcfg.enabled)
@@ -162,6 +165,14 @@ void test_supports(const std::string          &obj_filename,
     case sla::SupportTreeType::Branching: {
         create_branching_tree(treebuilder, sm);
         // TODO: check_support_tree_integrity(treebuilder, supportcfg);
+        break;
+    }
+    case sla::SupportTreeType::OrganicBranching: {
+        create_organic_tree(treebuilder, sm);
+        break;
+    }
+    case sla::SupportTreeType::Organic: {
+        create_organic_growth_tree(treebuilder, sm);
         break;
     }
     default:;

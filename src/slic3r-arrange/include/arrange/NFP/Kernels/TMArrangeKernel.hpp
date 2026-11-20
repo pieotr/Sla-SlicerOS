@@ -97,24 +97,15 @@ public:
 
             // For small items in a mixed scene.
             SMALL_ITEM,
-
-            WIPE_TOWER,
         } compute_case;
 
-        bool is_wt = is_wipe_tower(item);
         bool bigitems = is_big(envelope_area(item)) || m_rtree.empty();
-        if (is_wt)
-            compute_case = WIPE_TOWER;
-        else if (bigitems)
+        if (bigitems)
             compute_case = BIG_ITEM;
         else
             compute_case = SMALL_ITEM;
 
         switch (compute_case) {
-        case WIPE_TOWER: {
-            score = (unscaled(itmcntr) - unscaled(active_sink)).squaredNorm();
-            break;
-        }
         case BIG_ITEM: {
             const Point& minc = ibb.min; // bottom left corner
             const Point& maxc = ibb.max; // top right corner

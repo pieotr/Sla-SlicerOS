@@ -65,32 +65,14 @@ static PrinterTechnology printer_technology()
     return wxGetApp().preset_bundle->printers.get_selected_preset().printer_technology();
 }
 
-static int extruders_count()
+static bool is_improper_category(const std::string& category)
 {
-    return wxGetApp().extruders_edited_cnt();
-}
-
-static bool is_improper_category(const std::string& category, const int extruders_cnt, const bool is_object_settings = true)
-{
-    return  category.empty() ||
-        (extruders_cnt == 1 && (category == "Extruders" || category == "Wipe options")) ||
-        (!is_object_settings && category == "Support material");
+    return category.empty();
 }
 
 //-------------------------------------
 //            SettingsFactory
 //-------------------------------------
-
-// pt_FFF
-static SettingsFactory::Bundle FREQ_SETTINGS_BUNDLE_FFF =
-{
-    { L("Layers and Perimeters"), { "layer_height" , "perimeters", "top_solid_layers", "bottom_solid_layers" } },
-    { L("Infill")               , { "fill_density", "fill_pattern" } },
-    { L("Support material")     , { "support_material", "support_material_auto", "support_material_threshold",
-                                    "support_material_pattern", "support_material_interface_pattern", "support_material_buildplate_only",
-                                    "support_material_spacing" } },
-    { L("Wipe options")         , { "wipe_into_infill", "wipe_into_objects" } }
-};
 
 // pt_SLA
 static SettingsFactory::Bundle FREQ_SETTINGS_BUNDLE_SLA =
@@ -100,20 +82,10 @@ static SettingsFactory::Bundle FREQ_SETTINGS_BUNDLE_SLA =
 
 std::vector<std::string> SettingsFactory::get_options(const bool is_part)
 {
-    if (printer_technology() == ptSLA) {
-        SLAPrintObjectConfig full_sla_config;
-        auto options = full_sla_config.keys();
-        options.erase(find(options.begin(), options.end(), "layer_height"));
-        return options;
-    }
-
-    PrintRegionConfig reg_config;
-    auto options = reg_config.keys();
-    if (!is_part) {
-        PrintObjectConfig obj_config;
-        std::vector<std::string> obj_options = obj_config.keys();
-        options.insert(options.end(), obj_options.begin(), obj_options.end());
-    }
+    (void)is_part;
+    SLAPrintObjectConfig full_sla_config;
+    auto options = full_sla_config.keys();
+    options.erase(find(options.begin(), options.end(), "layer_height"));
     return options;
 }
 
@@ -132,13 +104,11 @@ SettingsFactory::Bundle SettingsFactory::get_bundle(const DynamicPrintConfig* co
     if (opt_keys.empty())
         return Bundle();
 
-    const int extruders_cnt = wxGetApp().extruders_edited_cnt();
-
     Bundle bundle;
     for (auto& opt_key : opt_keys)
     {
         auto category = config->def()->get(opt_key)->category;
-        if (is_improper_category(category, extruders_cnt, is_object_settings))
+        if (is_improper_category(category))
             continue;
 
         std::vector< std::string > new_category;
@@ -156,20 +126,7 @@ SettingsFactory::Bundle SettingsFactory::get_bundle(const DynamicPrintConfig* co
 std::map<std::string, std::string> SettingsFactory::CATEGORY_ICON =
 {
 //    settings category name      related bitmap name
-    // ptFFF
-    { L("Layers and Perimeters"), "layers"      },
-    { L("Infill")               , "infill"      },
-    { L("Ironing")              , "ironing"     },
-    { L("Fuzzy Skin")           , "fuzzy_skin"  },
-    { L("Support material")     , "support"     },
-    { L("Speed")                , "time"        },
-    { L("Extruders")            , "funnel"      },
-    { L("Extrusion Width")      , "funnel"      },
-    { L("Wipe options")         , "funnel"      },
-    { L("Skirt and brim")       , "skirt+brim"  },
-//  { L("Speed > Acceleration") , "time"        },
     { L("Advanced")             , "wrench"      },
-    // ptSLA                    ,               
     { L("Supports")             , "support"     },
     { L("Pad")                  , "pad"         },
     { L("Hollowing")            , "hollowing"   }
@@ -236,14 +193,12 @@ static void get_full_settings_hierarchy(FullSettingsHierarchy& settings_menu, co
 {
     auto options = SettingsFactory::get_options(is_part);
 
-    const int extruders_cnt = extruders_count();
-
     DynamicPrintConfig config;
     for (auto& option : options)
     {
         auto const opt = config.def()->get(option);
         auto category = opt->category;
-        if (is_improper_category(category, extruders_cnt, !is_part))
+        if (is_improper_category(category))
             continue;
 
         const std::string& label = !opt->full_label.empty() ? opt->full_label : opt->label;
@@ -407,19 +362,17 @@ static wxMenu* create_settings_popupmenu(wxMenu* parent_menu, const bool is_obje
     return menu;
 }
 
-static void create_freq_settings_popupmenu(wxMenu* menu, const bool is_object_settings, wxDataViewItem item)
+static void create_freq_settings_popupmenu(wxMenu* menu, wxDataViewItem item)
 {
     // Add default settings bundles
-    const SettingsFactory::Bundle& bundle = printer_technology() == ptFFF ? FREQ_SETTINGS_BUNDLE_FFF : FREQ_SETTINGS_BUNDLE_SLA;
-
-    const int extruders_cnt = extruders_count();
+    const SettingsFactory::Bundle& bundle = FREQ_SETTINGS_BUNDLE_SLA;
 
     for (auto& category : bundle) {
-        if (is_improper_category(category.first, extruders_cnt, is_object_settings))
+        if (is_improper_category(category.first))
             continue;
 
         append_menu_item(menu, wxID_ANY, _(category.first), "",
-            [menu, item, is_object_settings, bundle](wxCommandEvent& event) {
+            [menu, item, bundle](wxCommandEvent& event) {
                     wxString category_name = menu->GetLabel(event.GetId());
                     std::vector<std::string> options;
                     for (auto& category : bundle) 
@@ -429,51 +382,11 @@ static void create_freq_settings_popupmenu(wxMenu* menu, const bool is_object_se
                         }
                     if (options.empty())
                         return;
-                    // Because of we couldn't edited layer_height for ItVolume from settings list,
-                    // correct options according to the selected item type : remove "layer_height" option
-                    if (!is_object_settings && category_name == _("Layers and Perimeters")) {
-                        const auto layer_height_it = std::find(options.begin(), options.end(), "layer_height");
-                        if (layer_height_it != options.end())
-                            options.erase(layer_height_it);
-                    }
-
                     obj_list()->add_category_to_settings_from_frequent(options, item);
                 },
             SettingsFactory::get_category_bitmap(category.first), menu,
             []() { return true; }, plater());
     }
-#if 0
-    // Add "Quick" settings bundles
-    const SettingsFactory::Bundle& bundle_quick = printer_technology() == ptFFF ? m_freq_settings_fff : m_freq_settings_sla;
-
-    for (auto& category : bundle_quick) {
-        if (is_improper_category(category.first, extruders_cnt))
-            continue;
-
-        append_menu_item(menu, wxID_ANY, format_wxstr(_L("Quick Add Settings (%s)"), _(it.first)), "",
-            [menu, item, is_object_settings, bundle](wxCommandEvent& event) {
-                wxString category_name = menu->GetLabel(event.GetId());
-                std::vector<std::string> options;
-                for (auto& category : bundle)
-                    if (category_name == from_u8((boost::format(_L("Quick Add Settings (%s)")) % _(category.first)).str())) {
-                        options = category.second;
-                        break;
-                    }
-                if (options.empty())
-                    return;
-                // Because of we couldn't edited layer_height for ItVolume from settings list,
-                // correct options according to the selected item type : remove "layer_height" option
-                if (!is_object_settings) {
-                    const auto layer_height_it = std::find(options.begin(), options.end(), "layer_height");
-                    if (layer_height_it != options.end())
-                        options.erase(layer_height_it);
-                }
-                obj_list()->add_category_to_settings_from_frequent(options, item);
-            },
-            SettingsFactory::get_category_bitmap(category.first), menu,
-            [this]() { return true; }, plater());
-    }
-#endif
 }
 
 std::vector<wxBitmapBundle*> MenuFactory::get_volume_bitmaps()
@@ -623,7 +536,7 @@ void MenuFactory::append_menu_item_add_svg(wxMenu *menu, ModelVolumeType type, b
 
 void MenuFactory::append_menu_items_add_volume(MenuType menu_type)
 {
-    wxMenu* menu = menu_type == mtObjectFFF ? &m_object_menu : menu_type == mtObjectSLA ? &m_sla_object_menu : nullptr;
+    wxMenu* menu = menu_type == mtObjectSLA ? &m_sla_object_menu : nullptr;
     if (!menu)
         return;
 
@@ -638,13 +551,6 @@ void MenuFactory::append_menu_items_add_volume(MenuType menu_type)
         if (item_id != wxNOT_FOUND)
             menu->Destroy(item_id);
     }
-
-    // Update "Height range Modifier" item (delete old & create new)
-    if (const auto range_id = menu->FindItem(_L("Height range Modifier")); range_id != wxNOT_FOUND)
-        menu->Destroy(range_id);
-
-    if (const auto range_id = menu->FindItem(_L("Height range Modifier")); range_id != wxNOT_FOUND)
-        menu->Destroy(range_id);
 
     if (wxGetApp().get_mode() == comSimple) {
         //append_menu_item_add_text(menu, ModelVolumeType::MODEL_PART, false);
@@ -674,17 +580,6 @@ void MenuFactory::append_menu_items_add_volume(MenuType menu_type)
             }, m_parent);
     }
 
-#ifndef SLIC3R_SLA_ONLY // height-range modifiers carry FFF per-layer settings only
-    if (menu_type == mtObjectFFF)
-        append_menu_item_layers_editing(menu);
-#endif
-}
-
-wxMenuItem* MenuFactory::append_menu_item_layers_editing(wxMenu* menu)
-{
-    return append_menu_item(menu, wxID_ANY, _L("Height range Modifier"), "",
-        [](wxCommandEvent&) { obj_list()->layers_editing(); }, "edit_layers_all", menu,
-        []() { return obj_list()->is_instance_or_object_selected(); }, m_parent);
 }
 
 wxMenuItem* MenuFactory::append_menu_item_settings(wxMenu* menu_)
@@ -697,32 +592,12 @@ wxMenuItem* MenuFactory::append_menu_item_settings(wxMenu* menu_)
     if (settings_id != wxNOT_FOUND)
         menu->Destroy(settings_id);
 
-    for (auto& it : FREQ_SETTINGS_BUNDLE_FFF)
-    {
-        settings_id = menu->FindItem(_(it.first));
-        if (settings_id != wxNOT_FOUND)
-            menu->Destroy(settings_id);
-    }
     for (auto& it : FREQ_SETTINGS_BUNDLE_SLA)
     {
         settings_id = menu->FindItem(_(it.first));
         if (settings_id != wxNOT_FOUND)
             menu->Destroy(settings_id);
     }
-#if 0
-    for (auto& it : m_freq_settings_fff)
-    {
-        settings_id = menu->FindItem(format_wxstr(_L("Quick Add Settings (%s)"), _(it.first)));
-        if (settings_id != wxNOT_FOUND)
-            menu->Destroy(settings_id);
-    }
-    for (auto& it : m_freq_settings_sla)
-    {
-        settings_id = menu->FindItem(format_wxstr(_L("Quick Add Settings (%s)"), _(it.first)));
-        if (settings_id != wxNOT_FOUND)
-            menu->Destroy(settings_id);
-    }
-#endif
     menu->DestroySeparators(); // delete old separators
 
     // If there are selected more then one instance but not all of them
@@ -742,8 +617,7 @@ wxMenuItem* MenuFactory::append_menu_item_settings(wxMenu* menu_)
 
     // Create new items for settings popupmenu
 
-    if (printer_technology() == ptFFF ||
-        (menu->GetMenuItems().size() > 0 && !menu->GetMenuItems().back()->IsSeparator()))
+    if (menu->GetMenuItems().size() > 0 && !menu->GetMenuItems().back()->IsSeparator())
         menu->SetFirstSeparator();
 
     // detect itemm for adding of the setting
@@ -762,10 +636,10 @@ wxMenuItem* MenuFactory::append_menu_item_settings(wxMenu* menu_)
     // So, check if selected item isn't SettingsItem. And get a SettingsItem's parent item, if yes
     wxDataViewItem item = obj_model->GetItemType(sel_item) & itSettings ? obj_model->GetParent(sel_item) : sel_item;
     const ItemType item_type = obj_model->GetItemType(item);
-    const bool is_object_settings = !(item_type& itVolume || item_type & itLayer);
+    const bool is_object_settings = !(item_type & itVolume);
 
     // Add frequently settings
-    create_freq_settings_popupmenu(menu, is_object_settings, item);
+    create_freq_settings_popupmenu(menu, item);
 
     if (mode == comAdvanced)
         return nullptr;
@@ -915,65 +789,6 @@ void MenuFactory::append_menu_item_replace_with_stl(wxMenu* menu)
     append_menu_item(menu, wxID_ANY, _L("Replace with STL"), _L("Replace the selected volume with new STL"),
         [](wxCommandEvent&) { plater()->replace_with_stl(); }, "", menu,
         []() { return plater()->can_replace_with_stl(); }, m_parent);
-}
-
-void MenuFactory::append_menu_item_change_extruder(wxMenu* menu)
-{
-    const std::vector<wxString> names = { _L("Change extruder"), _L("Set extruder for selected items") };
-    // Delete old menu item
-    for (const wxString& name : names) {
-        const int item_id = menu->FindItem(name);
-        if (item_id != wxNOT_FOUND)
-            menu->Destroy(item_id);
-    }
-
-#ifdef SLIC3R_SLA_ONLY
-    // A resin printer has no extruders; extruders_count() is already 1 for SLA, this makes it explicit.
-    return;
-#endif
-    const int extruders_cnt = extruders_count();
-    if (extruders_cnt <= 1)
-        return;
-
-    wxDataViewItemArray sels;
-    obj_list()->GetSelections(sels);
-    if (sels.IsEmpty())
-        return;
-
-    if (sels.Count() == 1) {
-        const auto sel_vol = obj_list()->get_selected_model_volume();
-        if (sel_vol && sel_vol->type() != ModelVolumeType::MODEL_PART && sel_vol->type() != ModelVolumeType::PARAMETER_MODIFIER)
-            return;
-    }
-
-    std::vector<wxBitmapBundle*> icons = get_extruder_color_icons(true);
-    wxMenu* extruder_selection_menu = new wxMenu();
-    const wxString& name = sels.Count() == 1 ? names[0] : names[1];
-
-    int initial_extruder = -1; // negative value for multiple object/part selection
-    if (sels.Count() == 1) {
-        const ModelConfig& config = obj_list()->get_item_config(sels[0]);
-        initial_extruder = config.has("extruder") ? config.extruder() : 0;
-    }
-
-    for (int i = 0; i <= extruders_cnt; i++)
-    {
-        bool is_active_extruder = i == initial_extruder;
-        int icon_idx = i == 0 ? 0 : i - 1;
-
-        const wxString& item_name = (i == 0 ? _L("Default") : wxString::Format(_L("Extruder %d"), i)) +
-            (is_active_extruder ? " (" + _L("active") + ")" : "");
-
-        append_menu_item(extruder_selection_menu, wxID_ANY, item_name, "",
-            [i](wxCommandEvent&) { obj_list()->set_extruder_for_selected_items(i); }, icons[icon_idx], menu,
-            [is_active_extruder]() { return !is_active_extruder; }, m_parent);
-
-    }
-
-    append_submenu(menu, extruder_selection_menu, wxID_ANY, name, _L("Use another extruder"),
-        "edit_uni"/* : "change_extruder"*/, []() {return true; }, m_parent);
-
-//    menu->AppendSubMenu(extruder_selection_menu, name);
 }
 
 void MenuFactory::append_menu_item_scale_selection_to_fit_print_volume(wxMenu* menu)
@@ -1221,7 +1036,6 @@ void MenuFactory::append_immutable_part_menu_items(wxMenu* menu)
 void MenuFactory::append_mutable_part_menu_items(wxMenu* menu)
 {
     append_menu_item_settings(menu);
-    append_menu_item_change_extruder(menu);
 }
 
 void MenuFactory::create_part_menu()
@@ -1281,7 +1095,6 @@ void MenuFactory::init(wxWindow* parent)
     m_parent = parent;
 
     create_default_menu();
-    create_common_object_menu(&m_object_menu);
     create_common_object_menu(&m_sla_object_menu);
     create_part_menu();
     create_text_part_menu();
@@ -1298,19 +1111,6 @@ void MenuFactory::update()
 wxMenu* MenuFactory::default_menu()
 {
     return &m_default_menu;
-}
-
-wxMenu* MenuFactory::object_menu()
-{
-    append_menu_items_convert_unit(&m_object_menu, 11);
-    append_menu_item_settings(&m_object_menu);
-    append_menu_item_change_extruder(&m_object_menu);
-    update_menu_items_instance_manipulation(mtObjectFFF);
-    append_menu_item_invalidate_cut_info(&m_object_menu);
-    append_menu_item_edit_text(&m_object_menu);
-    append_menu_item_edit_svg(&m_object_menu);
-
-    return &m_object_menu;
 }
 
 wxMenu* MenuFactory::sla_object_menu()
@@ -1352,14 +1152,6 @@ wxMenu* MenuFactory::instance_menu()
     return &m_instance_menu;
 }
 
-wxMenu* MenuFactory::layer_menu()
-{
-    MenuWithSeparators* menu = new MenuWithSeparators();
-    append_menu_item_settings(menu);
-
-    return menu;
-}
-
 wxMenu* MenuFactory::multi_selection_menu()
 {
     wxDataViewItemArray sels;
@@ -1380,8 +1172,6 @@ wxMenu* MenuFactory::multi_selection_menu()
     append_menu_items_convert_unit(menu);
     if (obj_list()->can_merge_to_multipart_object())
         append_menu_item_merge_to_multipart_object(menu);
-    if (extruders_count() > 1)
-        append_menu_item_change_extruder(menu);
     if (list_model()->GetItemType(sels[0]) != itVolume) {
         append_menu_item_printable(menu);
 
@@ -1396,7 +1186,7 @@ wxMenu* MenuFactory::multi_selection_menu()
 
 void MenuFactory::append_menu_items_instance_manipulation(wxMenu* menu)
 {
-    MenuType type = menu == &m_object_menu ? mtObjectFFF : mtObjectSLA;
+    const MenuType type = mtObjectSLA;
 
     items_increase[type]                = append_menu_item(menu, wxID_ANY, _L("Add instance") + "\t+", _L("Add one more instance of the selected object"),
         [](wxCommandEvent&) { plater()->increase_instances();      }, "add_copies", nullptr, 
@@ -1416,7 +1206,7 @@ void MenuFactory::append_menu_items_instance_manipulation(wxMenu* menu)
 
 void MenuFactory::update_menu_items_instance_manipulation(MenuType type)
 {
-    wxMenu* menu = type == mtObjectFFF ? &m_object_menu : type == mtObjectSLA ? &m_sla_object_menu : nullptr;
+    wxMenu* menu = type == mtObjectSLA ? &m_sla_object_menu : nullptr;
     if (!menu)
         return;
     // Remove/Prepend "increase/decrease instances" menu items according to the view mode.
@@ -1445,7 +1235,6 @@ void MenuFactory::update_menu_items_instance_manipulation(MenuType type)
 
 void MenuFactory::update_objects_menu()
 {
-    append_menu_items_add_volume(mtObjectFFF);
     append_menu_items_add_volume(mtObjectSLA);
 }
 
@@ -1485,7 +1274,7 @@ static void update_menu_item_def_colors(T* item)
 
 void MenuFactory::sys_color_changed()
 {
-    for (MenuWithSeparators* menu : { &m_object_menu, &m_sla_object_menu, &m_part_menu, &m_default_menu })
+    for (MenuWithSeparators* menu : { &m_sla_object_menu, &m_part_menu, &m_default_menu })
         sys_color_changed(dynamic_cast<wxMenu*>(menu));
 }
 

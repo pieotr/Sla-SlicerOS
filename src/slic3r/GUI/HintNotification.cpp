@@ -127,19 +127,10 @@ TagCheckResult tag_check_mode(const std::string& tag)
 
 TagCheckResult tag_check_tech(const std::string& tag)
 {
+	// This is an SLA-only application: hints tagged FFF or MMU never apply.
 	std::vector<std::string> allowed_tags = { "FFF", "MMU", "SLA" };
-	if (std::find(allowed_tags.begin(), allowed_tags.end(), tag) != allowed_tags.end()) {
-		const PrinterTechnology tech = wxGetApp().preset_bundle->printers.get_edited_preset().printer_technology();
-		if (tech == ptFFF) {
-			// MMU / FFF
-			bool is_mmu = wxGetApp().extruders_edited_cnt() > 1;
-			if (tag == "MMU") return (is_mmu ? TagCheckAffirmative : TagCheckNegative);
-			return (tag == "FFF" ? TagCheckAffirmative : TagCheckNegative);
-		} else {
-			// SLA
-			return (tag == "SLA" ? TagCheckAffirmative : TagCheckNegative);
-		}
-	}
+	if (std::find(allowed_tags.begin(), allowed_tags.end(), tag) != allowed_tags.end())
+		return (tag == "SLA" ? TagCheckAffirmative : TagCheckNegative);
 	return TagCheckNotCompatible;
 }
 
@@ -173,28 +164,8 @@ TagCheckResult tag_check_system(const std::string& tag)
 
 TagCheckResult tag_check_material(const std::string& tag)
 {
-	if (const GUI::Tab* tab = wxGetApp().get_tab(Preset::Type::TYPE_FILAMENT)) {
-		// search PrintConfig filament_type to find if allowed tag
-		if (wxGetApp().app_config->get("filament_type").find(tag)) {
-			const Preset& preset = tab->m_presets->get_edited_preset();
-			const auto* opt = preset.config.opt<ConfigOptionStrings>("filament_type");
-			if (opt->values[0] == tag)
-				return TagCheckAffirmative;
-			return TagCheckNegative;
-		}
-		return TagCheckNotCompatible;
-	}
-	/* TODO: SLA materials
-	else if (const GUI::Tab* tab = wxGetApp().get_tab(Preset::Type::TYPE_SLA_MATERIAL)) {
-		//if (wxGetApp().app_config->get("material_type").find(tag)) {
-			const Preset& preset = tab->m_presets->get_edited_preset();
-			const auto* opt = preset.config.opt<ConfigOptionStrings>("material_type");
-			if (opt->values[0] == tag)
-				return TagCheckAffirmative;
-			return TagCheckNegative;
-		//}
-		return TagCheckNotCompatible;
-	}*/
+	// Filament types do not exist in the SLA-only application.
+	(void)tag;
 	return TagCheckNotCompatible;
 }
 
@@ -309,13 +280,9 @@ void HintDatabase::uninit()
 }
 void HintDatabase::init()
 {
-#if defined(SLIC3R_OFFLINE_ONLY) || defined(SLIC3R_SLA_ONLY)
 	// Local SLA workflows only; the existing renderer omits documentation actions
 	// when the selected catalog has no links.
 	const char *catalog = "sla_hints.ini";
-#else
-	const char *catalog = "hints.ini";
-#endif
 	load_hints_from_file(boost::filesystem::path(resources_dir()) / "data" / catalog);
     m_initialized = true;
 }

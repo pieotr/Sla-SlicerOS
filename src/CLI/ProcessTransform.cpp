@@ -88,9 +88,9 @@ bool process_transform(Data& cli, const DynamicPrintConfig& print_config, std::v
         std::vector<int>& ints = transform.option<ConfigOptionInts>("duplicate_grid")->values;
         const int x = ints.size() > 0 ? ints.at(0) : 1;
         const int y = ints.size() > 1 ? ints.at(1) : 1;
-        const double distance = print_config.opt_float("duplicate_distance");
+        // The FFF "duplicate_distance" option is gone; the grid spacing is the former default.
         for (auto& model : models)
-            model.duplicate_objects_grid(x, y, (distance > 0) ? distance : 6);  // TODO: this is not the right place for setting a default
+            model.duplicate_objects_grid(x, y, 6.);
     }
             
     if (transform.has("center")) {

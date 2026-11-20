@@ -744,86 +744,6 @@
     },
     {
       "type": "library",
-      "bom-ref": "heatshrink@0.4.1",
-      "name": "heatshrink",
-      "version": "0.4.1",
-      "licenses": [
-        {
-          "expression": "ISC"
-        }
-      ],
-      "scope": "required",
-      "properties": [
-        {
-          "name": "slasl:source",
-          "value": "deps/+heatshrink"
-        },
-        {
-          "name": "slasl:linkage",
-          "value": "static"
-        },
-        {
-          "name": "slasl:linked-in-binary",
-          "value": "yes"
-        },
-        {
-          "name": "slasl:notice",
-          "value": "deps/build/dep_heatshrink-prefix/src/dep_heatshrink/LICENSE"
-        },
-        {
-          "name": "slasl:source-built",
-          "value": "True"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "distribution",
-          "url": "https://github.com/atomicobject/heatshrink/archive/refs/tags/v0.4.1.zip"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "libbgcode@git-5041c093b33e",
-      "name": "libbgcode",
-      "version": "git-5041c093b33e",
-      "licenses": [
-        {
-          "expression": "AGPL-3.0-only"
-        }
-      ],
-      "scope": "required",
-      "properties": [
-        {
-          "name": "slasl:source",
-          "value": "deps/+LibBGCode"
-        },
-        {
-          "name": "slasl:linkage",
-          "value": "static"
-        },
-        {
-          "name": "slasl:linked-in-binary",
-          "value": "yes"
-        },
-        {
-          "name": "slasl:notice",
-          "value": "deps/build/dep_LibBGCode-prefix/src/dep_LibBGCode/LICENSE"
-        },
-        {
-          "name": "slasl:source-built",
-          "value": "True"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "distribution",
-          "url": "https://github.com/prusa3d/libbgcode/archive/5041c093b33e2748e76d6b326f2251310823f3df.zip"
-        }
-      ]
-    },
-    {
-      "type": "library",
       "bom-ref": "Z3@4.15.1",
       "name": "Z3",
       "version": "4.15.1",
@@ -976,7 +896,7 @@
         },
         {
           "name": "slasl:note",
-          "value": "Built by deps/, not linked: SLIC3R_OFFLINE_ONLY."
+          "value": "Excluded from the deps/ build, not linked (offline-only application)."
         },
         {
           "name": "slasl:source-built",
@@ -1020,7 +940,7 @@
         },
         {
           "name": "slasl:note",
-          "value": "Built by deps/, not linked: SLIC3R_OFFLINE_ONLY (verified by test sla_offline_no_network_libs)."
+          "value": "Excluded from the deps/ build, not linked (offline-only application; verified by test sla_offline_no_network_libs)."
         },
         {
           "name": "slasl:source-built",
@@ -1031,46 +951,6 @@
         {
           "type": "distribution",
           "url": "https://github.com/openssl/openssl/archive/OpenSSL_1_1_0l.tar.gz"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "OpenCSG@1.4.2",
-      "name": "OpenCSG",
-      "version": "1.4.2",
-      "licenses": [
-        {
-          "expression": "GPL-2.0-only"
-        }
-      ],
-      "scope": "excluded",
-      "properties": [
-        {
-          "name": "slasl:source",
-          "value": "deps/+OpenCSG"
-        },
-        {
-          "name": "slasl:linkage",
-          "value": "not-linked"
-        },
-        {
-          "name": "slasl:linked-in-binary",
-          "value": "no"
-        },
-        {
-          "name": "slasl:note",
-          "value": "Built by deps/ for the FFF preview, not linked in the SLA-only build."
-        },
-        {
-          "name": "slasl:source-built",
-          "value": "True"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "distribution",
-          "url": "https://github.com/floriankirsch/OpenCSG/archive/refs/tags/opencsg-1-4-2-release.zip"
         }
       ]
     },
@@ -1722,35 +1602,6 @@
         {
           "name": "slasl:note",
           "value": "In-tree copy with PrusaSlicer changes (also src/libslic3r/clipper.*)."
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "avrdude@unknown",
-      "name": "avrdude",
-      "licenses": [
-        {
-          "expression": "GPL-2.0-or-later"
-        }
-      ],
-      "scope": "excluded",
-      "properties": [
-        {
-          "name": "slasl:source",
-          "value": "bundled_deps/avrdude"
-        },
-        {
-          "name": "slasl:linkage",
-          "value": "not-linked"
-        },
-        {
-          "name": "slasl:linked-in-binary",
-          "value": "no"
-        },
-        {
-          "name": "slasl:note",
-          "value": "Not compiled in the SLA build (guarded by NOT SLIC3R_SLA_ONLY)"
         }
       ]
     },

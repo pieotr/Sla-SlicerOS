@@ -6,7 +6,7 @@ LayerEditorPanel *create_sliced_layer_editor(wxWindow *parent, SLAPrint &source,
     std::function<bool()> source_available, std::function<void()> back)
 {
     std::unique_ptr<sla::SlicedResultSession> session;
-    const bool captured = run_background_layers(parent, "Open sliced layers", [&](const sla::LayerProgress &progress) {
+    const bool captured = run_background_layers(parent, _L("Open sliced layers"), [&](const sla::LayerProgress &progress) {
         try { session = sla::SlicedResultSession::capture(source, progress); return true; }
         catch (const sla::LayerOperationCancelled &) { return false; }
         catch (const CanceledException &) { return false; }
@@ -24,7 +24,7 @@ std::string choose_layer_file(wxWindow *parent)
         anycubic_masks += ";*." + extension + ";*." + extension.Upper();
     }
     archive_filter.Replace("|All files|*", anycubic_masks + "|All files|*");
-    wxFileDialog open(parent, "Open layer archive", "", "", archive_filter,
+    wxFileDialog open(parent, _L("Open layer archive"), "", "", archive_filter,
                       wxFD_OPEN | wxFD_FILE_MUST_EXIST);
     if (open.ShowModal() != wxID_OK) return {};
     return into_u8(open.GetPath());
@@ -44,7 +44,7 @@ std::optional<OpenedLayerFile> load_layer_file(wxWindow *parent, const std::stri
     OpenedLayerFile loaded;
     const bool is_project = boost::algorithm::to_lower_copy(
         boost::filesystem::path(path).extension().string()) == ".sla-project";
-    const bool opened = run_background_layers(parent, "Open layer archive", [&](const sla::LayerProgress &progress) {
+    const bool opened = run_background_layers(parent, _L("Open layer archive"), [&](const sla::LayerProgress &progress) {
         try {
             if (is_project) {
                 auto project = sla::read_project_layers(path, progress);

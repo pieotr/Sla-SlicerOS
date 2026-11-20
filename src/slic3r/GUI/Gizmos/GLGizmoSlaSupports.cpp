@@ -888,9 +888,9 @@ void GLGizmoSlaSupports::draw_island_config() {
     // copied from SLAPrint::Steps::support_points()
     const SLAPrintObject *po = m_c->selection_info()->print_object();
     const SLAPrintObjectConfig &cfg = po->config();
-    float head_diameter = (cfg.support_tree_type == sla::SupportTreeType::Branching) ?
-        float(cfg.branchingsupport_head_front_diameter):
-        float(cfg.support_head_front_diameter); // SupportTreeType::Organic
+    float head_diameter = (cfg.support_tree_type != sla::SupportTreeType::Default) ?
+        float(cfg.branchingsupport_head_front_diameter): // Branching and Organic share the branching options
+        float(cfg.support_head_front_diameter);
     std::string button_title = "apply " + std::to_string(head_diameter);
     ImGui::SameLine();
     if (ImGui::Button(button_title.c_str())) {
@@ -1314,7 +1314,7 @@ bool GLGizmoSlaSupports::on_mouse(const wxMouseEvent &mouse_event)
                 pending_right_up = false;
         }
     } else if (mouse_event.LeftUp() && !m_parent.is_mouse_dragging()) {
-        // in case SLA/FDM gizmo is selected, we just pass the LeftUp event
+        // in case SLA gizmo is selected, we just pass the LeftUp event
         // and stop processing - neither object moving or selecting is
         // suppressed in that case
         gizmo_event(SLAGizmoEventType::LeftUp, mouse_pos, mouse_event.ShiftDown(), mouse_event.AltDown(), mouse_event.CmdDown());

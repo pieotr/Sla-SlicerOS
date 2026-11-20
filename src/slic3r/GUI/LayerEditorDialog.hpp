@@ -32,6 +32,10 @@ public:
     virtual bool can_redo() const = 0;
     virtual void undo_change() = 0;
     virtual void redo_change() = 0;
+    // The "Load current slices" / "Open layer file" commands live in the editor header (they used to be a
+    // separate Plater row above it). The Plater supplies the actions and their enabled state.
+    virtual void set_document_actions(std::function<void()> load_slices, std::function<void()> open_file) {}
+    virtual void set_document_actions_enabled(bool load_slices, bool open_file) {}
 };
 LayerEditorPanel *create_sliced_layer_editor(wxWindow *parent, SLAPrint &source,
     std::function<void(sla::SlicedResultSession &)> apply,

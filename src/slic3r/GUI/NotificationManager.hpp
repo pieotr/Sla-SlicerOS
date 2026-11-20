@@ -83,21 +83,14 @@ enum class NotificationType
 	// Progress bar instead of text.
 	ProgressBar,
 	// Progress bar with info from Print Host Upload Queue dialog.
-	PrintHostUpload,
 	// Progress bar of download next version app.
 	AppDownload,
 	// Progress bar with cancel button, cannot be closed
-	// On end of slicing and G-code processing (the full G-code preview is available),
-	// contains a hyperlink to export the G-code to a removable media or hdd.
+	// On end of slicing (the sliced preview is available),
+	// contains a hyperlink to export the sliced layers to a removable media or hdd.
 	SlicingProgress,
-	// Notification, when Color Change G-code is empty and user try to add color change on DoubleSlider.
-    EmptyColorChangeCode,
-    // Notification that custom supports/seams were deleted after mesh repair.
-    CustomSupportsAndSeamRemovedAfterRepair,
-    // Notification that auto adding of color changes is impossible
-    EmptyAutoColorChange,
-    // Notification about detected sign
-    SignDetected,
+    // Error notification: close the open gizmo (manipulator) first.
+    CloseGizmoFirst,
     // Notification telling user to quit SLA supports manual editing
     QuitSLAManualMode,
     // Desktop integration basic info
@@ -105,8 +98,6 @@ enum class NotificationType
     DesktopIntegrationFail,
     UndoDesktopIntegrationSuccess,
     UndoDesktopIntegrationFail,
-    // Notification that a printer has more extruders than are supported by MM Gizmo/segmentation.
-    MmSegmentationExceededExtrudersLimit,
 	// Did you know Notification appearing on startup with arrows to change hint
 	DidYouKnowHint,
 	// Shows when  ObjectList::update_info_items finds information that should be stressed to the user
@@ -133,17 +124,8 @@ enum class NotificationType
 	UserAccountID,
 	// When in Connect tab "set as current" is selected and selected presets in plater changes
 	SelectPrinterFromConnect,
-	SelectFilamentFromConnect,
 	// Debug notification for connect communication
 	PrusaConnectPrinters,
-    // Notification that bed temperatures for the used filaments differ significantly.
-    BedTemperaturesDiffer,
-    // Notification that shrinkage compensations for the used filaments differ.
-    ShrinkageCompensationsDiffer,
-    // Notification about using wipe tower with different nozzle diameters.
-    WipeTowerNozzleDiameterDiffer,
-    // Notification about using supports with different nozzle diameters.
-    SupportNozzleDiameterDiffer,
     // Transient error on Prusa Account communication - user is informed and has option to cancel (logout)
     AccountTransientRetry,
     // Failed to download secret repo archive
@@ -229,25 +211,10 @@ public:
 	// Called when the side bar changes its visibility, as the "slicing complete" notification supplements
 	// the "slicing info" normally shown at the side bar.
 	void set_sidebar_collapsed(bool collapsed);
-	// Set technology for correct text in SlicingProgress.
-	void set_fff(bool b);
-	void set_fdm(bool b) { set_fff(b); }
-	void set_sla(bool b) { set_fff(!b); }
 	// Exporting finished, show this information with path, button to open containing folder and if ejectable - eject button
 	void push_exporting_finished_notification(const std::string& path, const std::string& dir_path, bool on_removable);
     void push_bulk_exporting_finished_notification(const std::string& dir_path, bool on_removable);
 	// notifications with progress bar
-	// print host upload
-	void push_upload_job_notification(int id, float filesize, const std::string& filename, const std::string& host, float percentage = 0);
-	void set_upload_job_notification_percentage(int id, const std::string& filename, const std::string& host, float percentage);
-	void set_upload_job_notification_host(int id, const std::string& host);
-	void set_upload_job_notification_status(int id, const std::string& status);
-	void set_upload_job_notification_comp_on_100(int id, bool comp);
-	void set_upload_job_notification_completed(int id);
-	void set_upload_job_notification_completed_with_warning(int id);
-    void set_upload_job_notification_hypertext(int i, std::function<bool(wxEvtHandler*)> callback);
-	void upload_job_notification_show_canceled(int id, const std::string& filename, const std::string& host);
-	void upload_job_notification_show_error(int id, const std::string& filename, const std::string& host);
 	// Download App progress
 	void push_download_progress_notification(const std::string& text, std::function<bool()>	cancel_callback);
 	void set_download_progress_percentage(float percentage);
@@ -294,7 +261,7 @@ public:
 	void render_notifications(GLCanvas3D& canvas, float overlay_width);
 	// finds and closes all notifications of given type
 	void close_notification_of_type(const NotificationType type);
-	// Hides warnings in G-code preview. Should be called from plater only when 3d view/ preview is changed
+	// Hides warnings in the preview. Should be called from plater only when 3d view/ preview is changed
     void set_in_preview(bool preview);
 	// Calls set_in_preview to apply appearing or disappearing of some notificatons;
 	void apply_in_preview() { set_in_preview(m_in_preview); }
@@ -605,85 +572,6 @@ private:
         std::function<void(std::string)> m_hypertext_callback_override;
     };
 
-	class PrintHostUploadNotification : public ProgressBarNotification
-	{
-	public:
-		enum class UploadJobState
-		{
-			PB_PROGRESS,
-			PB_ERROR,
-			PB_CANCELLED,
-			PB_COMPLETED,
-			PB_COMPLETED_WITH_WARNING,
-			PB_RESOLVING
-		};
-		PrintHostUploadNotification(const NotificationData& n, NotificationIDProvider& id_provider, wxEvtHandler* evt_handler, float percentage, int job_id, float filesize, const std::string& filename, const std::string& host)
-			:ProgressBarNotification(n, id_provider, evt_handler)
-			, m_job_id(job_id)
-			, m_file_size(filesize)
-			, m_filename(filename)
-			, m_host(host)
-			, m_original_host(host)
-		{
-			m_has_cancel_button = true;
-			if (percentage != 0.f)
-				set_percentage(percentage);
-		}
-		void				set_percentage(float percent) override;
-        bool                on_text_click() override;
-		void				cancel() { m_uj_state = UploadJobState::PB_CANCELLED; m_has_cancel_button = false; }
-		void				error()  { m_uj_state = UploadJobState::PB_ERROR;     m_has_cancel_button = false; init(); }
-		bool				compare_job_id(const int other_id) const { return m_job_id == other_id; }
-		bool				compare_text(const std::string& text) const override { return false; }
-		void				set_host(const std::string& host) { m_host = host; init(); }
-		std::string			get_host() const { return m_host; }
-		void                set_status(const std::string& status) { m_status_message = status; init(); }
-		void				set_complete_on_100(bool val) { m_complete_on_100 = val; }
-		void                complete();
-		void                complete_with_warning();
-        void                set_hypertext_override(std::function<bool(wxEvtHandler *)> callback) 
-        { 
-            m_hypertext_override = true;  
-            m_callback_override = callback;
-            init();
-        }
-	protected:
-		void        init() override;
-		void		count_spaces() override;
-		bool		push_background_color() override;
-		virtual void render_text(
-								const float win_size_x, const float win_size_y,
-								const float win_pos_x, const float win_pos_y) override;
-		void		render_bar( const float win_size_x, const float win_size_y,
-								const float win_pos_x, const float win_pos_y) override;
-		virtual void render_close_button(
-									const float win_size_x, const float win_size_y,
-									const float win_pos_x, const float win_pos_y) override;
-		void		render_cancel_button( 	const float win_size_x, const float win_size_y,
-											const float win_pos_x, const float win_pos_y) override;
-		void		render_left_sign() override;
-	
-		void        generate_text();
-		void		on_more_hypertext_click() override { ProgressBarNotification::on_more_hypertext_click(); m_more_hypertext_used = true; }
-
-		// Identifies job in cancel callback
-		int					m_job_id;
-		// Size of uploaded size to be displayed in MB
-		float			    m_file_size;
-		long				m_hover_time{ 0 };
-		UploadJobState		m_uj_state{ UploadJobState::PB_RESOLVING };
-		std::string         m_filename;
-		std::string         m_host;
-		std::string         m_original_host; // when hostname is resolved into ip address, we can still display original hostname (that user inserted)
-		std::string         m_status_message;
-		bool				m_more_hypertext_used { false };
-		// When m_complete_on_100 is set to false - percent >= 1 wont switch to PB_COMPLETED state.
-		bool				m_complete_on_100 { true };
-
-        bool                             m_hypertext_override { false };
-        std::function<bool(wxEvtHandler *)>     m_callback_override;
-	};
-
 	class SlicingProgressNotification : public ProgressBarNotification
 	{
 	public:
@@ -719,10 +607,6 @@ private:
 		void                set_sidebar_collapsed(bool collapsed);
 		// Calls inherited update_state and ensures Estate goes to hidden not closing.
 		bool                update_state(bool paused, const int64_t delta) override;
-		// Switch between technology to provide correct text.
-		void				set_fff(bool b) { m_is_fff = b; }
-		void				set_fdm(bool b) { m_is_fff = b; }
-		void				set_sla(bool b) { m_is_fff = !b; }
 		void                set_export_possible(bool b) { m_export_possible = b; }
 	protected:
 		void        init() override;
@@ -744,7 +628,6 @@ private:
 		bool				    m_has_print_info { false };
 		std::string             m_print_info;
 		bool                    m_sidebar_collapsed { false };
-		bool					m_is_fff { true };
 		// if true, it is possible show export hyperlink in state SP_PROGRESS
 		bool                    m_export_possible { false };
 	};
@@ -882,7 +765,7 @@ private:
 	bool activate_existing(const NotificationManager::PopNotification* notification);
 	// Put the more important notifications to the bottom of the list.
 	void sort_notifications();
-	// If there is some error notification active, then the "Export G-code" notification after the slicing is finished is suppressed.
+	// If there is some error notification active, then the "Export" notification after the slicing is finished is suppressed.
     bool has_slicing_error_notification();
 	size_t get_standard_duration(NotificationLevel level)
 	{
@@ -911,7 +794,7 @@ private:
 	std::vector<DelayedNotification> m_waiting_notifications;
 	//timestamps used for slicing finished - notification could be gone so it needs to be stored here
 	std::unordered_set<int>      m_used_timestamps;
-	// True if G-code preview is active. False if the Plater is active.
+	// True if the preview is active. False if the Plater is active.
 	bool                         m_in_preview { false };
 	// True if the layer editing is enabled in Plater, so that the notifications are shifted left of it.
 	bool                         m_move_from_overlay { false };
@@ -922,7 +805,6 @@ private:
 		NotificationType::CustomNotification, 
 		NotificationType::PlaterWarning, 
 		NotificationType::ProgressBar, 
-		NotificationType::PrintHostUpload, 
         NotificationType::SimplifySuggestion,
 		NotificationType::URLDownload
 	};
@@ -944,11 +826,6 @@ private:
 			return true;
 		}
 	},
-	{NotificationType::EmptyColorChangeCode, NotificationLevel::PrintInfoNotificationLevel, 10,
-		_u8L("You have just added a G-code for color change, but its value is empty.\n"
-			 "To export the G-code correctly, check the \"Color Change G-code\" in \"Printer Settings > Custom G-code\"") },
-	{NotificationType::EmptyAutoColorChange, NotificationLevel::PrintInfoNotificationLevel, 10,
-		_u8L("No color change event was added to the print. The print does not look like a sign.") },
 	{NotificationType::DesktopIntegrationSuccess, NotificationLevel::RegularNotificationLevel, 10,
 		_u8L("Desktop integration was successful.") },
 	{NotificationType::DesktopIntegrationFail, NotificationLevel::WarningNotificationLevel, 10,

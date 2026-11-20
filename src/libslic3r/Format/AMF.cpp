@@ -22,7 +22,6 @@
 #include "libslic3r/Utils.hpp"
 #include "libslic3r/I18N.hpp"
 #include "libslic3r/Geometry.hpp"
-#include "libslic3r/CustomGCode.hpp"
 #include "libslic3r/miniz_extension.hpp"
 
 #include "AMF.hpp"
@@ -171,9 +170,6 @@ struct AMFParserContext
         NODE_TYPE_MIRRORY,              // amf/constellation/instance/mirrory
         NODE_TYPE_MIRRORZ,              // amf/constellation/instance/mirrorz
         NODE_TYPE_PRINTABLE,            // amf/constellation/instance/mirrorz
-        NODE_TYPE_CUSTOM_GCODE,         // amf/custom_code_per_height
-        NODE_TYPE_GCODE_PER_HEIGHT,     // amf/custom_code_per_height/code
-        NODE_TYPE_CUSTOM_GCODE_MODE,    // amf/custom_code_per_height/mode
         NODE_TYPE_METADATA,             // anywhere under amf/*/metadata
     };
 
@@ -307,8 +303,7 @@ void AMFParserContext::startElement(const char *name, const char **atts)
         }
         else if (strcmp(name, "constellation") == 0)
             node_type_new = NODE_TYPE_CONSTELLATION;
-        else if (strcmp(name, "custom_gcodes_per_height") == 0)
-            node_type_new = NODE_TYPE_CUSTOM_GCODE;
+        // amf/custom_gcodes_per_height (FFF color changes / pauses) is an unknown node: skipped silently.
         break;
     case 2:
         if (strcmp(name, "metadata") == 0) {
@@ -337,36 +332,6 @@ void AMFParserContext::startElement(const char *name, const char **atts)
             else
                 this->stop();
         } 
-        else if (m_path[1] == NODE_TYPE_CUSTOM_GCODE) {
-            if (strcmp(name, "code") == 0) {
-                node_type_new = NODE_TYPE_GCODE_PER_HEIGHT;
-                m_value[0] = get_attribute(atts, "print_z");
-                m_value[1] = get_attribute(atts, "extruder");
-                m_value[2] = get_attribute(atts, "color");
-                if (get_attribute(atts, "type"))
-                {
-                    m_value[3] = get_attribute(atts, "type");
-                    m_value[4] = get_attribute(atts, "extra");
-                }
-                else
-                {
-                    // It means that data was saved in old version (2.2.0 and older) of PrusaSlicer
-                    // read old data ... 
-                    std::string gcode = get_attribute(atts, "gcode");
-                    // ... and interpret them to the new data
-                    CustomGCode::Type type= gcode == "M600" ? CustomGCode::ColorChange :
-                                            gcode == "M601" ? CustomGCode::PausePrint :
-                                            gcode == "tool_change" ? CustomGCode::ToolChange : CustomGCode::Custom;
-                    m_value[3] = std::to_string(static_cast<int>(type));
-                    m_value[4] = type == CustomGCode::PausePrint ? m_value[2] :
-                                 type == CustomGCode::Custom ? gcode : "";
-                }
-            }
-            else if (strcmp(name, "mode") == 0) {
-                node_type_new = NODE_TYPE_CUSTOM_GCODE_MODE;
-                m_value[0] = get_attribute(atts, "value");
-            }
-        }
         break;
     case 3:
         if (m_path[2] == NODE_TYPE_MESH) {
@@ -692,31 +657,6 @@ void AMFParserContext::endElement(const char * /* name */)
         m_instance = nullptr;
         break;
 
-    case NODE_TYPE_GCODE_PER_HEIGHT: {
-        double print_z          = double(atof(m_value[0].c_str()));
-        int extruder            = atoi(m_value[1].c_str());
-        const std::string& color= m_value[2];
-        CustomGCode::Type type  = static_cast<CustomGCode::Type>(atoi(m_value[3].c_str()));
-        const std::string& extra= m_value[4];
-
-        m_model.custom_gcode_per_print_z().gcodes.push_back(CustomGCode::Item{print_z, type, extruder, color, extra});
-
-        for (std::string& val: m_value)
-            val.clear();
-        break;
-        }
-
-    case NODE_TYPE_CUSTOM_GCODE_MODE: {
-        const std::string& mode = m_value[0];
-
-        m_model.custom_gcode_per_print_z().mode = mode == CustomGCode::SingleExtruderMode ? CustomGCode::Mode::SingleExtruder :
-                                                    mode == CustomGCode::MultiAsSingleMode  ? CustomGCode::Mode::MultiAsSingle  :
-                                                                                              CustomGCode::Mode::MultiExtruder;
-        for (std::string& val: m_value)
-            val.clear();
-        break;
-        }
-
     case NODE_TYPE_METADATA:
         if ((m_config != nullptr) && strncmp(m_value[0].c_str(), SLIC3R_CONFIG_TYPE, strlen(SLIC3R_CONFIG_TYPE)) == 0) {
             //FIXME Loading a "will be one day a legacy format" of configuration in a form of a G-code comment.
@@ -740,27 +680,10 @@ void AMFParserContext::endElement(const char * /* name */)
                 }
                 else if (m_path.size() == 5 && m_path[3] == NODE_TYPE_VOLUME && m_volume)
                     config = &m_volume->config;
-                else if (m_path.size() == 5 && m_path[3] == NODE_TYPE_RANGE && m_object && !m_object->layer_config_ranges.empty()) {
-                    auto it  = --m_object->layer_config_ranges.end();
-                    config = &it->second;
-                }
                 if (config)
                     config->set_deserialize(opt_key, m_value[1], *m_config_substitutions);
-            } else if (m_path.size() == 3 && m_path[1] == NODE_TYPE_OBJECT && m_object && strcmp(opt_key, "layer_height_profile") == 0) {
-                // Parse object's layer height profile, a semicolon separated list of floats.
-                char *p = m_value[1].data();
-                std::vector<coordf_t> data;
-                for (;;) {
-                    char *end = strchr(p, ';');
-                    if (end != nullptr)
-	                    *end = 0;
-                    data.emplace_back(float(atof(p)));
-					if (end == nullptr)
-						break;
-					p = end + 1;
-                }
-                m_object->layer_height_profile.set(std::move(data));
             }
+            // "layer_height_profile" and layer ranges (FFF-only) fall through here and are skipped silently.
             else if (m_path.size() == 3 && m_path[1] == NODE_TYPE_OBJECT && m_object && strcmp(opt_key, "sla_support_points") == 0) {
                 // Parse object's layer height profile, a semicolon separated list of floats.
                 unsigned char coord_idx = 0;
@@ -781,16 +704,6 @@ void AMFParserContext::endElement(const char * /* name */)
 					p = end + 1;
                 }
                 m_object->sla_points_status = sla::PointsStatus::UserModified;
-            }
-            else if (m_path.size() == 5 && m_path[1] == NODE_TYPE_OBJECT && m_path[3] == NODE_TYPE_RANGE && 
-                     m_object && strcmp(opt_key, "layer_height_range") == 0) {
-                // Parse object's layer_height_range, a semicolon separated doubles.
-                char* p = m_value[1].data();
-                char* end = strchr(p, ';');
-                *end = 0;
-
-                const t_layer_height_range range = {double(atof(p)), double(atof(end + 1))};
-                m_object->layer_config_ranges[range];
             }
             else if (m_path.size() == 5 && m_path[3] == NODE_TYPE_VOLUME && m_volume) {
                 if (strcmp(opt_key, "modifier") == 0) {

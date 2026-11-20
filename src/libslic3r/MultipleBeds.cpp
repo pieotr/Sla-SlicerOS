@@ -2,9 +2,7 @@
 
 #include "BuildVolume.hpp"
 #include "Model.hpp"
-#ifndef SLIC3R_SLA_ONLY
-#include "Print.hpp"
-#endif // SLIC3R_SLA_ONLY
+#include "Utils.hpp"
 
 #include <cassert>
 #include <algorithm>
@@ -14,7 +12,6 @@ namespace Slic3r {
 MultipleBeds s_multiple_beds;
 bool s_reload_preview_after_switching_beds = false;
 bool s_beds_just_switched = false;
-bool s_beds_switched_since_last_gcode_load = false;
 
 bool is_sliceable(const PrintStatus status) {
     if (status == PrintStatus::empty) {
@@ -461,63 +458,6 @@ Vec2crd MultipleBeds::get_bed_gap() const {
     return scaled(Vec2d{bed_gap() / 2.0});
 };
 
-#ifndef SLIC3R_SLA_ONLY
-// Wipe towers exist only for FFF multi-material prints (needs Print).
-void MultipleBeds::ensure_wipe_towers_on_beds(Model& model, const std::vector<std::unique_ptr<Print>>& prints)
-{
-    for (size_t bed_idx = 0; bed_idx < get_number_of_beds(); ++bed_idx) {
-        ModelWipeTower& mwt = model.get_wipe_tower_vector()[bed_idx];
-        double depth = prints[bed_idx]->wipe_tower_data().depth;
-        double width = prints[bed_idx]->wipe_tower_data().width;
-        double brim  = prints[bed_idx]->wipe_tower_data().brim_width;
-
-        Polygon plg(Points{Point::new_scale(-brim,-brim), Point::new_scale(brim+width, -brim), Point::new_scale(brim+width, brim+depth), Point::new_scale(-brim, brim+depth)});
-        plg.rotate(Geometry::deg2rad(mwt.rotation));
-        plg.translate(scaled(mwt.position));
-        if (std::all_of(plg.points.begin(), plg.points.end(), [this](const Point& pt) { return !m_build_volume_bb.contains(unscale(pt)); }))
-            mwt.position = 2*brim*Vec2d(1.,1.);
-    }
-}
-#endif
-
-#ifdef SLIC3R_GUI
-
-void MultipleBeds::start_autoslice(std::function<void(int, bool)> select_bed_fn)
-{
-    if (is_autoslicing())
-        return;
-    m_select_bed_fn = select_bed_fn;
-
-    m_autoslicing_original_bed = get_active_bed();
-
-    m_autoslicing = true;
-}
-
-
-
-bool MultipleBeds::stop_autoslice(bool restore_original)
-{
-    if (! is_autoslicing())
-        return false;
-    m_autoslicing = false;
-
-    if (restore_original)
-        m_select_bed_fn(m_autoslicing_original_bed, false);
-    return true;
-}
-
-
-
-void MultipleBeds::autoslice_next_bed()
-{
-    if (! is_autoslicing())
-        return;
-    int next_bed = s_multiple_beds.get_active_bed() + 1;
-    if (next_bed >= s_multiple_beds.get_number_of_beds())
-        next_bed = 0;
-    m_select_bed_fn(next_bed, false);
-}
-#endif // SLIC3R_GUI
 
 
 }

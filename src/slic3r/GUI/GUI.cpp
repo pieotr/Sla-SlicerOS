@@ -211,12 +211,9 @@ void show_substitutions_info(const PresetsConfigSubstitutions& presets_config_su
 
 	auto preset_type_name = [](Preset::Type type) {
 		switch (type) {
-			case Preset::TYPE_PRINT:			return _L("Print settings");
 			case Preset::TYPE_SLA_PRINT:		return _L("SLA print settings");
-			case Preset::TYPE_FILAMENT:			return _L("Filament");
 			case Preset::TYPE_SLA_MATERIAL:		return _L("SLA material");
 			case Preset::TYPE_PRINTER: 			return _L("Printer");
-			case Preset::TYPE_PHYSICAL_PRINTER:	return _L("Physical Printer");
 			default: assert(false);				return wxString();
 		}
 	};

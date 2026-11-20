@@ -60,6 +60,15 @@ def main():
     ):
         run(name, arguments, success=False)
     assert not (output / 'fff.ini').exists()
+    (output / 'old.gcode').write_text('G1 X1 Y1\n')
+    for suffix in ('gcode', 'bgcode'):
+        (output / ('old.' + suffix)).write_text('G1 X1 Y1\n')
+        message = run('reject-%s-input' % suffix, [output / ('old.' + suffix), '--info'], success=False)
+        assert 'not supported' in message and 'Traceback' not in message, message
+    message = run('reject-fff-profile-message', ['--load', presets / 'printer/CLI FFF.ini', '--info'], success=False)
+    assert 'not supported' in message, message
+    message = run('reject-export-gcode-message', ['--export-gcode'], success=False)
+    assert message.strip(), message
     query = run('query-sla-printers', ['--query-printer-models'])
     models_json = json.loads(query)
     assert 'printer_models' in models_json

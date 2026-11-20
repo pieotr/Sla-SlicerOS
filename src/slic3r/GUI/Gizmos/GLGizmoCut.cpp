@@ -389,7 +389,7 @@ bool GLGizmoCut3D::on_mouse(const wxMouseEvent &mouse_event)
         }
     }
     else if (mouse_event.LeftUp() && !m_parent.is_mouse_dragging()) {
-        // in case SLA/FDM gizmo is selected, we just pass the LeftUp event
+        // in case SLA gizmo is selected, we just pass the LeftUp event
         // and stop processing - neither object moving or selecting is
         // suppressed in that case
         gizmo_event(SLAGizmoEventType::LeftUp, mouse_pos, mouse_event.ShiftDown(), mouse_event.AltDown(), mouse_event.CmdDown());
@@ -1479,7 +1479,7 @@ bool GLGizmoCut3D::on_is_activable() const
 {
     const Selection& selection = m_parent.get_selection();
     const int object_idx = selection.get_object_idx();
-    if (object_idx < 0 || selection.is_wipe_tower())
+    if (object_idx < 0)
         return false;
 
     if (const ModelObject* mo = wxGetApp().plater()->model().objects[object_idx];
@@ -1491,7 +1491,7 @@ bool GLGizmoCut3D::on_is_activable() const
 
     // This is assumed in GLCanvas3D::do_rotate, do not change this
     // without updating that function too.
-    return selection.is_single_full_instance() && !m_parent.is_layers_editing_enabled();
+    return selection.is_single_full_instance();
 }
 
 bool GLGizmoCut3D::on_is_selectable() const
@@ -1715,7 +1715,7 @@ BoundingBoxf3 GLGizmoCut3D::bounding_box() const
     const Selection::IndicesList& idxs = selection.get_volume_idxs();
     for (unsigned int i : idxs) {
         const GLVolume* volume = selection.get_volume(i);
-        // respect just to the solid parts for FFF and ignore pad and supports for SLA
+        // respect just to the solid parts and ignore pad and supports
         if (!volume->is_modifier && !volume->is_sla_pad() && !volume->is_sla_support())
             ret.merge(volume->transformed_convex_hull_bounding_box());
     }
@@ -1736,7 +1736,7 @@ BoundingBoxf3 GLGizmoCut3D::transformed_bounding_box(const Vec3d& plane_center, 
     BoundingBoxf3 ret;
     for (unsigned int i : idxs) {
         const GLVolume* volume = selection.get_volume(i);
-        // respect just to the solid parts for FFF and ignore pad and supports for SLA
+        // respect just to the solid parts and ignore pad and supports
         if (!volume->is_modifier && !volume->is_sla_pad() && !volume->is_sla_support()) {
 
             const auto instance_matrix = volume->get_instance_transformation().get_matrix_no_offset();
@@ -1899,7 +1899,7 @@ GLGizmoCut3D::PartSelection::PartSelection(const ModelObject* mo, const Transfor
     // split to parts
     for (int id = int(volumes.size())-1; id >= 0; id--)
         if (volumes[id]->is_splittable() && volumes[id]->is_model_part()) // we have to split just solid volumes
-            ModelProcessing::split(volumes[id], 1);
+            ModelProcessing::split(volumes[id]);
 
     m_parts.clear();
     for (const ModelVolume* volume : volumes) {

@@ -1,6 +1,6 @@
 #include <boost/log/trivial.hpp>
 #include <libslic3r/Arachne/utils/PolygonsSegmentIndex.hpp>
-#include <libslic3r/MultiMaterialSegmentation.hpp>
+#include <libslic3r/Geometry/ColoredLine.hpp>
 #include <libslic3r/Geometry.hpp>
 #include <cmath>
 #include <cstdint>

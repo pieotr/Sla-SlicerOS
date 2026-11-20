@@ -333,8 +333,6 @@ const ModelObjectPtrs& Cut::perform_with_plane()
     const Transform3d       inverse_cut_matrix = cut_transformation.get_rotation_matrix().inverse() * translation_transform(-1. * cut_transformation.get_offset());
 
     for (ModelVolume* volume : mo->volumes) {
-        volume->reset_extra_facets();
-
         if (!volume->is_model_part()) {
             if (volume->cut_info.is_processed)
                 process_modifier_cut(volume, instance_matrix, inverse_cut_matrix, m_attributes, upper, lower);

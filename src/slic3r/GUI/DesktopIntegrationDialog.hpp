@@ -29,14 +29,14 @@ public:
 	static bool is_integrated();
 	// true if appimage
 	static bool integration_possible();
-	// Creates Desktop files and icons for both PrusaSlicer and GcodeViewer.
+	// Creates Desktop files and icons for PrusaSlicer.
 	// Stores paths into App Config.
 	// Rewrites if files already existed.
 	// if perform_downloader:
     // Creates Destktop files for PrusaSlicer downloader feature
 	// Regiters PrusaSlicer to start on prusaslicer:// URL
 	static void perform_desktop_integration();
-	// Deletes Desktop files and icons for both PrusaSlicer and GcodeViewer at paths stored in App Config.
+	// Deletes Desktop files and icons (including legacy viewer files of older versions) at paths stored in App Config.
 	static void undo_desktop_integration();
 
 	static void perform_downloader_desktop_integration();

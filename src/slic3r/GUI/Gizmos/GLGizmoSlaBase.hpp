@@ -15,6 +15,8 @@
 #include <string>
 #include <memory>
 
+#include <wx/string.h>
+
 namespace Slic3r {
 
 class SLAPrint;

@@ -431,7 +431,9 @@ TEST_CASE("Bed synchronization ignores incomplete invalid and FFF configs", "[sl
 
     auto config = printer_config();
     const auto original = config.option<ConfigOptionPoints>("bed_shape")->values;
-    config.set_key_value("printer_technology", new ConfigOptionEnum<PrinterTechnology>(ptFFF));
+    // FFF is not representable any more (raw "printer_technology = FFF" is rejected at load); a non-SLA
+    // technology value must still leave the bed untouched.
+    config.set_key_value("printer_technology", new ConfigOptionEnum<PrinterTechnology>(ptUnknown));
     REQUIRE_FALSE(sla::synchronize_bed_shape(config));
     REQUIRE(config.option<ConfigOptionPoints>("bed_shape")->values == original);
 
@@ -467,7 +469,6 @@ TEST_CASE("Normalized SLA printer geometry and format survive an INI roundtrip",
     REQUIRE_FALSE(sla::synchronize_bed_shape(restored));
 }
 
-#ifdef SLIC3R_SLA_ONLY
 TEST_CASE("Importing a const SLA printer configuration uses the SLA schema", "[sla_profiles]")
 {
     PresetBundle bundle;
@@ -544,15 +545,16 @@ TEST_CASE("Two SLA printer presets retain independent formats and geometry after
 TEST_CASE("Fresh and reset SLA bundles select a complete SLA printer schema", "[sla_profiles]")
 {
     PresetBundle bundle;
-    // SLA-only build: even the legacy slot 0 default carries the SLA schema.
+    // SLA-only build: the single default printer (slot 0) carries the SLA schema.
+    REQUIRE(bundle.printers.num_default_presets() == 1);
     REQUIRE(bundle.printers.default_preset(0).printer_technology() == ptSLA);
     bundle.printers.select_preset_by_name("", true);
     REQUIRE(bundle.printers.get_edited_preset().printer_technology() == ptSLA);
+    // A stored selection of the removed "- default FFF -" printer no longer exists: it resolves to "- default SLA -".
     bundle.printers.select_preset_by_name("- default FFF -", true);
     REQUIRE(bundle.printers.get_edited_preset().printer_technology() == ptSLA);
-    // The legacy slot is never what the SLA-only UI shows or stores: it resolves to "- default SLA -".
     CHECK(bundle.printers.get_selected_preset_name() == "- default SLA -");
-    CHECK_FALSE(bundle.printers.default_preset(0).is_visible);
+    CHECK(bundle.printers.default_preset(0).name == "- default SLA -");
     bundle.printers.select_preset(0);
     CHECK(bundle.printers.get_selected_preset_name() == "- default SLA -");
     bundle.printers.set_default_suppressed(true);
@@ -575,14 +577,11 @@ TEST_CASE("Fresh and reset SLA bundles select a complete SLA printer schema", "[
         require_bed(printer.config, 120., 68.);
     }
 }
-#endif
 
 TEST_CASE("New SLA process and material defaults do not inherit FDM layer heights", "[sla_profiles]")
 {
     PresetBundle presets;
-#ifdef SLIC3R_SLA_ONLY
     REQUIRE(presets.sla_prints.default_preset().config.opt_float("layer_height") == .05);
-#endif
     REQUIRE(presets.sla_materials.default_preset().config.opt_float("initial_layer_height") == .05);
     REQUIRE(presets.sla_prints.default_preset().config.opt_string("output_filename_format") ==
         "[input_filename_base][default_output_extension]");
@@ -1102,11 +1101,8 @@ TEST_CASE("Offline bundles ignore physical printers and print host keys", "[sla_
     PresetBundle bundle;
     REQUIRE_NOTHROW(bundle.load_configbundle(ini.string(), PresetBundle::LoadConfigBundleAttributes(),
                                              ForwardCompatibilitySubstitutionRule::Enable));
-    REQUIRE_FALSE(bundle.physical_printers.has_selection());
-    REQUIRE(bundle.physical_printers.find_printer("Garage", true) == nullptr);
-    size_t physical = 0;
-    for (const PhysicalPrinter &printer : bundle.physical_printers) { (void) printer; ++physical; }
-    REQUIRE(physical == 0);
+    // The [physical_printer:] section is skipped and counted as an ignored FFF-era section.
+    REQUIRE(bundle.skipped_fff_sections() == 1);
 
     const Preset *printer = bundle.printers.find_preset("Legacy Host SLA");
     REQUIRE(printer != nullptr);
@@ -1117,7 +1113,7 @@ TEST_CASE("Offline bundles ignore physical printers and print host keys", "[sla_
 
     // Export must not contain host data, even when physical printers are requested.
     const auto out_path = dir / "export.ini";
-    bundle.export_configbundle(out_path.string(), false, true);
+    bundle.export_configbundle(out_path.string(), false);
     std::ifstream in(out_path.string());
     const std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
     REQUIRE(text.find("print_host") == std::string::npos);
@@ -1562,7 +1558,7 @@ TEST_CASE("SLA-only config bundle export has no FFF sections and imports back", 
     source.save(Preset::TYPE_PRINTER, "Bundle Printer", [](DynamicPrintConfig &c) { c.set("display_width", 150.); });
     source.save(Preset::TYPE_SLA_MATERIAL, "Bundle Resin", [](DynamicPrintConfig &c) { c.set("exposure_time", 6.); });
     const auto file = (source.path / "bundle.ini").string();
-    source.bundle.export_configbundle(file, false, true);
+    source.bundle.export_configbundle(file, false);
     std::ifstream in(file);
     const std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
     CHECK(text.find("[print:") == std::string::npos);
@@ -1570,10 +1566,8 @@ TEST_CASE("SLA-only config bundle export has no FFF sections and imports back", 
     CHECK(text.find("[physical_printer") == std::string::npos);
     CHECK(text.find("[printer:Bundle Printer]") != std::string::npos);
     CHECK(text.find("[sla_material:Bundle Resin]") != std::string::npos);
-#ifdef SLIC3R_SLA_ONLY
     CHECK(text.find("\nprint = ") == std::string::npos);
     CHECK(text.find("\nfilament = ") == std::string::npos);
-#endif
     CHECK_FALSE(source.has_temp_files());
 
     ProfileFixture target;

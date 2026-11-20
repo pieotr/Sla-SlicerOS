@@ -141,15 +141,12 @@ bool ObjectSettings::update_settings_list()
                 ctrl->SetBitmapCurrent(m_bmp_delete_focus.bmp());
             };
 
-            const bool is_extruders_cat = cat.first == "Extruders";
             for (auto& opt : cat.second)
             {
                 Option option = optgroup->get_option(opt);
                 option.opt.width = 12;
                 if (!option.opt.full_label.empty())
                     option.opt.label = option.opt.full_label;
-                if (is_extruders_cat)
-                    option.opt.max = wxGetApp().extruders_edited_cnt();
                 optgroup->append_single_option_line(option);
             }
             optgroup->activate();
@@ -182,9 +179,7 @@ bool ObjectSettings::update_settings_list()
 
 bool ObjectSettings::add_missed_options(ModelConfig* config_to, const DynamicPrintConfig& config_from)
 {
-    const DynamicPrintConfig& print_config = wxGetApp().plater()->printer_technology() == ptFFF ?
-                                             wxGetApp().preset_bundle->prints.get_edited_preset().config :
-                                             wxGetApp().preset_bundle->sla_prints.get_edited_preset().config;
+    const DynamicPrintConfig& print_config = wxGetApp().preset_bundle->sla_prints.get_edited_preset().config;
     bool is_added = false;
 
     for (auto opt_key : config_from.diff(print_config))
@@ -200,16 +195,13 @@ void ObjectSettings::update_config_values(ModelConfig* config)
 {
     const auto objects_model        = wxGetApp().obj_list()->GetModel();
     const auto item                 = wxGetApp().obj_list()->GetSelection();
-    const auto printer_technology   = wxGetApp().plater()->printer_technology();
     const bool is_object_settings   = objects_model->GetItemType(objects_model->GetParent(item)) == itObject;
 
     if (!item || !objects_model->IsSettingsItem(item) || !config)
         return;
 
     // update config values according to configuration hierarchy
-    DynamicPrintConfig  main_config   = printer_technology == ptFFF ?
-                                        wxGetApp().preset_bundle->prints.get_edited_preset().config :
-                                        wxGetApp().preset_bundle->sla_prints.get_edited_preset().config;
+    DynamicPrintConfig  main_config   = wxGetApp().preset_bundle->sla_prints.get_edited_preset().config;
 
     auto load_config = [this, config, &main_config]()
     {
@@ -261,11 +253,7 @@ void ObjectSettings::update_config_values(ModelConfig* config)
     }
 
     main_config.apply(config->get(), true);
-    if (printer_technology == ptFFF) 
-        config_manipulation.update_print_fff_config(&main_config);
-
-    printer_technology == ptFFF  ?  config_manipulation.toggle_print_fff_options(&main_config) :
-                                    config_manipulation.toggle_print_sla_options(&main_config) ;
+    config_manipulation.toggle_print_sla_options(&main_config);
 }
 
 void ObjectSettings::UpdateAndShow(const bool show)

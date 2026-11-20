@@ -56,8 +56,8 @@ public:
 
     bool        update_settings_list();
     /* Additional check for override options: Add options, if its needed.
-     * Example: if Infill is set to 100%, and Fill Pattern is missed in config_to,
-     * we should add fill_pattern to avoid endless loop in update
+     * Example: if an option depends on another one that is missed in config_to,
+     * we should add it to avoid endless loop in update
      */
     bool        add_missed_options(ModelConfig *config_to, const DynamicPrintConfig &config_from);
     void        update_config_values(ModelConfig *config);

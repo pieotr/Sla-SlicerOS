@@ -17,7 +17,7 @@
 
 namespace Slic3r {
 
-// Bundle of Print + Filament + Printer presets.
+// Bundle of SLA print + SLA material + printer presets (the FFF print / filament / physical printer layers are gone).
 class PresetBundle
 {
 public:
@@ -35,63 +35,29 @@ public:
     struct PresetPreferences {
         std::string printer_model_id;// name of a preferred printer model
         std::string printer_variant; // name of a preferred printer variant
-        std::string filament;        // name of a preferred filament preset
         std::string sla_material;    // name of a preferred sla_material preset
     };
 
-    // Load ini files of all types (print, filament, printer) from Slic3r::data_dir() / presets.
-    // Load selections (current print, current filaments, current printer) from config.ini
+    // Load ini files of all types (sla_print, sla_material, printer) from Slic3r::data_dir().
+    // Legacy FFF data of an old data directory (print/, filament/, physical_printer/ folders, FFF printers,
+    // FFF vendor sections, [presets] print / filament / physical_printer keys) is ignored, never deleted.
+    // Load selections (current print, current material, current printer) from config.ini
     // select preferred presets, if any exist
     PresetsConfigSubstitutions load_presets(AppConfig &config, ForwardCompatibilitySubstitutionRule rule,
                                             const PresetPreferences& preferred_selection = PresetPreferences());
 
-    // Export selections (current print, current filaments, current printer) into config.ini
+    // Export selections (current print, current material, current printer) into config.ini
     void            export_selections(AppConfig &config);
 
-    PresetCollection            prints;
     PresetCollection            sla_prints;
-    PresetCollection            filaments;
     PresetCollection            sla_materials;
-	PresetCollection& 			materials(PrinterTechnology pt)       { return pt == ptFFF ? this->filaments : this->sla_materials; }
-	const PresetCollection& 	materials(PrinterTechnology pt) const { return pt == ptFFF ? this->filaments : this->sla_materials; }
     PrinterPresetCollection     printers;
-    PhysicalPrinterCollection   physical_printers;
-
-    // Filament presets per extruder for a multi-extruder or multi-material print.
-    // extruders_filaments.size() should be the same as printers.get_edited_preset().config.nozzle_diameter.size()
-    std::vector<ExtruderFilaments> extruders_filaments;
-    void cache_extruder_filaments_names();
-    void reset_extruder_filaments();
-
-    // Another hideous function related to current ExtruderFilaments hack. Returns a vector of values
-    // of a given config option for all currently used filaments. Modified value is returned for modified preset.
-    // Must be called with the vector ConfigOption type, e.g. ConfigOptionPercents.
-    template <class T>
-    auto get_config_options_for_current_filaments(const t_config_option_key& key)
-    {
-        decltype(T::values) out;
-        const Preset& edited_preset = this->filaments.get_edited_preset();
-        for (const ExtruderFilaments& extr_filament : this->extruders_filaments) {
-            const Preset& selected_preset = *extr_filament.get_selected_preset();
-            const Preset& preset = edited_preset.name == selected_preset.name ? edited_preset : selected_preset;
-            const T* co = preset.config.opt<T>(key);
-            if (co) {
-                assert(co->values.size() == 1);
-                out.push_back(co->values.back());
-            } else {
-                // Key is missing or type mismatch.
-            }
-        }
-        return out;
-    }
-
-
 
     const PresetCollection&           get_presets(Preset::Type preset_type) const;
           PresetCollection&           get_presets(Preset::Type preset_type);
 
-    // The project configuration values are kept separated from the print/filament/printer preset,
-    // they are being serialized / deserialized from / to the .amf, .3mf, .config, .gcode, 
+    // The project configuration values are kept separated from the print/material/printer preset,
+    // they are being serialized / deserialized from / to the .3mf, .config, 
     // and they are being used by slicing core.
     DynamicPrintConfig          project_config;
 
@@ -100,9 +66,7 @@ public:
     VendorMap                   vendors;
 
     struct ObsoletePresets {
-        std::vector<std::string> prints;
         std::vector<std::string> sla_prints;
-        std::vector<std::string> filaments;
         std::vector<std::string> sla_materials;
         std::vector<std::string> printers;
     };
@@ -111,10 +75,10 @@ public:
     std::set<std::string>       tmp_installed_presets;
 
     bool                        has_defauls_only() const 
-        { return prints.has_defaults_only() && filaments.has_defaults_only() && printers.has_defaults_only(); }
+        { return printers.has_defaults_only(); }
 
     DynamicPrintConfig          full_config() const;
-    // full_config() with the "printhost_apikey" and "printhost_cafile" removed.
+    // Same as full_config() (the legacy print host credentials are no longer part of the configuration).
     DynamicPrintConfig          full_config_secure() const;
 
     // Load user configuration and store it into the user profiles.
@@ -127,17 +91,17 @@ public:
     void                        load_config_model(const std::string &name, DynamicPrintConfig config)
         { this->load_config_file_config(name, true, std::move(config)); }
 
-    // Load an external config file containing the print, filament and printer presets.
-    // Instead of a config file, a G-code may be loaded containing the full set of parameters.
-    // In the future the configuration will likely be read from an AMF file as well.
-    // If the file is loaded successfully, its print / filament / printer profiles will be activated.
+    // Load an external config file (ini or config bundle) containing the SLA print, material and printer presets.
+    // A configuration with "printer_technology = FFF" is rejected with an FffConfigurationException message.
+    // If the file is loaded successfully, its print / material / printer profiles will be activated.
     ConfigSubstitutions         load_config_file(const std::string &path, ForwardCompatibilitySubstitutionRule compatibility_rule);
 
     // Load a config bundle file, into presets and store the loaded presets into separate files
     // of the local configuration directory.
     // Load settings into the provided settings instance.
     // Activate the presets stored in the config bundle.
-    // Returns the number of presets loaded successfully.
+    // Returns the number of presets loaded successfully. [print:], [filament:], [physical_printer:], FFF [printer:]
+    // sections and FFF printer models are skipped (counted in skipped_fff_sections()).
     enum LoadConfigBundleAttribute { 
         // Save the profiles, which have been loaded.
         SaveImported,
@@ -154,27 +118,22 @@ public:
         const std::string &path, LoadConfigBundleAttributes flags, ForwardCompatibilitySubstitutionRule compatibility_rule);
 
     // Export a config bundle file containing all the presets and the names of the active presets.
-    void                        export_configbundle(const std::string &path, bool export_system_settings = false, bool export_physical_printers = false, std::function<bool(const std::string&, const std::string&, std::string&)> secret_callback = nullptr);
+    void                        export_configbundle(const std::string &path, bool export_system_settings = false);
+
+    // Number of FFF-only sections ([print:], [filament:], [physical_printer:], FFF [printer:]) skipped by the most
+    // recent load_configbundle() of this bundle. The GUI uses it to tell the user that an imported bundle
+    // contained FFF data that was ignored.
+    size_t                      skipped_fff_sections() const { return m_skipped_fff_sections; }
 
     // Enable / disable the "- default -" preset.
     void                        set_default_suppressed(bool default_suppressed);
 
-    // Set the filament preset name. As the name could come from the UI selection box, 
-    // an optional "(modified)" suffix will be removed from the filament name.
-    void                        set_filament_preset(size_t idx, const std::string &name);
-
-    // Read out the number of extruders from an active printer preset,
-    // update size and content of filament_presets.
-    void                        update_multi_material_filament_presets();
-
-    void                        update_filaments_compatible(PresetSelectCompatibleType select_other_filament_if_incompatible, int extruder_idx = -1);
-
-    // Update the is_compatible flag of all print and filament presets depending on whether they are marked
-    // as compatible with the currently selected printer (and print in case of filament presets).
+    // Update the is_compatible flag of all SLA print and material presets depending on whether they are marked
+    // as compatible with the currently selected printer (and print in case of material presets).
     // Also updates the is_visible flag of each preset.
-    // If select_other_if_incompatible is true, then the print or filament preset is switched to some compatible
-    // preset if the current print or filament preset is not compatible.
-    void                        update_compatible(PresetSelectCompatibleType select_other_print_if_incompatible, PresetSelectCompatibleType select_other_filament_if_incompatible);
+    // If select_other_if_incompatible is true, then the print or material preset is switched to some compatible
+    // preset if the current print or material preset is not compatible.
+    void                        update_compatible(PresetSelectCompatibleType select_other_print_if_incompatible, PresetSelectCompatibleType select_other_material_if_incompatible);
     void                        update_compatible(PresetSelectCompatibleType select_other_if_incompatible) { this->update_compatible(select_other_if_incompatible, select_other_if_incompatible); }
 
     // Set the is_visible flag for printer vendors, printer models and printer variants
@@ -182,7 +141,7 @@ public:
     // If the "vendor" section is missing, enable all models and variants of the particular vendor.
     void                        load_installed_printers(const AppConfig &config);
 
-    const std::string&          get_preset_name_by_alias(const Preset::Type& preset_type, const std::string& alias, int extruder_id = -1);
+    const std::string&          get_preset_name_by_alias(const Preset::Type& preset_type, const std::string& alias);
     const std::string&          get_preset_name_by_alias_invisible(const Preset::Type& preset_type, const std::string& alias) const;
 
     // Save current preset of a provided type under a new name. If the name is different from the old one,
@@ -195,9 +154,7 @@ public:
 
     static const char *PRUSA_BUNDLE;
 
-    static std::array<Preset::Type, 3>  types_list(PrinterTechnology pt) {
-        if (pt == ptFFF)
-            return  { Preset::TYPE_PRINTER, Preset::TYPE_PRINT, Preset::TYPE_FILAMENT };
+    static std::array<Preset::Type, 3>  types_list() {
         return      { Preset::TYPE_PRINTER, Preset::TYPE_SLA_PRINT, Preset::TYPE_SLA_MATERIAL };
     }
 
@@ -245,24 +202,24 @@ private:
     // Update alias maps
     void 						update_alias_maps();
 
-    // Set the is_visible flag for filaments and sla materials,
-    // apply defaults based on enabled printers when no filaments/materials are installed.
-    void                        load_installed_filaments(AppConfig &config);
+    // Set the is_visible flag for sla materials,
+    // apply defaults based on enabled printers when no materials are installed.
     void                        load_installed_sla_materials(AppConfig &config);
 
-    // Load selections (current print, current filaments, current printer) from config.ini
+    // Load selections (current print, current material, current printer) from config.ini
     // This is done just once on application start up.
     void                        load_selections(AppConfig &config, const PresetPreferences& preferred_selection = PresetPreferences());
 
-    // Load print, filament & printer presets from a config. If it is an external config, then the name is extracted from the external path.
+    // Load SLA print, material & printer presets from a config. If it is an external config, then the name is extracted from the external path.
     // and the external config is just referenced, not stored into user profile directory.
     // If it is not an external config, then the config will be stored into the user profile directory.
     void                        load_config_file_config(const std::string &name_or_path, bool is_external, DynamicPrintConfig &&config);
     ConfigSubstitutions         load_config_file_config_bundle(
         const std::string &path, const boost::property_tree::ptree &tree, ForwardCompatibilitySubstitutionRule compatibility_rule);
 
-    DynamicPrintConfig          full_fff_config() const;
     DynamicPrintConfig          full_sla_config() const;
+
+    size_t                      m_skipped_fff_sections { 0 };
 };
 
 ENABLE_ENUM_BITMASK_OPERATORS(PresetBundle::LoadConfigBundleAttribute)

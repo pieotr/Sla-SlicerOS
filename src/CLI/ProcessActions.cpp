@@ -1,4 +1,5 @@
 #include <algorithm>
+#include "libslic3r/Utils.hpp"
 #include <cstdio>
 #include <optional>
 #include <sstream>
@@ -23,15 +24,9 @@
 #endif // !SLIC3R_OPENGL_ES
 #include "libslic3r/Config.hpp"
 #include "libslic3r/Geometry.hpp"
-#ifndef SLIC3R_SLA_ONLY
-#include "libslic3r/GCode/PostProcessor.hpp"
-#endif
 #include "libslic3r/Model.hpp"
 #include "libslic3r/Preset.hpp"
 #include <arrange-wrapper/ModelArrange.hpp>
-#ifndef SLIC3R_SLA_ONLY
-#include "libslic3r/Print.hpp"
-#endif
 #include "libslic3r/SLAPrint.hpp"
 #include "libslic3r/Format/AMF.hpp"
 #include "libslic3r/Format/3mf.hpp"
@@ -55,16 +50,12 @@
 #include "CLI/CLI.hpp"
 #include "CLI/ProfilesSharingUtils.hpp"
 
-#ifndef SLIC3R_SLA_ONLY
-#define STB_IMAGE_RESIZE_IMPLEMENTATION
-#include "stb_image_resize2.h"
-#endif
 
 namespace Slic3r::CLI {
 
 static bool has_profile_sharing_action(const Data& cli)
 {
-    return cli.actions_config.has("query-printer-models") || cli.actions_config.has("query-print-filament-profiles");
+    return cli.actions_config.has("query-printer-models") || cli.actions_config.has("query-print-material-profiles");
 }
 
 bool has_full_config_from_profiles(const Data& cli)
@@ -84,29 +75,21 @@ std::optional<int> process_profiles_sharing(const Data& cli)
     std::string ret;
 
     if (cli.actions_config.has("query-printer-models")) {
-#ifdef SLIC3R_SLA_ONLY
-        if (get_printer_technology(cli.overrides_config) == ptFFF) {
-            boost::nowide::cerr << "This application supports SLA printer profiles" << std::endl;
-            return 1;
-        }
         ret = Slic3r::get_json_printer_models(ptSLA);
-#else
-        ret = Slic3r::get_json_printer_models(get_printer_technology(cli.overrides_config));
-#endif
     }
-    else if (cli.actions_config.has("query-print-filament-profiles")) {
+    else if (cli.actions_config.has("query-print-material-profiles")) {
         if (cli.input_config.has("printer-profile") && !cli.input_config.opt_string("printer-profile").empty()) {
             const std::string printer_profile = cli.input_config.opt_string("printer-profile");
-            ret = Slic3r::get_json_print_filament_profiles(printer_profile);
+            ret = Slic3r::get_json_print_material_profiles(printer_profile);
             if (ret.empty()) {
-                boost::nowide::cerr << "query-print-filament-profiles error: Printer profile '" << printer_profile <<
+                boost::nowide::cerr << "query-print-material-profiles error: Printer profile '" << printer_profile <<
                                         "' wasn't found among installed printers." << std::endl <<
                                         "Or the request can be wrong." << std::endl;
                 return 1;
             }
         }
         else {
-            boost::nowide::cerr << "query-print-filament-profiles error: This action requires set 'printer-profile' option" << std::endl;
+            boost::nowide::cerr << "query-print-material-profiles error: This action requires set 'printer-profile' option" << std::endl;
             return 1;
         }
     }
@@ -153,8 +136,7 @@ namespace IO {
         OBJ,
         STL,
         // SVG, 
-        TMF,
-        Gcode
+        TMF
     };
 }
 
@@ -202,87 +184,6 @@ static bool export_models(std::vector<Model>& models, IO::ExportFormat format, c
 }
 
 
-#ifndef SLIC3R_SLA_ONLY
-static ThumbnailData resize_and_crop(const std::vector<unsigned char>& data, int width, int height, int width_new, int height_new) {
-    ThumbnailData th;
-
-    float scale_x = float(width_new) / width;
-    float scale_y = float(height_new) / height;
-    float scale = std::max(scale_x, scale_y);  // Choose the larger scale to fill the box
-    int resized_width = int(width * scale);
-    int resized_height = int(height * scale);
-
-    std::vector<unsigned char> resized_rgba(resized_width * resized_height * 4);
-    stbir_resize_uint8_linear(data.data(), width, height, 4 * width,
-                              resized_rgba.data(), resized_width, resized_height, 4 * resized_width,
-                              STBIR_RGBA);
-
-    th.set(width_new, height_new);
-    int crop_x = (resized_width - width_new) / 2;
-    int crop_y = (resized_height - height_new) / 2;
-
-    for (int y = 0; y < height_new; ++y) {
-        std::memcpy(th.pixels.data() + y * width_new * 4, 
-                    resized_rgba.data() + ((y + crop_y) * resized_width + crop_x) * 4, 
-                    width_new * 4);
-    }
-    return th;
-}
-
-
-static std::function<ThumbnailsList(const ThumbnailsParams&)> get_thumbnail_generator_cli(const std::string& filename)
-{
-    if (boost::iends_with(filename, ".3mf")) {
-        return [filename](const ThumbnailsParams& params) {
-            ThumbnailsList list_out;
-
-            mz_zip_archive archive;
-            mz_zip_zero_struct(&archive);
-
-            if (!open_zip_reader(&archive, filename))
-                return list_out;
-            mz_zip_archive_file_stat stat;
-
-            int index = mz_zip_reader_locate_file(&archive, "Metadata/thumbnail.png", nullptr, 0);
-            if (index < 0 || !mz_zip_reader_file_stat(&archive, index, &stat))
-                return list_out;
-            std::string buffer;
-            buffer.resize(int(stat.m_uncomp_size));
-            mz_bool res = mz_zip_reader_extract_file_to_mem(&archive, stat.m_filename, buffer.data(), (size_t)stat.m_uncomp_size, 0);
-            if (res == 0)
-                return list_out;
-            close_zip_reader(&archive);
-
-            std::vector<unsigned char> data;
-            unsigned width = 0;
-            unsigned height = 0;
-            png::decode_png(buffer, data, width, height);
-
-            {
-                // Flip the image vertically so it matches the convention in Thumbnails generator.
-                const int row_size = width * 4; // Each pixel is 4 bytes (RGBA)
-                std::vector<unsigned char> temp_row(row_size);
-                for (unsigned i = 0; i < height / 2; ++i) {
-                    unsigned char* top_row = &data[static_cast<size_t>(i) * static_cast<size_t>(row_size)];
-                    unsigned char* bottom_row = &data[(static_cast<size_t>(height - i - 1) * static_cast<size_t>(row_size))];
-                    std::copy(bottom_row, bottom_row + row_size, temp_row.begin());
-                    std::copy(top_row, top_row + row_size, bottom_row);
-                    std::copy(temp_row.begin(), temp_row.end(), top_row);
-                }
-            }
-
-            for (const Vec2d& size : params.sizes) {
-                Point isize(size);
-                list_out.push_back(resize_and_crop(data, width, height, isize.x(), isize.y()));
-            }
-            return list_out;
-        };
-    }
-
-    return [](const ThumbnailsParams&) ->ThumbnailsList { return {}; };
-}
-
-#endif
 
 static void update_instances_outside_state(Model& model, const DynamicPrintConfig& config)
 {
@@ -302,11 +203,6 @@ bool process_actions(Data& cli, const DynamicPrintConfig& print_config, std::vec
     if (actions.has("help")) {
         print_help();
     }
-#ifndef SLIC3R_SLA_ONLY
-    if (actions.has("help_fff")) {
-        print_help(true, ptFFF);
-    }
-#endif
     if (actions.has("help_sla")) {
         print_help(true, ptSLA);
     }
@@ -324,9 +220,7 @@ bool process_actions(Data& cli, const DynamicPrintConfig& print_config, std::vec
     }
 
     if (actions.has("save")) {
-        //FIXME check for mixing the FFF / SLA parameters.
-        // or better save fff_print_config vs. sla_print_config
-        print_config.save(actions.opt_string("save"));
+            print_config.save(actions.opt_string("save"));
     }
 
     if (models.empty() && (actions.has("export_stl") || actions.has("export_obj") || actions.has("export_3mf"))) {
@@ -353,32 +247,12 @@ bool process_actions(Data& cli, const DynamicPrintConfig& print_config, std::vec
             return false;
     }
 
-    if (actions.has("slice") || actions.has("export_gcode") || actions.has("export_sla")) {
+    if (actions.has("slice") || actions.has("export_sla")) {
         if (models.empty()) {
             boost::nowide::cerr << "error: cannot slice empty models" << std::endl;
             return false;
         }
-#ifdef SLIC3R_SLA_ONLY
-        if (actions.has("export_gcode")) {
-            boost::nowide::cerr << "error: G-code export is disabled in SLA-only builds" << std::endl;
-            return false;
-        }
-        if (actions.has("export_sla") == false && actions.has("slice") == false) {
-            boost::nowide::cerr << "error: only SLA slicing is available in SLA-only builds" << std::endl;
-            return false;
-        }
         // The SLA-only path uses sla_print directly.
-#else
-        PrinterTechnology       printer_technology = Preset::printer_technology(print_config);
-        if (actions.has("export_gcode") && printer_technology == ptSLA) {
-            boost::nowide::cerr << "error: cannot export G-code for an FFF configuration" << std::endl;
-            return false;
-        }
-        else if (actions.has("export_sla") && printer_technology == ptFFF) {
-            boost::nowide::cerr << "error: cannot export SLA slices for a SLA configuration" << std::endl;
-            return false;
-        }
-#endif
 
         const Vec2crd           gap{ s_multiple_beds.get_bed_gap() };
         arr2::ArrangeBed        bed = arr2::to_arrange_bed(get_bed_shape(print_config), gap);
@@ -407,25 +281,10 @@ bool process_actions(Data& cli, const DynamicPrintConfig& print_config, std::vec
                 }
             });
 
-#ifndef SLIC3R_SLA_ONLY
-            Print       fff_print;
-#endif
-#ifdef SLIC3R_SLA_ONLY
             PrintBase* print = static_cast<PrintBase*>(&sla_print);
-#else
-            PrintBase* print = (printer_technology == ptFFF) ? static_cast<PrintBase*>(&fff_print) : static_cast<PrintBase*>(&sla_print);
-            if (printer_technology == ptFFF) {
-                for (auto* mo : model.objects)
-                    fff_print.auto_assign_extruders(mo);
-            }
-#endif
 
             update_instances_outside_state(model, print_config);
-#ifdef SLIC3R_SLA_ONLY
             MultipleBedsUtils::with_single_bed_model_sla(model, 0, [&print, &model, &print_config]()
-#else
-            MultipleBedsUtils::with_single_bed_model_fff(model, 0, [&print, &model, &print_config]()
-#endif
             {
                 print->apply(model, print_config);
             });
@@ -446,19 +305,6 @@ bool process_actions(Data& cli, const DynamicPrintConfig& print_config, std::vec
                 try {
                 std::string outfile_final;
                 print->process();
-#ifndef SLIC3R_SLA_ONLY
-                if (printer_technology == ptFFF) {
-                    // The outfile is processed by a PlaceholderParser.
-                    const std::string input_file = fff_print.model().objects.empty() ? "" : fff_print.model().objects.front()->input_file;
-                    outfile = fff_print.export_gcode(outfile, nullptr, get_thumbnail_generator_cli(input_file));
-                    outfile_final = fff_print.print_statistics().finalize_output_path(outfile);
-                    if (outfile != outfile_final && Slic3r::rename_file(outfile, outfile_final)) {
-                        boost::nowide::cerr << "Renaming file " << outfile << " to " << outfile_final << " failed" << std::endl;
-                        return false;
-                    }
-                }
-                else
-#endif
                 {
                     outfile = sla_print.output_filepath(outfile);
                     // We need to finalize the filename beforehand because the export function sets the filename inside the zip metadata
@@ -467,10 +313,6 @@ bool process_actions(Data& cli, const DynamicPrintConfig& print_config, std::vec
                     sla_print.export_print(outfile_final);
                 }
                 outfile = outfile_final;
-                // Run post-processing scripts for FFF output only.
-#ifndef SLIC3R_SLA_ONLY
-                run_post_process_scripts(outfile, fff_print.full_print_config());
-#endif
                 boost::nowide::cout << "Slicing result exported to " << outfile << std::endl;
             }
             catch (const std::exception& ex) {

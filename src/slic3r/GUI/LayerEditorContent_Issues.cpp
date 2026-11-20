@@ -5,70 +5,80 @@ namespace layer_editor_detail {
 void LayerEditorContent::build_issue_panel(wxBoxSizer *root)
 {
     const sla::IssueDetectionConfig defaults;
-    auto *heading = new wxStaticText(this, wxID_ANY, "Issues — islands, overhangs, resin traps, suction cups, touching bounds, empty layers");
+    // Right column: issues first (they drive the canvas overlay), export below.
+    auto *heading = new wxStaticText(this, wxID_ANY, _L("Issues"));
     heading->SetFont(heading->GetFont().Bold());
-    root->Add(heading, 0, wxLEFT | wxRIGHT | wxTOP, 8);
+    heading->SetToolTip(_L("Islands, overhangs, resin traps, suction cups, touching bounds and empty layers."));
+    m_right_col->Add(heading, 0, wxTOP, 2);
+    m_right_col->Add(new wxStaticLine(this), 0, wxEXPAND | wxTOP | wxBOTTOM, 3);
 
-    auto *pane = new wxCollapsiblePane(this, wxID_ANY, "Detection settings");
+    auto *pane = new wxCollapsiblePane(this, wxID_ANY, _L("Detection settings"));
     auto *grid = new wxFlexGridSizer(2, 4, 8);
+    grid->AddGrowableCol(0);
     auto *inner = pane->GetPane();
-    auto check = [&](int slot, const char *label, bool value) {
+    auto check = [&](int slot, const wxString &label, bool value) {
         m_issue_on[slot] = new wxCheckBox(inner, wxID_ANY, label);
         m_issue_on[slot]->SetValue(value);
-        grid->Add(m_issue_on[slot], 0, wxALIGN_CENTER_VERTICAL);
+        grid->Add(m_issue_on[slot], 0, wxALIGN_CENTER_VERTICAL | wxTOP, slot ? 6 : 0);
+        grid->AddSpacer(0);
     };
-    auto spin = [&](const char *label, int low, int high, int value) {
-        grid->Add(new wxStaticText(inner, wxID_ANY, label), 0, wxALIGN_CENTER_VERTICAL);
-        auto *ctrl = new wxSpinCtrl(inner, wxID_ANY);
+    auto spin = [&](const wxString &label, int low, int high, int value) {
+        grid->Add(new wxStaticText(inner, wxID_ANY, label), 0, wxALIGN_CENTER_VERTICAL | wxLEFT, 20);
+        auto *ctrl = new wxSpinCtrl(inner, wxID_ANY, wxEmptyString, wxDefaultPosition, wxSize(FromDIP(80), -1));
         ctrl->SetRange(low, high); ctrl->SetValue(value); grid->Add(ctrl, 0); return ctrl;
     };
-    auto spin_d = [&](const char *label, double low, double high, double inc, double value) {
-        grid->Add(new wxStaticText(inner, wxID_ANY, label), 0, wxALIGN_CENTER_VERTICAL);
-        auto *ctrl = new wxSpinCtrlDouble(inner, wxID_ANY);
+    auto spin_d = [&](const wxString &label, double low, double high, double inc, double value) {
+        grid->Add(new wxStaticText(inner, wxID_ANY, label), 0, wxALIGN_CENTER_VERTICAL | wxLEFT, 20);
+        auto *ctrl = new wxSpinCtrlDouble(inner, wxID_ANY, wxEmptyString, wxDefaultPosition, wxSize(FromDIP(80), -1));
         ctrl->SetRange(low, high); ctrl->SetIncrement(inc); ctrl->SetValue(value); grid->Add(ctrl, 0); return ctrl;
     };
-    check(0, "Islands", defaults.island.enabled);
-    m_issue_island_area = spin("Island required area (px)", 0, 65535, defaults.island.required_area_to_process_check_px);
-    m_issue_support_percent = spin_d("Island support (% of area above)", 0., 100., 1.,
+    check(0, _L("Islands"), defaults.island.enabled);
+    m_issue_island_area = spin("Required area (px)", 0, 65535, defaults.island.required_area_to_process_check_px);
+    m_issue_support_percent = spin_d(_L("Support (% of area above)"), 0., 100., 1.,
                                      defaults.island.required_pixels_to_support_multiplier * 100.);
-    grid->AddSpacer(0);
-    check(1, "Overhangs", defaults.overhang.enabled);
-    m_issue_overhang_erode = spin("Overhang erode (px)", 0, 255, defaults.overhang.erode_iterations);
-    check(2, "Resin traps", defaults.resin_trap.enabled);
-    m_issue_trap_area = spin("Resin trap required area (px)", 0, 255, defaults.resin_trap.required_area_to_process_check_px);
-    check(3, "Suction cups", defaults.resin_trap.detect_suction_cups);
-    m_issue_cup_height = spin_d("Suction cup height (mm)", 0., 100., .1, defaults.resin_trap.required_height_to_consider_suction_cup_mm);
-    check(4, "Touching bounds", defaults.touching_bound.enabled);
-    m_issue_margin = spin("Touching bound margin (px)", 0, 255, defaults.touching_bound.margin_left_px);
-    check(5, "Empty layers", defaults.empty_layer.enabled);
-    grid->AddSpacer(0); grid->AddSpacer(0);
+    check(1, _L("Overhangs"), defaults.overhang.enabled);
+    m_issue_overhang_erode = spin(_L("Erode (px)"), 0, 255, defaults.overhang.erode_iterations);
+    check(2, _L("Resin traps"), defaults.resin_trap.enabled);
+    m_issue_trap_area = spin("Required area (px)", 0, 255, defaults.resin_trap.required_area_to_process_check_px);
+    check(3, _L("Suction cups"), defaults.resin_trap.detect_suction_cups);
+    m_issue_cup_height = spin_d("Cup height (mm)", 0., 100., .1, defaults.resin_trap.required_height_to_consider_suction_cup_mm);
+    check(4, _L("Touching bounds"), defaults.touching_bound.enabled);
+    m_issue_margin = spin(_L("Margin (px)"), 0, 255, defaults.touching_bound.margin_left_px);
+    check(5, _L("Empty layers"), defaults.empty_layer.enabled);
     inner->SetSizer(grid);
     grid->SetSizeHints(inner);
     pane->Bind(wxEVT_COLLAPSIBLEPANE_CHANGED, [this](wxCollapsiblePaneEvent &) { Layout(); FitInside(); });
-    root->Add(pane, 0, wxEXPAND | wxLEFT | wxRIGHT | wxTOP, 8);
+    m_right_col->Add(pane, 0, wxEXPAND);
 
-    auto *bar = new wxWrapSizer(wxHORIZONTAL);
-    m_issue_detect = new wxButton(this, wxID_ANY, "Detect issues");
-    m_issue_detect->SetToolTip("Scans every layer in the background (progress and Cancel are shown). Masks stay untouched; results are marked out of date after any edit.");
+    m_issue_detect = new wxButton(this, wxID_ANY, _L("Detect issues"));
+    m_issue_detect->SetToolTip(_L("Scans every layer in the background (progress and Cancel are shown). Masks stay untouched; results are marked out of date after any edit."));
     m_issue_detect->Bind(wxEVT_BUTTON, [this](wxCommandEvent &) { CallAfter([this] { perform([this] { detect_issues(); }); }); });
-    bar->Add(m_issue_detect, 0, wxALL | wxALIGN_CENTER_VERTICAL, 5);
-    m_issue_status = new wxStaticText(this, wxID_ANY, "Issues have not been detected yet.");
-    bar->Add(m_issue_status, 0, wxALL | wxALIGN_CENTER_VERTICAL, 5);
-    root->Add(bar, 0, wxEXPAND);
+    m_right_col->Add(m_issue_detect, 0, wxEXPAND | wxTOP, 6);
+    m_issue_status = new wxStaticText(this, wxID_ANY, _L("Issues have not been detected yet."));
+    m_right_col->Add(m_issue_status, 0, wxEXPAND | wxTOP, 4);
 
-    m_issue_list = new wxDataViewListCtrl(this, wxID_ANY, wxDefaultPosition, wxSize(-1, 140), wxDV_SINGLE | wxDV_VERT_RULES);
+    m_issue_list = new wxDataViewListCtrl(this, wxID_ANY, wxDefaultPosition, wxSize(FromDIP(100), FromDIP(110)), wxDV_SINGLE | wxDV_VERT_RULES);
     m_issue_list->SetName("Detected layer issues");
     set_dataview_accessible_name(m_issue_list, "Detected layer issues");
-    m_issue_list->AppendTextColumn("Type", wxDATAVIEW_CELL_INERT, 110, wxALIGN_LEFT, wxDATAVIEW_COL_RESIZABLE);
-    m_issue_list->AppendTextColumn("Layers", wxDATAVIEW_CELL_INERT, 100, wxALIGN_LEFT, wxDATAVIEW_COL_RESIZABLE);
-    m_issue_list->AppendTextColumn("Pixels", wxDATAVIEW_CELL_INERT, 90, wxALIGN_RIGHT, wxDATAVIEW_COL_RESIZABLE);
-    m_issue_list->AppendTextColumn("Bounding box (x, y, w × h px)", wxDATAVIEW_CELL_INERT, 220, wxALIGN_LEFT, wxDATAVIEW_COL_RESIZABLE);
+    // Column widths follow the header text (plus room for the sort arrow), so no header is ever clipped, in any language
+    // or text size. The list scrolls horizontally when the columns together are wider than the right column.
+    const auto column = [&](const wxString &title, int minimum_dip, wxAlignment align) {
+        const int width = std::max(FromDIP(minimum_dip), m_issue_list->GetTextExtent(title).x + FromDIP(30));
+        m_issue_list->AppendTextColumn(title, wxDATAVIEW_CELL_INERT, width, align, wxDATAVIEW_COL_RESIZABLE);
+    };
+    column(_L("Type"), 66, wxALIGN_LEFT);
+    column(_L("Layers"), 56, wxALIGN_LEFT);
+    column(_L("Pixels"), 62, wxALIGN_RIGHT);
+    column(_L("Bounding box (x, y, w × h px)"), 150, wxALIGN_LEFT);
+    m_issue_list->SetMinSize(wxSize(FromDIP(120), -1));   // the columns scroll sideways; they must not widen the column
+    m_issue_list->SetToolTip(_L("Bounding box: x, y, width × height in mask pixels. Scroll the list sideways when a column is cut off."));
     m_issue_list->Bind(wxEVT_DATAVIEW_SELECTION_CHANGED, [this](wxDataViewEvent &) {
         const int row = m_issue_list->GetSelectedRow();
         if (row != wxNOT_FOUND) { select_issue(size_t(row)); return; }
         m_issue_selected = size_t(-1); m_preview->Refresh(false);
     });
-    root->Add(m_issue_list, 0, wxEXPAND | wxALL, 8);
+    // The list takes the free height of the column; the export group keeps its natural size below it.
+    m_right_col->Add(m_issue_list, 1, wxEXPAND | wxTOP, 6);
 }
 
 sla::IssueDetectionConfig LayerEditorContent::read_issue_config() const
@@ -113,7 +123,7 @@ void LayerEditorContent::detect_issues()
     bool done = false;
     {
         TaskLock working(m_working);
-        done = run_background_layers(this, "Detect layer issues", [&](const auto &progress) {
+        done = run_background_layers(this, _L("Detect layer issues"), [&](const auto &progress) {
             try {
                 result = sla::detect_layer_issues(provider, z, config,
                     [&](size_t layers_done, size_t layers_total) { progress(layers_done, layers_total); },
@@ -124,7 +134,7 @@ void LayerEditorContent::detect_issues()
         }, [&] { cancel_requested.store(true, std::memory_order_relaxed); });
     }
     if (!done || cancel_requested.load(std::memory_order_relaxed)) {
-        m_issue_status->SetLabel("Detection cancelled; previous results are unchanged.");
+        m_issue_status->SetLabel(_L("Detection cancelled; previous results are unchanged."));
         Layout();
         return;
     }
@@ -162,13 +172,13 @@ void LayerEditorContent::update_issue_state()
 {
     if (!m_issue_status || m_working) return;
     const bool stale = m_issues_ran && !issues_current();
-    const wxString text = !m_issues_ran ? wxString("Issues have not been detected yet.") :
-        stale ? wxString("Results are out of date: masks changed after detection. Run Detect issues again.") :
-        m_issues.empty() ? wxString("No issues found.") :
-        wxString::Format("%zu issue(s) found. Select a row to jump to it.", m_issues.size());
+    const wxString text = !m_issues_ran ? wxString(_L("Issues have not been detected yet.")) :
+        stale ? wxString(_L("Results are out of date: masks changed after detection. Run Detect issues again.")) :
+        m_issues.empty() ? wxString(_L("No issues found.")) :
+        wxString::Format(_L("%zu issue(s) found. Select a row to jump to it."), m_issues.size());
     if (text == m_issue_text) return; // called from a 250 ms timer: do nothing unless the state changed
     m_issue_text = text;
-    m_issue_status->SetLabel(text);
+    m_issue_status->SetLabel(text); m_issue_status->Wrap(side_width());
     m_issue_list->Enable(!stale);
     if (stale) m_issue_selected = size_t(-1);
     Layout();

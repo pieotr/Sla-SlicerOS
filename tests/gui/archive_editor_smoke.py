@@ -350,7 +350,7 @@ def main():
         if args.save_anycubic:
             note = find(dialog, lambda n: n.get_name().startswith('Anycubic edits keep'))
             assert note is not None, 'Missing original-format edit guidance'
-            assert 'zero values do not provide material properties' in note.get_name()
+            assert 'zero values do not provide material properties' in ' '.join(note.get_name().split())  # the note is wrapped to the column width: newlines are layout, not text
             report['checks'].append('original format, quantization and resin-estimate limits explained in editor')
         if args.profile_mismatch:
             toggle = named(dialog, 'Use selected printer and material for resin estimates')

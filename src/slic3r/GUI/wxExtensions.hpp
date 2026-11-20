@@ -65,20 +65,6 @@ wxBitmapBundle* get_bmp_bundle(const std::string& bmp_name, int width = 16, int 
 wxBitmapBundle* get_empty_bmp_bundle(int width, int height);
 wxBitmapBundle* get_solid_bmp_bundle(int width, int height, const std::string& color);
 
-std::vector<wxBitmapBundle*> get_extruder_color_icons(bool thin_icon = false);
-
-namespace Slic3r {
-namespace GUI {
-class BitmapComboBox;
-}
-}
-void apply_extruder_selector(Slic3r::GUI::BitmapComboBox** ctrl,
-                             wxWindow* parent,
-                             const std::string& first_item = "",
-                             wxPoint pos = wxDefaultPosition,
-                             wxSize size = wxDefaultSize,
-                             bool use_thin_icon = false);
-
 inline wxSize get_preferred_size(const wxBitmapBundle& bmp, wxWindow* parent)
 {
     if (!bmp.IsOk())

@@ -16,7 +16,7 @@
 #include "SLAArchiveWriter.hpp"
 #include "SLAArchiveFormatRegistry.hpp"
 #include "libslic3r/PrintConfig.hpp"
-#include "libslic3r/GCode/ThumbnailData.hpp"
+#include "libslic3r/Thumbnails/ThumbnailData.hpp"
 #include "libslic3r/SLA/RasterBase.hpp"
 
 namespace Slic3r {

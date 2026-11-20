@@ -59,8 +59,6 @@ This will:
 
 Current defaults in `build_linux.sh` are:
 
-- `-DSLIC3R_SLA_ONLY=ON`
-- `-DSLIC3R_OFFLINE_ONLY=ON`
 - `-DSLIC3R_BUILD_TESTS=OFF`
 
 This keeps the build focused on SLA workflows and improves incremental iteration speed.
@@ -110,7 +108,7 @@ also excludes them. Initial dependency builds can still download source archives
 if those archives are missing locally; prepare the dependency cache in advance
 for a fully offline build. Running the application does not run that build script.
 
-In the offline build (`SLIC3R_OFFLINE_ONLY=ON`, the default here) wxWidgets'
+The application is always offline-only; wxWidgets'
 `webview` component is not requested and no WebView source is compiled, so
 `libwebkit2gtk`, `libjavascriptcoregtk` and `libsoup` are no longer linked.
 Check an existing binary with:
@@ -139,7 +137,7 @@ fails on binaries built before it. The bundled wxWidgets static libraries in
 ## Install and relocatable bundle
 
 Plain install (non-FHS layout, default; installs `bin/prusa-slicer`, `bin/sla-slicer`
-and `resources/`; no G-code viewer files, no udev rules in SLA-only builds):
+and `resources/`; no G-code viewer files, no udev rules):
 
 ```bash
 cmake --install build --prefix /opt/sla-slicer      # untested
@@ -180,7 +178,7 @@ tests/dist/bundle_in_docker.sh build-docker/dist/sla-slicer-<version> \
 
 `tools/docker/Dockerfile.build` defines the image, `tools/docker/container_build.sh` builds
 the dependency superbuild (first run: hours; cached in `build-docker/work`, ccache in
-`build-docker/ccache`), the app (`SLIC3R_SLA_ONLY`, `SLIC3R_OFFLINE_ONLY`), runs the
+`build-docker/ccache`), the app, runs the
 CTest subset that needs no display, and packs the bundle. `BUNDLE_LIBSTDCXX=1` also
 bundles libstdc++/libgcc_s (not needed for the targets below).
 

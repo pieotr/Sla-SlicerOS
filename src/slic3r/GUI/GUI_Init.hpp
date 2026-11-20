@@ -39,7 +39,6 @@ struct GUI_InitParams
     std::vector<std::string>    input_files;
     CLISelectedProfiles         selected_presets;
 
-    bool                        start_as_gcodeviewer            { false };
     bool                        start_downloader                { false };
     bool                        delete_after_load               { false };
     std::string                 download_url;

@@ -45,7 +45,6 @@ static const std::string INDEX_ARCHIVE_URL= "https://files.prusa3d.com/wp-conten
 // Url to folder with vendor profile files. Used when downloading new profiles that are not in resources folder.
 static const std::string PROFILE_FOLDER_URL = "https://files.prusa3d.com/wp-content/uploads/repository/PrusaSlicer-settings-master/live/";
 
-const std::string AppConfig::SECTION_FILAMENTS = "filaments";
 const std::string AppConfig::SECTION_MATERIALS = "sla_materials";
 const std::string AppConfig::SECTION_EMBOSS_STYLE = "font";
 
@@ -100,11 +99,9 @@ void AppConfig::set_defaults()
         // By default, Prusa has the controller hidden.
         if (get("no_controller").empty())
             set("no_controller", "1");
-        // If set, the "- default -" selections of print/filament/printer are suppressed, if there is a valid preset available.
+        // If set, the "- default -" selections of sla_print/sla_material/printer are suppressed, if there is a valid preset available.
         if (get("no_defaults").empty())
             set("no_defaults", "1");
-        if (get("no_templates").empty())
-            set("no_templates", "0");
         if (get("show_incompatible_presets").empty())
             set("show_incompatible_presets", "0");
 
@@ -157,8 +154,6 @@ void AppConfig::set_defaults()
         if (get("auto_toolbar_size").empty())
             set("auto_toolbar_size", "100");
 
-        if (get("use_binary_gcode_when_supported").empty())
-            set("use_binary_gcode_when_supported", "1");
  
        if (get("notify_release").empty())
            set("notify_release", "all"); // or "none" or "release"
@@ -192,14 +187,6 @@ void AppConfig::set_defaults()
         if (get("clear_undo_redo_stack_on_new_project").empty())
             set("clear_undo_redo_stack_on_new_project", "1");
     }
-    else {
-#ifdef _WIN32
-        if (get("associate_gcode").empty())
-            set("associate_gcode", "0");
-        if (get("associate_bgcode").empty())
-            set("associate_bgcode", "0");
-#endif // _WIN32
-    }
 
 #ifdef __APPLE__
     if (get("use_retina_opengl").empty())
@@ -218,17 +205,11 @@ void AppConfig::set_defaults()
     if (get("reverse_mouse_wheel_zoom").empty())
         set("reverse_mouse_wheel_zoom", "0");
 
-    if (get("show_splash_screen").empty())
-        set("show_splash_screen", "1");
-
     if (get("restore_win_position").empty())
         set("restore_win_position", "1");       // allowed values - "1", "0", "crashed_at_..."
 
     if (get("show_hints").empty())
         set("show_hints", "1");
-
-    if (get("allow_auto_color_change").empty())
-        set("allow_auto_color_change", "1");
 
     if (get("allow_ip_resolve").empty())
         set("allow_ip_resolve", "1");
@@ -443,19 +424,8 @@ std::string AppConfig::load(const std::string &path)
         m_legacy_datadir = ini_ver < Semver(1, 40, 0);
     }
 
-    // Legacy conversion
-    if (m_mode == EAppMode::Editor) {
-        // Convert [extras] "physical_printer" to [presets] "physical_printer",
-        // remove the [extras] section if it becomes empty.
-        if (auto it_section = m_storage.find("extras"); it_section != m_storage.end()) {
-            if (auto it_physical_printer = it_section->second.find("physical_printer"); it_physical_printer != it_section->second.end()) {
-                m_storage["presets"]["physical_printer"] = it_physical_printer->second;
-                it_section->second.erase(it_physical_printer);
-            }
-            if (it_section->second.empty())
-                m_storage.erase(it_section);
-        }
-    }
+    // The legacy FFF keys (e.g. [presets] print / filament / physical_printer, [filaments], [extras] physical_printer,
+    // no_templates, associate_gcode) are read like any other key and ignored; they are dropped when the config is saved.
 
     // Override missing or keys with their defaults.
     this->set_defaults();
@@ -479,10 +449,7 @@ void AppConfig::save()
     std::string path_pid = (boost::format("%1%.%2%") % path % get_current_pid()).str();
 
     std::stringstream config_ss;
-    if (m_mode == EAppMode::Editor)
-        config_ss << "# " << Slic3r::header_slic3r_generated() << std::endl;
-    else
-        config_ss << "# " << Slic3r::header_gcodeviewer_generated() << std::endl;
+    config_ss << "# " << Slic3r::header_slic3r_generated() << std::endl;
     // Make sure the "no" category is written first.
     for (const auto& kvp : m_storage[""])
         config_ss << kvp.first << " = " << kvp.second << std::endl;
@@ -758,21 +725,16 @@ void AppConfig::reset_selections()
 {
     auto it = m_storage.find("presets");
     if (it != m_storage.end()) {
-        it->second.erase("print");
-        it->second.erase("filament");
         it->second.erase("sla_print");
         it->second.erase("sla_material");
         it->second.erase("printer");
-        it->second.erase("physical_printer");
         m_dirty = true;
     }
 }
 
 std::string AppConfig::config_path() const
 {
-    std::string path = (m_mode == EAppMode::Editor) ?
-        (boost::filesystem::path(Slic3r::data_dir()) / (SLIC3R_APP_KEY ".ini")).make_preferred().string() :
-        (boost::filesystem::path(Slic3r::data_dir()) / (GCODEVIEWER_APP_KEY ".ini")).make_preferred().string();
+    std::string path = (boost::filesystem::path(Slic3r::data_dir()) / (SLIC3R_APP_KEY ".ini")).make_preferred().string();
 
     return path;
 }

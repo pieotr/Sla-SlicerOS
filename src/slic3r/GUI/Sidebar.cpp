@@ -21,6 +21,7 @@
 #include "FrequentlyChangedParameters.hpp"
 #include "Plater.hpp"
 #include "libslic3r/SLA/StatisticsPresentation.hpp"
+#include "libslic3r/MultipleBeds.hpp"
 
 #include <cstddef>
 #include <string>
@@ -33,7 +34,6 @@
 #include <wx/statbox.h>
 #include <wx/statbmp.h>
 #include <wx/wupdlock.h> // IWYU pragma: keep
-#include "libslic3r/MultipleBeds.hpp"
 #include "wx/generic/stattextg.h"
 #ifdef _WIN32
 #include <wx/richtooltip.h>
@@ -43,9 +43,6 @@
 
 #include "libslic3r/libslic3r.h"
 #include "libslic3r/Model.hpp"
-#ifndef SLIC3R_SLA_ONLY
-#include "libslic3r/Print.hpp"
-#endif // SLIC3R_SLA_ONLY
 #include "libslic3r/SLAPrint.hpp"
 #include "libslic3r/PresetBundle.hpp"
 #include "libslic3r/ModelProcessing.hpp"
@@ -54,7 +51,6 @@
 #include "GUI_App.hpp"
 #include "GUI_ObjectList.hpp"
 #include "GUI_ObjectManipulation.hpp"
-#include "GUI_ObjectLayers.hpp"
 #include "wxExtensions.hpp"
 #include "format.hpp"
 #include "Selection.hpp"
@@ -161,13 +157,9 @@ void ObjectInfo::update_warning_icon(const std::string& warning_icon_name)
 // Note: SlicedInfoIdxs are used in code as indexes, so enum is preferred here than enum class
 enum SlicedInfoIdx
 {
-    siFilament_g,
-    siFilament_m,
-    siFilament_mm3,
     siMaterial_unit,
     siCost,
     siEstimatedTime,
-    siWTNumberOfToolchanges,
 
     siCount
 };
@@ -207,13 +199,9 @@ SlicedInfo::SlicedInfo(wxWindow *parent) :
         info_vec.push_back(std::pair<wxStaticText*, wxStaticText*>(text, info_label));
     };
 
-    init_info_label(_L("Used Filament (g)"));
-    init_info_label(_L("Used Filament (m)"));
-    init_info_label(_L("Used Filament (mm³)"));
     init_info_label(_L("Used Material (unit)"));
     init_info_label(_L("Cost (money)"));
     init_info_label(_L("Estimated printing time"));
-    init_info_label(_L("Number of tool changes"));
 
     Add(grid_sizer, 0, wxEXPAND);
     this->Show(false);
@@ -235,23 +223,11 @@ void SlicedInfo::SetTextAndShow(SlicedInfoIdx idx, const wxString& text, const w
 
 void Sidebar::show_preset_comboboxes()
 {
-#ifdef SLIC3R_SLA_ONLY
     // The constructor initially hides technology-specific presets. In the
     // SLA build every preset row is relevant; material/process must be shown
     // alongside the printer rather than remaining permanently hidden.
     m_presets_sizer->ShowItems(true);
-    m_frequently_changed_parameters->Show(false);
-#else
-    const bool showSLA = wxGetApp().preset_bundle->printers.get_edited_preset().printer_technology() == ptSLA;
-
-    for (size_t i = 0; i < 4; ++i)
-        m_presets_sizer->Show(i, !showSLA);
-
-    for (size_t i = 4; i < 8; ++i)
-        m_presets_sizer->Show(i, showSLA);
-
-    m_frequently_changed_parameters->Show(!showSLA);
-#endif
+    m_frequently_changed_parameters->Show();
 
     m_scrolled_panel->GetParent()->Layout();
     m_scrolled_panel->Refresh();
@@ -334,6 +310,11 @@ Sidebar::Sidebar(Plater *parent)
 {
     m_scrolled_panel = new wxScrolledWindow(this);
     m_scrolled_panel->SetScrollRate(0, 5);
+    // The scrolled area must be allowed to shrink below its content: otherwise the
+    // content's minimum height becomes the minimum height of the main window, and on a
+    // low-resolution display (1280x800) the action buttons pinned under this panel
+    // ("Slice now", "Edit layers", "Export") are pushed below the visible screen.
+    m_scrolled_panel->SetMinSize(wxSize(-1, 10 * wxGetApp().em_unit()));
 
     SetFont(wxGetApp().normal_font());
 #ifndef __APPLE__
@@ -367,13 +348,10 @@ Sidebar::Sidebar(Plater *parent)
     m_presets_panel = m_scrolled_panel;
 #endif //__WINDOWS__
 
-#ifndef SLIC3R_SLA_ONLY
-    m_filaments_sizer = new wxBoxSizer(wxVERTICAL);
-#endif
 
     const int margin_5 = int(0.5 * wxGetApp().em_unit());// 5;
 
-    auto init_combo = [this, margin_5](PlaterPresetComboBox **combo, wxString label, Preset::Type preset_type, bool filament) {
+    auto init_combo = [this, margin_5](PlaterPresetComboBox **combo, wxString label, Preset::Type preset_type) {
         auto *text = new wxStaticText(m_presets_panel, wxID_ANY, label + ":");
         text->SetFont(wxGetApp().small_font());
         *combo = new PlaterPresetComboBox(m_presets_panel, preset_type);
@@ -385,52 +363,22 @@ Sidebar::Sidebar(Plater *parent)
                                     int(0.3*wxGetApp().em_unit()));
 
         auto *sizer_presets = this->m_presets_sizer;
-    #ifndef SLIC3R_SLA_ONLY
-        auto *sizer_filaments = this->m_filaments_sizer;
-    #endif
         // Hide controls, which will be shown/hidden in respect to the printer technology
         text->Show(preset_type == Preset::TYPE_PRINTER);
         sizer_presets->Add(text, 0, wxALIGN_LEFT | wxEXPAND | wxRIGHT, 4);
-        if (! filament) {
-            combo_and_btn_sizer->ShowItems(preset_type == Preset::TYPE_PRINTER);
-            sizer_presets->Add(combo_and_btn_sizer, 0, wxEXPAND | 
+        combo_and_btn_sizer->ShowItems(preset_type == Preset::TYPE_PRINTER);
+        sizer_presets->Add(combo_and_btn_sizer, 0, wxEXPAND | 
 #ifdef __WXGTK3__
-                wxRIGHT, margin_5);
+            wxRIGHT, margin_5);
 #else
-                wxBOTTOM, 1);
-                (void)margin_5; // supress unused capture warning
+            wxBOTTOM, 1);
+            (void)margin_5; // supress unused capture warning
 #endif // __WXGTK3__
-            if ((*combo)->connect_info_sizer) {
-                auto tmp_h_sizer = new wxBoxSizer(wxHORIZONTAL);
-                tmp_h_sizer->Add((*combo)->connect_info_sizer, 1, wxEXPAND);
-                sizer_presets->Add(tmp_h_sizer, 0, wxBOTTOM, int(0.3 * wxGetApp().em_unit()));
-            }
-        }
-    #ifndef SLIC3R_SLA_ONLY
-        else {
-            sizer_filaments->Add(combo_and_btn_sizer, 0, wxEXPAND |
-#ifdef __WXGTK3__
-                wxRIGHT, margin_5);
-#else
-                wxBOTTOM, 1);
-#endif // __WXGTK3__
-            (*combo)->set_extruder_idx(0);
-            sizer_filaments->ShowItems(false);
-            sizer_presets->Add(sizer_filaments, 1, wxEXPAND);
-            }
-        #else
-            (void)filament;
-        #endif
     };
 
-        #ifndef SLIC3R_SLA_ONLY
-    m_combos_filament.push_back(nullptr);
-    init_combo(&m_combo_print,         _L("Print settings"),     Preset::TYPE_PRINT,         false);
-    init_combo(&m_combos_filament[0],  _L("Filament"),           Preset::TYPE_FILAMENT,      true);
-        #endif
-    init_combo(&m_combo_sla_print,     _L("SLA print settings"), Preset::TYPE_SLA_PRINT,     false);
-    init_combo(&m_combo_sla_material,  _L("SLA material"),       Preset::TYPE_SLA_MATERIAL,  false);
-    init_combo(&m_combo_printer,       _L("Printer"),            Preset::TYPE_PRINTER,       false);
+    init_combo(&m_combo_sla_print,     _L("SLA print settings"), Preset::TYPE_SLA_PRINT);
+    init_combo(&m_combo_sla_material,  _L("SLA material"),       Preset::TYPE_SLA_MATERIAL);
+    init_combo(&m_combo_printer,       _L("Printer"),            Preset::TYPE_PRINTER);
 
     wxBoxSizer* params_sizer = new wxBoxSizer(wxVERTICAL);
 
@@ -456,11 +404,6 @@ Sidebar::Sidebar(Plater *parent)
     m_object_settings->Hide();
     params_sizer->Add(m_object_settings->get_sizer(), 0, wxEXPAND | wxTOP, margin_5);
 
-    // Object Layers
-    m_object_layers = std::make_unique<ObjectLayers>(m_scrolled_panel);
-    m_object_layers->Hide();
-    params_sizer->Add(m_object_layers->get_sizer(), 0, wxEXPAND | wxTOP, margin_5);
-
     // Info boxes
     m_object_info = new ObjectInfo(m_scrolled_panel);
     m_sliced_info = new SlicedInfo(m_scrolled_panel);
@@ -476,7 +419,7 @@ Sidebar::Sidebar(Plater *parent)
 
     // Buttons underneath the scrolled area
 
-    // rescalable bitmap buttons "Send to printer" and "Remove device" 
+    // rescalable bitmap button "Export to removable device"
 
     auto init_scalable_btn = [this](ScalableButton** btn, const std::string& icon_name, wxString tooltip = wxEmptyString)
     {
@@ -504,10 +447,9 @@ Sidebar::Sidebar(Plater *parent)
         (*btn)->Hide();
     };
 
-    init_scalable_btn(&m_btn_send_gcode   , "export_gcode", _L("Send to printer") + " " +GUI::shortkey_ctrl_prefix() + "Shift+G");
 	init_scalable_btn(&m_btn_export_gcode_removable, "export_to_sd", _L("Export to SD card / Flash drive") + " " + GUI::shortkey_ctrl_prefix() + "U");
 
-    // regular buttons "Slice now" and "Export G-code" 
+    // regular buttons "Slice now" and "Export" 
 
 #ifdef _WIN32
     const int scaled_height = m_btn_export_gcode_removable->GetBitmapHeight();
@@ -535,7 +477,6 @@ Sidebar::Sidebar(Plater *parent)
         m_plater->CallAfter([plater=m_plater] {plater->cancel_slicing();});
     });
     init_btn(&m_btn_reslice     , _L("Slice now")            , scaled_height);
-    init_btn(&m_btn_connect_gcode, _L("Send to Connect"), scaled_height);
 
     enable_buttons(false);
 
@@ -543,8 +484,6 @@ Sidebar::Sidebar(Plater *parent)
 
     auto *complect_btns_sizer = new wxBoxSizer(wxHORIZONTAL);
     complect_btns_sizer->Add(m_btn_export_gcode, 1, wxEXPAND);
-    complect_btns_sizer->Add(m_btn_connect_gcode, 1, wxEXPAND | wxLEFT, margin_5);
-    complect_btns_sizer->Add(m_btn_send_gcode, 0, wxLEFT, margin_5);
 	complect_btns_sizer->Add(m_btn_export_gcode_removable, 0, wxLEFT, margin_5);
 
     m_btns_sizer->Add(m_btn_reslice, 0, wxEXPAND | wxTOP, margin_5);
@@ -565,22 +504,6 @@ Sidebar::Sidebar(Plater *parent)
     };
     sizer->Add(m_btns_sizer, 0, buttons_sizer_flags, margin_5);
 
-#ifndef SLIC3R_SLA_ONLY
-    // Bulk (multi-bed autoslicing) buttons exist only in the FFF build.
-    m_autoslicing_btns_sizer = new wxBoxSizer(wxHORIZONTAL);
-
-	init_scalable_btn(&m_btn_export_all_gcode_removable, "export_to_sd", _L("Export all to SD card / Flash drive") + " " + GUI::shortkey_ctrl_prefix() + "U");
-    init_btn(&m_btn_export_all_gcode, _L("Export all G-codes") + dots, scaled_height);
-    init_btn(&m_btn_connect_gcode_all, _L("Send all to Connect"), scaled_height);
-
-    m_autoslicing_btns_sizer->Add(m_btn_export_all_gcode, 1, wxEXPAND);
-    m_autoslicing_btns_sizer->Add(m_btn_connect_gcode_all, 1, wxEXPAND | wxLEFT, margin_5);
-	m_autoslicing_btns_sizer->Add(m_btn_export_all_gcode_removable, 0, wxLEFT, margin_5);
-
-    m_autoslicing_btns_sizer->Show(false);
-
-    sizer->Add(m_autoslicing_btns_sizer, 0, buttons_sizer_flags | wxTOP, margin_5);
-#endif // SLIC3R_SLA_ONLY
     SetSizer(sizer);
 
     // Events
@@ -616,95 +539,20 @@ Sidebar::Sidebar(Plater *parent)
     });
 #endif // _WIN32
 
-    m_btn_send_gcode->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) { m_plater->send_gcode(); });
     m_btn_export_gcode_removable->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) { m_plater->export_gcode(true); });
-    m_btn_connect_gcode->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) { m_plater->connect_gcode(); });
 
     this->Bind(wxEVT_COMBOBOX, &Sidebar::on_select_preset, this);
 
-#ifndef SLIC3R_SLA_ONLY
-    m_btn_export_all_gcode->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) {
-        this->m_plater->export_all_gcodes(false);
-    });
-
-    m_btn_export_all_gcode_removable->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) {
-        this->m_plater->export_all_gcodes(true);
-    });
-
-    m_btn_connect_gcode_all->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) {
-        this->m_plater->connect_gcode_all();
-    });
-#endif // SLIC3R_SLA_ONLY
 }
 
 Sidebar::~Sidebar() {}
 
-#ifndef SLIC3R_SLA_ONLY
-void Sidebar::init_filament_combo(PlaterPresetComboBox** combo, int extr_idx)
-{
-    *combo = new PlaterPresetComboBox(m_presets_panel, Slic3r::Preset::TYPE_FILAMENT);
-    (*combo)->set_extruder_idx(extr_idx);
-
-    auto combo_and_btn_sizer = new wxBoxSizer(wxHORIZONTAL);
-    combo_and_btn_sizer->Add(*combo, 1, wxEXPAND);
-    combo_and_btn_sizer->Add((*combo)->edit_btn, 0, wxALIGN_CENTER_VERTICAL | wxLEFT | wxRIGHT,
-                            int(0.3*wxGetApp().em_unit()));
-
-    this->m_filaments_sizer->Add(combo_and_btn_sizer, 1, wxEXPAND |
-#ifdef __WXGTK3__
-        wxRIGHT, int(0.5 * wxGetApp().em_unit()));
-#else
-        wxBOTTOM, 1);
-#endif // __WXGTK3__
-}
-
-void Sidebar::remove_unused_filament_combos(const size_t current_extruder_count)
-{
-    if (current_extruder_count >= m_combos_filament.size())
-        return;
-    auto sizer_filaments = this->m_filaments_sizer;
-    while (m_combos_filament.size() > current_extruder_count) {
-        const int last = m_combos_filament.size() - 1;
-        sizer_filaments->Remove(last);
-        (*m_combos_filament[last]).Destroy();
-        m_combos_filament.pop_back();
-    }
-}
-#endif
-
-void Sidebar::update_all_filament_comboboxes()
-{
-#ifndef SLIC3R_SLA_ONLY
-    for (PlaterPresetComboBox* cb : m_combos_filament)
-        cb->update();
-#endif
-}
 
 void Sidebar::update_all_preset_comboboxes()
 {
-#ifndef SLIC3R_SLA_ONLY
-    PresetBundle &preset_bundle = *wxGetApp().preset_bundle;
-    const auto print_tech = preset_bundle.printers.get_edited_preset().printer_technology();
-
-    // Update the print choosers to only contain the compatible presets, update the dirty flags.
-    if (print_tech == ptFFF)
-        m_combo_print->update();
-    else {
-        m_combo_sla_print->update();
-        m_combo_sla_material->update();
-    }
-    // Update the printer choosers, update the dirty flags.
-    m_combo_printer->update();
-    // Update the filament choosers to only contain the compatible presets, update the color preview,
-    // update the dirty flags.
-    if (print_tech == ptFFF) {
-        update_all_filament_comboboxes();
-    }
-#else
     m_combo_sla_print->update();
     m_combo_sla_material->update();
     m_combo_printer->update();
-#endif
 }
 
 void Sidebar::update_printer_presets_combobox()
@@ -715,34 +563,9 @@ void Sidebar::update_printer_presets_combobox()
 
 void Sidebar::update_presets(Preset::Type preset_type)
 {
-#ifdef SLIC3R_SLA_ONLY
     (void)wxGetApp().preset_bundle;
-#else
-    PresetBundle &preset_bundle = *wxGetApp().preset_bundle;
-    const auto print_tech = preset_bundle.printers.get_edited_preset().printer_technology();
-#endif
 
     switch (preset_type) {
-    case Preset::TYPE_FILAMENT:
-    {
-#ifndef SLIC3R_SLA_ONLY
-        const size_t extruder_cnt = print_tech != ptFFF ? 1 :
-                                dynamic_cast<ConfigOptionFloats*>(preset_bundle.printers.get_edited_preset().config.option("nozzle_diameter"))->values.size();
-        const size_t filament_cnt = m_combos_filament.size() > extruder_cnt ? extruder_cnt : m_combos_filament.size();
-
-        for (size_t i = 0; i < filament_cnt; i++)
-            m_combos_filament[i]->update();
-#endif
-
-        break;
-    }
-
-    case Preset::TYPE_PRINT:
-#ifndef SLIC3R_SLA_ONLY
-        m_combo_print->update();
-#endif
-        break;
-
     case Preset::TYPE_SLA_PRINT:
         m_combo_sla_print->update();
         break;
@@ -783,8 +606,6 @@ void Sidebar::on_select_preset(wxCommandEvent& evt)
     // So, use GetSelection() from event parameter 
     int selection = evt.GetSelection();
 
-    auto idx = combo->get_extruder_idx();
-
     //! Because of The MSW and GTK version of wxBitmapComboBox derived from wxComboBox,
     //! but the OSX version derived from wxOwnerDrawnCombo.
     //! So, to get selected string we do
@@ -793,47 +614,20 @@ void Sidebar::on_select_preset(wxCommandEvent& evt)
     //!     combo->GetStringSelection().ToUTF8().data());
 
     std::string preset_name = wxGetApp().preset_bundle->get_preset_name_by_alias(preset_type,
-                              Preset::remove_suffix_modified(into_u8(combo->GetString(selection))), idx);
+                              Preset::remove_suffix_modified(into_u8(combo->GetString(selection))));
 
-    std::string last_selected_ph_printer_name = combo->get_selected_ph_printer_name();
-
-    bool select_preset = !combo->selection_is_changed_according_to_physical_printers();
-    // TODO: ?
-#ifndef SLIC3R_SLA_ONLY
-    if (preset_type == Preset::TYPE_FILAMENT) {
-        wxGetApp().preset_bundle->set_filament_preset(idx, preset_name);
-
-        TabFilament* tab = dynamic_cast<TabFilament*>(wxGetApp().get_tab(Preset::TYPE_FILAMENT));
-        if (tab && combo->get_extruder_idx() == tab->get_active_extruder() && !tab->select_preset(preset_name)) {
-            // revert previously selection
-            const std::string& old_name = wxGetApp().preset_bundle->filaments.get_edited_preset().name;
-                                          wxGetApp().preset_bundle->set_filament_preset(idx, old_name);
-        }
-        else
-            // Synchronize config.ini with the current selections.
-            wxGetApp().preset_bundle->export_selections(*wxGetApp().app_config);
-        combo->update();
-    }
-    else
-#endif
-    if (select_preset) {
+    {
         wxWindowUpdateLocker noUpdates(m_presets_panel);
-        wxGetApp().get_tab(preset_type)->select_preset(preset_name, false, last_selected_ph_printer_name);
+        wxGetApp().get_tab(preset_type)->select_preset(preset_name, false);
     }
 
-    if (preset_type != Preset::TYPE_PRINTER || select_preset) {
-        // update plater with new config
-        m_plater->on_config_change(wxGetApp().preset_bundle->full_config());
-    }
+    // update plater with new config
+    m_plater->on_config_change(wxGetApp().preset_bundle->full_config());
     if (preset_type == Preset::TYPE_PRINTER) {
         /* Settings list can be changed after printer preset changing, so
          * update all settings items for all item had it.
-         * Furthermore, Layers editing is implemented only for FFF printers
-         * and for SLA presets they should be deleted
          */
         m_object_list->update_object_list_by_printer_technology();
-        s_multiple_beds.stop_autoslice(false);
-        this->switch_from_autoslicing_mode();
         wxQueueEvent(this->m_plater, new SimpleEvent(EVT_REGENERATE_BED_THUMBNAILS));
         this->m_plater->update();
         s_print_statuses.fill(PrintStatus::idle);
@@ -853,7 +647,7 @@ void Sidebar::update_reslice_btn_tooltip()
 {
     wxString tooltip = wxString("Slice") + " [" + GUI::shortkey_ctrl_prefix() + "R]";
     if (m_mode != comSimple)
-        tooltip += wxString("\n") + (m_plater->printer_technology() == ptSLA ? _L("Hold Shift to Slice & Export") : _L("Hold Shift to Slice & Export G-code"));
+        tooltip += wxString("\n") + _L("Hold Shift to Slice & Export");
 #ifdef _WIN32
     m_reslice_btn_tooltip = tooltip;
 #else
@@ -864,22 +658,14 @@ void Sidebar::update_reslice_btn_tooltip()
 void Sidebar::msw_rescale()
 {
     SetMinSize(wxSize(42 * wxGetApp().em_unit(), -1));
-#ifndef SLIC3R_SLA_ONLY
-    m_combo_print       ->msw_rescale();
-#endif
     m_combo_sla_print   ->msw_rescale();
     m_combo_sla_material->msw_rescale();
     m_combo_printer     ->msw_rescale();
 
-#ifndef SLIC3R_SLA_ONLY
-    for (PlaterPresetComboBox* combo : m_combos_filament)
-        combo->msw_rescale();
-#endif
 
     m_frequently_changed_parameters->msw_rescale();
     m_object_list                  ->msw_rescale();
     m_object_manipulation          ->msw_rescale();
-    m_object_layers                ->msw_rescale();
 
 #ifdef _WIN32
     const int scaled_height = m_btn_export_gcode_removable->GetBitmapHeight();
@@ -901,31 +687,22 @@ void Sidebar::sys_color_changed()
         wxGetApp().UpdateDarkUI(win);
     for (wxWindow* win : std::vector<wxWindow*>{ m_scrolled_panel, m_presets_panel })
         wxGetApp().UpdateAllStaticTextDarkUI(win);
-    for (wxWindow* btn : std::vector<wxWindow*>{ m_btn_reslice, m_btn_export_gcode, m_btn_connect_gcode, m_btn_cancel_slicing })
+    for (wxWindow* btn : std::vector<wxWindow*>{ m_btn_reslice, m_btn_export_gcode, m_btn_cancel_slicing })
         wxGetApp().UpdateDarkUI(btn, true);
 
     m_frequently_changed_parameters->sys_color_changed();
     m_object_settings              ->sys_color_changed();
 #endif
 
-#ifndef SLIC3R_SLA_ONLY
-    m_combo_print       ->sys_color_changed();
-#endif
     m_combo_sla_print   ->sys_color_changed();
     m_combo_sla_material->sys_color_changed();
     m_combo_printer     ->sys_color_changed();
 
-#ifndef SLIC3R_SLA_ONLY
-    for (PlaterPresetComboBox* combo : m_combos_filament)
-        combo->sys_color_changed();
-#endif
 
     m_object_list        ->sys_color_changed();
     m_object_manipulation->sys_color_changed();
-    m_object_layers      ->sys_color_changed();
 
     // btn...->msw_rescale() updates icon on button, so use it
-    m_btn_send_gcode            ->sys_color_changed();
     m_btn_export_gcode_removable->sys_color_changed();
 
     m_scrolled_panel->Layout();
@@ -947,24 +724,9 @@ ObjectSettings* Sidebar::obj_settings()
     return m_object_settings.get();
 }
 
-ObjectLayers* Sidebar::obj_layers()
+ConfigOptionsGroup* Sidebar::og_freq_chng_params()
 {
-    return m_object_layers.get();
-}
-
-ConfigOptionsGroup* Sidebar::og_freq_chng_params(const bool is_fff)
-{
-    return m_frequently_changed_parameters->get_og(is_fff);
-}
-
-wxButton* Sidebar::get_wiping_dialog_button()
-{
-    return m_frequently_changed_parameters->get_wiping_dialog_button();
-}
-
-void Sidebar::update_objects_list_extruder_column(size_t extruders_count)
-{
-    m_object_list->update_objects_list_extruder_column(extruders_count);
+    return m_frequently_changed_parameters->get_og();
 }
 
 void Sidebar::show_info_sizer()
@@ -1073,110 +835,7 @@ void Sidebar::update_sliced_info_sizer()
                 _L("Sum of layer motion, exposure and waits. The exported format may add printer preparation time.") :
                 _L("Estimated time for the active print job."));
             m_plater->get_notification_manager()->set_slicing_complete_print_time(into_u8(time_label) + ": " + into_u8(t_est), m_plater->is_sidebar_collapsed());
-
-            // Hide non-SLA sliced info parameters
-            m_sliced_info->SetTextAndShow(siFilament_m, "N/A");
-            m_sliced_info->SetTextAndShow(siFilament_mm3, "N/A");
-            m_sliced_info->SetTextAndShow(siFilament_g, "N/A");
-            m_sliced_info->SetTextAndShow(siWTNumberOfToolchanges, "N/A");
         }
-#ifndef SLIC3R_SLA_ONLY
-        else
-        {
-            const PrintStatistics& ps = m_plater->active_fff_print().print_statistics();
-            const bool is_wipe_tower = ps.total_wipe_tower_filament > 0;
-
-            bool imperial_units = wxGetApp().app_config->get_bool("use_inches");
-            double koef = imperial_units ? ObjectManipulation::in_to_mm : 1000.0;
-
-            wxString new_label = imperial_units ? _L("Used Filament (in)") : _L("Used Filament (m)");
-            if (is_wipe_tower)
-                new_label += format_wxstr(":\n    - %1%\n    - %2%", _L("objects"), _L("wipe tower"));
-
-            wxString info_text = is_wipe_tower ?
-                                wxString::Format("%.2f \n%.2f \n%.2f", ps.total_used_filament / koef,
-                                                (ps.total_used_filament - ps.total_wipe_tower_filament) / koef,
-                                                ps.total_wipe_tower_filament / koef) :
-                                wxString::Format("%.2f", ps.total_used_filament / koef);
-            m_sliced_info->SetTextAndShow(siFilament_m,    info_text,      new_label);
-
-            koef = imperial_units ? pow(ObjectManipulation::mm_to_in, 3) : 1.0f;
-            new_label = imperial_units ? _L("Used Filament (in³)") : _L("Used Filament (mm³)");
-            info_text = wxString::Format("%.2f", imperial_units ? ps.total_extruded_volume * koef : ps.total_extruded_volume);
-            m_sliced_info->SetTextAndShow(siFilament_mm3,  info_text,      new_label);
-
-            if (ps.total_weight == 0.0)
-                m_sliced_info->SetTextAndShow(siFilament_g, "N/A");
-            else {
-                new_label = _L("Used Filament (g)");
-                info_text = wxString::Format("%.2f", ps.total_weight);
-
-                if (ps.filament_stats.size() > 1)
-                    new_label += ":";
-
-                const auto& extruders_filaments = wxGetApp().preset_bundle->extruders_filaments;
-                for (const auto& [filament_id, filament_vol] : ps.filament_stats) {
-                    assert(filament_id < extruders_filaments.size());
-                    if (const Preset* preset = extruders_filaments[filament_id].get_selected_preset()) {
-                        double filament_weight;
-                        if (ps.filament_stats.size() == 1)
-                            filament_weight = ps.total_weight;
-                        else {
-                            double filament_density = preset->config.opt_float("filament_density", 0);
-                            filament_weight = filament_vol * filament_density/* *2.4052f*/ * 0.001; // assumes 1.75mm filament diameter;
-
-                            new_label += "\n    - " + format_wxstr(_L("Filament at extruder %1%"), filament_id + 1);
-                            info_text += wxString::Format("\n%.2f", filament_weight);
-                        }
-
-                        double spool_weight = preset->config.opt_float("filament_spool_weight", 0);
-                        if (spool_weight != 0.0) {
-                            new_label += "\n      " + _L("(including spool)");
-                            info_text += wxString::Format(" (%.2f)\n", filament_weight + spool_weight);
-                        }
-                    }
-                }
-
-                m_sliced_info->SetTextAndShow(siFilament_g, info_text, new_label);
-            }
-
-            new_label = _L("Cost");
-            if (is_wipe_tower)
-                new_label += format_wxstr(":\n    - %1%\n    - %2%", _L("objects"), _L("wipe tower"));
-
-            info_text = ps.total_cost == 0.0 ? "N/A" :
-                        is_wipe_tower ?
-                        wxString::Format("%.2f \n%.2f \n%.2f", ps.total_cost,
-                                            (ps.total_cost - ps.total_wipe_tower_cost),
-                                            ps.total_wipe_tower_cost) :
-                        wxString::Format("%.2f", ps.total_cost);
-            m_sliced_info->SetTextAndShow(siCost, info_text,      new_label);
-
-            if (ps.estimated_normal_print_time == "N/A" && ps.estimated_silent_print_time == "N/A")
-                m_sliced_info->SetTextAndShow(siEstimatedTime, "N/A");
-            else {
-                info_text = "";
-                new_label = _L("Estimated printing time") + ":";
-                if (ps.estimated_normal_print_time != "N/A") {
-                    new_label += format_wxstr("\n   - %1%", _L("normal mode"));
-                    info_text += format_wxstr("\n%1%", short_time_ui(ps.estimated_normal_print_time));
-
-                    m_plater->get_notification_manager()->set_slicing_complete_print_time(_u8L("Estimated printing time") + ": " + ps.estimated_normal_print_time, m_plater->is_sidebar_collapsed());
-
-                }
-                if (ps.estimated_silent_print_time != "N/A") {
-                    new_label += format_wxstr("\n   - %1%", _L("stealth mode"));
-                    info_text += format_wxstr("\n%1%", short_time_ui(ps.estimated_silent_print_time));
-                }
-                m_sliced_info->SetTextAndShow(siEstimatedTime, info_text, new_label);
-            }
-
-            m_sliced_info->SetTextAndShow(siWTNumberOfToolchanges, ps.total_toolchanges > 0 ? wxString::Format("%.d", ps.total_toolchanges) : "N/A");
-
-            // Hide non-FFF sliced info parameters
-            m_sliced_info->SetTextAndShow(siMaterial_unit, "N/A");
-        }
-#endif
     }
 
     Layout();
@@ -1184,10 +843,6 @@ void Sidebar::update_sliced_info_sizer()
 
 void Sidebar::show_sliced_info_sizer(const bool show)
 {
-    if (m_autoslicing_mode) {
-        return;
-    }
-
     wxWindowUpdateLocker freeze_guard(this);
 
     m_sliced_info->Show(show);
@@ -1198,48 +853,12 @@ void Sidebar::show_sliced_info_sizer(const bool show)
     m_scrolled_panel->Refresh();
 }
 
-void Sidebar::show_btns_sizer(const bool show)
-{
-    if (m_autoslicing_mode) {
-        return;
-    }
-
-    wxWindowUpdateLocker freeze_guard(this);
-    m_btns_sizer->Show(show);
-
-    Layout();
-    m_scrolled_panel->Refresh();
-}
-
-void Sidebar::show_bulk_btns_sizer(const bool show)
-{
-    wxWindowUpdateLocker freeze_guard(this);
-    if (m_autoslicing_btns_sizer)
-        m_autoslicing_btns_sizer->Show(show);
-
-    Layout();
-    m_scrolled_panel->Refresh();
-}
-
 void Sidebar::enable_buttons(bool enable)
 {
     m_btn_reslice->Enable(enable);
     m_btn_export_gcode->Enable(enable);
     m_btn_edit_layers->Enable(enable && m_plater->can_edit_sliced_layers());
-    m_btn_send_gcode->Enable(enable);
     m_btn_export_gcode_removable->Enable(enable);
-    m_btn_connect_gcode->Enable(enable);
-}
-
-void Sidebar::enable_bulk_buttons(bool enable)
-{
-#ifndef SLIC3R_SLA_ONLY
-    m_btn_export_all_gcode->Enable(enable);
-    m_btn_export_all_gcode_removable->Enable(enable);
-    m_btn_connect_gcode_all->Enable(enable);
-#else
-    (void)enable; // bulk buttons are not created in the SLA-only build
-#endif
 }
 
 void Sidebar::show_cancel_slicing(bool show)
@@ -1251,78 +870,15 @@ void Sidebar::show_cancel_slicing(bool show)
 }
 
 bool Sidebar::show_reslice(bool show) const {
-    if (this->m_autoslicing_mode) {
-        return false;
-    }
     return m_btn_reslice->Show(show);
 }
 bool Sidebar::show_export(bool show) const {
-    if (this->m_autoslicing_mode) {
-        return false;
-    }
     m_btn_edit_layers->Show(show && m_plater->printer_technology() == ptSLA);
     return m_btn_export_gcode->Show(show);
 }
-bool Sidebar::show_send(bool show) const {
-    if (this->m_autoslicing_mode) {
-        return false;
-    }
-    return m_btn_send_gcode->Show(show);
-}
 bool Sidebar::show_export_removable(bool show) const {
-    if (this->m_autoslicing_mode) {
-        return false;
-    }
     return m_btn_export_gcode_removable->Show(show);
 }
-bool Sidebar::show_connect(bool show) const {
-    if (this->m_autoslicing_mode) {
-        return false;
-    }
-    return m_btn_connect_gcode->Show(show);
-}
-
-bool Sidebar::show_export_all(bool show) const {
-#ifndef SLIC3R_SLA_ONLY
-    return m_btn_export_all_gcode->Show(show);
-#else
-    (void)show;
-    return false;
-#endif
-};
-bool Sidebar::show_export_removable_all(bool show) const {
-#ifndef SLIC3R_SLA_ONLY
-    return m_btn_export_all_gcode_removable->Show(show);
-#else
-    (void)show;
-    return false;
-#endif
-};
-bool Sidebar::show_connect_all(bool show) const {
-#ifndef SLIC3R_SLA_ONLY
-    return m_btn_connect_gcode_all->Show(show);
-#else
-    (void)show;
-    return false;
-#endif
-};
-
-void Sidebar::switch_to_autoslicing_mode() {
-    this->show_sliced_info_sizer(false);
-    this->show_btns_sizer(false);
-    this->m_autoslicing_mode = true;
-}
-
-void Sidebar::switch_from_autoslicing_mode() {
-    if (!this->m_autoslicing_mode) {
-        return;
-    }
-    this->m_autoslicing_mode = false;
-    this->show_sliced_info_sizer(true);
-    this->show_bulk_btns_sizer(false);
-}
-
-
 void Sidebar::update_mode()
 {
     m_mode = wxGetApp().get_mode();
@@ -1348,8 +904,6 @@ void Sidebar::set_btn_label(const ActionButtonType btn_type, const wxString& lab
     {
     case ActionButtonType::Reslice:   m_btn_reslice->SetLabelText(label);        break;
     case ActionButtonType::Export:    m_btn_export_gcode->SetLabelText(label);   break;
-    case ActionButtonType::SendGCode: /*m_btn_send_gcode->SetLabelText(label);*/ break;
-    case ActionButtonType::Connect: /*m_btn_connect_gcode->SetLabelText(label);*/ break;
     }
 }
 
@@ -1372,38 +926,5 @@ void Sidebar::update_ui_from_settings()
     update_sliced_info_sizer();
     m_object_list->apply_volumes_order();
 }
-
-void Sidebar::set_extruders_count(size_t extruders_count)
-{
-#ifndef SLIC3R_SLA_ONLY
-    if (extruders_count == m_combos_filament.size())
-        return;
-
-    dynamic_cast<TabFilament*>(wxGetApp().get_tab(Preset::TYPE_FILAMENT))->update_extruder_combobox();
-
-    wxWindowUpdateLocker noUpdates_scrolled_panel(this);
-
-    size_t i = m_combos_filament.size();
-    while (i < extruders_count)
-    {
-        PlaterPresetComboBox* filament_choice;
-        init_filament_combo(&filament_choice, i);
-        m_combos_filament.push_back(filament_choice);
-
-        // initialize selection
-        filament_choice->update();
-        ++i;
-    }
-
-    // remove unused choices if any
-    remove_unused_filament_combos(extruders_count);
-    
-    Layout();
-    m_scrolled_panel->Refresh();
-#else
-    (void)extruders_count;
-#endif
-}
-
 
 }}    // namespace Slic3r::GUI

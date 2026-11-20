@@ -3,7 +3,7 @@
 #include "libslic3r/Config.hpp"
 #include "libslic3r/PrintConfig.hpp"
 
-#include <libslic3r/GCode/Thumbnails.hpp>
+#include <libslic3r/Thumbnails/Thumbnails.hpp>
 
 using namespace Slic3r;
 using namespace GCodeThumbnails;
@@ -107,7 +107,9 @@ static std::string invalid_val_thumbnails4()
 static DynamicPrintConfig thumbnails_config()
 {
     DynamicPrintConfig config;
-    config.apply_only(FullPrintConfig::defaults() , { "thumbnails", "thumbnails_format" });
+    // "thumbnails*" are common (not SLA class) options: take the defaults straight from the option definitions.
+    for (const char *key : { "thumbnails", "thumbnails_format" })
+        config.set_key_value(key, print_config_def.get(key)->default_value->clone());
      
     return config;
 }

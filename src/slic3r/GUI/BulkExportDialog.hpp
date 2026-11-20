@@ -21,7 +21,6 @@ class wxFlexGridSizer;
 
 namespace Slic3r {
 class Print;
-struct GCodeProcessorResult;
 
 namespace GUI {
 

@@ -29,15 +29,15 @@ void LayerEditorContent::edit_layer_parameters(bool range)
     const auto last=range ? size_t(m_last->GetValue()-1) : layer;
     if (layer > last || last >= m_document.layer_count()) throw RuntimeError("Invalid parameter range");
     const auto values=m_document.layer_parameters(layer);
-    wxDialog editor(this,wxID_ANY,range ? wxString::Format("Layer parameters — range %zu–%zu",layer+1,last+1) :
-        wxString::Format("Layer parameters — layer %zu",layer+1));
+    wxDialog editor(this,wxID_ANY,range ? wxString::Format(_L("Layer parameters — range %zu–%zu"),layer+1,last+1) :
+        wxString::Format(_L("Layer parameters — layer %zu"),layer+1));
     auto *root=new wxBoxSizer(wxVERTICAL);
     root->Add(new wxStaticText(&editor,wxID_ANY,
         m_document.fresh_job() ?
-        "Exposure and movement apply to this record. Z comes from generated layers and is read-only here.\nChanges keep the current layer schedule independent of preset updates." :
-        "Parameters apply to this print layer and its mask planes. Read-only fields cannot be changed in this format."),0,wxALL,10);
+        _L("Exposure and movement apply to this record. Z comes from generated layers and is read-only here.\nChanges keep the current layer schedule independent of preset updates.") :
+        _L("Parameters apply to this print layer and its mask planes. Read-only fields cannot be changed in this format.")),0,wxALL,10);
     if (range) root->Add(new wxStaticText(&editor,wxID_ANY,
-        "Values shown come from the first selected record. Only fields you change are applied to the range.\nOther settings and masks are preserved. The whole range is one Undo step."),0,wxALL,10);
+        _L("Values shown come from the first selected record. Only fields you change are applied to the range.\nOther settings and masks are preserved. The whole range is one Undo step.")),0,wxALL,10);
     auto *grid=new wxFlexGridSizer(2,8,8);
     std::map<sla::LayerParameter,std::pair<wxTextCtrl *,wxString>> fields;
     for (const auto &capability:m_document.parameter_capabilities()) {
@@ -51,7 +51,7 @@ void LayerEditorContent::edit_layer_parameters(bool range)
     }
     grid->AddGrowableCol(1);root->Add(grid,1,wxEXPAND|wxALL,10);
     root->Add(editor.CreateButtonSizer(wxOK|wxCANCEL),0,wxEXPAND|wxALL,10);
-    static_cast<wxButton *>(editor.FindWindow(wxID_OK))->SetLabel("Apply parameters");
+    static_cast<wxButton *>(editor.FindWindow(wxID_OK))->SetLabel(_L("Apply parameters"));
     editor.SetSizerAndFit(root);editor.CentreOnParent();
     while (editor.ShowModal()==wxID_OK) {
         try {
@@ -69,7 +69,7 @@ void LayerEditorContent::edit_layer_parameters(bool range)
             } else if (!range) m_document.set_layer_parameters(layer,patch);
             return;
         } catch (const std::exception &error) {
-            wxMessageBox(wxString::FromUTF8(error.what()),"Layer parameters",wxOK|wxICON_ERROR,&editor);
+            wxMessageBox(wxString::FromUTF8(error.what()),_L("Layer parameters"),wxOK|wxICON_ERROR,&editor);
         }
     }
 }
@@ -87,9 +87,9 @@ std::string LayerEditorContent::operation_list_refusal(bool changes_resolution) 
     // Applying a model result writes the document back into the print, whose layer count is
     // fixed by the slicing levels; a different layer list could not be applied.
     if (is_model_result())
-        return "Layer count, heights and resolution of a sliced model result are fixed by the slicing. "
+        return _u8L("Layer count, heights and resolution of a sliced model result are fixed by the slicing. "
                "Pixel operations are available here; to clone, remove or re-height layers export the layers "
-               "and open them as a layer file, or change the layer height and slice again.";
+               "and open them as a layer file, or change the layer height and slice again.");
     return m_document.layer_list_refusal(changes_resolution);
 }
 
@@ -114,20 +114,20 @@ RunOutcome LayerEditorContent::open_lithophane_as_new_document(const LayerOpsJob
     bool built = false;
     {
         TaskLock working(m_working);
-        built = run_background_layers(this, "Build lithophane", [&](const sla::LayerProgress &progress) {
+        built = run_background_layers(this, _L("Build lithophane"), [&](const sla::LayerProgress &progress) {
             try { job.lithophane(layers, z, table, progress); return true; }
             catch (const sla::LayerOperationCancelled &) { return false; }
         });
     }
     if (!built) return RunOutcome::Cancelled;
     auto document = sla::LayerDocument::from_parameter_masks(*m_document.fresh_job(), layers, z, table);
-    wxFileDialog save(this, "Save the lithophane layer project", "", "lithophane.sla-project",
-                      "SLA layer project (*.sla-project)|*.sla-project", wxFD_SAVE | wxFD_OVERWRITE_PROMPT);
+    wxFileDialog save(this, _L("Save the lithophane layer project"), "", "lithophane.sla-project",
+                      _L("SLA layer project (*.sla-project)|*.sla-project"), wxFD_SAVE | wxFD_OVERWRITE_PROMPT);
     if (save.ShowModal() != wxID_OK) return RunOutcome::Cancelled;
     const auto path = boost::filesystem::path(into_u8(save.GetPath())).replace_extension(".sla-project").string();
     sla::ProjectRasterState state{std::move(document), {}, "", std::nullopt, sla::ProjectLayerOrigin::ImportedArchive, std::nullopt};
     TaskLock working(m_working);
-    const bool saved = run_background_layers(this, "Save layer project", [&](const sla::LayerProgress &progress) {
+    const bool saved = run_background_layers(this, _L("Save layer project"), [&](const sla::LayerProgress &progress) {
         try { sla::save_layer_project(path, state, progress); return true; }
         catch (const sla::LayerOperationCancelled &) { return false; }
     });
@@ -286,21 +286,41 @@ LayerOpsHost LayerEditorContent::make_operations_host()
         } else m_op_preview.reset();
         try { refresh(); } catch (const std::exception &error) {
             m_op_preview.reset();
-            wxMessageBox(wxString::FromUTF8(error.what()), "Layer editor", wxOK | wxICON_ERROR, this);
+            wxMessageBox(wxString::FromUTF8(error.what()), _L("Layer editor"), wxOK | wxICON_ERROR, this);
         }
     };
     host.run = [this](const LayerOpsJob &job) { return run_operation_job(job); };
-    host.on_layer_list_changed = [this] { CallAfter([this] { perform([this] { open_operations_dialog(); }); }); };
+    host.on_layer_list_changed = [this] { CallAfter([this] { perform([this] { open_operations_panel(); }); }); };
     return host;
 }
 
-void LayerEditorContent::open_operations_dialog()
+void LayerEditorContent::open_operations_panel()
 {
     finish_stroke(true);
-    if (m_ops_dialog) { m_ops_dialog->Destroy(); m_ops_dialog = nullptr; }
-    m_ops_dialog = create_layer_operations_dialog(this, make_operations_host());
-    m_ops_dialog->CentreOnParent();
-    m_ops_dialog->Show();
+    if (m_ops_panel) { m_ops_panel->Destroy(); m_ops_panel = nullptr; }
+    // Docked in the layout instead of a floating window: it replaces the right column, the mask keeps its place and
+    // the Preview shows on the canvas next to the form. Close brings the column back.
+    m_ops_panel = create_layer_operations_panel(this, make_operations_host(), [this] { CallAfter([this] { close_operations_panel(); }); });
+    m_ops_dip = std::clamp(std::max(m_ops_dip, sdip(kOpsColumnDip)), sdip(kRightMinDip), sdip(kRightMaxDip));
+    m_ops_panel->SetMinSize(wxSize(FromDIP(m_ops_dip), -1));
+    m_body->Add(m_ops_panel, 0, wxEXPAND | wxLEFT | wxRIGHT, 4);
+    wxGetApp().UpdateDarkUI(m_ops_panel);
+    update_side_columns();
+    Layout(); FitInside();
+    schedule_fit_refresh();
+}
+
+void LayerEditorContent::close_operations_panel()
+{
+    if (!m_ops_panel) return;
+    if (m_op_preview) { m_op_preview.reset(); }
+    auto *panel = m_ops_panel;
+    m_ops_panel = nullptr;
+    panel->Destroy();
+    update_side_columns();
+    Layout(); FitInside();
+    try { refresh(); } catch (...) {}
+    schedule_fit_refresh();
 }
 
 bool LayerEditorContent::save_layer_project_impl(bool save_as)
@@ -310,21 +330,21 @@ bool LayerEditorContent::save_layer_project_impl(bool save_as)
     const boost::filesystem::path previous(m_layer_project_path);
     std::string path = m_layer_project_path;
     if (save_as || path.empty()) {
-        wxFileDialog save(this, "Save layer project", wxString::FromUTF8(previous.parent_path().string()),
+        wxFileDialog save(this, _L("Save layer project"), wxString::FromUTF8(previous.parent_path().string()),
             previous.empty() ? "layers.sla-project" : wxString::FromUTF8(previous.filename().string()),
-            "SLA layer project (*.sla-project)|*.sla-project", wxFD_SAVE | wxFD_OVERWRITE_PROMPT);
+            _L("SLA layer project (*.sla-project)|*.sla-project"), wxFD_SAVE | wxFD_OVERWRITE_PROMPT);
         if (save.ShowModal() != wxID_OK) return false;
         path = boost::filesystem::path(into_u8(save.GetPath())).replace_extension(".sla-project").string();
         if (wxString::FromUTF8(path) != save.GetPath() && boost::filesystem::exists(path) &&
-            wxMessageBox("Replace the existing layer project?\n" + wxString::FromUTF8(path),
-                "Save layer project", wxYES_NO | wxNO_DEFAULT | wxICON_QUESTION, this) != wxYES)
+            wxMessageBox(_L("Replace the existing layer project?\n") + wxString::FromUTF8(path),
+                _L("Save layer project"), wxYES_NO | wxNO_DEFAULT | wxICON_QUESTION, this) != wxYES)
             return false;
     }
     auto state = m_print ? sla::capture_generated_project(*m_print, m_document) :
         sla::ProjectRasterState{m_document, {}, "", m_export_profile, sla::ProjectLayerOrigin::ImportedArchive, m_project_settings};
     state.settings = m_project_settings;
     TaskLock working(m_working);
-    const bool saved = run_background_layers(this, "Save layer project", [&](const sla::LayerProgress &progress) {
+    const bool saved = run_background_layers(this, _L("Save layer project"), [&](const sla::LayerProgress &progress) {
         try { sla::save_layer_project(path, state, progress); return true; }
         catch (const sla::LayerOperationCancelled &) { return false; }
     });
@@ -389,12 +409,12 @@ bool LayerEditorContent::confirm_discard()
     if (m_working) return false;
     if (!unsaved_changes() && !(m_print && m_print->is_raster_job() && !m_generated_exported && !m_project_revision)) return true;
     if (m_session && !m_print->is_raster_job() && !source_current())
-        return wxMessageBox("Discard the older sliced edits? They are separate from the current 3D project. Exported files will be kept.",
-            "Layer editor", wxYES_NO | wxNO_DEFAULT | wxICON_QUESTION, this) == wxYES;
-    return wxMessageBox(m_project_revision ? "Close without saving changes to the layer project? Exported files will be kept." :
-        m_print && m_print->is_raster_job() ? "Discard generated layers that have not been saved or exported?" :
-        m_print ? "Close without saving these layer edits in the 3D project? Exported files will be kept." :
-        "Discard unsaved layer edits or export context?", "Layer editor", wxYES_NO | wxNO_DEFAULT | wxICON_QUESTION, this) == wxYES;
+        return wxMessageBox(_L("Discard the older sliced edits? They are separate from the current 3D project. Exported files will be kept."),
+            _L("Layer editor"), wxYES_NO | wxNO_DEFAULT | wxICON_QUESTION, this) == wxYES;
+    return wxMessageBox(m_project_revision ? _L("Close without saving changes to the layer project? Exported files will be kept.") :
+        m_print && m_print->is_raster_job() ? _L("Discard generated layers that have not been saved or exported?") :
+        m_print ? _L("Close without saving these layer edits in the 3D project? Exported files will be kept.") :
+        _L("Discard unsaved layer edits or export context?"), _L("Layer editor"), wxYES_NO | wxNO_DEFAULT | wxICON_QUESTION, this) == wxYES;
 }
 } // namespace layer_editor_detail
 } // namespace Slic3r::GUI

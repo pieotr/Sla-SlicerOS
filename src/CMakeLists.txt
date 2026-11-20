@@ -20,14 +20,9 @@ endif ()
 
 add_subdirectory(slic3r-arrange)
 add_subdirectory(slic3r-arrange-wrapper)
-add_subdirectory(libseqarrange)
 
 
 if (SLIC3R_GUI)
-    if (NOT SLIC3R_SLA_ONLY)
-        add_subdirectory(libvgcode)
-    endif ()
-
     if(WIN32)
         message(STATUS "WXWIN environment set to: $ENV{WXWIN}")
     elseif(UNIX)
@@ -42,12 +37,9 @@ if (SLIC3R_GUI)
     if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
         set (wxWidgets_CONFIG_OPTIONS "--toolkit=gtk${SLIC3R_GTK}")
     endif ()
-    # The webview component drags in libwebkit2gtk/libsoup (via wx-config); all
-    # webview code is compiled out in offline builds, so do not request it there.
+    # The webview component drags in libwebkit2gtk/libsoup (via wx-config); the
+    # application is offline-only and never uses it.
     set(SLIC3R_WX_COMPONENTS base core adv html gl)
-    if (NOT SLIC3R_OFFLINE_ONLY)
-        list(APPEND SLIC3R_WX_COMPONENTS webview)
-    endif ()
     find_package(wxWidgets 3.2 MODULE REQUIRED COMPONENTS ${SLIC3R_WX_COMPONENTS})
 
     include(${wxWidgets_USE_FILE})
@@ -61,13 +53,11 @@ if (SLIC3R_GUI)
     find_package(JPEG MODULE QUIET)
     find_package(NanoSVG REQUIRED)
 
-    if (SLIC3R_OFFLINE_ONLY)
-        # The prebuilt static wxWidgets may have been configured with wxUSE_WEBVIEW, in which
-        # case wx-config lists WebKitGTK/libsoup as extra libraries of every component. Nothing in
-        # the offline build references them (web view sources are excluded), so drop them to keep
-        # the binary free of network-capable libraries (goal G12, test sla_offline_no_network_libs).
-        list(FILTER wxWidgets_LIBRARIES EXCLUDE REGEX "webkit|soup|javascriptcore")
-    endif ()
+    # The prebuilt static wxWidgets may have been configured with wxUSE_WEBVIEW, in which
+    # case wx-config lists WebKitGTK/libsoup as extra libraries of every component. Nothing
+    # references them (web view sources are excluded), so drop them to keep the binary free of
+    # network-capable libraries (goal G12, test sla_offline_no_network_libs).
+    list(FILTER wxWidgets_LIBRARIES EXCLUDE REGEX "webkit|soup|javascriptcore")
 
     string(REGEX MATCH "wxpng" WX_PNG_BUILTIN ${wxWidgets_LIBRARIES})
     if (PNG_FOUND AND NOT WX_PNG_BUILTIN)
@@ -111,7 +101,6 @@ endif()
 # Create a slic3r executable
 # Process mainfests for various platforms.
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/platform/msw/PrusaSlicer.rc.in ${CMAKE_CURRENT_BINARY_DIR}/PrusaSlicer.rc @ONLY)
-configure_file(${CMAKE_CURRENT_SOURCE_DIR}/platform/msw/PrusaSlicer-gcodeviewer.rc.in ${CMAKE_CURRENT_BINARY_DIR}/PrusaSlicer-gcodeviewer.rc @ONLY)
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/platform/msw/PrusaSlicer.manifest.in ${CMAKE_CURRENT_BINARY_DIR}/PrusaSlicer.manifest @ONLY)
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/platform/osx/Info.plist.in ${CMAKE_CURRENT_BINARY_DIR}/Info.plist @ONLY)
 
@@ -222,18 +211,6 @@ if (WIN32)
     add_dependencies(PrusaSlicer_app_console PrusaSlicer)
     set_target_properties(PrusaSlicer_app_console PROPERTIES OUTPUT_NAME "prusa-slicer-console")
     target_link_libraries(PrusaSlicer_app_console PRIVATE boost_headeronly)
-
-    if (NOT SLIC3R_SLA_ONLY)
-        add_executable(PrusaSlicer_app_gcodeviewer WIN32 PrusaSlicer_app_msvc.cpp ${CMAKE_CURRENT_BINARY_DIR}/PrusaSlicer-gcodeviewer.rc)
-        # Generate debug symbols even in release mode.
-        if (MSVC)
-            target_link_options(PrusaSlicer_app_gcodeviewer PUBLIC "$<$<CONFIG:RELEASE>:/DEBUG>")
-        endif ()
-        target_compile_definitions(PrusaSlicer_app_gcodeviewer PRIVATE -DSLIC3R_WRAPPER_NOCONSOLE -DSLIC3R_WRAPPER_GCODEVIEWER)
-        add_dependencies(PrusaSlicer_app_gcodeviewer PrusaSlicer)
-        set_target_properties(PrusaSlicer_app_gcodeviewer PROPERTIES OUTPUT_NAME "prusa-gcodeviewer")
-        target_link_libraries(PrusaSlicer_app_gcodeviewer PRIVATE boost_headeronly)
-    endif ()
 endif ()
 
 # Link the resources dir to where Slic3r GUI expects it
@@ -295,20 +272,6 @@ else ()
             COMMENT "Symlinking sla-slicer -> prusa-slicer"
             VERBATIM)
     endif ()
-    if (NOT SLIC3R_SLA_ONLY)
-        if (APPLE)
-            add_custom_command(TARGET PrusaSlicer POST_BUILD
-                COMMAND ln -sf PrusaSlicer prusa-gcodeviewer
-                COMMAND ln -sf PrusaSlicer PrusaGCodeViewer
-                WORKING_DIRECTORY "$<TARGET_FILE_DIR:PrusaSlicer>"
-                VERBATIM)
-        else ()
-            add_custom_command(TARGET PrusaSlicer POST_BUILD
-                COMMAND ln -sf prusa-slicer prusa-gcodeviewer
-                WORKING_DIRECTORY "$<TARGET_FILE_DIR:PrusaSlicer>"
-                VERBATIM)
-        endif ()
-    endif ()
     if (XCODE)
         # Because of Debug/Release/etc. configurations (similar to MSVC) the slic3r binary is located in an extra level
         set(BIN_RESOURCES_DIR "${CMAKE_CURRENT_BINARY_DIR}/resources")
@@ -331,9 +294,4 @@ if (WIN32)
 else ()
     install(TARGETS PrusaSlicer RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}")
     install(CODE "execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink prusa-slicer sla-slicer WORKING_DIRECTORY \$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_BINDIR})")
-
-    # FFF viewer is excluded from SLA application packages.
-    if (NOT SLIC3R_SLA_ONLY)
-        install(CODE "execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink prusa-slicer prusa-gcodeviewer WORKING_DIRECTORY \$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_BINDIR})")
-    endif ()
 endif ()

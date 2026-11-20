@@ -46,12 +46,10 @@ std::string get_main_info(bool format_as_html)
     std::string line_end = format_as_html ? "<br>" : "\n";
 
     if (!format_as_html)
-        out << b_start << (wxGetApp().is_editor() ? SLIC3R_APP_NAME : GCODEVIEWER_APP_NAME) << b_end << line_end;
+        out << b_start << SLIC3R_APP_NAME << b_end << line_end;
     out << b_start << "Version:   "             << b_end << SLIC3R_VERSION << line_end;
     
     std::string build_id = SLIC3R_BUILD_ID;
-    if (! wxGetApp().is_editor())
-        boost::replace_first(build_id, SLIC3R_APP_NAME, GCODEVIEWER_APP_NAME);
     out << b_start << "Build:     " << b_end << build_id << line_end;
 
     out << line_end;
@@ -95,7 +93,7 @@ std::string get_mem_info(bool format_as_html)
 }
 
 SysInfoDialog::SysInfoDialog()
-    : DPIDialog(static_cast<wxWindow*>(wxGetApp().mainframe), wxID_ANY, (wxGetApp().is_editor() ? wxString(SLIC3R_APP_NAME) : wxString(GCODEVIEWER_APP_NAME)) + " - " + _L("System Information"), wxDefaultPosition, wxDefaultSize, wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER)
+    : DPIDialog(static_cast<wxWindow*>(wxGetApp().mainframe), wxID_ANY, wxString(SLIC3R_APP_NAME) + " - " + _L("System Information"), wxDefaultPosition, wxDefaultSize, wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER)
 {
 	wxColour bgr_clr = wxGetApp().get_window_default_clr();//wxSystemSettings::GetColour(wxSYS_COLOUR_WINDOW);
 	SetBackgroundColour(bgr_clr);
@@ -119,7 +117,7 @@ SysInfoDialog::SysInfoDialog()
 
     // title
     {
-        wxStaticText* title = new wxStaticText(this, wxID_ANY, wxGetApp().is_editor() ? SLIC3R_APP_NAME : GCODEVIEWER_APP_NAME, wxDefaultPosition, wxDefaultSize);
+        wxStaticText* title = new wxStaticText(this, wxID_ANY, SLIC3R_APP_NAME, wxDefaultPosition, wxDefaultSize);
         wxFont title_font = wxGetApp().bold_font();
         title_font.SetFamily(wxFONTFAMILY_ROMAN);
         title_font.SetPointSize(int(2.5 * title_font.GetPointSize()));//title_font.SetPointSize(22);

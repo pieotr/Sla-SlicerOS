@@ -358,7 +358,7 @@ void DesktopIntegrationDialog::perform_desktop_integration()
         "Type=Application\n"
         "MimeType=model/stl;application/vnd.ms-3mfdocument;application/prs.wavefront-obj;application/x-amf;\n"
         "Categories=Graphics;3DGraphics;Engineering;\n"
-        "Keywords=3D;Printing;Slicer;slice;3D;printer;convert;gcode;stl;obj;amf;SLA\n"
+        "Keywords=3D;Printing;Slicer;slice;3D;printer;convert;stl;obj;amf;SLA\n"
         "StartupNotify=false\n"
         "StartupWMClass=sla-slicer\n", name_suffix, version_suffix, excutable_path);
 
@@ -410,43 +410,6 @@ void DesktopIntegrationDialog::perform_desktop_integration()
     // save path to desktop file
     app_config->set("desktop_integration_app_path", GUI::format("%1%/applications/PrusaSlicer%2%.desktop", target_dir_desktop, version_suffix));
 
-    // Repeat for Gcode viewer - use same paths as for slicer files
-    // Do NOT add gcode viewer desktop file on ChromeOS
-    if (platform_flavor() != PlatformFlavor::LinuxOnChromium) {
-        // Icon
-        if (!target_dir_icons.empty())
-        {
-            std::string icon_path = GUI::format("%1%/icons/PrusaSlicer-gcodeviewer_192px.png",resources_dir());
-            std::string dest_path = GUI::format("%1%/icons/%2%PrusaSlicer-gcodeviewer%3%.png", target_dir_icons, icon_theme_path, version_suffix);
-            if (copy_icon(icon_path, dest_path))
-                // save path to icon
-                app_config->set("desktop_integration_icon_viewer_path", dest_path);
-            else
-                BOOST_LOG_TRIVIAL(error) << "Copying Gcode Viewer icon to icons directory failed.";
-        }
-
-        // Desktop file
-        std::string desktop_file_viewer = GUI::format(
-            "[Desktop Entry]\n"
-            "Name=Prusa Gcode Viewer%1%\n"
-            "GenericName=3D Printing Software\n"
-            "Icon=PrusaSlicer-gcodeviewer%2%\n"
-            "Exec=\"%3%\" --gcodeviewer %%F\n"
-            "Terminal=false\n"
-            "Type=Application\n"
-            "MimeType=text/x.gcode;\n"
-            "Categories=Graphics;3DGraphics;\n"
-            "Keywords=3D;Printing;Slicer;\n"
-            "StartupNotify=false\n", name_suffix, version_suffix, excutable_path);
-        std::string desktop_path = GUI::format("%1%/applications/PrusaSlicerGcodeViewer%2%.desktop", target_dir_desktop, version_suffix);
-        if (create_desktop_file(desktop_path, desktop_file_viewer))
-            // save path to desktop file
-            app_config->set("desktop_integration_app_viewer_path", desktop_path);
-        else {
-            BOOST_LOG_TRIVIAL(error) << "Performing desktop integration failed - could not create Gcodeviewer desktop file";
-            show_error(nullptr, _L("Performing desktop integration failed - could not create Gcodeviewer desktop file. PrusaSlicer desktop file was probably created successfully."));
-        }
-    }
     wxGetApp().plater()->get_notification_manager()->push_notification(NotificationType::DesktopIntegrationSuccess);
 }
 void DesktopIntegrationDialog::undo_desktop_integration()
@@ -465,15 +428,15 @@ void DesktopIntegrationDialog::undo_desktop_integration()
     	BOOST_LOG_TRIVIAL(debug) << "removing " << path;
         std::remove(path.c_str());
     }
-    // No gcode viewer at ChromeOS
+    // Legacy cleanup: remove the G-code viewer desktop file / icon created by older versions (none are created anymore)
     if (platform_flavor() != PlatformFlavor::LinuxOnChromium) {
-        // gcode viewer .desktop
+        // legacy viewer .desktop
         path = std::string(app_config->get("desktop_integration_app_viewer_path"));
         if (!path.empty()) {
         	BOOST_LOG_TRIVIAL(debug) << "removing " << path;
             std::remove(path.c_str());
         }
-         // gcode viewer icon
+        // legacy viewer icon
         path = std::string(app_config->get("desktop_integration_icon_viewer_path"));
         if (!path.empty()) {
         	BOOST_LOG_TRIVIAL(debug) << "removing " << path;
@@ -683,7 +646,7 @@ void DesktopIntegrationDialog::undo_downloader_registration_rigid()
 
 void DesktopIntegrationDialog::find_all_desktop_files(std::vector<boost::filesystem::path>& results)
 {
-    // Try ro find any PrusaSlicer.desktop and PrusaSlicerGcodeViewer.desktop and PrusaSlicerURLProtocol.desktop files including alpha and beta
+    // Try ro find any PrusaSlicer.desktop and PrusaSlicerURLProtocol.desktop files (and the legacy PrusaSlicerGcodeViewer.desktop left by older versions) including alpha and beta
 
     // For regular apps (f.e. appimage) this is true:
     // $XDG_DATA_HOME defines the base directory relative to which user specific data files should be stored. 

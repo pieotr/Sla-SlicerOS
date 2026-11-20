@@ -51,7 +51,7 @@ static constexpr const Slic3r::ClipperLib::JoinType DefaultJoinType         = Sl
 static constexpr const Slic3r::ClipperLib::EndType DefaultEndType           = Slic3r::ClipperLib::etOpenButt;
 
 //FIXME evaluate the default miter limit. 3 seems to be extreme, Cura uses 1.2.
-// Mitter Limit 3 is useful for perimeter generator, where sharp corners are extruded without needing a gap fill.
+// Mitter Limit 3 is useful where sharp corners are kept without needing a gap fill.
 // However such a high limit causes issues with large positive or negative offsets, where a sharp corner
 // is extended excessively.
 static constexpr const double                       DefaultMiterLimit       = 3.;

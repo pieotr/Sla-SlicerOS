@@ -14,7 +14,7 @@
 @ECHO Usage: build_win [-ARCH ^<arch^>] [-CONFIG ^<config^>] [-VERSION ^<version^>]
 @ECHO                  [-PRODUCT ^<product^>] [-DESTDIR ^<directory^>]
 @ECHO                  [-STEPS ^<all^|all-dirty^|app^|app-dirty^|deps^|deps-dirty^>]
-@ECHO                  [-RUN ^<console^|custom^|none^|viewer^|window^>]
+@ECHO                  [-RUN ^<console^|custom^|none^|window^>]
 @ECHO                  [-PRIORITY ^<normal^|low^>]
 @ECHO.
 @ECHO  -a -ARCH      Target processor architecture
@@ -38,7 +38,6 @@
 @ECHO                  custom - run and wait on your custom build/%PS_CUSTOM_RUN_FILE%
 @ECHO                  ide - open project in Visual Studio if not open (no wait)
 @ECHO                  none - run step does nothing
-@ECHO                  viewer - run prusa-gcodeviewer.exe (no wait)
 @ECHO                  window - run prusa-slicer.exe (no wait)
 @ECHO                Default: none
 @ECHO  -d -DESTDIR   Deps destination directory
@@ -157,7 +156,7 @@ IF "%PS_DESTDIR%" NEQ "%PS_DESTDIR_CACHED%" (
     )
 )
 SET PS_DESTDIR_DEFAULT_MSG=
-CALL :PARSE_OPTION_VALUE "console custom ide none viewer window" PS_RUN
+CALL :PARSE_OPTION_VALUE "console custom ide none window" PS_RUN
 IF "%PS_RUN%" EQU "" GOTO :HELP
 IF "%PS_RUN%" NEQ "none" IF "%PS_STEPS:~0,4%" EQU "deps" (
     @ECHO ERROR: RUN=%PS_RUN% specified with STEPS=%PS_STEPS%
@@ -271,9 +270,6 @@ IF "%PS_RUN%" EQU "console" (
 ) ELSE IF "%PS_RUN%" EQU "window" (
     icacls prusa-slicer.exe >nul || GOTO :END
     start prusa-slicer.exe
-) ELSE IF "%PS_RUN%" EQU "viewer" (
-    icacls prusa-gcodeviewer.exe >nul || GOTO :END
-    start prusa-gcodeviewer.exe
 ) ELSE IF "%PS_RUN%" EQU "custom" (
     icacls %PS_CUSTOM_BAT% >nul || GOTO :END
     CALL %PS_CUSTOM_BAT%

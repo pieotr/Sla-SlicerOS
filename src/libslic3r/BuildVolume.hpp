@@ -20,9 +20,8 @@ struct indexed_triangle_set;
 
 namespace Slic3r {
 
-struct GCodeProcessorResult;
 
-// For collision detection of objects and G-code (extrusion paths) against the build volume.
+// For collision detection of objects against the build volume.
 class BuildVolume
 {
 public:
@@ -94,14 +93,10 @@ public:
     // Called for a rectangular bed:
     ObjectState  volume_state_bbox(BoundingBoxf3 volume_bbox, bool ignore_bottom, int* bed_idx) const;
 
-    // 2) Test called on G-code paths.
+    // 2) Test called on final sliced geometry.
     // Using BedEpsilon for all tests.
     static constexpr const double BedEpsilon = 3. * EPSILON;
-    // Called on final G-code paths.
-    //FIXME The test does not take the thickness of the extrudates into account!
-#ifndef SLIC3R_SLA_ONLY
-    bool         all_paths_inside(const GCodeProcessorResult& paths, const BoundingBoxf3& paths_bbox, bool ignore_bottom = true) const;
-#endif // SLIC3R_SLA_ONLY
+    // Called on final sliced geometry.
 
     const std::pair<std::vector<Vec2d>, std::vector<Vec2d>>& top_bottom_convex_hull_decomposition_scene() const { return m_top_bottom_convex_hull_decomposition_scene; }
     const std::pair<std::vector<Vec2d>, std::vector<Vec2d>>& top_bottom_convex_hull_decomposition_bed() const { return m_top_bottom_convex_hull_decomposition_bed; }

@@ -23,8 +23,6 @@
 
 
 
-#define GCODEVIEWER_APP_NAME "PrusaSlicer G-code Viewer"
-#define GCODEVIEWER_APP_KEY  "PrusaSlicerGcodeViewer"
 
 // this needs to be included early for MSVC (listing it in Build.PL is not enough)
 #include <memory>
@@ -56,7 +54,7 @@
 
 using coord_t = 
 #if 1
-// Saves around 32% RAM after slicing step, 6.7% after G-code export (tested on PrusaSlicer 2.2.0 final).
+// Saves around 32% RAM after slicing step, 6.7% after export (tested on PrusaSlicer 2.2.0 final).
     int32_t;
 #else
     //FIXME At least FillRectilinear2 and std::boost Voronoi require coord_t to be 32bit.
@@ -77,14 +75,6 @@ static constexpr double EPSILON = 1e-4;
 // with int64_t we don't have to worry anymore about the size of the int.
 static constexpr double SCALING_FACTOR = 0.000001;
 static constexpr double PI = 3.141592653589793238;
-// When extruding a closed loop, the loop is interrupted and shortened a bit to reduce the seam.
-static constexpr double LOOP_CLIPPING_LENGTH_OVER_NOZZLE_DIAMETER = 0.15;
-// Maximum perimeter length for the loop to apply the small perimeter speed. 
-#define                 SMALL_PERIMETER_LENGTH  ((6.5 / SCALING_FACTOR) * 2 * PI)
-static constexpr double INSET_OVERLAP_TOLERANCE = 0.4;
-// 3mm ring around the top / bottom / bridging areas.
-//FIXME This is quite a lot.
-static constexpr double EXTERNAL_INFILL_MARGIN = 3.;
 //FIXME Better to use an inline function with an explicit return type.
 //inline coord_t scale_(coordf_t v) { return coord_t(floor(v / SCALING_FACTOR + 0.5f)); }
 #define scale_(val) ((val) / SCALING_FACTOR)
@@ -124,7 +114,7 @@ enum Axis {
 	E,
 	F,
 	NUM_AXES,
-	// For the GCodeReader to mark a parsed axis, which is not in "XYZEF", it was parsed correctly.
+	// Marks an axis that is not one of X, Y, Z.
 	UNKNOWN_AXIS = NUM_AXES,
 	NUM_AXES_WITH_UNKNOWN,
 };

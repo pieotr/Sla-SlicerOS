@@ -1261,15 +1261,15 @@ StreamKernel infill_kernel(const InfillParams &p, const StreamLayout &l)
         long long acc = rel(idx);
         if (thickness_um > acc) {
             for (long fl = long(idx) - 1; acc <= thickness_um && fl >= 0; --fl) {
-                const Mask &other = *fetch(size_t(fl));
-                for (size_t k = 0; k < surface.px.size(); ++k) surface.px[k] &= other.px[k];
+                const std::shared_ptr<const Mask> other = fetch(size_t(fl)); // keep the layer alive: the cache may evict it meanwhile
+                for (size_t k = 0; k < surface.px.size(); ++k) surface.px[k] &= other->px[k];
                 acc += z_um[size_t(fl) + 1] - z_um[size_t(fl)];
             }
             if (acc <= thickness_um) return in; // not enough floor: leave the layer solid
             acc = rel(idx);
             for (size_t cl = idx + 1; acc <= thickness_um && cl < count; ++cl) {
-                const Mask &other = *fetch(cl);
-                for (size_t k = 0; k < surface.px.size(); ++k) surface.px[k] &= other.px[k];
+                const std::shared_ptr<const Mask> other = fetch(cl);
+                for (size_t k = 0; k < surface.px.size(); ++k) surface.px[k] &= other->px[k];
                 acc += z_um[cl] - z_um[cl - 1];
             }
             if (acc <= thickness_um) return in;

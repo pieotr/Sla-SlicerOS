@@ -3,7 +3,7 @@
 #ifndef SLIC3R_SVGX_FILE_HPP
 #define SLIC3R_SVGX_FILE_HPP
 #include "SVGXContourPacket.hpp"
-#include "libslic3r/GCode/ThumbnailData.hpp"
+#include "libslic3r/Thumbnails/ThumbnailData.hpp"
 #include <fstream>
 #include <iomanip>
 #include <locale>

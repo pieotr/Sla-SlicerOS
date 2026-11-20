@@ -17,7 +17,6 @@ class Print;
 
 extern bool s_reload_preview_after_switching_beds;
 extern bool s_beds_just_switched;
-extern bool s_beds_switched_since_last_gcode_load;
 
 namespace BedsGrid {
 using GridCoords = Vec2crd;
@@ -92,14 +91,7 @@ public:
 							     {m_build_volume_bb.max.x(), m_build_volume_bb.max.y()}); }
         Vec2d   bed_gap() const;
 	Vec2crd get_bed_gap() const;
-#ifndef SLIC3R_SLA_ONLY
-	void   ensure_wipe_towers_on_beds(Model& model, const std::vector<std::unique_ptr<Print>>& prints);
-#endif
 
-	void   start_autoslice(std::function<void(int,bool)>);
-	bool   stop_autoslice(bool restore_original);
-	bool   is_autoslicing() const { return m_autoslicing; }
-	void   autoslice_next_bed();
 
 private:
 	bool   is_instance_on_bed(const ObjectID id, const int bed_index) const;
@@ -116,8 +108,6 @@ private:
 	bool m_legacy_layout = false;
 	bool m_loading_project = false;
 
-	bool m_autoslicing = false;
-	int  m_autoslicing_original_bed = 0;
 	std::function<void(int, bool)> m_select_bed_fn;
 };
 

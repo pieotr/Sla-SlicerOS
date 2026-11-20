@@ -33,7 +33,7 @@
 #include "SLA/SupportPointGenerator.hpp" // SupportPointGeneratorData
 #include "Point.hpp"
 #include "Format/SLAArchiveWriter.hpp"
-#include "libslic3r/GCode/ThumbnailData.hpp"
+#include "libslic3r/Thumbnails/ThumbnailData.hpp"
 #include "libslic3r/CSGMesh/CSGMesh.hpp"
 #include "libslic3r/MeshBoolean.hpp"
 #include "libslic3r/OpenVDBUtils.hpp"
@@ -151,7 +151,7 @@ public:
         bool operator==(const Instance &rhs) const { return this->instance_id == rhs.instance_id && this->shift == rhs.shift && this->rotation == rhs.rotation; }
         // ID of the corresponding ModelInstance.
         ObjectID instance_id;
-        // Slic3r::Point objects in scaled G-code coordinates
+        // Slic3r::Point objects in scaled coordinates
         Point 	shift;
         // Rotation along the Z axis, in radians.
         float 	rotation;

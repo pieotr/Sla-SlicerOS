@@ -72,7 +72,7 @@ public:
 
     enum EType : unsigned char
     {
-        // Stable serialized IDs; unavailable tools keep empty registry slots.
+        // In-memory IDs (undo/redo snapshots only); the order of the remaining tools is unchanged.
         Move = 0,
         Scale = 1,
         Rotate = 2,
@@ -80,15 +80,11 @@ public:
         Cut = 4,
         Hollow = 5,
         SlaSupports = 6,
-        FdmSupports = 7,
-        Seam = 8,
-        FuzzySkin = 9,
-        MmSegmentation = 10,
-        Measure = 11,
-        Emboss = 12,
-        Svg = 13,
-        Simplify = 14,
-        Undefined = 15
+        Measure = 7,
+        Emboss = 8,
+        Svg = 9,
+        Simplify = 10,
+        Undefined = 11
     };
 
 private:
@@ -224,7 +220,6 @@ public:
     bool is_hiding_instances() const;
 
     void render_current_gizmo() const;
-    void render_painter_gizmo();
 
     void render_overlay();
 

@@ -71,7 +71,11 @@ def main():
     # NOTE: 'Back to 3D' below was the modal editor's 'Close' button before the editor became a workspace view.
     def export_generated(dialog, name):
         choices = collect(dialog, 'combo box')
-        assert len(choices) >= 4, 'Missing brush, zoom, operation or generated export formats'
+        # wave 33: the brush/eraser/shape/tip drop-downs are icon toggle buttons; zoom, range operation and the
+        # export format remain combo boxes
+        from toolbuttons import tool_button
+        assert all(tool_button(dialog, name, 5) for name in ('Brush', 'Eraser', 'Freehand', 'Round brush')), 'Missing brush tool buttons'
+        assert len(choices) >= 3, 'Missing zoom, operation or generated export formats'
         format_combo = next((c for c in choices if c.get_name() == 'Layer export format'), choices[-1])
         formats = format_combo.get_selection_iface()
         option = find(format_combo, lambda n: n.get_role_name() in ('menu item', 'list item') and

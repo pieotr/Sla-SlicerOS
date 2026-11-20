@@ -9,18 +9,18 @@ void set_dataview_accessible_name(wxWindow *view, const char *name)
     set_accessible_name(view, wxString::FromUTF8(name), wxString(), AccessibleRole::Default, true);
 }
 // ---- Layer issue detection helpers (UI independent) ----------------------
-const char *issue_type_label(sla::LayerIssue::Type type)
+wxString issue_type_label(sla::LayerIssue::Type type)
 {
     switch (type) {
-    case sla::LayerIssue::Type::Island:        return "Island";
-    case sla::LayerIssue::Type::Overhang:      return "Overhang";
-    case sla::LayerIssue::Type::ResinTrap:     return "Resin trap";
-    case sla::LayerIssue::Type::SuctionCup:    return "Suction cup";
-    case sla::LayerIssue::Type::TouchingBound: return "Touching bound";
-    case sla::LayerIssue::Type::PrintHeight:   return "Print height";
-    case sla::LayerIssue::Type::EmptyLayer:    return "Empty layer";
+    case sla::LayerIssue::Type::Island:        return _L("Island");
+    case sla::LayerIssue::Type::Overhang:      return _L("Overhang");
+    case sla::LayerIssue::Type::ResinTrap:     return _L("Resin trap");
+    case sla::LayerIssue::Type::SuctionCup:    return _L("Suction cup");
+    case sla::LayerIssue::Type::TouchingBound: return _L("Touching bound");
+    case sla::LayerIssue::Type::PrintHeight:   return _L("Print height");
+    case sla::LayerIssue::Type::EmptyLayer:    return _L("Empty layer");
     }
-    return "?";
+    return wxString("?");
 }
 // Z of the top of every layer, mm. Formats without per-layer Z fall back to a
 // constant pitch; that only affects the suction-cup height rule and print height.

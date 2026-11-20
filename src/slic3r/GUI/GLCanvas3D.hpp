@@ -15,17 +15,10 @@
 #include "Event.hpp"
 #include "Selection.hpp"
 #include "Gizmos/GLGizmosManager.hpp"
-#include "GUI_ObjectLayers.hpp"
 #include "GLSelectionRectangle.hpp"
 #include "MeshUtils.hpp"
-#ifndef SLIC3R_SLA_ONLY
-#include "libslic3r/GCode/GCodeProcessor.hpp"
-#endif // SLIC3R_SLA_ONLY
 #include "3DScene.hpp"
 #include "GLModel.hpp"
-#ifndef SLIC3R_SLA_ONLY
-#include "GCodeViewer.hpp"
-#endif
 #include "Camera.hpp"
 #include "SceneRaycaster.hpp"
 #include "GUI_Utils.hpp"
@@ -33,7 +26,6 @@
 #include <arrange-wrapper/ArrangeSettingsDb_AppCfg.hpp>
 #include "ArrangeSettingsDialogImgui.hpp"
 
-#include "libslic3r/Slicing.hpp"
 
 #include <float.h>
 
@@ -62,9 +54,7 @@ class ModelObject;
 class ModelInstance;
 class PrintObject;
 class Print;
-struct GCodeProcessorResult;
 class SLAPrint;
-namespace CustomGCode { struct Item; }
 
 namespace GUI {
 
@@ -159,8 +149,6 @@ template <size_t N> using Vec2dsEvent = ArrayEvent<Vec2d, N>;
 using Vec3dEvent = Event<Vec3d>;
 template <size_t N> using Vec3dsEvent = ArrayEvent<Vec3d, N>;
 
-using HeightProfileSmoothEvent = Event<HeightProfileSmoothingParams>;
-
 wxDECLARE_EVENT(EVT_GLCANVAS_SCHEDULE_BACKGROUND_PROCESS, SimpleEvent);
 wxDECLARE_EVENT(EVT_GLCANVAS_RIGHT_CLICK, RBtnEvent);
 wxDECLARE_EVENT(EVT_GLCANVAS_REMOVE_OBJECT, SimpleEvent);
@@ -171,7 +159,6 @@ wxDECLARE_EVENT(EVT_GLCANVAS_QUESTION_MARK, SimpleEvent);
 wxDECLARE_EVENT(EVT_GLCANVAS_INCREASE_INSTANCES, Event<int>); // data: +1 => increase, -1 => decrease
 wxDECLARE_EVENT(EVT_GLCANVAS_INSTANCE_MOVED, SimpleEvent);
 wxDECLARE_EVENT(EVT_GLCANVAS_FORCE_UPDATE, SimpleEvent);
-wxDECLARE_EVENT(EVT_GLCANVAS_WIPETOWER_TOUCHED, SimpleEvent);
 wxDECLARE_EVENT(EVT_GLCANVAS_INSTANCE_ROTATED, SimpleEvent);
 wxDECLARE_EVENT(EVT_GLCANVAS_RESET_SKEW, SimpleEvent);
 wxDECLARE_EVENT(EVT_GLCANVAS_INSTANCE_SCALED, SimpleEvent);
@@ -187,9 +174,6 @@ wxDECLARE_EVENT(EVT_GLCANVAS_SLIDERS_MANIPULATION, wxKeyEvent);
 wxDECLARE_EVENT(EVT_GLCANVAS_UNDO, SimpleEvent);
 wxDECLARE_EVENT(EVT_GLCANVAS_REDO, SimpleEvent);
 wxDECLARE_EVENT(EVT_GLCANVAS_COLLAPSE_SIDEBAR, SimpleEvent);
-wxDECLARE_EVENT(EVT_GLCANVAS_RESET_LAYER_HEIGHT_PROFILE, SimpleEvent);
-wxDECLARE_EVENT(EVT_GLCANVAS_ADAPTIVE_LAYER_HEIGHT_PROFILE, Event<float>);
-wxDECLARE_EVENT(EVT_GLCANVAS_SMOOTH_LAYER_HEIGHT_PROFILE, HeightProfileSmoothEvent);
 wxDECLARE_EVENT(EVT_GLCANVAS_RELOAD_FROM_DISK, SimpleEvent);
 wxDECLARE_EVENT(EVT_GLCANVAS_RENDER_TIMER, wxTimerEvent/*RenderTimerEvent*/);
 wxDECLARE_EVENT(EVT_GLCANVAS_TOOLBAR_HIGHLIGHTER_TIMER, wxTimerEvent);
@@ -198,127 +182,6 @@ wxDECLARE_EVENT(EVT_GLCANVAS_GIZMO_HIGHLIGHTER_TIMER, wxTimerEvent);
 class GLCanvas3D
 {
     static const double DefaultCameraZoomToBoxMarginFactor;
-
-    class LayersEditing
-    {
-    public:
-        enum EState : unsigned char
-        {
-            Unknown,
-            Editing,
-            Completed,
-            Paused,
-            Num_States
-        };
-
-        static const float THICKNESS_BAR_WIDTH;
-
-    private:
-        bool                        m_enabled{ false };
-        unsigned int                m_z_texture_id{ 0 };
-        // Not owned by LayersEditing.
-        const DynamicPrintConfig   *m_config{ nullptr };
-        // ModelObject for the currently selected object (Model::objects[last_object_id]).
-        const ModelObject          *m_model_object{ nullptr };
-        // Maximum z of the currently selected object (Model::objects[last_object_id]).
-        float                       m_object_max_z{ 0.0f };
-        // Owned by LayersEditing.
-        SlicingParameters           *m_slicing_parameters{ nullptr };
-        std::vector<double>         m_layer_height_profile;
-        bool                        m_layer_height_profile_modified{ false };
-        // Shrinkage compensation to apply when we need to use object_max_z with Z compensation.
-        Vec3d                       m_shrinkage_compensation{ Vec3d::Ones() };
-
-        mutable float               m_adaptive_quality{ 0.5f };
-        mutable HeightProfileSmoothingParams m_smooth_params;
-        
-        static float                s_overlay_window_width;
-
-        struct LayersTexture
-        {
-            // Texture data
-            std::vector<char>   data;
-            // Width of the texture, top level.
-            size_t              width{ 0 };
-            // Height of the texture, top level.
-            size_t              height{ 0 };
-            // For how many levels of detail is the data allocated?
-            size_t              levels{ 0 };
-            // Number of texture cells allocated for the height texture.
-            size_t              cells{ 0 };
-            // Does it need to be refreshed?
-            bool                valid{ false };
-        };
-        LayersTexture   m_layers_texture;
-
-    public:
-        EState state{ Unknown };
-        float band_width{ 2.0f };
-        float strength{ 0.005f };
-        int last_object_id{ -1 };
-        float last_z{ 0.0f };
-        LayerHeightEditActionType last_action{ LAYER_HEIGHT_EDIT_ACTION_INCREASE };
-
-        struct Profile
-        {
-            GLModel baseline;
-            GLModel profile;
-            GLModel background;
-            struct OldCanvasWidth
-            {
-                float background{ 0.0f };
-                float baseline{ 0.0f };
-                float profile{ 0.0f };
-            };
-            OldCanvasWidth old_canvas_width;
-            std::vector<double> old_layer_height_profile;
-        };
-        Profile m_profile;
-
-        LayersEditing() = default;
-        ~LayersEditing();
-
-        void init();
-
-        void set_config(const DynamicPrintConfig* config);
-        void select_object(const Model &model, int object_id);
-
-        bool is_allowed() const;
-
-        bool is_enabled() const { return m_enabled; }
-        void set_enabled(bool enabled) { m_enabled = is_allowed() && enabled; }
-
-        void render_overlay(const GLCanvas3D& canvas);
-        void render_volumes(const GLCanvas3D& canvas, const GLVolumeCollection& volumes);
-
-		void adjust_layer_height_profile();
-		void accept_changes(GLCanvas3D& canvas);
-        void reset_layer_height_profile(GLCanvas3D& canvas);
-        void adaptive_layer_height_profile(GLCanvas3D& canvas, float quality_factor);
-        void smooth_layer_height_profile(GLCanvas3D& canvas, const HeightProfileSmoothingParams& smoothing_params);
-
-        static float get_cursor_z_relative(const GLCanvas3D& canvas);
-        static bool bar_rect_contains(const GLCanvas3D& canvas, float x, float y);
-        static Rect get_bar_rect_screen(const GLCanvas3D& canvas);
-        static float get_overlay_window_width() { return LayersEditing::s_overlay_window_width; }
-
-        float object_max_z() const { return m_object_max_z; }
-
-        std::string get_tooltip(const GLCanvas3D& canvas) const;
-
-        std::pair<SlicingParameters, const std::vector<double>> get_layers_height_data();
-
-        void set_shrinkage_compensation(const Vec3d &shrinkage_compensation) { m_shrinkage_compensation = shrinkage_compensation; };
-
-    private:
-        bool is_initialized() const;
-        void generate_layer_height_texture();
-        void render_active_object_annotations(const GLCanvas3D& canvas);
-        void render_profile(const GLCanvas3D& canvas);
-        void update_slicing_parameters();
-
-        static float thickness_bar_width(const GLCanvas3D &canvas);        
-    };
 
     struct Mouse
     {
@@ -376,16 +239,9 @@ class GLCanvas3D
 
     enum class EWarning {
         ObjectOutside = 0,
-#ifndef SLIC3R_SLA_ONLY
-        ToolpathOutside = 1,
-#endif
         SlaSupportsOutside = 2,
         SomethingNotShown = 3,
         ObjectClashed = 4,
-#ifndef SLIC3R_SLA_ONLY
-        GCodeConflict = 5,
-        SequentialCollision = 6
-#endif
     };
 
     class RenderStats
@@ -508,8 +364,6 @@ private:
     std::unique_ptr<RetinaHelper> m_retina_helper;
 #endif
     bool m_in_render;
-    wxTimer m_timer;
-    LayersEditing m_layers_editing;
     Mouse m_mouse;
     GLGizmosManager m_gizmos;
     GLToolbar m_main_toolbar;
@@ -527,17 +381,9 @@ private:
     float m_bed_selector_current_height = 0.f;
 
     GLVolumeCollection m_volumes;
-#if SLIC3R_OPENGL_ES
-    std::vector<TriangleMesh> m_wipe_tower_meshes;
-#endif // SLIC3R_OPENGL_ES
-    std::array<std::optional<BoundingBoxf>, MAX_NUMBER_OF_BEDS> m_wipe_tower_bounding_boxes;
 
-#ifdef SLIC3R_SLA_ONLY
-    // Shared SLA preview UI state, independent of the FFF toolpath renderer.
+    // Shared SLA preview UI state, independent of the preview renderer.
     bool m_sla_legend_shown = true;
-#else
-    GCodeViewer m_gcode_viewer;
-#endif
 
     RenderTimer m_render_timer;
 
@@ -584,7 +430,6 @@ private:
 
     int m_imgui_undo_redo_hovered_pos{ -1 };
     int m_mouse_wheel{ 0 };
-    int m_selected_extruder;
 
     Labels m_labels;
     Tooltip m_tooltip;
@@ -623,9 +468,6 @@ private:
 
     ArrangeSettingsDb_AppCfg   m_arrange_settings_db;
     ArrangeSettingsDialogImgui m_arrange_settings_dialog;
-
-    // used to show layers times on the layers slider when pre-gcode view is active
-    std::vector<float> m_gcode_layers_times_cache;
 
 public:
 
@@ -736,18 +578,6 @@ private:
     bool check_volumes_outside_state(GLVolumeCollection& volumes, ModelInstanceEPrintVolumeState* out_state, bool selection_only = true) const;
 
 public:
-#ifndef SLIC3R_SLA_ONLY
-    void init_gcode_viewer() { m_gcode_viewer.init(); }
-    void reset_gcode_toolpaths() { m_gcode_viewer.reset(); }
-    const GCodeViewer::SequentialView& get_gcode_sequential_view() const { return m_gcode_viewer.get_sequential_view(); }
-    void update_gcode_sequential_view_current(unsigned int first, unsigned int last) { m_gcode_viewer.update_sequential_view_current(first, last); }
-    const libvgcode::Interval& get_gcode_view_full_range() const { return m_gcode_viewer.get_gcode_view_full_range(); }
-    const libvgcode::Interval& get_gcode_view_enabled_range() const { return m_gcode_viewer.get_gcode_view_enabled_range(); }
-    const libvgcode::Interval& get_gcode_view_visible_range() const { return m_gcode_viewer.get_gcode_view_visible_range(); }
-    const libvgcode::PathVertex& get_gcode_vertex_at(size_t id) const { return m_gcode_viewer.get_gcode_vertex_at(id); }
-#endif
-
-    std::pair<std::optional<std::unique_ptr<GLModel>>, bool> get_current_marker_model() const;
 
     void toggle_sla_auxiliaries_visibility(bool visible, const ModelObject* mo = nullptr, int instance_idx = -1);
     void toggle_model_objects_visibility(bool visible, const ModelObject* mo = nullptr, int instance_idx = -1, const ModelVolume* mv = nullptr);
@@ -793,16 +623,8 @@ public:
     BoundingBoxf3 volumes_bounding_box() const;
     BoundingBoxf3 scene_bounding_box() const;
 
-    bool is_layers_editing_enabled() const { return m_layers_editing.is_enabled(); }
-    bool is_layers_editing_allowed() const { return m_layers_editing.is_allowed(); }
-
-    void reset_layer_height_profile();
-    void adaptive_layer_height_profile(float quality_factor);
-    void smooth_layer_height_profile(const HeightProfileSmoothingParams& smoothing_params);
-
     bool is_reload_delayed() const { return m_reload_delayed; }
 
-    void enable_layers_editing(bool enable);
     void enable_picking(bool enable) { m_picking_enabled = enable; }
     void enable_moving(bool enable) { m_moving_enabled = enable; }
     void enable_gizmos(bool enable) { m_gizmos.set_enabled(enable); }
@@ -817,14 +639,10 @@ public:
     void zoom_to_bed();
     void zoom_to_volumes();
     void zoom_to_selection();
-#ifndef SLIC3R_SLA_ONLY
-    void zoom_to_gcode();
-#endif
     void select_view(const std::string& direction);
 
     PrinterTechnology current_printer_technology() const;
 
-    void update_volumes_colors_by_extruder();
 
     bool is_dragging() const { return m_gizmos.is_dragging() || (m_moving && !m_mouse.scene_position.isApprox(m_mouse.drag.start_position_3D)); }
 
@@ -839,19 +657,7 @@ public:
     void delete_selected() { m_selection.erase(); }
     void ensure_on_bed(unsigned int object_idx, bool allow_negative_z);
 
-#ifndef SLIC3R_SLA_ONLY
-    std::vector<double> get_gcode_layers_zs() const { return m_gcode_viewer.get_layers_zs(); }
-    std::vector<float> get_gcode_layers_times() const { return m_gcode_viewer.get_layers_times(); }
-#endif
-    const std::vector<float>& get_gcode_layers_times_cache() const { return m_gcode_layers_times_cache; }
-    void reset_gcode_layers_times_cache() { m_gcode_layers_times_cache.clear(); }
     void set_volumes_z_range(const std::array<double, 2>& range) { m_volumes.set_range(range[0] - 1e-6, range[1] + 1e-6); }
-#ifndef SLIC3R_SLA_ONLY
-    void set_toolpaths_z_range(const std::array<unsigned int, 2>& range);
-#endif
-#ifndef SLIC3R_SLA_ONLY
-    size_t get_gcode_extruders_count() { return m_gcode_viewer.get_extruders_count(); }
-#endif
 
     std::vector<int> load_object(const ModelObject& model_object, int obj_idx, std::vector<int> instance_idxs);
     std::vector<int> load_object(const Model& model, int obj_idx);
@@ -860,24 +666,7 @@ public:
 
     void reload_scene(bool refresh_immediately, bool force_full_scene_refresh = false);
 
-#ifndef SLIC3R_SLA_ONLY
-    void load_gcode_shells();
-    void load_gcode_preview(const GCodeProcessorResult& gcode_result, const std::vector<std::string>& str_tool_colors,
-        const std::vector<std::string>& str_color_print_colors);
-#endif
-#ifndef SLIC3R_SLA_ONLY
-    void set_gcode_view_type(libvgcode::EViewType type) { return m_gcode_viewer.set_view_type(type); }
-    libvgcode::EViewType get_gcode_view_type() const { return m_gcode_viewer.get_view_type(); }
-    void enable_gcode_view_type_cache_load(bool enable) { m_gcode_viewer.enable_view_type_cache_load(enable); }
-    void enable_gcode_view_type_cache_write(bool enable) { m_gcode_viewer.enable_view_type_cache_write(enable); }
-    bool is_gcode_view_type_cache_load_enabled() const { return m_gcode_viewer.is_view_type_cache_load_enabled(); }
-    bool is_gcode_view_type_cache_write_enabled() const { return m_gcode_viewer.is_view_type_cache_write_enabled(); }
-#endif
 
-#ifndef SLIC3R_SLA_ONLY
-    void load_preview(const std::vector<std::string>& str_tool_colors, const std::vector<std::string>& str_color_print_colors,
-        const std::vector<CustomGCode::Item>& color_print_values);
-#endif
     void load_sla_preview();
     void bind_event_handlers();
     void unbind_event_handlers();
@@ -887,7 +676,6 @@ public:
     void on_char(wxKeyEvent& evt);
     void on_key(wxKeyEvent& evt);
     void on_mouse_wheel(wxMouseEvent& evt);
-    void on_timer(wxTimerEvent& evt);
     void on_render_timer(wxTimerEvent& evt);
     void on_mouse(wxMouseEvent& evt);
     void on_paint(wxPaintEvent& evt);
@@ -915,38 +703,11 @@ public:
     void reset_all_gizmos() { m_gizmos.reset_all_states(); }
 
     void handle_sidebar_focus_event(const std::string& opt_key, bool focus_on);
-    void handle_layers_data_focus_event(const t_layer_height_range range, const EditorType type);
 
     void update_ui_from_settings();
 
     int get_move_volume_id() const { return m_mouse.drag.move_volume_idx; }
     int get_first_hover_volume_idx() const { return m_hover_volume_idxs.empty() ? -1 : m_hover_volume_idxs.front(); }
-    void set_selected_extruder(int extruder) { m_selected_extruder = extruder;}
-
-    class WipeTowerInfo {
-    protected:
-        Vec2d m_pos = {NaNd, NaNd};
-        double m_rotation = 0.;
-        BoundingBoxf m_bb;
-        int m_bed_index{0};
-        friend class GLCanvas3D;
-
-    public:
-        inline operator bool() const {
-            return !std::isnan(m_pos.x()) && !std::isnan(m_pos.y());
-        }
-
-        inline const Vec2d& pos() const { return m_pos; }
-        inline double rotation() const { return m_rotation; }
-        inline const Vec2d bb_size() const { return m_bb.size(); }
-        inline const BoundingBoxf& bounding_box() const { return m_bb; }
-        inline const int bed_index() const { return m_bed_index; }
-
-        static void apply_wipe_tower(Vec2d pos, double rot, int bed_index);
-    };
-
-    std::vector<WipeTowerInfo> get_wipe_tower_infos() const;
-
     // Returns the view ray line, in world coordinate, at the given mouse position.
     Linef3 mouse_ray(const Point& mouse_pos);
 
@@ -967,10 +728,6 @@ public:
     void force_main_toolbar_right_action(int item_id) { m_main_toolbar.force_right_action(item_id, *this); }
     void update_tooltip_for_settings_item_in_main_toolbar();
 
-#ifndef SLIC3R_SLA_ONLY
-    bool has_toolpaths_to_export() const { return m_gcode_viewer.can_export_toolpaths(); }
-    void export_toolpaths_to_obj(const char* filename) const { m_gcode_viewer.export_toolpaths_to_obj(filename); }
-#endif
 
     void mouse_up_cleanup();
 
@@ -998,9 +755,6 @@ public:
 #endif
     }
 
-#ifndef SLIC3R_SLA_ONLY
-    const Print* fff_print() const;
-#endif
     const SLAPrint* sla_print() const;
 
     void reset_old_size() { m_old_size = { 0, 0 }; }
@@ -1008,8 +762,6 @@ public:
     bool is_object_sinking(int object_idx) const;
 
     void apply_retina_scale(Vec2d &screen_coordinate) const;
-
-    std::pair<SlicingParameters, const std::vector<double>> get_layers_height_data(int object_id);
 
     void detect_sla_view_type();
     void set_sla_view_type(ESLAViewType type);
@@ -1042,10 +794,6 @@ private:
     void _render_bed_axes();
     void _render_bed_for_picking(const Transform3d& view_matrix, const Transform3d& projection_matrix, bool bottom);
     void _render_objects(GLVolumeCollection::ERenderType type);
-#ifndef SLIC3R_SLA_ONLY
-    void _render_gcode() { m_gcode_viewer.render(); }
-    void _render_gcode_cog() { m_gcode_viewer.render_cog(); }
-#endif
     void _render_selection();
     bool check_toolbar_icon_size(float init_scale, float& new_scale_to_save, bool is_custom, int counter = 3);
 #if ENABLE_RENDER_SELECTION_CENTER
@@ -1079,17 +827,12 @@ private:
 
     void _update_volumes_hover_state();
 
-    void _perform_layer_editing_action(wxMouseEvent* evt = nullptr);
-
     // Convert the screen space coordinate to an object space coordinate.
     // If the Z screen space coordinate is not provided, a depth buffer value is substituted.
     Vec3d _mouse_to_3d(const Point& mouse_pos, const float* z = nullptr, bool use_ortho = false);
 
     // Convert the screen space coordinate to world coordinate on the bed.
     Vec3d _mouse_to_bed_3d(const Point& mouse_pos);
-
-    void _start_timer() { m_timer.Start(100, wxTIMER_CONTINUOUS); }
-    void _stop_timer() { m_timer.Stop(); }
 
     // Load SLA objects and support structures for objects, for which the slaposSliceSupports step has been finished.
   	void _load_sla_shells();
@@ -1100,7 +843,6 @@ private:
     void _set_warning_notification(EWarning warning, bool state);
 
     std::pair<bool, const GLVolume*> _is_any_volume_outside() const;
-    bool _is_sequential_print_enabled() const;
 
     // updates the selection from the content of m_hover_volume_idxs
     void _update_selection_from_hover();
@@ -1108,12 +850,6 @@ private:
     bool _deactivate_undo_redo_toolbar_items();
     bool _deactivate_collapse_toolbar_items();
     bool _deactivate_arrange_menu();
-
-    float get_overlay_window_width() { return LayersEditing::get_overlay_window_width(); }
-
-#if ENABLE_BINARIZED_GCODE_DEBUG_WINDOW
-    void show_binary_gcode_debug_window();
-#endif // ENABLE_BINARIZED_GCODE_DEBUG_WINDOW
 };
 
 const ModelVolume *get_model_volume(const GLVolume &v, const Model &model);

@@ -18,36 +18,22 @@ endif ()
 
 set(OpenVDBUtils_SOURCES "")
 if (TARGET OpenVDB::openvdb)
-    set(OpenVDBUtils_SOURCES OpenVDBUtils.cpp OpenVDBUtils.hpp OpenVDBUtilsLegacy.hpp)
+    set(OpenVDBUtils_SOURCES OpenVDBUtils.cpp OpenVDBUtils.hpp)
 endif()
 
-find_package(LibBGCode REQUIRED COMPONENTS Convert)
-slic3r_remap_configs(LibBGCode::bgcode_core RelWithDebInfo Release)
-slic3r_remap_configs(LibBGCode::bgcode_binarize RelWithDebInfo Release)
-slic3r_remap_configs(LibBGCode::bgcode_convert RelWithDebInfo Release)
 
 set(SLIC3R_SOURCES
     pchheader.cpp
     pchheader.hpp
-    AStar.hpp
     AABBTreeIndirect.hpp
     AABBTreeLines.hpp
     AABBMesh.hpp
     AABBMesh.cpp
-    ArrangeHelper.cpp
-    ArrangeHelper.hpp
-    Algorithm/LineSegmentation/LineSegmentation.cpp
-    Algorithm/LineSegmentation/LineSegmentation.hpp
-    Algorithm/PathSorting.hpp
     Algorithm/RegionExpansion.hpp
     Algorithm/RegionExpansion.cpp
     AnyPtr.hpp
     BoundingBox.cpp
     BoundingBox.hpp
-    BridgeDetector.cpp
-    BridgeDetector.hpp
-    Brim.cpp
-    Brim.hpp
     BuildVolume.cpp
     BuildVolume.hpp
     BoostAdapter.hpp
@@ -80,56 +66,7 @@ set(SLIC3R_SOURCES
     ExPolygonSerialize.hpp
     ExPolygonsIndex.cpp
     ExPolygonsIndex.hpp
-    Extruder.cpp
-    Extruder.hpp
-    ExtrusionEntity.cpp
-    ExtrusionEntity.hpp
-    ExtrusionEntityCollection.cpp
-    ExtrusionEntityCollection.hpp
-    ExtrusionRole.cpp
-    ExtrusionRole.hpp
-    ExtrusionSimulator.cpp
-    ExtrusionSimulator.hpp
-    Feature/Interlocking/InterlockingGenerator.cpp
-    Feature/Interlocking/InterlockingGenerator.hpp
-    Feature/Interlocking/VoxelUtils.cpp
-    Feature/Interlocking/VoxelUtils.hpp
     FileParserError.hpp
-    Feature/FuzzySkin/FuzzySkin.cpp
-    Feature/FuzzySkin/FuzzySkin.hpp
-    Fill/Fill.cpp
-    Fill/Fill3DHoneycomb.cpp
-    Fill/Fill3DHoneycomb.hpp
-    Fill/FillAdaptive.cpp
-    Fill/FillAdaptive.hpp
-    Fill/FillBase.cpp
-    Fill/FillBase.hpp
-    Fill/FillConcentric.cpp
-    Fill/FillConcentric.hpp
-    Fill/FillEnsuring.cpp
-    Fill/FillEnsuring.hpp
-    Fill/FillHoneycomb.cpp
-    Fill/FillHoneycomb.hpp
-    Fill/FillGyroid.cpp
-    Fill/FillGyroid.hpp
-    Fill/FillPlanePath.cpp
-    Fill/FillPlanePath.hpp
-    Fill/FillLine.cpp
-    Fill/FillLine.hpp
-    Fill/FillLightning.cpp
-    Fill/FillLightning.hpp
-    Fill/Lightning/DistanceField.cpp
-    Fill/Lightning/DistanceField.hpp
-    Fill/Lightning/Generator.cpp
-    Fill/Lightning/Generator.hpp
-    Fill/Lightning/Layer.cpp
-    Fill/Lightning/Layer.hpp
-    Fill/Lightning/TreeNode.cpp
-    Fill/Lightning/TreeNode.hpp
-    Fill/FillRectilinear.cpp
-    Fill/FillRectilinear.hpp
-    Flow.cpp
-    Flow.hpp
     format.hpp
     Format/3mf.cpp
     Format/3mf.hpp
@@ -204,81 +141,16 @@ set(SLIC3R_SOURCES
     Format/SLAArchiveFormatRegistry.cpp
     Format/PrintRequest.hpp
     Format/PrintRequest.cpp
-    GCode/ThumbnailData.cpp
-    GCode/ThumbnailData.hpp
-    GCode/Thumbnails.cpp
-    GCode/Thumbnails.hpp
-    GCode/ConflictChecker.cpp
-    GCode/ConflictChecker.hpp
-    GCode/CoolingBuffer.hpp
-    GCode/ExtrusionProcessor.cpp
-    GCode/ExtrusionProcessor.hpp
-    GCode/FindReplace.cpp
-    GCode/FindReplace.hpp
-    GCode/LabelObjects.cpp
-    GCode/LabelObjects.hpp
-    GCode/GCodeWriter.cpp
-    GCode/GCodeWriter.hpp
-    GCode/PostProcessor.hpp
-    GCode/PressureEqualizer.hpp
-    GCode/PrintExtents.cpp
-    GCode/PrintExtents.hpp
-    GCode/RetractWhenCrossingPerimeters.cpp
-    GCode/RetractWhenCrossingPerimeters.hpp
-    GCode/SpiralVase.hpp
-    GCode/SeamPlacer.cpp
-    GCode/SeamPlacer.hpp
-    GCode/SeamChoice.cpp
-    GCode/SeamChoice.hpp
-    GCode/SeamPerimeters.cpp
-    GCode/SeamPerimeters.hpp
-    GCode/SeamShells.cpp
-    GCode/SeamShells.hpp
-    GCode/SeamGeometry.cpp
-    GCode/SeamGeometry.hpp
-    GCode/SeamAligned.cpp
-    GCode/SeamAligned.hpp
-    GCode/SeamRear.cpp
-    GCode/SeamRear.hpp
-    GCode/SeamRandom.cpp
-    GCode/SeamRandom.hpp
-    GCode/SeamPainting.cpp
-    GCode/SeamPainting.hpp
-    GCode/SeamScarf.cpp
-    GCode/SeamScarf.hpp
-    GCode/ModelVisibility.cpp
-    GCode/ModelVisibility.hpp
-    GCode/SmoothPath.cpp
-    GCode/SmoothPath.hpp
-    GCode/ToolOrdering.cpp
-    GCode/ToolOrdering.hpp
-    GCode/Wipe.cpp
-    GCode/Wipe.hpp
-    GCode/WipeTower.cpp
-    GCode/WipeTower.hpp
-    GCode/WipeTowerIntegration.hpp
-    GCode/GCodeProcessor.cpp
-    GCode/GCodeProcessor.hpp
-    GCode/AvoidCrossingPerimeters.cpp
-    GCode/AvoidCrossingPerimeters.hpp
-    GCode/Travels.cpp
-    GCode/Travels.hpp
-    GCode/ExtrusionOrder.hpp
-    GCode.hpp
-    GCodeReader.cpp
-    GCodeReader.hpp
-    # GCodeSender.cpp
-    # GCodeSender.hpp
+    Thumbnails/ThumbnailData.cpp
+    Thumbnails/ThumbnailData.hpp
+    Thumbnails/Thumbnails.cpp
+    Thumbnails/Thumbnails.hpp
     Geometry.cpp
     Geometry.hpp
-    Geometry/ArcWelder.cpp
-    Geometry/ArcWelder.hpp
-    Geometry/Bicubic.hpp
     Geometry/Circle.cpp
     Geometry/Circle.hpp
     Geometry/ConvexHull.cpp
     Geometry/ConvexHull.hpp
-    Geometry/Curves.hpp
     Geometry/MedialAxis.cpp
     Geometry/MedialAxis.hpp
     Geometry/Voronoi.hpp
@@ -287,15 +159,7 @@ set(SLIC3R_SOURCES
     Geometry/VoronoiUtils.hpp
     Geometry/VoronoiUtils.cpp
     Geometry/VoronoiVisualUtils.hpp
-    InfillAboveBridges.hpp
-    InfillAboveBridges.cpp
-    JumpPointSearch.cpp
-    JumpPointSearch.hpp
     KDTreeIndirect.hpp
-    Layer.cpp
-    Layer.hpp
-    LayerRegion.hpp
-    LayerRegion.cpp
     libslic3r.h
     "${CMAKE_CURRENT_BINARY_DIR}/libslic3r_version.h"
     Line.cpp
@@ -310,15 +174,11 @@ set(SLIC3R_SOURCES
     ModelProcessing.hpp
     FileReader.cpp
     FileReader.hpp
-    MultiMaterialSegmentation.cpp
-    MultiMaterialSegmentation.hpp
     MeshNormals.hpp
     MeshNormals.cpp
     Measure.hpp
     Measure.cpp
     MeasureUtils.hpp
-    CustomGCode.cpp
-    CustomGCode.hpp
     CustomParametersHandling.cpp
     CustomParametersHandling.hpp
     MultiPoint.cpp
@@ -330,8 +190,6 @@ set(SLIC3R_SOURCES
     NSVGUtils.hpp
     ObjectID.cpp
     ObjectID.hpp
-    PerimeterGenerator.cpp
-    PerimeterGenerator.hpp
     PlaceholderParser.cpp
     PlaceholderParser.hpp
     Platform.cpp
@@ -354,16 +212,10 @@ set(SLIC3R_SOURCES
     PrincipalComponents2D.cpp
     AppConfig.cpp
     AppConfig.hpp
-    Print.cpp
-    Print.hpp
-    PrintApply.cpp
     PrintBase.cpp
     PrintBase.hpp
     PrintConfig.cpp
     PrintConfig.hpp
-    PrintObject.cpp
-    PrintObjectSlice.cpp
-    PrintRegion.cpp
     PointGrid.hpp
     PNGReadWrite.hpp
     PNGReadWrite.cpp
@@ -378,37 +230,11 @@ set(SLIC3R_SOURCES
     SLAPrintSteps.cpp
     SLAPrintSteps.hpp
     SLAPrint.hpp
-    Slicing.cpp
-    Slicing.hpp
     SlicesToTriangleMesh.hpp
     SlicesToTriangleMesh.cpp
-    SlicingAdaptive.cpp
-    SlicingAdaptive.hpp
     Subdivide.cpp
     Subdivide.hpp
-    Support/SupportCommon.cpp
-    Support/SupportCommon.hpp
-    Support/SupportDebug.cpp
-    Support/SupportDebug.hpp
-    Support/SupportLayer.hpp
-    Support/SupportMaterial.cpp
-    Support/SupportMaterial.hpp
-    Support/SupportParameters.cpp
-    Support/SupportParameters.hpp
-    Support/OrganicSupport.cpp
-    Support/OrganicSupport.hpp
-    Support/TreeSupport.cpp
-    Support/TreeSupport.hpp
-    Support/TreeSupportCommon.cpp
-    Support/TreeSupportCommon.hpp
-    Support/TreeModelVolumes.cpp
-    Support/TreeModelVolumes.hpp
-    SupportSpotsGenerator.cpp
-    SupportSpotsGenerator.hpp
-    Surface.cpp
     Surface.hpp
-    SurfaceCollection.cpp
-    SurfaceCollection.hpp
     SurfaceMesh.hpp
     SVG.cpp
     SVG.hpp
@@ -430,12 +256,8 @@ set(SLIC3R_SOURCES
     Timer.hpp
     Thread.cpp
     Thread.hpp
-    TriangleSelector.cpp
-    TriangleSelector.hpp
     TriangleSetSampling.cpp
     TriangleSetSampling.hpp
-    TriangleSelectorWrapper.cpp
-    TriangleSelectorWrapper.hpp
     MTUtils.hpp
     Zipper.hpp
     Zipper.cpp
@@ -546,6 +368,12 @@ set(SLIC3R_SOURCES
     SLA/DefaultSupportTree.cpp
     SLA/BranchingTreeSLA.hpp
     SLA/BranchingTreeSLA.cpp
+    SLA/OrganicTreeSLA.hpp
+    SLA/OrganicTreeSLA.cpp
+    SLA/OrganicGrowthSLA.hpp
+    SLA/OrganicGrowthSLA.cpp
+    SLA/OrganicAvoidance.hpp
+    SLA/OrganicAvoidance.cpp
     SLA/ZCorrection.hpp
     SLA/ZCorrection.cpp    
     SLA/SupportIslands/EvaluateNeighbor.cpp
@@ -582,48 +410,11 @@ set(SLIC3R_SOURCES
     BranchingTree/BranchingTree.hpp
     BranchingTree/PointCloud.cpp
     BranchingTree/PointCloud.hpp
-    Arachne/BeadingStrategy/BeadingStrategy.hpp
-    Arachne/BeadingStrategy/BeadingStrategy.cpp
-    Arachne/BeadingStrategy/BeadingStrategyFactory.hpp
-    Arachne/BeadingStrategy/BeadingStrategyFactory.cpp
-    Arachne/BeadingStrategy/DistributedBeadingStrategy.hpp
-    Arachne/BeadingStrategy/DistributedBeadingStrategy.cpp
-    Arachne/BeadingStrategy/LimitedBeadingStrategy.hpp
-    Arachne/BeadingStrategy/LimitedBeadingStrategy.cpp
-    Arachne/BeadingStrategy/OuterWallInsetBeadingStrategy.hpp
-    Arachne/BeadingStrategy/OuterWallInsetBeadingStrategy.cpp
-    Arachne/BeadingStrategy/RedistributeBeadingStrategy.hpp
-    Arachne/BeadingStrategy/RedistributeBeadingStrategy.cpp
-    Arachne/BeadingStrategy/WideningBeadingStrategy.hpp
-    Arachne/BeadingStrategy/WideningBeadingStrategy.cpp
-    Arachne/utils/ExtrusionJunction.hpp
-    Arachne/utils/ExtrusionLine.hpp
-    Arachne/utils/ExtrusionLine.cpp
-    Arachne/utils/HalfEdge.hpp
-    Arachne/utils/HalfEdgeGraph.hpp
-    Arachne/utils/HalfEdgeNode.hpp
-    Arachne/utils/SparseGrid.hpp
-    Arachne/utils/SparsePointGrid.hpp
-    Arachne/utils/SparseLineGrid.hpp
-    Arachne/utils/SquareGrid.hpp
-    Arachne/utils/SquareGrid.cpp
     Arachne/utils/PolygonsPointIndex.hpp
     Arachne/utils/PolygonsSegmentIndex.hpp
-    Arachne/utils/PolylineStitcher.hpp
-    Arachne/utils/PolylineStitcher.cpp
     Geometry/Voronoi.cpp
     Geometry/VoronoiUtils.hpp
     Geometry/VoronoiUtils.cpp
-    Arachne/PerimeterOrder.hpp
-    Arachne/PerimeterOrder.cpp
-    Arachne/SkeletalTrapezoidation.hpp
-    Arachne/SkeletalTrapezoidation.cpp
-    Arachne/SkeletalTrapezoidationEdge.hpp
-    Arachne/SkeletalTrapezoidationGraph.hpp
-    Arachne/SkeletalTrapezoidationGraph.cpp
-    Arachne/SkeletalTrapezoidationJoint.hpp
-    Arachne/WallToolPaths.hpp
-    Arachne/WallToolPaths.cpp
     StaticMap.hpp
     Utils/DirectoriesUtils.hpp
     Utils/DirectoriesUtils.cpp
@@ -636,133 +427,6 @@ if (APPLE)
             MacUtils.mm
         )
 endif ()
-
-# The SLA application retains the shared scene/model and thumbnail code,
-# but does not compile the FFF emitter or its private per-layer filters.
-# Additional FFF ownership in Print/Plater is removed in a separate migration.
-set(SLIC3R_FFF_EMITTER_SOURCES
-    GCode.cpp
-    GCode/CoolingBuffer.cpp
-    GCode/PressureEqualizer.cpp
-    GCode/SpiralVase.cpp
-    GCode/WipeTowerIntegration.cpp
-    GCode/ExtrusionOrder.cpp
-    GCode/PostProcessor.cpp
-)
-if (NOT SLIC3R_SLA_ONLY)
-    list(APPEND SLIC3R_SOURCES ${SLIC3R_FFF_EMITTER_SOURCES})
-endif()
-
-# FFF printing core (G-code generation, perimeters/Arachne, infill, FFF supports,
-# Print/PrintObject/Layer pipeline). The SLA-only application never slices with
-# it, so these units are not compiled there (tests/architecture/
-# verify_sla_fff_core_cut.py enforces the list). Shared geometry that the SLA
-# code still needs stays in the main list on purpose:
-#  - Arachne/utils/PolygonsSegmentIndex.hpp, PolygonsPointIndex.hpp are header-only
-#    and used by Geometry/Voronoi*.cpp and SLA/SupportIslands;
-#  - Slicing.cpp/SlicingAdaptive.cpp (layer-height profile used by the viewport and PresetHints),
-#    Flow.cpp (PlaceholderParser, PresetHints), GCode/Thumbnails.cpp and
-#    GCode/ThumbnailData.cpp (archive thumbnails), ShortestPath.cpp.
-set(SLIC3R_FFF_CORE_SOURCES
-    # Algorithm
-    Algorithm/LineSegmentation/LineSegmentation.cpp
-    # (root)
-    BridgeDetector.cpp
-    Brim.cpp
-    Extruder.cpp
-    ExtrusionEntity.cpp
-    ExtrusionEntityCollection.cpp
-    ExtrusionRole.cpp
-    ExtrusionSimulator.cpp
-    GCodeReader.cpp
-    InfillAboveBridges.cpp
-    Layer.cpp
-    LayerRegion.cpp
-    MultiMaterialSegmentation.cpp
-    PerimeterGenerator.cpp
-    Print.cpp
-    PrintApply.cpp
-    PrintObject.cpp
-    PrintObjectSlice.cpp
-    PrintRegion.cpp
-    SupportSpotsGenerator.cpp
-    Surface.cpp
-    SurfaceCollection.cpp
-    # Feature
-    Feature/Interlocking/InterlockingGenerator.cpp
-    Feature/Interlocking/VoxelUtils.cpp
-    Feature/FuzzySkin/FuzzySkin.cpp
-    # Fill
-    Fill/Fill.cpp
-    Fill/Fill3DHoneycomb.cpp
-    Fill/FillAdaptive.cpp
-    Fill/FillBase.cpp
-    Fill/FillConcentric.cpp
-    Fill/FillEnsuring.cpp
-    Fill/FillHoneycomb.cpp
-    Fill/FillGyroid.cpp
-    Fill/FillPlanePath.cpp
-    Fill/FillLine.cpp
-    Fill/FillLightning.cpp
-    Fill/Lightning/DistanceField.cpp
-    Fill/Lightning/Generator.cpp
-    Fill/Lightning/Layer.cpp
-    Fill/Lightning/TreeNode.cpp
-    Fill/FillRectilinear.cpp
-    # GCode
-    GCode/ConflictChecker.cpp
-    GCode/ExtrusionProcessor.cpp
-    GCode/FindReplace.cpp
-    GCode/LabelObjects.cpp
-    GCode/GCodeWriter.cpp
-    GCode/PrintExtents.cpp
-    GCode/RetractWhenCrossingPerimeters.cpp
-    GCode/SeamPlacer.cpp
-    GCode/SeamChoice.cpp
-    GCode/SeamPerimeters.cpp
-    GCode/SeamShells.cpp
-    GCode/SeamGeometry.cpp
-    GCode/SeamAligned.cpp
-    GCode/SeamRear.cpp
-    GCode/SeamRandom.cpp
-    GCode/SeamPainting.cpp
-    GCode/SeamScarf.cpp
-    GCode/ModelVisibility.cpp
-    GCode/SmoothPath.cpp
-    GCode/ToolOrdering.cpp
-    GCode/Wipe.cpp
-    GCode/WipeTower.cpp
-    GCode/GCodeProcessor.cpp
-    GCode/AvoidCrossingPerimeters.cpp
-    GCode/Travels.cpp
-    # Support
-    Support/SupportCommon.cpp
-    Support/SupportDebug.cpp
-    Support/SupportMaterial.cpp
-    Support/SupportParameters.cpp
-    Support/OrganicSupport.cpp
-    Support/TreeSupport.cpp
-    Support/TreeSupportCommon.cpp
-    Support/TreeModelVolumes.cpp
-    # Arachne
-    Arachne/BeadingStrategy/BeadingStrategy.cpp
-    Arachne/BeadingStrategy/BeadingStrategyFactory.cpp
-    Arachne/BeadingStrategy/DistributedBeadingStrategy.cpp
-    Arachne/BeadingStrategy/LimitedBeadingStrategy.cpp
-    Arachne/BeadingStrategy/OuterWallInsetBeadingStrategy.cpp
-    Arachne/BeadingStrategy/RedistributeBeadingStrategy.cpp
-    Arachne/BeadingStrategy/WideningBeadingStrategy.cpp
-    Arachne/utils/ExtrusionLine.cpp
-    Arachne/utils/SquareGrid.cpp
-    Arachne/utils/PolylineStitcher.cpp
-    Arachne/PerimeterOrder.cpp
-    Arachne/SkeletalTrapezoidation.cpp
-    Arachne/SkeletalTrapezoidationGraph.cpp
-    Arachne/WallToolPaths.cpp
-)
-if (SLIC3R_SLA_ONLY)
-    list(REMOVE_ITEM SLIC3R_SOURCES ${SLIC3R_FFF_CORE_SOURCES})
-endif()
 
 add_library(libslic3r STATIC ${SLIC3R_SOURCES})
 
@@ -891,13 +555,11 @@ target_link_libraries(libslic3r PUBLIC
     semver
     admesh
     localesutils
-    LibBGCode::bgcode_convert
     tcbspan
     miniz
     libigl
     agg
     ankerl
-    libseqarrange
 )
 
 if (APPLE)
