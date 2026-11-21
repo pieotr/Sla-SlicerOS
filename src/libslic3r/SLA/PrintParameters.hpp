@@ -2,6 +2,7 @@
 #define SLIC3R_SLA_PRINT_PARAMETERS_HPP
 #include "libslic3r/SLAPrint.hpp"
 #include "libslic3r/Exception.hpp"
+#include "libslic3r/SLA/RepresentationAdjustment.hpp"
 #include <algorithm>
 #include <cmath>
 
@@ -53,6 +54,17 @@ inline uint32_t lcd_print_time(const SLAPrint &print)
     double seconds = 0.;
     for (size_t i = 0; i < print.print_layers().size(); ++i) seconds += lcd_layer_time(print, i);
     return uint32_t(std::min(std::ceil(seconds), double(UINT32_MAX)));
+}
+// Every setting `format` cannot store exactly, in ONE refusal. The GUI/CLI approval route applies the
+// adjustable ones to the configuration before the writer runs, so a plan left here is refused as a whole.
+inline void require_representable(const SLAPrint &print, const std::string &format)
+{
+    DynamicPrintConfig effective;
+    effective.apply(print.material_config());
+    effective.apply(print.printer_config());
+    effective.set_key_value("layer_height", new ConfigOptionFloat(print.default_object_config().layer_height.value));
+    const auto representation = plan_representation(format, effective);
+    if (!representation.empty()) throw ExportError(representation.strict_message(representation_format_label(format)));
 }
 // Older containers have fewer fields. Reject unsupported values explicitly
 // rather than exposing GUI settings that silently disappear from the file.

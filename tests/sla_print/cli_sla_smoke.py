@@ -181,6 +181,111 @@ hollowing_enable = 0
     assert not list(template_directory.glob('.sla-export-*')) and not list(template_directory.glob('*sla-export*'))
     run('reject-output', ['--load', settings, '--sla-archive-format', 'uvj', '--scale', '0.1',
         '--slice', '--output', output / 'missing-parent/job.uvj', model], success=False)
+    # --- approvals (--sla-accept-adjustments / --sla-accept-conversion): strict by default, same changes as the GUI dialogs
+    uvtools = os.environ.get('UVTOOLS_CMD', '')
+    uvtools = uvtools if uvtools and Path(uvtools).is_file() else ''
+    def uv_properties(path):
+        completed = subprocess.run([uvtools, 'print-properties', str(path)], stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT, text=True, timeout=300)
+        assert completed.returncode == 0, completed.stdout[-2000:]
+        return completed.stdout
+    stock = output / 'stock-printer.ini'
+    stock.write_text(configuration.replace('printer_model = CL-60', 'printer_model = PHOTON MONO')
+        .replace('display_width = 12', 'display_width = 82.62').replace('display_height = 8', 'display_height = 130.56')
+        .replace('display_pixels_x = 64', 'display_pixels_x = 1620').replace('display_pixels_y = 32', 'display_pixels_y = 2560')
+        + 'exposure_time = 2.5\ninitial_exposure_time = 15\n')
+    approvals = output / 'approvals'
+    approvals.mkdir(exist_ok=True)
+    def sl1_job(name, target, extra=(), success=True):
+        return run(name, ['--load', stock, '--sla-archive-format', 'SL1', '--scale', '0.2', '--center', '40,60',
+                          *extra, '--slice', '--output', target, model], success=success)
+    adjustments = ('Wait before exposure 0 s -> 1 s', 'Lift speed 80 mm/min -> 60 mm/min',
+                   'Retract speed 150 mm/min -> 120 mm/min', 'Printer model PHOTON MONO -> CL-60')
+    for flags in ((), ('--sla-accept-conversion',)):
+        message = sl1_job('adjust-refused' + ''.join(flags), approvals / 'refused.cxdlp', flags, success=False)
+        for text in adjustments:
+            assert text in message, (text, message)
+        assert '--sla-accept-adjustments' in message
+        assert not (approvals / 'refused.cxdlp').exists() and not list(approvals.glob('.sla-export-*'))
+    message = sl1_job('adjust-accepted', approvals / 'adjusted.cxdlp', ('--sla-accept-adjustments',))
+    for text in adjustments:
+        assert 'Adjusted for export: ' + text in message, (text, message)
+    adjusted = (approvals / 'adjusted.cxdlp').read_bytes()
+    assert b'CXSW3DV2' in adjusted and b'CL-60' in adjusted and b'PHOTON MONO' not in adjusted
+    if uvtools:
+        properties = uv_properties(approvals / 'adjusted.cxdlp')
+        for text in ('PrinterModel: CL-60', 'LayerCount: 40', 'WaitTimeBeforeCure: 1', 'ExposureTime: 2.5', 'LiftSpeed: 60', 'RetractSpeed: 120'):
+            assert text in properties, (text, properties)
+        checks.append('adjust-accepted-uvtools-readback')
+    # The refusal did not touch the profile: strict again without the flag.
+    sl1_job('adjust-refused-again', approvals / 'again.cxdlp', success=False)
+    # A format that needs a palette conversion: CTB v4 stores 128 gray levels.
+    message = sl1_job('palette-refused', approvals / 'refused.v4.ctb', ('--sla-accept-adjustments',), success=False)
+    assert 'palette conversion' in message and '--sla-accept-conversion' in message and not (approvals / 'refused.v4.ctb').exists(), message
+    message = sl1_job('palette-accepted', approvals / 'converted.v4.ctb', ('--sla-accept-conversion',))
+    assert 'Converted for export: palette conversion: ctb_v4 uses 128 grayscale levels' in message, message
+    if uvtools:
+        properties = uv_properties(approvals / 'converted.v4.ctb')
+        for text in ('LayerCount: 40', 'AntiAliasing: 8', 'ResolutionX: 1620', 'ExposureTime: 2.5'):
+            assert text in properties, (text, properties)
+        checks.append('palette-accepted-uvtools-readback')
+    # GOO needs neither: the flags change nothing and the file is the strict one.
+    message = sl1_job('goo-with-flags', approvals / 'job.goo', ('--sla-accept-adjustments', '--sla-accept-conversion'))
+    assert 'Adjusted for export' not in message and 'Converted for export' not in message, message
+    if uvtools:
+        properties = uv_properties(approvals / 'job.goo')
+        for text in ('LayerCount: 40', 'ExposureTime: 2.5', 'MachineName: PHOTON MONO'):
+            assert text in properties, (text, properties)
+        checks.append('goo-uvtools-readback')
+    # Printer format and output extension differ: values are adjusted only for the writer actually used.
+    # The printer's own format is Klipper (exposure stored with 0.01 s precision); 2.504 s needs an adjustment there.
+    klipper_ini = output / 'klipper-printer.ini'
+    klipper_ini.write_text(stock.read_text().replace('exposure_time = 2.5\n', 'exposure_time = 2.504\n'))
+    def klipper_job(name, target, extra=(), success=True):
+        return run(name, ['--load', klipper_ini, '--sla-archive-format', 'klipper', '--scale', '0.2', '--center', '40,60',
+                          *extra, '--slice', '--output', target, model], success=success)
+    both = ('--sla-accept-adjustments', '--sla-accept-conversion')
+    # Real writer GOO represents 2.504 exactly: no adjustment line, strict or approved, and no Klipper refusal.
+    for name, flags in (('klipper-printer-goo-strict', ()), ('klipper-printer-goo-approved', both)):
+        message = klipper_job(name, approvals / (name + '.goo'), flags)
+        assert 'Adjusted for export' not in message, message
+        assert (approvals / (name + '.goo')).is_file()
+        if uvtools:
+            assert 'ExposureTime: 2.504' in uv_properties(approvals / (name + '.goo'))
+    # Real writer Klipper cannot: refused with the list, then adjusted after approval.
+    message = klipper_job('klipper-printer-klipper-strict', approvals / 'strict.zip', success=False)
+    assert 'Exposure 2.504 s -> 2.5 s' in message and not (approvals / 'strict.zip').exists(), message
+    message = klipper_job('klipper-printer-klipper-approved', approvals / 'approved.zip', both)
+    assert 'Adjusted for export: Exposure 2.504 s -> 2.5 s' in message, message
+    assert (approvals / 'approved.zip').is_file()
+    help_text = run('help-approvals', ['--help'])
+    assert '--sla-accept-adjustments' in help_text and '--sla-accept-conversion' in help_text
+    def run_recipe(name, arguments, success=True):
+        completed = subprocess.run([str(executable), *map(str, arguments)], cwd=output, env=environment,
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=120)
+        (output / (name + '.log')).write_text(completed.stdout)
+        assert (completed.returncode == 0) == success, (name, completed.returncode, completed.stdout[-3000:])
+        checks.append(name)
+        return completed.stdout
+    # Recipes: a convert step takes "accept_adjustments" (default false) and --sla-accept-adjustments. Imported
+    # documents convert only to destinations with a parameter-preserving conversion, and none of the formats with
+    # representation rules is reachable from an imported table yet (CXDLP v2/v3 has none), so these runs prove the
+    # field, the flag and that a destination without adjustments is unaffected.
+    source = approvals / 'converted.v4.ctb'
+    printer_ini = approvals / 'printer-for-recipe.ini'
+    printer_ini.write_text(stock.read_text())
+    def recipe_with(path, extra):
+        recipe = approvals / 'recipe.json'
+        recipe.write_text(json.dumps({'version': 1, 'steps': [{'op': 'open', 'path': str(source)},
+            dict({'op': 'convert', 'format': 'ctb_v5', 'path': str(path), 'printer_config': str(printer_ini)}, **extra)]}))
+        return recipe
+    run_recipe('recipe-default', ['--sla-run-recipe', recipe_with(approvals / 'recipe-default.v5.ctb', {})])
+    run_recipe('recipe-step-field', ['--sla-run-recipe', recipe_with(approvals / 'recipe-step.v5.ctb', {'accept_adjustments': True})])
+    run_recipe('recipe-cli-flag', ['--sla-run-recipe', recipe_with(approvals / 'recipe-flag.v5.ctb', {}), '--sla-accept-adjustments'])
+    for name in ('recipe-default.v5.ctb', 'recipe-step.v5.ctb', 'recipe-flag.v5.ctb'):
+        assert (approvals / name).is_file(), name
+    message = run_recipe('recipe-bad-field', ['--sla-run-recipe', recipe_with(approvals / 'x.v5.ctb', {'accept_adjustment': True})], success=False)
+    assert 'accept_adjustments' in message, message
     report = {'status': 'passed', 'checks': checks}
     (output / 'result.json').write_text(json.dumps(report, indent=2))
     print(json.dumps(report, indent=2))

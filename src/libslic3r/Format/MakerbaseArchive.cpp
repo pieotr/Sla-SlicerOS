@@ -99,6 +99,7 @@ sla::EncodedRaster MakerbaseArchive::encode_mask(const void *ptr,size_t width,si
 std::unique_ptr<sla::RasterBase> MakerbaseArchive::create_raster() const {return sla::create_printer_raster(m_cfg);}
 sla::RasterEncoder MakerbaseArchive::get_encoder() const {return encode_mask;}
 void MakerbaseArchive::validate_configuration(const SLAPrint &print,bool mdlp) {
+    sla::require_representable(print,mdlp?"mdlp":"gr1");
     const auto &cfg=print.printer_config();
     if(cfg.display_pixels_x.value<=0 || cfg.display_pixels_y.value<=0 ||
        cfg.display_pixels_x.value>32768 || cfg.display_pixels_y.value>32768 ||

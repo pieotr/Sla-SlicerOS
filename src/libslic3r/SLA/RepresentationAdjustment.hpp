@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 #pragma once
 #include "libslic3r/PrintConfig.hpp"
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -20,6 +21,15 @@ struct RepresentationAdjustment {
 };
 using RepresentationApproval = std::vector<RepresentationAdjustment>;
 
+// Approvals a non-interactive caller (CLI, recipe) gives up front instead of answering the GUI questions
+// "Convert export palette" (accept_conversion) and "Adjust values for export" (accept_adjustments).
+// Both default to false: the export stays strict. `log` receives one line per approved change.
+struct ExportApprovalOptions {
+    bool accept_adjustments = false;
+    bool accept_conversion = false;
+    std::function<void(const std::string &)> log;
+};
+
 struct RepresentationPlan {
     std::vector<RepresentationAdjustment> adjustments; // approved by the user (GUI) or refused (strict path)
     std::vector<std::string> blockers;                 // problems no adjustment can fix; always refused
@@ -28,8 +38,10 @@ struct RepresentationPlan {
     std::string strict_message(const std::string &format_name) const;
 };
 
-// True when `format` has representation rules (CXDLP v1/v2/v3 today).
+// True when `format` has representation rules (CXDLP, Makerbase, Anet, QDT, SVGX, JXS, ZCode/ZCodex, VDT, Klipper, CTB v3).
 bool has_representation_rules(const std::string &format);
+// Name shown in messages and dialogs ("Anet N4", "CXDLP", ...).
+std::string representation_format_label(const std::string &format);
 // `effective` is the complete configuration the writer will see (material + printer keys).
 RepresentationPlan plan_representation(const std::string &format, const DynamicPrintConfig &effective);
 // Sets every adjusted key (those absent from `target` are ignored).

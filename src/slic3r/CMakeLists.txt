@@ -105,6 +105,8 @@ set(SLIC3R_GUI_SOURCES
     GUI/RasterGeneratorTask.hpp
     GUI/ExposureFinderDialog.cpp
     GUI/ExposureFinderDialog.hpp
+    GUI/ResinStockDialog.cpp
+    GUI/ResinStockDialog.hpp
     GUI/LayerEditorDialog.cpp
     GUI/LayerEditorDialog.hpp
     GUI/LayerEditorInternal.hpp
@@ -119,6 +121,7 @@ set(SLIC3R_GUI_SOURCES
     GUI/LayerEditorContent_Issues.cpp
     GUI/LayerOperationCatalog.cpp
     GUI/LayerOperationCatalog_Batch2.cpp
+    GUI/LayerOperationCatalog_Batch3.cpp
     GUI/LayerCalculatorDialog.cpp
     GUI/LayerOperationsDialog.cpp
     GUI/MainFrame.cpp
@@ -290,10 +293,6 @@ set(SLIC3R_GUI_SOURCES
     GUI/Widgets/UIColors.hpp
     GUI/FileArchiveDialog.cpp
     GUI/FileArchiveDialog.hpp
-    GUI/Downloader.cpp
-    GUI/Downloader.hpp
-    GUI/DownloaderFileGet.cpp
-    GUI/DownloaderFileGet.hpp
     GUI/PresetArchiveDatabase.cpp
     GUI/PresetArchiveDatabase.hpp
     Utils/AppUpdater.cpp

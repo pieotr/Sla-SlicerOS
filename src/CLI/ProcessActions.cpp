@@ -28,6 +28,8 @@
 #include "libslic3r/Preset.hpp"
 #include <arrange-wrapper/ModelArrange.hpp>
 #include "libslic3r/SLAPrint.hpp"
+#include "libslic3r/SLA/LayerConversionPlan.hpp"
+#include "libslic3r/SLA/RepresentationAdjustment.hpp"
 #include "libslic3r/Format/AMF.hpp"
 #include "libslic3r/Format/3mf.hpp"
 #include "libslic3r/Format/STL.hpp"
@@ -283,10 +285,19 @@ bool process_actions(Data& cli, const DynamicPrintConfig& print_config, std::vec
 
             PrintBase* print = static_cast<PrintBase*>(&sla_print);
 
-            update_instances_outside_state(model, print_config);
-            MultipleBedsUtils::with_single_bed_model_sla(model, 0, [&print, &model, &print_config]()
+            // Approvals given on the command line (the GUI asks the same questions in dialogs). Default: strict.
+            sla::ExportApprovalOptions approvals;
+            approvals.accept_adjustments = cli.misc_config.has("sla_accept_adjustments") && cli.misc_config.opt_bool("sla_accept_adjustments");
+            approvals.accept_conversion  = cli.misc_config.has("sla_accept_conversion")  && cli.misc_config.opt_bool("sla_accept_conversion");
+            approvals.log = [](const std::string &line) { boost::nowide::cout << line << std::endl; };
+            // Adjustments are planned for the format the job is actually written in (output extension), not for
+            // the printer's own format: export_print_approved does that after slicing.
+            const DynamicPrintConfig &job_config = print_config;
+
+            update_instances_outside_state(model, job_config);
+            MultipleBedsUtils::with_single_bed_model_sla(model, 0, [&print, &model, &job_config]()
             {
-                print->apply(model, print_config);
+                print->apply(model, job_config);
             });
 
             std::string err = print->validate();
@@ -310,7 +321,7 @@ bool process_actions(Data& cli, const DynamicPrintConfig& print_config, std::vec
                     // We need to finalize the filename beforehand because the export function sets the filename inside the zip metadata
                     outfile_final = sla_print.print_statistics().finalize_output_path(outfile);
                     // export_print() publishes outfile_final itself (temp file + rename): no further rename here.
-                    sla_print.export_print(outfile_final);
+                    sla_print.export_print_approved(outfile_final, approvals);
                 }
                 outfile = outfile_final;
                 boost::nowide::cout << "Slicing result exported to " << outfile << std::endl;
@@ -821,7 +832,7 @@ std::optional<int> process_sla_suggestions(int argc, char **argv)
 }
 
 // ---------------------------------------------------------------------------
-// --sla-run-recipe recipe.json [--input FILE] [--output FILE] [--dry-run] [--report FILE]
+// --sla-run-recipe recipe.json [--input FILE] [--output FILE] [--dry-run] [--report FILE] [--sla-accept-adjustments]
 //
 // Local automation without the GUI: runs a declarative layer recipe (see doc/AUTOMATION.md and
 // libslic3r/SLA/LayerRecipe.hpp). Standalone like the actions above: no profiles or models are loaded.
@@ -837,7 +848,7 @@ extern "C" void recipe_sigint_handler(int) { g_recipe_cancel = true; }
 std::optional<int> process_sla_run_recipe(int argc, char **argv)
 {
     std::string recipe_path, input, output, report;
-    bool        requested = false, dry_run = false;
+    bool        requested = false, dry_run = false, accept_adjustments = false;
 
     for (int i = 1; i < argc; ++i) {
         const std::string arg = argv[i];
@@ -852,6 +863,7 @@ std::optional<int> process_sla_run_recipe(int argc, char **argv)
         else if (arg == "--output" || arg == "-o") { if (!value(output)) return 1; }
         else if (arg == "--report") { if (!value(report)) return 1; }
         else if (arg == "--dry-run") dry_run = true;
+        else if (arg == "--sla-accept-adjustments") accept_adjustments = true;
     }
     if (!requested) return std::nullopt;
 
@@ -859,7 +871,7 @@ std::optional<int> process_sla_run_recipe(int argc, char **argv)
     for (int i = 1; i < argc; ++i) {
         const std::string arg = argv[i];
         if (arg == "--sla-run-recipe") { if (i + 1 < argc && argv[i + 1][0] != '-') ++i; continue; }
-        if (arg.rfind("--sla-run-recipe=", 0) == 0 || arg == "--dry-run") continue;
+        if (arg.rfind("--sla-run-recipe=", 0) == 0 || arg == "--dry-run" || arg == "--sla-accept-adjustments") continue;
         if (arg == "--input" || arg == "-i" || arg == "--output" || arg == "-o" || arg == "--report") { ++i; continue; }
         boost::nowide::cerr << "error: unknown option for --sla-run-recipe: " << arg << std::endl;
         return 1;
@@ -867,7 +879,8 @@ std::optional<int> process_sla_run_recipe(int argc, char **argv)
     if (recipe_path.empty()) {
         boost::nowide::cerr << "error: --sla-run-recipe needs a recipe file (JSON)\n"
                                "options: --input FILE (replaces the recipe's open path), --output FILE (replaces the path of the last\n"
-                               "  save/convert step), --dry-run (check everything, write nothing), --report FILE (JSON report, default stdout)\n"
+                               "  save/convert step), --dry-run (check everything, write nothing), --report FILE (JSON report, default stdout),\n"
+                               "  --sla-accept-adjustments (convert steps write the nearest storable values instead of refusing)\n"
                                "operations:";
         for (const auto &op : sla::recipe::operation_catalogue()) boost::nowide::cerr << "\n  " << op.name << " - " << op.summary;
         boost::nowide::cerr << std::endl;
@@ -881,6 +894,7 @@ std::optional<int> process_sla_run_recipe(int argc, char **argv)
         if (!input.empty())  options.input  = boost::filesystem::absolute(input).string();
         if (!output.empty()) options.output = boost::filesystem::absolute(output).string();
         options.dry_run = dry_run;
+        options.accept_adjustments = accept_adjustments;
         g_recipe_cancel = false;
         std::signal(SIGINT, recipe_sigint_handler);
         options.progress = [](size_t, size_t) { return !g_recipe_cancel.load(); };

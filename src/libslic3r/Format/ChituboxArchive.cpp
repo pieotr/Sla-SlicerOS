@@ -511,6 +511,7 @@ void ChituboxCTBModernArchive::validate_configuration(const SLAPrint &print, uns
     if (version < 3 || version > 5) throw ExportError("Ordinary CTB requires version 3, 4 or 5");
     chitubox_detail::validate_parameters(print, "CTB v" + std::to_string(version));
     if (version == 3) {
+        sla::require_representable(print, "ctb_v3");
         // V3 has per-layer lift/retract/PWM, but no two-stage or rest fields.
         for (bool bottom : {false, true})
             for (const char *key : {"lift_height2", "retract_height2", "wait_after_cure", "wait_after_lift"})

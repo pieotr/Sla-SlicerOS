@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 #include "LayerOperations.hpp"
 #include "LayerMemoryBudget.hpp"
+#include "LayerLinkedLines.hpp"
 
 #include <algorithm>
 #include <array>
@@ -965,6 +966,45 @@ void threshold_layers(std::vector<Mask> &layers, const ThresholdParams &p, const
 }
 
 // ================================================================================================
+// Mask by image (UVtools OperationMask)
+std::string validate_mask_image(const MaskImageParams &p, size_t width, size_t height)
+{
+    std::string sb;
+    if (p.image.width == 0 || p.image.height == 0 || p.image.px.size() != p.image.width * p.image.height) sb += "The mask can not be empty.\n";
+    else {
+        const size_t w = p.selection.roi.empty() ? width : size_t(p.selection.roi.w), h = p.selection.roi.empty() ? height : size_t(p.selection.roi.h);
+        if (width && (p.image.width != w || p.image.height != h))
+            sb += "The mask image is " + std::to_string(p.image.width) + "x" + std::to_string(p.image.height) + " but the layers (or the region of interest) are "
+                + std::to_string(w) + "x" + std::to_string(h) + ".\n";
+    }
+    return sb;
+}
+
+StreamKernel mask_image_kernel(const MaskImageParams &p, const StreamLayout &l)
+{
+    if (const std::string err = validate_mask_image(p, l.width, l.height); !err.empty()) throw std::invalid_argument(err);
+    if (l.layer_count) check_roi(p.selection.roi, l.width, l.height);
+    const Range r = resolve_range(p.selection.first_layer, p.selection.last_layer, l.layer_count);
+    // Final multiplier table: UVtools multiplies by the (optionally inverted) mask, out = round(in * m / 255).
+    auto factor = std::make_shared<std::vector<uint8_t>>(p.image.px);
+    if (p.invert) for (uint8_t &v : *factor) v = uint8_t(255 - v);
+    StreamKernel k;
+    k.first = r.first; k.last = r.last;
+    k.run = [p, factor](size_t, const Mask &in, const LayerFetch &) {
+        return with_roi(in, p.selection.roi, [&](Mask &t) {
+            for (size_t i = 0; i < t.px.size(); ++i) t.px[i] = uint8_t((unsigned(t.px[i]) * unsigned((*factor)[i]) + 127) / 255);
+        });
+    };
+    return k;
+}
+
+void mask_image_layers(std::vector<Mask> &layers, const MaskImageParams &p, const LayerProgress &progress)
+{
+    check_uniform(layers);
+    run_kernel(layers, mask_image_kernel(p, batch_layout(layers)), progress);
+}
+
+// ================================================================================================
 // Pixel dimming
 // ================================================================================================
 
@@ -1580,7 +1620,7 @@ void draw_raft_tabs(Mask &mat, const RaftReliefParams &p)
 std::string validate_raft_relief(const RaftReliefParams &p)
 {
     std::string sb;
-    if (p.type == RaftReliefType::LinkedLines) sb += "The linked lines relief is not supported by this version.\n";
+    if (p.type == RaftReliefType::LinkedLines && p.linked_line_thickness < 4) sb += "The link thickness can't be less than 4\n";
     if (p.type == RaftReliefType::Tabs) {
         if (p.tab_triangle_height == 0) sb += "The tab height can't be 0\n";
         if (p.tab_triangle_base == 0) sb += "The tab base can't be 0\n";
@@ -1627,6 +1667,13 @@ std::optional<StreamKernel> raft_relief_kernel(const RaftReliefParams &p, const 
         pattern = Mask(supports.width, supports.height, color);
     }
 
+    if (p.type == RaftReliefType::LinkedLines) {
+        LinkedLinesParams lp;
+        lp.thickness = p.linked_line_thickness; lp.minimum_links = p.linked_minimum_links;
+        lp.external_supports = p.linked_external_supports; lp.link_color = p.high_brightness;
+        supports = raft_linked_lines(roi_of(*support_source), supports, lp);
+    }
+
     StreamKernel k;
     k.first = p.ignore_first_layers; k.last = support_layer - 1;
     k.run = [p, supports, pattern](size_t, const Mask &in, const LayerFetch &) {
@@ -1636,7 +1683,7 @@ std::optional<StreamKernel> raft_relief_kernel(const RaftReliefParams &p, const 
             return out;
         }
         return with_roi(in, p.roi, [&](Mask &t) {
-            if (p.type == RaftReliefType::Decimate) { t = supports; return; }
+            if (p.type == RaftReliefType::Decimate || p.type == RaftReliefType::LinkedLines) { t = supports; return; }
             const Mask er = erode_roi(in, p.roi, int(p.wall_margin));
             const Mask original = t;
             for (size_t k = 0; k < t.px.size(); ++k)
@@ -2735,6 +2782,273 @@ void raise_on_print_finish(std::vector<Mask> &layers, std::vector<double> &z_mm,
         },
         [&](int &x, int &y) { model_center(layers, x, y); });
     layers.push_back(dummy.make());
+}
+
+// ---- Stir resin -------------------------------------------------------------------------------------
+
+std::string validate_stir_resin(const StirResinParams &p, const PrinterContext &ctx)
+{
+    std::string sb;
+    if (p.stirs == 0) sb += "The number of stirs must be greater than 0.\n";
+    if (!ctx.same_layer_z_allowed) {
+        const double last = round_height(double(p.stirs) * 0.001);
+        if (last >= round2(p.lift_height_mm)) {
+            sb += "Your printer and/or file format does not support layers in same position, as so, each stir will increment in height by 0.001mm.\n";
+            sb += "> Your current settings (" + std::to_string(p.stirs) + " stirs x 0.001mm) is equal or greater than the defined lift height of the lift height.\n";
+            sb += "> Please lower your stir number up to " + std::to_string(int(round2(p.lift_height_mm) / 0.001 - 1)) + " stirs.\n";
+        }
+        if (p.method == StirMethod::StirAndPrint)
+            sb += "Your printer and/or file format is not compatible with the method StirAndPrint. Please select another method.\n";
+    }
+    if (p.exposure_s < 0 || p.lift_height_mm < 0 || p.lift_speed < 0 || p.retract_speed < 0 || p.wait_time_before_stir_s < 0 || p.wait_time_after_lift_s < 0)
+        sb += "Negative values are not allowed.\n";
+    return sb;
+}
+
+namespace {
+StirResinParams resolve_stir(StirResinParams p, const PrinterContext &ctx)
+{
+    p.exposure_s = round2(p.exposure_s > 0 ? p.exposure_s : (ctx.is_gcode ? 0.0 : 0.01));
+    p.lift_height_mm = round2(p.lift_height_mm);
+    p.lift_speed = round2(p.lift_speed > 0 ? p.lift_speed : ctx.maximum_speed);
+    p.retract_speed = round2(p.retract_speed > 0 ? p.retract_speed : p.lift_speed);
+    p.wait_time_before_stir_s = round2(p.wait_time_before_stir_s);
+    p.wait_time_after_lift_s = round2(p.wait_time_after_lift_s);
+    return p;
+}
+} // namespace
+
+double stir_resin_seconds(const StirResinParams &in, const PrinterContext &ctx)
+{
+    const StirResinParams p = resolve_stir(in, ctx);
+    return light_off_delay_seconds(p.lift_height_mm, p.lift_speed, p.retract_speed, p.exposure_s + p.wait_time_before_stir_s + p.wait_time_after_lift_s) * double(p.stirs);
+}
+
+bool is_dummy_layer(size_t non_zero_pixels, double exposure_s) { return non_zero_pixels <= 1 || exposure_s <= 0.01; }
+
+RaiseDummyLayer stir_resin_plan(size_t layer_count, size_t width, size_t height, std::vector<double> &z_mm, std::vector<LayerParams> &table,
+                                const StirResinParams &in, const PrinterContext &ctx, const LayerParams &base_row,
+                                const std::function<bool(size_t)> &is_dummy,
+                                const std::function<void(size_t &, size_t &, bool &)> &first_layer_first_pixel,
+                                const std::function<void(int &, int &)> &model_center_of,
+                                std::vector<size_t> &source_index, size_t &first_kept)
+{
+    if (const std::string err = validate_stir_resin(in, ctx); !err.empty()) throw std::invalid_argument(err);
+    if (z_mm.size() != layer_count || table.size() != layer_count) throw std::invalid_argument("Every layer needs a Z position and a parameter row.");
+    const StirResinParams p = resolve_stir(in, ctx);
+    LayerParams row = base_row;
+    row.is_bottom = false;
+    row.exposure_s = p.exposure_s;
+    row.set_lift_height_total(p.lift_height_mm);
+    row.lift_speed = p.lift_speed;
+    row.retract_speed = p.retract_speed;
+    row.wait_after_cure_s = 0;
+    row.wait_after_lift_s = ctx.can_use_wait_after_lift ? p.wait_time_after_lift_s : row.wait_after_lift_s;
+    row.light_pwm = ctx.is_gcode ? 0 : 1;
+    row.wait_before_cure_s = ctx.can_use_wait_before_cure ? p.wait_time_before_stir_s : row.wait_before_cure_s;
+
+    RaiseDummyLayer dummy{width, height, p.output_dummy_pixel, -1, -1, uint8_t(ctx.is_gcode ? 1 : 128)};
+    if (p.output_dummy_pixel && layer_count > 0) {
+        int x = -1, y = -1;
+        size_t px = 0, py = 0; bool found = false;
+        first_layer_first_pixel(px, py, found);
+        if (found) { x = int(px); y = int(py); }
+        if (x <= 0 || y <= 0) model_center_of(x, y);
+        dummy.x = x; dummy.y = y;
+    }
+
+    constexpr double kStirZ = 0.001;
+    std::vector<double> out_z;
+    std::vector<LayerParams> out_table;
+    source_index.clear();
+    first_kept = 0;
+    if (p.method == StirMethod::StirAndPrint)
+        while (first_kept < layer_count && is_dummy(first_kept)) ++first_kept; // a previous stir block
+    const size_t derive = first_kept < layer_count ? first_kept : 0;
+    for (unsigned i = 0; i < p.stirs; ++i) {
+        out_z.push_back(ctx.same_layer_z_allowed ? kStirZ : round_height(kStirZ * double(i + 1)));
+        out_table.push_back(row);
+        source_index.push_back(derive);
+    }
+    if (p.method == StirMethod::StirAndPrint)
+        for (size_t i = first_kept; i < layer_count; ++i) {
+            out_z.push_back(z_mm[i]); out_table.push_back(table[i]); source_index.push_back(i);
+        }
+    z_mm = std::move(out_z);
+    table = std::move(out_table);
+    return dummy;
+}
+
+// ---- Layer import -----------------------------------------------------------------------------------
+
+namespace {
+bool import_extends(LayerImportType t)
+{
+    return t == LayerImportType::Replace || t == LayerImportType::Stack || t == LayerImportType::MergeSum || t == LayerImportType::MergeMax;
+}
+bool import_needs_equal_resolution(LayerImportType t)
+{
+    return t != LayerImportType::Insert && t != LayerImportType::Replace && t != LayerImportType::Stack;
+}
+// Result pixel of a merge-like import: `a` = target, `b` = imported.
+uint8_t import_pixel(LayerImportType t, uint8_t a, uint8_t b)
+{
+    switch (t) {
+    case LayerImportType::MergeSum: return uint8_t(std::min(255, int(a) + int(b)));
+    case LayerImportType::MergeMax: return std::max(a, b);
+    case LayerImportType::Subtract: return uint8_t(std::max(0, int(a) - int(b)));
+    case LayerImportType::AbsDiff: return uint8_t(std::abs(int(a) - int(b)));
+    case LayerImportType::BitwiseAnd: return uint8_t(a & b);
+    case LayerImportType::BitwiseOr: return uint8_t(a | b);
+    case LayerImportType::BitwiseXor: return uint8_t(a ^ b);
+    default: return b;
+    }
+}
+} // namespace
+
+std::string validate_layer_import(const LayerImportParams &p, size_t layer_count, size_t width, size_t height)
+{
+    std::string sb;
+    if (p.sources.empty()) return "No files to import.\n";
+    for (const LayerImportSource &src : p.sources) {
+        if (src.layers.empty()) { sb += "The file '" + src.name + "' has no layers.\n"; continue; }
+        for (const Mask &m : src.layers)
+            if (m.width != src.layers.front().width || m.height != src.layers.front().height || m.px.size() != m.width * m.height) {
+                sb += "The layers of '" + src.name + "' do not have one common size.\n";
+                break;
+            }
+    }
+    const bool may_append = p.type == LayerImportType::Insert || (p.extend_beyond_layer_count && import_extends(p.type));
+    if (p.start_layer > layer_count || (p.start_layer == layer_count && !may_append))
+        sb += "The start layer " + std::to_string(p.start_layer) + " is outside of the document (" + std::to_string(layer_count) + " layers).\n";
+    if (width == 0 || height == 0) sb += "The document has no resolution.\n";
+    return sb;
+}
+
+bool layer_import_changes_list(const LayerImportParams &p, size_t layer_count)
+{
+    if (p.type == LayerImportType::Insert) return true;
+    size_t longest = 0;
+    for (const auto &src : p.sources) longest = std::max(longest, src.layers.size());
+    if (p.extend_beyond_layer_count && import_extends(p.type) && p.start_layer + longest > layer_count) return true;
+    return p.discard_unmodified_layers && p.start_layer + longest < layer_count;
+}
+
+LayerImportResult layer_import_layers(std::vector<Mask> &layers, std::vector<double> &z_mm, const LayerImportParams &p, const LayerProgress &progress)
+{
+    check_uniform(layers);
+    if (layers.empty()) throw std::invalid_argument("There are no layers.");
+    if (z_mm.size() != layers.size()) throw std::invalid_argument("Every layer needs a Z position.");
+    const size_t W = layers.front().width, H = layers.front().height;
+    if (const std::string err = validate_layer_import(p, layers.size(), W, H); !err.empty()) throw std::invalid_argument(err);
+
+    std::vector<Mask> work = layers;
+    std::vector<double> z = z_mm;
+    std::vector<size_t> source(work.size());
+    for (size_t i = 0; i < source.size(); ++i) source[i] = i;
+    const double default_pitch = z.size() > 1 && z.back() > z[z.size() - 2] ? z.back() - z[z.size() - 2] : (z.empty() ? 0.05 : std::max(z.front(), 0.001));
+
+    LayerImportResult result;
+    result.total = p.sources.size();
+    long last_processed = -1;
+    if (p.type == LayerImportType::Stack) {
+        MoveParams mp; mp.anchor = Anchor::TopLeft;
+        move_layers(work, mp);
+    }
+    size_t done = 0;
+    for (const LayerImportSource &src : p.sources) {
+        check_layer_progress(progress, done++, p.sources.size());
+        const size_t sw = src.layers.front().width, sh = src.layers.front().height;
+        const bool same_resolution = sw == W && sh == H;
+        const Rect bounds = bounding_rect(work), fb = bounding_rect(src.layers);
+        Rect roi;
+        const long n = long(src.layers.size());
+        if (import_needs_equal_resolution(p.type) || p.type == LayerImportType::MergeSum || p.type == LayerImportType::MergeMax) {
+            if (!same_resolution) continue;
+        } else if (!same_resolution && (W < size_t(fb.w) || H < size_t(fb.h))) {
+            continue;
+        }
+        if (p.type == LayerImportType::Stack) {
+            int x = 0, y = 0;
+            const long right = long(bounds.right()) + long(p.stack_margin) + long(fb.w);
+            if (right >= 0 && right < long(W)) x = bounds.right() + int(p.stack_margin);
+            else y = bounds.bottom() + int(p.stack_margin);
+            if (x + fb.w < 0 || size_t(x + fb.w) >= W) continue; // UVtools IsPixelInsideXBounds: strictly inside
+            if (y + fb.h < 0 || size_t(y + fb.h) >= H) continue;
+            roi = {x, y, fb.w, fb.h};
+        }
+        if (p.type == LayerImportType::Insert) {
+            // F.LayerCount blank layers are inserted at start; later layers move up in Z.
+            const size_t at = p.start_layer;
+            const double before = at > 0 ? z[at - 1] : 0.0;
+            double step = (at < z.size() ? z[at] - before : default_pitch);
+            if (!(step > 0)) step = default_pitch;
+            const size_t derive = at > 0 ? at - 1 : 0;
+            std::vector<double> ins_z(static_cast<size_t>(n), 0.0);
+            for (long k = 0; k < n; ++k) ins_z[size_t(k)] = round_height(before + double(k + 1) * step);
+            work.insert(work.begin() + ptrdiff_t(at), size_t(n), Mask(W, H));
+            source.insert(source.begin() + ptrdiff_t(at), size_t(n), derive);
+            z.insert(z.begin() + ptrdiff_t(at), ins_z.begin(), ins_z.end());
+            for (size_t i = at + size_t(n); i < z.size(); ++i) z[i] = round_height(z[i] + double(n) * step);
+        } else if (p.extend_beyond_layer_count && import_extends(p.type)) {
+            const long diff = long(p.start_layer) + n - long(work.size());
+            if (diff > 0) {
+                double step = work.size() > 1 && z[work.size() - 1] > z[work.size() - 2] ? z[work.size() - 1] - z[work.size() - 2] : default_pitch;
+                const size_t old = work.size();
+                for (long k = 0; k < diff; ++k) {
+                    work.emplace_back(W, H);
+                    source.push_back(old - 1);
+                    z.push_back(round_height(z[old - 1] + double(k + 1) * step));
+                }
+            }
+        }
+        ++result.imported;
+        for (long i = 0; i < n; ++i) {
+            const size_t li = p.start_layer + size_t(i);
+            if (li >= work.size()) continue;
+            const Mask &im = src.layers[size_t(i)];
+            Mask &dst = work[li];
+            switch (p.type) {
+            case LayerImportType::Insert:
+            case LayerImportType::Replace:
+                if (same_resolution) dst = im;
+                else {
+                    Mask canvas(W, H);
+                    if (!fb.empty()) paste(canvas, int(W / 2) - fb.w / 2, int(H / 2) - fb.h / 2, crop(im, fb));
+                    dst = std::move(canvas);
+                }
+                break;
+            case LayerImportType::Stack:
+                if (!fb.empty()) paste(dst, roi.x, roi.y, crop(im, fb));
+                break;
+            default:
+                for (size_t k = 0; k < dst.px.size(); ++k) dst.px[k] = import_pixel(p.type, dst.px[k], im.px[k]);
+                break;
+            }
+            last_processed = std::max(last_processed, long(li));
+        }
+    }
+    if (last_processed < 0) {
+        throw std::invalid_argument("Nothing was imported: " + std::to_string(p.sources.size() - result.imported) + " of " + std::to_string(p.sources.size()) +
+                                    " file(s) do not fit the layers (insufficient or unequal build space).\n");
+    }
+    if (p.type == LayerImportType::Stack) {
+        MoveParams mp; // MiddleCenter
+        move_layers(work, mp);
+    }
+    if (p.discard_unmodified_layers && size_t(last_processed) + 1 < work.size()) {
+        work.resize(size_t(last_processed) + 1);
+        source.resize(work.size());
+        z.resize(work.size());
+    }
+    check_layer_progress(progress, p.sources.size(), p.sources.size());
+    if (result.imported != result.total)
+        result.report = "Could not import and fit " + std::to_string(result.total - result.imported) + " out of " + std::to_string(result.total) +
+                        " format(s) (Insufficient or unequal build space).";
+    result.list.source_index = std::move(source);
+    layers = std::move(work);
+    z_mm = std::move(z);
+    return result;
 }
 
 // ---- Edit parameters --------------------------------------------------------------------------------

@@ -670,6 +670,8 @@ private:
     wxTextCtrl *initial_exposure_input { nullptr };
     wxTextCtrl *hop_below_input { nullptr };
     wxTextCtrl *hop_above_input { nullptr };
+    wxStaticText *hop_note { nullptr };
+    bool        m_tilt_off[2] { false, false };
 };
 
 // Optional step: a few application preferences. The wizard keeps the app offline (no update / downloader options).
@@ -778,7 +780,15 @@ private:
     ssize_t item_hover;
     size_t last_page;
 
-    int item_height() const { return em_h * 5 / 2; }
+    // Roomy when the steps fit; squeezed (down to 1.7 lines) when many steps meet a large font on a small window,
+    // so that no step is cut off at the bottom of the index.
+    int item_height() const
+    {
+        const int natural = em_h * 5 / 2;
+        const int steps = int(std::max<size_t>(items.size(), 1));
+        const int room = GetClientSize().GetHeight() - em_h;
+        return std::max(em_h * 17 / 10, std::min(natural, room / steps));
+    }
 
     void on_paint(wxPaintEvent &evt);
     void on_mouse_move(wxMouseEvent &evt);
@@ -899,6 +909,8 @@ struct ConfigWizard::priv
     // Printers a new material can be made for: installed, ticked vendor models, queued and current printers.
     std::vector<WizardMaterialTarget> material_targets() const;
     std::set<std::string> queued_material_names() const;
+    // Printers that get one of the user's own materials in this run (so they need no automatic material).
+    std::set<std::string> own_material_printers() const;
     const Preset* find_material_base(const std::string &name) const;
     void load_material_defaults(const std::string &base_name);
     WizardQueuedMaterial make_material_entry() const;
@@ -922,6 +934,11 @@ struct ConfigWizard::priv
     // Summary action: keep everything chosen so far queued and go back to "Your printer".
     void add_another_printer();
     void queue_changed();
+    // Before a printer of this run is removed: ask what to do with queued own materials that are only for it.
+    // False = the user cancelled the removal; nothing was changed.
+    bool confirm_printer_removal(const std::string &printer_name);
+    std::string vendor_printer_name(const std::string &vendor_id, const std::string &model_id, const std::string &variant) const;
+    bool removal_confirmed { false };
     // True when the vendor ticks differ from what is installed now.
     bool vendors_changed() const;
     void on_path_changed();

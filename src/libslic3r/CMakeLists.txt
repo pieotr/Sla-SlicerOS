@@ -323,6 +323,16 @@ set(SLIC3R_SOURCES
     SLA/LayerIssues.cpp
     SLA/LayerOperations.hpp
     SLA/LayerOperations.cpp
+    SLA/HersheyText.hpp
+    SLA/HersheyText.cpp
+    SLA/PixelDrawing.hpp
+    SLA/PixelDrawing.cpp
+    SLA/LayerRedrawModel.hpp
+    SLA/LayerRedrawModel.cpp
+    SLA/LayerBlur.hpp
+    SLA/LayerBlur.cpp
+    SLA/LayerLinkedLines.hpp
+    SLA/LayerLinkedLines.cpp
     SLA/LayerListStream.hpp
     SLA/LayerListStream.cpp
     SLA/LayerSuggestions.hpp
@@ -336,6 +346,8 @@ set(SLIC3R_SOURCES
     SLA/CrealityCXDLPv4FreshExportPlan.hpp
     SLA/LayerExportProfile.hpp
     SLA/ProjectArchive.cpp
+    SLA/ResinStock.cpp
+    SLA/ResinStock.hpp
     SLA/ProjectArchive.hpp
     SLA/ProjectSettings.cpp
     SLA/ProjectSettings.hpp
@@ -521,8 +533,13 @@ file(COPY "${_sla_jpeg_headers}/jpeglib.h" "${_sla_jpeg_headers}/jconfig.h"
           "${_sla_jpeg_headers}/jmorecfg.h" DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/sla_jpeg")
 find_package(nlohmann_json REQUIRED)
 # Native calibration drawing only. No UVtools/Emgu runtime or network services.
-find_package(OpenCV REQUIRED COMPONENTS core imgproc)
-set_source_files_properties(SLA/ExposureFinderPattern.cpp SLA/CalibrationRaster.cpp PROPERTIES
+# cv::stackBlur (SLA/LayerBlur.cpp) exists since OpenCV 4.7; UVtools itself uses 4.12 (Emgu.CV). Fail at configure time.
+find_package(OpenCV REQUIRED COMPONENTS core imgproc)   # no version here: OpenCV's config files only accept the same major
+if(OpenCV_VERSION VERSION_LESS 4.7)
+    message(FATAL_ERROR "OpenCV >= 4.7 is required (cv::stackBlur), found ${OpenCV_VERSION} in ${OpenCV_DIR}. "
+                        "Set OpenCV_DIR to a newer installation (the portable docker build uses 4.12.0).")
+endif()
+set_source_files_properties(SLA/ExposureFinderPattern.cpp SLA/CalibrationRaster.cpp SLA/LayerBlur.cpp SLA/LayerLinkedLines.cpp SLA/HersheyText.cpp SLA/PixelDrawing.cpp SLA/LayerRedrawModel.cpp PROPERTIES
     INCLUDE_DIRECTORIES "${OpenCV_INCLUDE_DIRS}" SKIP_PRECOMPILE_HEADERS ON)
 get_target_property(_sla_cv_core opencv_core IMPORTED_LOCATION_RELEASE)
 get_target_property(_sla_cv_imgproc opencv_imgproc IMPORTED_LOCATION_RELEASE)

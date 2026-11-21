@@ -639,6 +639,9 @@ public:
     // Restored masks are applied inside process(), before any export phase.
     // Immutable state can also remain available to a project save in the GUI.
     void queue_project_layers(std::shared_ptr<const sla::ProjectRasterState> state);
+    // validate() lets values a container can only store after rounding pass (the export asks or refuses with the
+    // full list); owned export contexts validate strictly.
+    bool m_strict_representation = false;
     bool project_layer_restore_failed() const { return m_project_layer_restore_failed; }
     // Synchronous export: caller keeps this context and document immutable until
     // return. A per-request guard must belong to this context; it never cancels
@@ -672,6 +675,11 @@ public:
     void export_print(const std::string    &fname,
                       const ThumbnailsList &thumbnails,
                       const std::string    &projectname = "");
+    // CLI counterpart of the GUI questions "Convert export palette" and "Adjust values for export": the
+    // approvals are given up front by flags. Without either flag this is exactly export_print().
+    // Every adjusted value is reported through options.log ("<field> <old> -> <new> (reason)").
+    void export_print_approved(const std::string &fname, const sla::ExportApprovalOptions &options,
+                               const ThumbnailsList &thumbnails = {}, const std::string &projectname = "");
 
     static bool is_prusa_print(const std::string& printer_model);
     
@@ -697,7 +705,7 @@ private:
         std::optional<sla::FreshLayerProducer> producer, sla::ExposurePositionPolicy position_policy,
         const SLAPrintStatistics *statistics, const sla::ExportGenerationGuard *generation,
         const std::function<void()> &checkpoint,
-        RasterJobPurpose purpose = RasterJobPurpose::CompleteJob);
+        RasterJobPurpose purpose = RasterJobPurpose::CompleteJob, bool validate_format = true);
     void advance_export_generation(bool input_changed = true);
     void reset_layer_document_cache();
     // Called only after raw model rasterization and canonical validation both

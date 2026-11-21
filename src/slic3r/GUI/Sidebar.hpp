@@ -73,9 +73,9 @@ class Sidebar : public wxPanel
 
     wxButton*       m_btn_edit_layers { nullptr };
     wxButton*       m_btn_cancel_slicing { nullptr };
-    wxButton*       m_btn_export_gcode          { nullptr };
+    wxButton*       m_btn_export          { nullptr };
     wxButton*       m_btn_reslice               { nullptr };
-    ScalableButton* m_btn_export_gcode_removable{ nullptr }; //exports to removable drives (appears only if removable drive is connected)
+    ScalableButton* m_btn_export_removable{ nullptr }; //exports to removable drives (appears only if removable drive is connected)
 
     std::unique_ptr<FreqChangedParams>  m_frequently_changed_parameters;
     std::unique_ptr<ObjectManipulation> m_object_manipulation;
@@ -113,6 +113,8 @@ public:
     void enable_buttons(bool enable);
     void set_btn_label(const ActionButtonType btn_type, const wxString& label) const;
     void show_cancel_slicing(bool show);
+    // Layout() plus a GTK queue_resize so shown/hidden action buttons are really allocated (see the definition).
+    void relayout_buttons();
     bool show_reslice(bool show) const;
     bool show_export(bool show) const;
     bool show_export_removable(bool show) const;

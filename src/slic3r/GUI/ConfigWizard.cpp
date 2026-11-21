@@ -24,6 +24,10 @@
 #include <boost/nowide/convert.hpp>
 #include <boost/dll/runtime_symbol_info.hpp>
 
+#include <wx/msgdlg.h>
+#if defined(__linux__) && defined(__WXGTK3__)
+#include <gtk/gtk.h>
+#endif
 #include <wx/settings.h>
 #include <wx/stattext.h>
 #include <wx/textctrl.h>
@@ -2438,6 +2442,9 @@ PageMaterialExposure::PageMaterialExposure(ConfigWizard *parent)
     row(_L("Hop height (below)"), _L("Required hop height below"), hop_below_input, _L("mm"));
     row(_L("Hop height (above)"), _L("Required hop height above"), hop_above_input, _L("mm"));
     append(grid, 0, wxEXPAND, 0);
+    // 0 is a real value here (see SLAPrintSteps: the tower then moves only by the layer height and the film is
+    // peeled by tilting), so it is explained instead of being replaced by a default.
+    hop_note = append_help(_L("0 = no extra lift: the platform moves only by the layer height and the printer peels each layer by tilting. This needs the tilt function; with tilt off enter a lift (e.g. 5 mm)."));
 
     for (wxTextCtrl *ctrl : { exposure_input, initial_exposure_input, hop_below_input, hop_above_input })
         ctrl->Bind(wxEVT_TEXT, [this](wxCommandEvent &event) { refresh_inline_error(); event.Skip(); });
@@ -2460,6 +2467,11 @@ void PageMaterialExposure::load_defaults(const Preset &base)
         if (opt->values.size() > 1)
             hop_above_input->ChangeValue(double_to_string(opt->values[1]));
     }
+    // Remember where the base profile has tilt off: there 0 would make the material fail the print check.
+    m_tilt_off[0] = m_tilt_off[1] = false;
+    if (const auto *tilt = base.config.option<ConfigOptionBools>("use_tilt"); tilt != nullptr)
+        for (size_t i = 0; i < 2 && i < tilt->values.size(); ++i)
+            m_tilt_off[i] = !tilt->values[i];
     refresh_inline_error();
 }
 
@@ -2483,6 +2495,8 @@ wxString PageMaterialExposure::validate()
         return _L("Initial exposure: enter a number of seconds between 0.1 and 10000.");
     if (!text_is_number(hop_below_input, 0., 1000.) || !text_is_number(hop_above_input, 0., 1000.))
         return _L("Hop height: enter a number of millimetres (0 or more).");
+    if ((m_tilt_off[0] && hop_below() < EPSILON) || (m_tilt_off[1] && hop_above() < EPSILON))
+        return _L("The base profile has the tilt function off, so the hop height cannot be 0. Enter a lift (5 mm is a good start).");
     return wxString();
 }
 
@@ -2601,6 +2615,8 @@ void PageSummary::rebuild()
                         line(text);
                     else
                         removable_line(text, remove_printer, [p, page, model]() {
+                            if (!p->confirm_printer_removal(p->vendor_printer_name(model.vendor_id, model.model_id, model.variant)))
+                                return;
                             page->untick_model(model);
                             // The tick reaches appconfig_new through a pending event; re-evaluate after it.
                             p->q->CallAfter([p]() { p->queue_changed(); });
@@ -2612,6 +2628,8 @@ void PageSummary::rebuild()
             const auto &item = p->queue[i];
             any_printer = true;
             const auto remove = [p, i]() {
+                if (i < p->queue.size() && !p->confirm_printer_removal(p->queue[i].name))
+                    return;
                 if (i < p->queue.size())
                     p->queue.erase(p->queue.begin() + i);
                 p->queue_changed();
@@ -2633,6 +2651,8 @@ void PageSummary::rebuild()
                 any_printer = true;
                 removable_line(format_wxstr(_L("Library profile \"%1%\" is saved as a new printer profile and activated."),
                                             from_u8(p->page_profile_printers->get_selected_profile_name())), remove_printer, [p]() {
+                    if (!p->confirm_printer_removal(p->page_profile_printers->get_selected_profile_name()))
+                        return;
                     p->page_profile_printers->clear_selection();
                     p->page_path->set_path(WizardPath::None, false);
                     p->queue_changed();
@@ -2645,6 +2665,8 @@ void PageSummary::rebuild()
                 any_printer = true;
                 removable_line(format_wxstr(_L("New custom printer \"%1%\", based on \"%2%\"."), from_u8(p->page_custom->profile_name()),
                                             base_profile_label(p->page_custom->sample_sla_profile_name())), remove_printer, [p]() {
+                    if (!p->confirm_printer_removal(p->page_custom->profile_name()))
+                        return;
                     p->page_path->set_path(WizardPath::None, false);
                     p->queue_changed();
                 });
@@ -2730,13 +2752,18 @@ void PageSummary::rebuild()
                 p->page_summary->rebuild();
             });
         if (custom_in_play) {
-            any_material = true;
+            // A custom printer that gets one of your own materials needs no automatic one.
+            const std::set<std::string> covered = p->own_material_printers();
             wxString printers;
             for (const std::string &name : p->queued_custom_names())
-                printers += (printers.IsEmpty() ? "" : ", ") + from_u8(name);
-            if (p->path() == WizardPath::Custom && p->page_custom)
+                if (covered.count(name) == 0)
+                    printers += (printers.IsEmpty() ? "" : ", ") + from_u8(name);
+            if (p->path() == WizardPath::Custom && p->page_custom && covered.count(p->page_custom->profile_name()) == 0)
                 printers += (printers.IsEmpty() ? "" : ", ") + from_u8(p->page_custom->profile_name());
-            line(format_wxstr(_L("Material profile \"%1%\" is created with the defaults of the new printer."), printers));
+            if (!printers.IsEmpty()) {
+                any_material = true;
+                line(format_wxstr(_L("Material profile \"%1%\" is created with the defaults of the new printer."), printers));
+            }
         }
         auto describe = [](const WizardQueuedMaterial &item) {
             wxString printers;
@@ -2782,198 +2809,6 @@ void PageSummary::rebuild()
     Layout();
     p->hscroll->FitInside();
 }
-
-namespace DownloaderUtils
-{
-namespace {
-#ifdef _WIN32
-    wxString get_downloads_path()
-    {
-        wxString ret;
-        PWSTR path = NULL;
-        HRESULT hr = SHGetKnownFolderPath(FOLDERID_Downloads, 0, NULL, &path);
-        if (SUCCEEDED(hr)) {
-            ret = wxString(path);
-        }
-        CoTaskMemFree(path);
-        return ret;
-    }
-#elif  __APPLE__
-    wxString get_downloads_path()
-    {
-        // call objective-c implementation
-        return wxString::FromUTF8(get_downloads_path_mac());
-    }
-#else
-    wxString get_downloads_path()
-    {
-        wxString command = "xdg-user-dir DOWNLOAD";
-        wxArrayString output;
-        GUI::desktop_execute_get_result(command, output);
-        if (output.GetCount() > 0) {
-            return output[0];
-        }
-        return wxString();
-    }
-#endif
- }
-Worker::Worker(wxWindow* parent)
-: wxBoxSizer(wxHORIZONTAL)
-, m_parent(parent)
-{
-    m_input_path = new wxTextCtrl(m_parent, wxID_ANY);
-    set_path_name(get_app_config()->get("url_downloader_dest"));
-
-    auto* path_label = new wxStaticText(m_parent, wxID_ANY, _L("Download path") + ":");
-
-    this->Add(path_label, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 5);
-    this->Add(m_input_path, 1, wxEXPAND | wxTOP | wxLEFT | wxRIGHT, 5);
-
-    auto* button_path = new wxButton(m_parent, wxID_ANY, _L("Browse"));
-    wxGetApp().SetWindowVariantForButton(button_path);
-    this->Add(button_path, 0, wxEXPAND | wxTOP | wxLEFT, 5);
-    button_path->Bind(wxEVT_BUTTON, [this](wxCommandEvent& event) {
-        boost::filesystem::path chosen_dest(into_u8(m_input_path->GetValue()));
-
-        wxDirDialog dialog(m_parent, _L("Choose folder") + ":", chosen_dest.string() );
-        if (dialog.ShowModal() == wxID_OK)
-            this->m_input_path->SetValue(dialog.GetPath());
-    });
-
-    for (wxSizerItem* item : this->GetChildren())
-        if (item->IsWindow()) {
-            wxWindow* win = item->GetWindow();
-            wxGetApp().UpdateDarkUI(win);
-        }
-}
-
-void Worker::set_path_name(wxString path)
-{
-    if (path.empty())
-        path = boost::nowide::widen(get_app_config()->get("url_downloader_dest"));
-
-    if (path.empty()) {
-        // What should be default path? Each system has Downloads folder, that could be good one.
-        // Other would be program location folder - not so good: access rights, apple bin is inside bundle...
-        // default_path = boost::dll::program_location().parent_path().string();
-        path = get_downloads_path();
-    }
-
-    m_input_path->SetValue(path);
-}
-
-void Worker::set_path_name(const std::string& name)
-{
-    if (!m_input_path)
-        return;
-
-    set_path_name(boost::nowide::widen(name));
-}
-
-} // DownLoader
-
-#ifdef __linux__
-bool DownloaderUtils::Worker::perform_registration_linux = false;
-#endif // __linux__
-
-bool DownloaderUtils::Worker::perform_download_register(const std::string& path)
-{
-    boost::filesystem::path aux_dest (path);
-    boost::system::error_code ec;
-    boost::filesystem::path chosen_dest = boost::filesystem::absolute(aux_dest, ec);
-    if(ec)
-        chosen_dest = aux_dest;
-    ec.clear();
-    if (chosen_dest.empty() || !boost::filesystem::is_directory(chosen_dest, ec) || ec) {
-        std::string err_msg = GUI::format("%1%\n\n%2%",_L("Chosen directory for downloads does not exist.") ,chosen_dest.string());
-        BOOST_LOG_TRIVIAL(error) << err_msg;
-        show_error(/*m_parent*/ nullptr, err_msg);
-        return false;
-    }
-    BOOST_LOG_TRIVIAL(info) << "Downloader registration: Directory for downloads: " << chosen_dest.string();
-    wxGetApp().app_config->set("url_downloader_dest", chosen_dest.string());
-    return perform_url_register();
-}
-bool DownloaderUtils::Worker::perform_url_register()
-{
-#ifdef _WIN32
-    // Registry key creation for "prusaslicer://" URL
-
-    boost::filesystem::path binary_path(boost::filesystem::canonical(boost::dll::program_location()));
-    // the path to binary needs to be correctly saved in string with respect to localized characters
-    wxString wbinary = wxString::FromUTF8(binary_path.string());
-    std::string binary_string = (boost::format("%1%") % wbinary).str();
-    BOOST_LOG_TRIVIAL(info) << "Downloader registration: Path of binary: " << binary_string;
-
-    //std::string key_string = "\"" + binary_string + "\" \"-u\" \"%1\"";
-    //std::string key_string = "\"" + binary_string + "\" \"%1\"";
-    std::string key_string = "\"" + binary_string + "\" \"--single-instance\" \"%1\"";
-
-    wxRegKey key_first(wxRegKey::HKCU, "Software\\Classes\\prusaslicer");
-    wxRegKey key_full(wxRegKey::HKCU, "Software\\Classes\\prusaslicer\\shell\\open\\command");
-    if (!key_first.Exists()) {
-        key_first.Create(false);
-    }
-    key_first.SetValue("URL Protocol", "");
-
-    if (!key_full.Exists()) {
-        key_full.Create(false);
-    }
-    //key_full = "\"C:\\Program Files\\Prusa3D\\PrusaSlicer\\prusa-slicer-console.exe\" \"%1\"";
-    key_full = key_string;
-#elif __APPLE__
-    // Apple registers for custom url in info.plist thus it has to be already registered since build.
-    // The url will always trigger opening of prusaslicer and we have to check that user has allowed it. (GUI_App::MacOpenURL is the triggered method)
-#elif defined(__linux__) && defined(SLIC3R_DESKTOP_INTEGRATION) 
-    // the performation should be called later during desktop integration
-    perform_registration_linux = true;
-#endif
-    return true;
-}
-
-void DownloaderUtils::Worker::deregister()
-{
-#ifdef _WIN32
-    std::string key_string = "";
-    wxRegKey key_full(wxRegKey::HKCU, "Software\\Classes\\prusaslicer\\shell\\open\\command");
-    if (!key_full.Exists()) {
-        return;
-    }
-    key_full = key_string;
-#elif __APPLE__
-    // TODO
-#elif defined(__linux__) && defined(SLIC3R_DESKTOP_INTEGRATION) 
-    BOOST_LOG_TRIVIAL(debug) << "DesktopIntegrationDialog::undo_downloader_registration";
-    DesktopIntegrationDialog::undo_downloader_registration();
-    perform_registration_linux = false;
-#endif
-}
-
-bool DownloaderUtils::Worker::on_finish() {
-    AppConfig* app_config = wxGetApp().app_config;
-    bool ac_value = app_config->get_bool("downloader_url_registered");
-    BOOST_LOG_TRIVIAL(debug) << "PageDownloader::on_finish_downloader ac_value " << ac_value << " downloader_checked " << downloader_checked;
-    if (ac_value && downloader_checked) {
-        // already registered but we need to do it again
-        if (!perform_download_register(GUI::into_u8(path_name())))
-            return false;
-        app_config->set("downloader_url_registered", "1");
-    } else if (!ac_value && downloader_checked) {
-        // register
-        if (!perform_download_register(GUI::into_u8(path_name())))
-            return false;
-        app_config->set("downloader_url_registered", "1");
-    } else if (ac_value && !downloader_checked) {
-        // deregister, downloads are banned now  
-        deregister();
-        app_config->set("downloader_url_registered", "0");
-    } /*else if (!ac_value && !downloader_checked) {
-        // not registered and we dont want to do it
-        // do not deregister as other instance might be registered
-    } */
-    return true;
-}
-
 
 #ifdef _WIN32
 PageFilesAssociation::PageFilesAssociation(ConfigWizard* parent)
@@ -3179,6 +3014,7 @@ ConfigWizardIndex::ConfigWizardIndex(wxWindow *parent)
     set_accessible_name(this, _L("Wizard steps"), wxString(), AccessibleRole::Default);
 
     Bind(wxEVT_PAINT, &ConfigWizardIndex::on_paint, this);
+    Bind(wxEVT_SIZE, [this](wxSizeEvent &evt) { Refresh(); evt.Skip(); });
     Bind(wxEVT_MOTION, &ConfigWizardIndex::on_mouse_move, this);
     Bind(wxEVT_LEFT_UP, &ConfigWizardIndex::on_mouse_left_up, this);
     Bind(wxEVT_LEAVE_WINDOW, &ConfigWizardIndex::on_mouse_leave, this);
@@ -3654,6 +3490,21 @@ std::set<std::string> ConfigWizard::priv::queued_material_names() const
     return names;
 }
 
+std::set<std::string> ConfigWizard::priv::own_material_printers() const
+{
+    std::set<std::string> printers;
+    if (!goal_material())
+        return printers;
+    for (const WizardQueuedMaterial &item : material_queue)
+        printers.insert(item.targets.begin(), item.targets.end());
+    if (material_path() == MaterialPath::Custom && page_material_basics && page_material_base) {
+        const WizardQueuedMaterial item = make_material_entry();
+        if (!item.name.empty())
+            printers.insert(item.targets.begin(), item.targets.end());
+    }
+    return printers;
+}
+
 const Preset* ConfigWizard::priv::find_material_base(const std::string &name) const
 {
     auto &materials = wxGetApp().preset_bundle->sla_materials;
@@ -3843,6 +3694,8 @@ std::vector<WizardQueueItem> ConfigWizard::priv::queue_items()
                 if (known)
                     continue;   // installed already: it is not an addition of this run
                 items.push_back({ format_wxstr(_L("%1% (vendor)"), from_u8(model.label)), [this, page, model]() {
+                    if (!confirm_printer_removal(vendor_printer_name(model.vendor_id, model.model_id, model.variant)))
+                        return;
                     page->untick_model(model);
                     // The tick reaches appconfig_new through a pending event; re-evaluate after it.
                     q->CallAfter([this]() { queue_changed(); });
@@ -3853,12 +3706,48 @@ std::vector<WizardQueueItem> ConfigWizard::priv::queue_items()
         const bool library = queue[i].kind == QueuedPrinter::Kind::Library;
         items.push_back({ format_wxstr(library ? _L("%1% (library)") : _L("%1% (custom)"), from_u8(queue[i].name)),
                           [this, i]() {
+                              if (i < queue.size() && !confirm_printer_removal(queue[i].name))
+                                  return;
                               if (i < queue.size())
                                   queue.erase(queue.begin() + i);
                               queue_changed();
                           }});
     }
     return items;
+}
+
+std::string ConfigWizard::priv::vendor_printer_name(const std::string &vendor_id, const std::string &model_id, const std::string &variant) const
+{
+    for (const auto &[id, bundle] : bundles) {
+        if (id != vendor_id)
+            continue;
+        for (const Preset &printer : bundle.preset_bundle->printers)
+            if (printer.printer_technology() == ptSLA && printer.config.opt_string("printer_model") == model_id &&
+                printer.config.opt_string("printer_variant") == variant)
+                return printer.name;
+    }
+    return std::string();
+}
+
+bool ConfigWizard::priv::confirm_printer_removal(const std::string &printer_name)
+{
+    removal_confirmed = false;
+    if (!goal_material() || printer_name.empty())
+        return true;
+    wxString names;
+    for (const WizardQueuedMaterial &item : material_queue)
+        if (item.targets.size() == 1 && item.targets.front() == printer_name)
+            names += (names.empty() ? "" : ", ") + from_u8("\"" + item.name + "\"");
+    if (names.empty())
+        return true;   // other materials only lose this printer from their list
+    wxMessageDialog dialog(q, format_wxstr(_L("These materials you created are only for the printer \"%1%\": %2%.\n\n"
+                                              "Remove them together with the printer?"), from_u8(printer_name), names),
+                           _L("Remove printer"), wxYES_NO | wxICON_QUESTION);
+    dialog.SetYesNoLabels(_L("Remove them too"), _L("Cancel removal"));
+    if (dialog.ShowModal() != wxID_YES)
+        return false;
+    removal_confirmed = true;
+    return true;
 }
 
 void ConfigWizard::priv::queue_changed()
@@ -3877,12 +3766,25 @@ void ConfigWizard::priv::queue_changed()
         std::set<std::string> available;
         for (const WizardMaterialTarget &target : material_targets())
             available.insert(target.name);
+        wxString dropped;
         for (auto it = material_queue.begin(); it != material_queue.end();) {
             it->targets.erase(std::remove_if(it->targets.begin(), it->targets.end(),
                                              [&available](const std::string &name) { return available.count(name) == 0; }), it->targets.end());
-            it = it->targets.empty() ? material_queue.erase(it) : it + 1;
+            if (it->targets.empty()) {
+                dropped += (dropped.empty() ? "" : ", ") + from_u8(it->name);
+                it = material_queue.erase(it);
+            } else
+                ++it;
         }
+        // Normally the user agreed in confirm_printer_removal(); a removal that bypassed it (tick cleared on a
+        // vendor page) must still not drop anything silently.
+        if (!dropped.empty() && !removal_confirmed)
+            q->CallAfter([this, dropped]() {
+                wxMessageBox(format_wxstr(_L("The printer these materials were for is gone, so they were removed too: %1%."), dropped),
+                             _L("Materials removed"), wxOK | wxICON_INFORMATION, q);
+            });
     }
+    removal_confirmed = false;
     load_pages();
     if (page_path)
         page_path->refresh_queue();
@@ -4131,16 +4033,12 @@ void ConfigWizard::priv::set_start_page(ConfigWizard::StartPage start_page)
                 custom_printer_selected = false;
                 refresh_sla_selected();
                 invalidate_materials();
-                if (ready_made_available()) {
+                // Land on "Your material" (the goal page is skipped): ready-made profiles are preselected when there are some.
+                if (ready_made_available())
                     page_material_path->set_path(MaterialPath::Ready, false);
-                    load_pages();
-                    index->go_to(page_sla_materials);
-                    btn_finish->SetFocus();
-                } else {
-                    load_pages();
-                    index->go_to(page_material_path);
-                    btn_next->SetFocus();
-                }
+                load_pages();
+                index->go_to(page_material_path);
+                btn_next->SetFocus();
                 break;
             }
             // fallthrough
@@ -4727,7 +4625,16 @@ bool ConfigWizard::priv::apply_config(AppConfig *app_config, PresetBundle *prese
 
     // Library profiles and custom printers (queued ones first, the one being edited last) are saved now, and only now.
     // The last one saved stays the active printer.
-    std::vector<std::string> custom_profile_names;
+    std::vector<std::string> custom_profile_names;   // custom printers that keep the automatic material named like them
+    std::set<std::string> own_printers;               // custom printers that get a material the user created instead
+    if (goal_material()) {
+        for (const WizardQueuedMaterial &item : material_queue)
+            own_printers.insert(item.targets.begin(), item.targets.end());
+        if (material_path() == MaterialPath::Custom && !make_material_entry().name.empty()) {
+            const WizardQueuedMaterial item = make_material_entry();
+            own_printers.insert(item.targets.begin(), item.targets.end());
+        }
+    }
     std::map<std::string, std::string> saved_names;   // library profile -> the name it was saved under (a copy gets a suffix)
     if (any_library || any_custom) {
         if (!check_unsaved_preset_changes &&
@@ -4749,7 +4656,13 @@ bool ConfigWizard::priv::apply_config(AppConfig *app_config, PresetBundle *prese
                 DynamicPrintConfig custom_cfg = std::move(item.config);
                 copy_bed_model_and_texture_if_needed(custom_cfg);
                 preset_bundle->load_config_from_wizard(item.name, std::move(custom_cfg));
-                custom_profile_names.push_back(item.name);
+                // A printer that gets one of the user's own materials needs no automatic material named like it.
+                // The own material is created below; it is the printer's compatible material.
+                if (own_printers.count(item.name) != 0) {
+                    if (preset_bundle->sla_materials.find_preset(item.name, false) != nullptr)
+                        preset_bundle->sla_materials.delete_preset(item.name);
+                } else
+                    custom_profile_names.push_back(item.name);
             }
         }
     }
@@ -5114,6 +5027,11 @@ ConfigWizard::ConfigWizard(wxWindow *parent)
 
     // We can now enable scrolling on hscroll
     p->hscroll->SetScrollRate(30, 30);
+#if defined(__linux__) && defined(__WXGTK3__)
+    // A page that is taller than the window (large text) scrolls; overlay scrollbars hide themselves and the page
+    // then looks cut off, so keep the scrollbar visible.
+    gtk_scrolled_window_set_overlay_scrolling(GTK_SCROLLED_WINDOW(p->hscroll->GetHandle()), FALSE);
+#endif
 
     on_window_geometry(this, [this]() {
         p->init_dialog_size();

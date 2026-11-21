@@ -4,6 +4,7 @@
 #include <array>
 #include <vector>
 #include <functional>
+#include <variant>
 #include "libslic3r/PNGReadWrite.hpp"
 #include "RasterBase.hpp"
 #include "LayerProgress.hpp"
@@ -14,6 +15,7 @@
 #include "LayerRasterGeometry.hpp"
 #include "FreshLayerJob.hpp"
 #include "LayerOperations.hpp"
+#include "HersheyText.hpp"
 #include <optional>
 #include <memory>
 #include <set>
@@ -336,14 +338,37 @@ public:
     enum class BrushShape { Round, Square };
     // Shape tools of the pixel editor. Line is swept by the brush stamp; the
     // others ignore the brush size. Coordinates are inclusive native pixels.
-    enum class ShapeTool { Line, Rectangle, Ellipse, Fill };
+    enum class ShapeTool { Line, Rectangle, Ellipse, Fill, Text }; // append only: the GUI converts tool indices
     struct ShapeOp {
         ShapeTool tool = ShapeTool::Line;
         BrushShape brush = BrushShape::Round;
         unsigned radius = 0;
         uint8_t value = 255;
-        int x0 = 0, y0 = 0, x1 = 0, y1 = 0; // Fill uses (x0,y0) as seed only
+        int x0 = 0, y0 = 0, x1 = 0, y1 = 0; // Fill uses (x0,y0) as seed only; Text uses (x0,y0) as its origin
+        // Text tool (UVtools PixelText): `value` is the brightness (the "remove" brightness for the eraser). Shared so ShapeOp
+        // stays cheap to copy.
+        std::shared_ptr<const hershey_text::TextSpec> text;
     };
+    // Pixel editor Text tool: UVtools PutTextRotated at (x, y) with brightness `value`; returns the number of changed
+    // pixels. Throws RuntimeError for an invalid spec (empty text, scale < 0.2, ...).
+    static size_t draw_text(png::ImageGreyscale &image, int x, int y, const hershey_text::TextSpec &spec, uint8_t value);
+
+    // ---- Pixel editor Supports / Drain holes (UVtools PixelSupport / PixelDrainHole) ---------------------
+    // Both dig DOWNWARD from the clicked layer (which itself is not modified): layer clicked-1 ... 0, one undo step.
+    struct SupportSpec { unsigned tip = 19, pillar = 32, base = 60; uint8_t brightness = 255; bool anti_alias = true; };
+    struct DrainSpec   { unsigned diameter = 50; bool anti_alias = true; };
+    // Skipped: the column is still inside material (nothing drawn yet, keep digging). Drew: a disc was drawn on this
+    // layer. Finished: material (support) / empty space (drain) reached after drawing: stop.
+    enum class ColumnStep { Skipped, Drew, Finished };
+    // Pure single-layer steps (unit testable without a document). `drawn_layers` = layers already drawn by this column.
+    // support_layer_step: the disc radius is (layer_index > 10 ? min(tip + drawn, pillar) : base) / 2 and the layer
+    // counts as "touching material" when >= tip^2 / 3 pixels of the tip circle are lit.
+    static ColumnStep support_layer_step(png::ImageGreyscale &image, int x, int y, size_t layer_index, unsigned drawn_layers, const SupportSpec &);
+    static ColumnStep drain_layer_step(png::ImageGreyscale &image, int x, int y, unsigned drawn_layers, const DrainSpec &);
+    // clicked_layer == 0 is a no-op (UVtools ignores it). Returns false when cancelled (document untouched). Throws
+    // RuntimeError for a point outside the layer or an invalid spec. One undo step for all modified layers.
+    bool dig_column(size_t clicked_layer, int x, int y, const std::variant<SupportSpec, DrainSpec> &spec,
+                    LayerMaskPlane plane = LayerMaskPlane::Main, const LayerProgress &progress = {});
     bool paint_stroke(size_t first, size_t last, const std::vector<BrushPoint> &points,
                       unsigned radius, uint8_t value, LayerMaskPlane plane = LayerMaskPlane::Main,
                       const LayerProgress &progress = {}, BrushShape shape = BrushShape::Round);

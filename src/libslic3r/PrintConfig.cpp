@@ -1907,6 +1907,23 @@ CLIMiscConfigDef::CLIMiscConfigDef()
     def->tooltip = L("The file where the output will be written (if not specified, it will be based on the input file).");
     def->cli = "output|o";
 
+    def = this->add("sla_accept_adjustments", coBool);
+    def->label = L("Accept export adjustments");
+    def->tooltip = L("When the output format cannot store a setting exactly (for example whole seconds, whole mm/s, a fixed lift), "
+                     "write the nearest storable value instead of refusing, like \"Export adjusted values\" in the application window. "
+                     "Every adjusted value is printed as \"<field> <old> -> <new>\". Presets and profiles are never changed. "
+                     "Without this flag the export refuses and lists every problem. Also applies to --sla-run-recipe convert steps.");
+    def->cli = "sla-accept-adjustments";
+    def->set_default_value(new ConfigOptionBool(false));
+
+    def = this->add("sla_accept_conversion", coBool);
+    def->label = L("Accept palette conversion");
+    def->tooltip = L("When the output format uses fewer grayscale levels than the sliced layers (Anycubic, CBDDLP/Photon, CTB), "
+                     "export a converted copy instead of refusing, like \"Convert export palette\" in the application window. "
+                     "The number of changed pixels is printed. Without this flag the export refuses.");
+    def->cli = "sla-accept-conversion";
+    def->set_default_value(new ConfigOptionBool(false));
+
     def = this->add("datadir", coString);
     def->label = L("Data directory");
     def->tooltip = L("Load and store settings at the given directory. This is useful for maintaining different profiles or including configurations from a network storage.");

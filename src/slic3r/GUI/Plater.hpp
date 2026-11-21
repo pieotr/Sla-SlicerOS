@@ -218,7 +218,7 @@ public:
 
     void apply_cut_object_to_model(size_t init_obj_idx, const ModelObjectPtrs& cut_objects);
 
-    void export_gcode(bool prefer_removable);
+    void export_sliced(bool prefer_removable);
     void export_stl_obj(bool extended = false, bool selection_only = false);
     bool export_3mf(const boost::filesystem::path& output_path = boost::filesystem::path());
     void reload_from_disk();
@@ -271,7 +271,7 @@ public:
     wxString get_project_filename(const wxString& extension = wxEmptyString) const;
     void set_project_filename(const wxString& filename);
 
-    bool is_export_gcode_scheduled() const;
+    bool is_export_scheduled() const;
     
     const Selection& get_selection() const;
     int get_selected_object_idx();
@@ -428,7 +428,7 @@ private:
                                          std::string *selected_sla_format = nullptr);
     std::optional<fs_path> get_multiple_output_dir(const std::string &start_dir);
 
-    void export_gcode_to_path(const fs_path &output_path, const std::function<void(bool)> &export_callback);
+    void export_sliced_to_path(const fs_path &output_path, const std::function<void(bool)> &export_callback);
     void reslice_until_step_inner(int step, const ModelObject &object, bool postpone_error_messages);
 
     struct priv;

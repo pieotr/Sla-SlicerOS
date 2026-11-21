@@ -54,7 +54,6 @@ class ObjectSettings;
 class ObjectList;
 class Plater;
 class NotificationManager;
-class Downloader;
 struct GUI_InitParams;
 class GalleryDialog;
 class PresetArchiveDatabase;
@@ -185,7 +184,6 @@ private:
 	std::unique_ptr<OtherInstanceMessageHandler>    m_other_instance_message_handler;
     std::unique_ptr<AppUpdater>                     m_app_updater;
     std::unique_ptr<wxSingleInstanceChecker>        m_single_instance_checker;
-    std::unique_ptr<Downloader>                     m_downloader;
     
     std::string m_instance_hash_string;
 	size_t m_instance_hash_int;
@@ -340,7 +338,6 @@ public:
     Model&      		 model();
     NotificationManager* notification_manager();
     GalleryDialog *      gallery_dialog();
-    Downloader*          downloader();
 
     // Parameters extracted from the command line to be passed to GUI after initialization.
     GUI_InitParams* init_params { nullptr };
@@ -371,7 +368,6 @@ public:
     bool            run_wizard(ConfigWizard::RunReason reason, ConfigWizard::StartPage start_page = ConfigWizard::SP_WELCOME);
     void            update_wizard_login_page();
     void            show_desktop_integration_dialog();
-    void            show_downloader_registration_dialog();
 
     GLShaderProgram* get_shader(const std::string& shader_name) { return m_opengl_mgr.get_shader(shader_name); }
     GLShaderProgram* get_current_shader() { return m_opengl_mgr.get_current_shader(); }
@@ -386,22 +382,9 @@ public:
 #endif // __WXMSW__
 
 
-    // URL download - PrusaSlicer gets system call to open prusaslicer:// URL which should contain address of download
-    void            start_download(std::string url);
 
-    void            open_wifi_config_dialog(bool forced, const wxString& drive_path = {});
-    bool            get_wifi_config_dialog_shown() const { return m_wifi_config_dialog_shown; }
-    
-    bool            select_printer_from_connect(const std::string& cmd);
     // return true if preset vas invisible and we have to installed it to make it selectable
     bool            select_printer_preset(const Preset* printer_preset);
-    void            handle_script_message(std::string msg) {}
-    void            request_model_download(std::string import_json) {}
-    void            download_project(std::string project_id) {}
-    void            request_project_download(std::string project_id) {}
-    void            request_open_project(std::string project_id) {}
-    void            request_remove_project(std::string project_id) {}
-    void            open_link_in_printables(const std::string& url);
 private:
     bool            on_init_inner();
 	void            init_app_config();
@@ -427,8 +410,6 @@ private:
     void            remove_desktop_files_dialog();
 #endif //(__linux__) && !defined(SLIC3R_DESKTOP_INTEGRATION)
 
-    bool                    m_wifi_config_dialog_shown { false };
-    bool                    m_wifi_config_dialog_was_declined { false };
     // change to vector of items when adding more items that require update
     //wxMenuItem*    m_login_config_menu_item { nullptr };
     std::map< ConfigMenuIDs, wxMenuItem*> m_config_menu_updatable_items;

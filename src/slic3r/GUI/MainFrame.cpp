@@ -13,6 +13,7 @@
 #include "LayerEditorDialog.hpp"
 #include "SlaRasterToolsDialog.hpp"
 #include "ExposureFinderDialog.hpp"
+#include "ResinStockDialog.hpp"
 
 #include <wx/panel.h>
 #include <wx/notebook.h>
@@ -807,7 +808,7 @@ bool MainFrame::can_export_supports() const
     return can_export;
 }
 
-bool MainFrame::can_export_gcode() const
+bool MainFrame::can_export() const
 {
     if (m_plater == nullptr)
         return false;
@@ -817,7 +818,7 @@ bool MainFrame::can_export_gcode() const
     if (m_plater->model().objects.empty())
         return false;
 
-    if (m_plater->is_export_gcode_scheduled())
+    if (m_plater->is_export_scheduled())
         return false;
 
     // TODO:: add other filters
@@ -825,7 +826,7 @@ bool MainFrame::can_export_gcode() const
     return true;
 }
 
-bool MainFrame::can_export_gcode_sd() const
+bool MainFrame::can_export_removable() const
 {
 	if (m_plater == nullptr)
 		return false;
@@ -833,7 +834,7 @@ bool MainFrame::can_export_gcode_sd() const
 	if (m_plater->model().objects.empty())
 		return false;
 
-	if (m_plater->is_export_gcode_scheduled())
+	if (m_plater->is_export_scheduled())
 		return false;
 
 	// TODO:: add other filters
@@ -1207,7 +1208,7 @@ void MainFrame::init_menubar_as_editor()
         append_submenu(fileMenu, import_menu, wxID_ANY, _L("&Import"), "");
 
         wxMenu* export_menu = new wxMenu();
-        wxMenuItem* item_export_gcode = append_menu_item(export_menu, wxID_ANY, _L("Export sliced layers") + dots + "\tCtrl+G", _L("Export the current SLA result"),
+        wxMenuItem* item_export_sliced = append_menu_item(export_menu, wxID_ANY, _L("Export sliced layers") + dots + "\tCtrl+G", _L("Export the current SLA result"),
             [this](wxCommandEvent&) {
                 // Finish the native menu/accessibility action before opening
                 // GTK's modal file chooser. Reentering it here can strand the
@@ -1215,16 +1216,16 @@ void MainFrame::init_menubar_as_editor()
                 CallAfter([this] {
                     if (!m_plater) return;
                     if (m_plater->has_active_sliced_editor()) m_plater->export_sliced_document();
-                    else m_plater->export_gcode(false);
+                    else m_plater->export_sliced(false);
                 });
-            }, "export_gcode", nullptr,
-            [this](){return can_export_gcode(); }, this);
-        m_changeable_menu_items.push_back(item_export_gcode);
+            }, "export_sliced", nullptr,
+            [this](){return can_export(); }, this);
+        m_changeable_menu_items.push_back(item_export_sliced);
         // Keep the miSend slot so that the miMaterialTab/miPrinterTab indices stay valid offline.
         m_changeable_menu_items.push_back(nullptr);
 		append_menu_item(export_menu, wxID_ANY, _L("Export sliced result to removable drive") + dots + "\tCtrl+U", _L("Save the current sliced result to an SD card or USB drive"),
-			[this](wxCommandEvent&) { if (m_plater) m_plater->export_gcode(true); }, "export_to_sd", nullptr,
-			[this]() {return can_export_gcode_sd(); }, this);
+			[this](wxCommandEvent&) { if (m_plater) m_plater->export_sliced(true); }, "export_to_sd", nullptr,
+			[this]() {return can_export_removable(); }, this);
         export_menu->AppendSeparator();
         append_menu_item(export_menu, wxID_ANY, _L("Export Plate as &STL/OBJ") + dots, _L("Export current plate as STL/OBJ"),
             [this](wxCommandEvent&) { if (m_plater) m_plater->export_stl_obj(); }, "export_plater", nullptr,
@@ -1240,6 +1241,13 @@ void MainFrame::init_menubar_as_editor()
             [this](wxCommandEvent&) { export_configbundle(); }, "export_config_bundle", nullptr,
             []() {return true; }, this);
         append_submenu(fileMenu, export_menu, wxID_ANY, _L("&Export"), "");
+
+        append_menu_item(fileMenu, wxID_ANY, _L("I &printed this file") + dots, _L("Book the resin of this print against your resin stock"),
+            [this](wxCommandEvent&) { CallAfter([this] { show_resin_printed_dialog(this); }); }, "", nullptr,
+            []() { return true; }, this);
+        append_menu_item(fileMenu, wxID_ANY, _L("&Resin stock") + dots, _L("Manage the bottles of resin you own"),
+            [this](wxCommandEvent&) { CallAfter([this] { show_resin_stock_manager(this); }); }, "", nullptr,
+            []() { return true; }, this);
 
 
 		append_menu_item(fileMenu, wxID_ANY, _L("Ejec&t SD Card / Flash Drive") + dots + "\tCtrl+T", _L("Safely eject the SD card or USB drive after exporting."),

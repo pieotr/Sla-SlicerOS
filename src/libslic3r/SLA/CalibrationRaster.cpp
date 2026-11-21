@@ -4,7 +4,7 @@
 #include "PrinterRaster.hpp"
 #include "GeneratedLayerOwnership.hpp"
 #include "ProjectedPNGMaskEncoder.hpp"
-#include "HersheyFontData.hpp"
+#include "HersheyText.hpp"
 #include "LayerMemoryBudget.hpp"
 #include "libslic3r/Exception.hpp"
 #include <algorithm>
@@ -335,45 +335,18 @@ std::string format_number(double value) {
 }
 
 // --- Hershey Duplex text (OpenCV putText metrics) -------------------------
-// ExposureFinderPattern keeps its own copy in an anonymous namespace; only the
-// Duplex face is needed here.
-const int *duplex_font() { return hershey::fonts[2]; }
-const char *duplex_glyph(char character) {
-  unsigned c = static_cast<unsigned char>(character);
-  if (c < 32 || c > 126) c = '?';
-  return hershey::glyphs[duplex_font()[c - 32 + 1]];
-}
+// The renderer is shared with the other text users (HersheyText.cpp); only the Duplex face is needed here.
 int text_line_height(double scale, int thickness) {
-  const int font = duplex_font()[0];
-  return int(std::lrint((((font >> 4) & 15) + (font & 15)) * scale + (thickness + 1) / 2));
+  return hershey_text::text_extent(std::string(), 2, scale, thickness).height;
 }
 void put_text_line(cv::Mat &image, const std::string &text, cv::Point origin, double scale, int color,
                    int thickness, int line_type) {
-  constexpr int64_t unit = int64_t(1) << 16;  // OpenCV 16.16 fixed point
-  const int64_t factor = std::lrint(scale * unit);
-  int64_t x = int64_t(origin.x) * unit, y = int64_t(origin.y) * unit - int64_t(duplex_font()[0] & 15) * factor;
-  for (char character : text) {
-    const char *p = duplex_glyph(character);
-    x -= int64_t(p[0] - 'R') * factor;
-    const int64_t advance = int64_t(p[1] - 'R') * factor;
-    p += 2;
-    std::vector<cv::Point> stroke;
-    const auto flush = [&] {
-      if (stroke.size() > 1)
-        cv::polylines(image, std::vector<std::vector<cv::Point>>{stroke}, false, cv::Scalar(color), thickness,
-                      line_type, 16);
-      stroke.clear();
-    };
-    while (*p) {
-      if (*p == ' ') { flush(); ++p; continue; }
-      const int64_t px = x + int64_t(p[0] - 'R') * factor, py = y + int64_t(p[1] - 'R') * factor;
-      if (px < INT32_MIN || px > INT32_MAX || py < INT32_MIN || py > INT32_MAX)
-        throw RuntimeError("Calibration text exceeds fixed-point coordinate limits");
-      stroke.emplace_back(int(px), int(py));
-      p += 2;
-    }
-    flush();
-    x += advance;
+  try {
+    CV_Assert(image.type() == CV_8UC1);
+    hershey_text::draw_line(image.data, image.rows, image.cols, text, origin.x, origin.y, 2, scale, color, thickness,
+                            hershey_text::LineType(line_type), false, false, image.step[0]);
+  } catch (const std::runtime_error &) {
+    throw RuntimeError("Calibration text exceeds fixed-point coordinate limits");
   }
 }
 // Multi-line text with UVtools' PutTextExtended line spacing.

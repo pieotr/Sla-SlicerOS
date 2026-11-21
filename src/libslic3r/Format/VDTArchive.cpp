@@ -33,6 +33,7 @@ Json parameters(const SLAPrint &print, bool bottom) {
 }
 } // namespace
 void VoxeldanceTangoArchive::validate_configuration(const SLAPrint &print) {
+    sla::require_representable(print, "vdt");
     const auto &cfg = print.printer_config();
     if (cfg.display_pixels_x.value < 1 || cfg.display_pixels_y.value < 1 || cfg.display_pixels_x.value > 32768 ||
         cfg.display_pixels_y.value > 32768 ||

@@ -3,7 +3,7 @@
 // Original algorithm: UVtools contributors, AGPL-3.0; see project LICENSE.
 #include "ExposureFinderPattern.hpp"
 #include "ExposureFinderDraft.hpp"
-#include "HersheyFontData.hpp"
+#include "HersheyText.hpp"
 #include "RasterRounding.hpp"
 #include "libslic3r/SLAPrint.hpp"
 #include "CalibrationRecipe.hpp"
@@ -40,120 +40,25 @@ PatternDecimal rounded(const PatternDecimal &value, unsigned scale) {
 cv::Mat view(png::ImageGreyscale &image) {
     return cv::Mat(int(image.rows), int(image.cols), CV_8UC1, image.buf.data());
 }
-// OpenCV 5 maps the legacy Hershey API to new fonts. Keep the classical
-// stroke data/metrics in our source so calibration footprints remain stable.
-const int *font_data(int face) {
-    if ((face & ~16) < 0 || (face & ~16) > 7)
-        throw RuntimeError("Invalid calibration font");
-    return hershey::fonts[(face & 15) + ((face & 16) ? 8 : 0)];
-}
-const char *glyph(const std::string &text, size_t &index, int face) {
-    unsigned c = static_cast<unsigned char>(text[index]);
-    if (face == 3 && c >= 128) {
-        const unsigned next = index + 1 < text.size() ? static_cast<unsigned char>(text[index + 1]) : 0;
-        if (c == 0xd0 && next >= 0x90 && next <= 0xbf) {
-            ++index;
-            c = 127 + next - 0x90;
-        } else if (c == 0xd1 && next >= 0x80 && next <= 0x8f) {
-            ++index;
-            c = 175 + next - 0x80;
-        } else {
-            while (index + 1 < text.size() && (static_cast<unsigned char>(text[index + 1]) & 0xc0) == 0x80)
-                ++index;
-            c = '?';
-        }
-    }
-    if (c < 32 || c > (face == 3 ? 190u : 126u))
-        c = '?';
-    return hershey::glyphs[font_data(face)[c - 32 + 1]];
-}
+// The Hershey stroke renderer (classical OpenCV metrics, see the note in HersheyText.hpp) lives in HersheyText.cpp.
 cv::Size native_text_size(const std::string &text, int face, double scale, int thickness, int *baseline) {
-    const int *font = font_data(face);
-    double width = 0.;
-    for (size_t i = 0; i < text.size(); ++i) {
-        const char *p = glyph(text, i, face);
-        width += (int(p[1]) - int(p[0])) * scale;
-    }
+    if (!hershey_text::valid_face(face))
+        throw RuntimeError("Invalid calibration font");
+    const auto extent = hershey_text::text_extent(text, face, scale, thickness);
     if (baseline)
-        *baseline = int(std::lrint((font[0] & 15) * scale + thickness * .5));
-    return {int(std::lrint(width + thickness)),
-            int(std::lrint((((font[0] >> 4) & 15) + (font[0] & 15)) * scale + (thickness + 1) / 2))};
-}
-// Classical OpenCV fixed-point Line2 for one-pixel, non-AA Hershey strokes.
-// OpenCV 5 changed subpixel rounding in this path; calibration glyphs must
-// retain the original endpoint and DDA convention at fractional font scales.
-void legacy_thin_line(cv::Mat &image, cv::Point first, cv::Point last, uint8_t color) {
-    constexpr int64_t unit = int64_t(1) << 16;
-    cv::Point2l a(first.x, first.y), b(last.x, last.y);
-    if (!cv::clipLine(cv::Size2l(int64_t(image.cols) * unit, int64_t(image.rows) * unit), a, b))
-        return;
-    const auto put = [&](int64_t x, int64_t y) {
-        if (x >= 0 && x < image.cols && y >= 0 && y < image.rows)
-            image.at<uint8_t>(int(y), int(x)) = color;
-    };
-    const int64_t dx = b.x - a.x, dy = b.y - a.y, ax = std::abs(dx), ay = std::abs(dy);
-    if (ax > ay) {
-        int64_t signed_dy = dy;
-        if (dx < 0) {
-            std::swap(a, b);
-            signed_dy = -signed_dy;
-        }
-        const int64_t step = signed_dy * unit / (ax | 1), count = (b.x - a.x) >> 16;
-        put((b.x + unit / 2) >> 16, (b.y + unit / 2) >> 16);
-        int64_t x = (a.x + unit / 2) >> 16, y = a.y + unit / 2;
-        for (int64_t i = 0; i <= count; ++i, ++x, y += step)
-            put(x, y >> 16);
-    } else {
-        int64_t signed_dx = dx;
-        if (dy < 0) {
-            std::swap(a, b);
-            signed_dx = -signed_dx;
-        }
-        const int64_t step = signed_dx * unit / (ay | 1), count = (b.y - a.y) >> 16;
-        put((b.x + unit / 2) >> 16, (b.y + unit / 2) >> 16);
-        int64_t x = a.x + unit / 2, y = (a.y + unit / 2) >> 16;
-        for (int64_t i = 0; i <= count; ++i, x += step, ++y)
-            put(x >> 16, y);
-    }
+        *baseline = extent.baseline;
+    return {extent.width, extent.height};
 }
 void native_put_text(cv::Mat &image, const std::string &text, cv::Point origin, int face, double scale,
                      cv::Scalar color, int thickness, int line_type) {
-    constexpr int64_t unit = int64_t(1) << 16;
-    const int64_t factor = std::lrint(scale * unit);
-    int64_t x = int64_t(origin.x) * unit,
-            y = int64_t(origin.y) * unit - int64_t(font_data(face)[0] & 15) * factor;
-    for (size_t i = 0; i < text.size(); ++i) {
-        const char *p = glyph(text, i, face);
-        x -= int64_t(p[0] - 'R') * factor;
-        const int64_t advance = int64_t(p[1] - 'R') * factor;
-        p += 2;
-        std::vector<cv::Point> stroke;
-        const auto flush = [&] {
-            if (stroke.size() > 1) {
-                if (thickness == 1 && line_type == cv::LINE_8) {
-                    for (size_t segment = 1; segment < stroke.size(); ++segment)
-                        legacy_thin_line(image, stroke[segment - 1], stroke[segment], uint8_t(color[0]));
-                } else
-                    cv::polylines(image, std::vector<std::vector<cv::Point>>{stroke}, false, color, thickness,
-                                  line_type, 16);
-            }
-            stroke.clear();
-        };
-        while (*p) {
-            if (*p == ' ') {
-                flush();
-                ++p;
-                continue;
-            }
-            const int64_t px = x + int64_t(p[0] - 'R') * factor, py = y + int64_t(p[1] - 'R') * factor;
-            if (px < std::numeric_limits<int>::min() || px > std::numeric_limits<int>::max() ||
-                py < std::numeric_limits<int>::min() || py > std::numeric_limits<int>::max())
-                throw RuntimeError("ExposureFinder text exceeds fixed-point coordinate limits");
-            stroke.emplace_back(int(px), int(py));
-            p += 2;
-        }
-        flush();
-        x += advance;
+    if (!hershey_text::valid_face(face))
+        throw RuntimeError("Invalid calibration font");
+    CV_Assert(image.type() == CV_8UC1);
+    try {
+        hershey_text::draw_line(image.data, image.rows, image.cols, text, origin.x, origin.y, face, scale, int(color[0]),
+                                thickness, hershey_text::LineType(line_type), false, true, image.step[0]);
+    } catch (const std::runtime_error &) {
+        throw RuntimeError("ExposureFinder text exceeds fixed-point coordinate limits");
     }
 }
 std::vector<std::string> lines(std::string text) {

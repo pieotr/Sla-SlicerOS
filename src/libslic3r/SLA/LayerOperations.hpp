@@ -2,7 +2,9 @@
 //
 // Native port of UVtools layer operations (batch 1, goal G6). Pure backend: operates on plain
 // 8-bit masks so it can be applied through LayerDocument (Undo/Redo) by the GUI layer later.
-// No OpenCV / Emgu / .NET at runtime; everything is plain C++ pixel code.
+// No OpenCV / Emgu / .NET at runtime in THIS translation unit; everything is plain C++ pixel code. Filters that
+// must match OpenCV byte for byte live in separate translation units (LayerBlur.cpp, LayerLinkedLines.cpp) with a
+// Mask in / Mask out interface.
 //
 // Operations matrix (UVtools op -> our function -> notes / deviations)
 // ---------------------------------------------------------------------------------------------
@@ -27,7 +29,15 @@
 //                                                                      NOT ported: Corrode (noise), ignore-area.
 // OperationRaftRelief    -> raft_relief_layers                         Relief, Dimming, Decimate, Tabs. Support
 //                                                                      layer auto-detect counts blobs instead of
-//                                                                      Hough circles. NOT ported: LinkedLines.
+//                                                                      Hough circles. LinkedLines: LayerLinkedLines.cpp
+//                                                                      (OpenCV findContours / line / drawContours).
+// OperationBlur          -> blur_layers / blur_kernel (LayerBlur.hpp)   StackBlur, Box, Median, Gaussian, Filter2D are
+//                                                                      OpenCV calls (byte identical to UVtools). Pyramid:
+//                                                                      UVtools 7.0.0 never writes the result back (a no-op);
+//                                                                      we run the described down+up pyramid.
+// OperationMask          -> mask_image_layers / mask_image_kernel      out = round(in * mask / 255); a mask that does not
+//                                                                      match the layer (or ROI) size is an ERROR (UVtools
+//                                                                      silently skips); optional bilinear fit to the layer.
 // OperationLayerClone    -> clone_layers                               exact incl. z shifting.
 // OperationLayerRemove   -> remove_layers                              exact incl. z shifting.
 // OperationLayerReHeight -> reheight_layers (+ reheight_presets)       multiply / divide / z offset. Pyramid
@@ -72,7 +82,8 @@
 //                           optimal_model_tilt / estimate_print_time  simplification of Layer.CalculatePrintTime.
 // Layer exports live in LayerExports.hpp.
 //
-// Not covered by this module (UVtools "Mask" image operation): the image-mask feature; use a ROI instead.
+// Image masks of the polygon type (UVtools ApplyMask) and the "Mask" operation's disk reader are not here: the caller
+// decodes the picture (see LayerRecipe.cpp read_grey_png) and hands over a Mask.
 //
 // Conventions: pixel coordinates, origin top-left, +y down. Layer ranges are inclusive. All multi-layer
 // functions compute results off to the side and commit at the end, so a cancelled run (progress callback
@@ -275,8 +286,19 @@ struct PixelArithmeticParams {
 std::string validate_pixel_arithmetic(const PixelArithmeticParams &);
 void        pixel_arithmetic_layers(std::vector<Mask> &layers, const PixelArithmeticParams &, const LayerProgress &progress = {});
 
+// ---- Mask by image (UVtools OperationMask) --------------------------------------------------------
+struct MaskImageParams {
+    LayerSelection selection;   // roi: the mask must have the size of the ROI (the whole layer when empty)
+    Mask           image;       // 255 keeps the pixel, 0 clears it, in between attenuates
+    bool           invert = false;
+};
+// "The mask can not be empty." / "The mask image is WxH but the layers (or the region of interest) are W2xH2."
+// (UVtools skips such layers silently; we refuse). width/height = layer size.
+std::string validate_mask_image(const MaskImageParams &, size_t width, size_t height);
+void        mask_image_layers(std::vector<Mask> &layers, const MaskImageParams &, const LayerProgress &progress = {});
+
 // ---- Raft relief ----------------------------------------------------------------------------------
-enum class RaftReliefType { Relief, LinkedLines /* not ported */, Dimming, Decimate, Tabs };
+enum class RaftReliefType { Relief, LinkedLines, Dimming, Decimate, Tabs };
 struct RaftReliefParams {
     Rect           roi;
     RaftReliefType type = RaftReliefType::Relief;
@@ -286,6 +308,10 @@ struct RaftReliefParams {
     unsigned       dilate_iterations = 15, wall_margin = 40, hole_diameter = 80, hole_spacing = 40; // px
     uint8_t        high_brightness  = 255;   // tab triangle brightness
     unsigned       tab_triangle_base = 200, tab_triangle_height = 250; // px
+    // LinkedLines (UVtools LinkedLineThickness / LinkedMinimumLinks / LinkedExternalSupports); the link colour is high_brightness.
+    uint8_t        linked_line_thickness = 26; // >= 4
+    uint8_t        linked_minimum_links  = 4;
+    bool           linked_external_supports = true;
 };
 std::string validate_raft_relief(const RaftReliefParams &);
 // Returns false when no raft/support layer was found (nothing changed).
@@ -294,6 +320,35 @@ bool        raft_relief_layers(std::vector<Mask> &layers, const RaftReliefParams
 // ---- Layer list operations (masks + z in mm) -------------------------------------------------------
 // source_index[i] = index of the input layer that produced output layer i (for copying exposure data).
 struct LayerListResult { std::vector<size_t> source_index; };
+
+// ---- Layer import (UVtools OperationLayerImport) -----------------------------------------------------
+// The picture / layer files are decoded by the caller (PNG pictures, or any printer file through LayerDocument).
+enum class LayerImportType { Insert, Replace, Stack, MergeSum, MergeMax, Subtract, AbsDiff, BitwiseAnd, BitwiseOr, BitwiseXor };
+struct LayerImportSource { std::string name; std::vector<Mask> layers; }; // one file: its layers in order (all one size)
+struct LayerImportParams {
+    LayerImportType type = LayerImportType::Stack;
+    size_t   start_layer = 0;                 // first target layer
+    bool     extend_beyond_layer_count = true; // Replace / Stack / MergeSum / MergeMax append blank layers when the import is longer
+    bool     discard_unmodified_layers = false; // drop the layers after the last imported one
+    unsigned stack_margin = 50;               // px between the model and the stacked import
+    std::vector<LayerImportSource> sources;
+};
+// "No files to import." ... ; width / height / layer_count = the target document. start_layer == layer_count is only valid for
+// Insert and for the types that extend. UVtools skips sources that do not fit; so do we, and the report says how many.
+std::string validate_layer_import(const LayerImportParams &, size_t layer_count, size_t width, size_t height);
+// True when the import can change the number of layers (Insert, extend, discard): such imports need a document that accepts a
+// different layer list. Everything else only changes pixels and works on every document.
+bool        layer_import_changes_list(const LayerImportParams &, size_t layer_count);
+struct LayerImportResult {
+    LayerListResult list;          // source_index[i] = input layer output layer i derives its parameters from
+    size_t imported = 0, total = 0; // sources imported / given
+    std::string report;            // "Could not import and fit N out of M format(s) (Insufficient or unequal build space)." or empty
+};
+// Runs the import on the decoded layers and z (top Z of every layer, extended for new layers). Throws invalid_argument when
+// nothing could be imported (UVtools returns false). Cancel (progress) leaves `layers` / `z_mm` untouched.
+LayerImportResult layer_import_layers(std::vector<Mask> &layers, std::vector<double> &z_mm, const LayerImportParams &,
+                                      const LayerProgress &progress = {});
+
 
 struct CloneParams {
     size_t first_layer = 0, last_layer = kLastLayer;
@@ -429,6 +484,7 @@ struct PrinterContext {
     bool   can_use_lift_height2 = true, can_use_lift_speed2 = true;
     bool   can_use_retract_height2 = true, can_use_retract_speed2 = true;
     bool   can_use_wait_after_lift = true, can_use_wait_before_cure = true;
+    bool   same_layer_z_allowed = true; // UVtools CanUseSameLayerPositionZ (sliced / generated documents accept repeated Z)
     std::optional<FlipDirection> display_mirror; // Lithophane "mirror": flips the way the display is mirrored (default horizontal)
 };
 
@@ -535,6 +591,36 @@ RaiseDummyLayer raise_on_print_finish_plan(size_t layer_count, size_t width, siz
 // Appends the dummy layer. Returns nothing: the new layer is the last element of every list.
 void        raise_on_print_finish(std::vector<Mask> &layers, std::vector<double> &z_mm, std::vector<LayerParams> &table,
                                   const RaiseOnPrintFinishParams &, const PrinterContext &);
+
+// ---- Stir resin (UVtools OperationStirResin) ---------------------------------------------------------
+// Lifts the build plate `stirs` times at the start of the print (blank or one-dim-pixel layers at Z = 0.001 mm).
+enum class StirMethod { StirOnly, StirAndPrint };
+struct StirResinParams {
+    StirMethod method = StirMethod::StirOnly;
+    unsigned   stirs = 10;
+    bool       output_dummy_pixel = true;
+    double     exposure_s = 0;          // 0 -> 0.01 s (0 for G-code printers)
+    double     lift_height_mm = 45;
+    double     lift_speed = 0;          // mm/min, 0 -> PrinterContext::maximum_speed
+    double     retract_speed = 0;       // mm/min, 0 -> lift speed
+    double     wait_time_before_stir_s = 0;
+    double     wait_time_after_lift_s = 0;
+};
+std::string validate_stir_resin(const StirResinParams &, const PrinterContext &);
+// UVtools StirSeconds: light-off delay of one stir (lift + retract + waits) times the number of stirs.
+double      stir_resin_seconds(const StirResinParams &, const PrinterContext &);
+// UVtools Layer.IsDummy: at most one lit pixel or an exposure of at most 0.01 s.
+bool        is_dummy_layer(size_t non_zero_pixels, double exposure_s);
+// List / parameter part (no pixels). `base_row` = the document's first normal layer row (the unmodelled fields of the stir
+// layers come from it). StirOnly: output = `stirs` stir layers, the table / z are replaced. StirAndPrint: `stirs` stir layers
+// in front of the old ones, minus the previous stir block (leading layers for which `is_dummy(i)` holds).
+// `source_index[k]` = input layer the output row derives from. Returns the stir layer image description.
+RaiseDummyLayer stir_resin_plan(size_t layer_count, size_t width, size_t height, std::vector<double> &z_mm, std::vector<LayerParams> &table,
+                                const StirResinParams &, const PrinterContext &, const LayerParams &base_row,
+                                const std::function<bool(size_t)> &is_dummy,
+                                const std::function<void(size_t &, size_t &, bool &)> &first_layer_first_pixel,
+                                const std::function<void(int &, int &)> &model_center_of,
+                                std::vector<size_t> &source_index, size_t &first_kept);
 
 // ---- Edit parameters --------------------------------------------------------------------------------
 // Every engaged field is written; disengaged fields are left alone.
@@ -778,6 +864,7 @@ StreamKernel flip_kernel(const FlipParams &, const StreamLayout &);
 StreamKernel pattern_kernel(const PatternParams &, const StreamLayout &);
 StreamKernel solidify_kernel(const SolidifyParams &, const StreamLayout &);
 StreamKernel threshold_kernel(const ThresholdParams &, const StreamLayout &);
+StreamKernel mask_image_kernel(const MaskImageParams &, const StreamLayout &);
 StreamKernel pixel_dimming_kernel(const PixelDimmingParams &, const StreamLayout &);
 StreamKernel pixel_arithmetic_kernel(const PixelArithmeticParams &, const StreamLayout &);
 StreamKernel light_bleed_kernel(const LightBleedParams &, const StreamLayout &);

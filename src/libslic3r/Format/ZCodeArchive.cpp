@@ -43,6 +43,7 @@ std::string number(double v) {
 std::unique_ptr<sla::RasterBase> ZCodeArchive::create_raster() const { return sla::create_printer_raster(m_cfg); }
 sla::RasterEncoder ZCodeArchive::get_encoder() const { return sla::PNGRasterEncoder{}; }
 void ZCodeArchive::validate_configuration(const SLAPrint &print) {
+    sla::require_representable(print, "zcode");
     const auto &cfg = print.printer_config();
     if (cfg.display_pixels_x.value < 1 || cfg.display_pixels_y.value < 1 || cfg.display_pixels_x.value > 32768 ||
         cfg.display_pixels_y.value > 32768 ||
@@ -276,6 +277,7 @@ void ZCodeArchive::export_print(const std::string fname, const SLAPrint &print, 
 std::unique_ptr<sla::RasterBase> ZCodexArchive::create_raster() const { return sla::create_printer_raster(m_cfg); }
 sla::RasterEncoder ZCodexArchive::get_encoder() const { return sla::PNGRasterEncoder{}; }
 void ZCodexArchive::validate_configuration(const SLAPrint &print) {
+    sla::require_representable(print, "zcodex");
     const auto &cfg = print.printer_config();
     const bool portrait = cfg.display_orientation.value == sladoPortrait;
     if ((portrait ? cfg.display_pixels_y.value : cfg.display_pixels_x.value) != 1440 ||

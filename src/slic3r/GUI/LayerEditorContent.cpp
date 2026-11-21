@@ -366,8 +366,148 @@ void LayerEditorContent::build_tool_toggles(wxSizer *column)
     add(m_tool, shape_row, _L("Ellipse"), _L("drag across the bounding box."), "<ellipse cx=\"12\" cy=\"12\" rx=\"8.500\" ry=\"6\"/>");
     add(m_tool, shape_row, _L("Flood fill"), _L("fills the connected region of identical grey on click. Each use is one Undo step for the whole layer range."),
         "<path d=\"M5 12l7-7 7 7-6 6a2 2 0 0 1-2.800 0z\"/><path d=\"M20.500 15c1.400 1.800 1.400 3.500 0 3.500s-1.400-1.700 0-3.500z\" fill=\"@C@\"/>");
-    column->Add(shape_row, 0, wxBOTTOM, 6);
+    column->Add(shape_row, 0, wxBOTTOM, 4);
+    // UVtools pixel tools that act on a click: text (one or more layers) and the two columns that go down through the layers.
+    auto *pixel_row = new wxBoxSizer(wxHORIZONTAL);
+    add(m_tool, pixel_row, _L("Text"), _L("writes the text from the options below at the clicked point (the baseline-left corner). One Undo step for the whole layer range."),
+        "<path d=\"M5 6.500h14\"/><path d=\"M12 6.500V19\"/><path d=\"M9 19h6\"/>");
+    add(m_tool, pixel_row, _L("Supports"), _L("draws a support column downward from the clicked layer until it touches the model (UVtools Pixel supports). The clicked layer stays unchanged."),
+        "<path d=\"M12 3.500v11.500\"/><path d=\"M10.500 3.500h3\"/><path d=\"M5.500 20.500l3-5.500h7l3 5.500z\"/>");
+    add(m_tool, pixel_row, _L("Drain hole"), _L("drills a hole downward from the clicked layer until it reaches empty space (UVtools Drain holes). The clicked layer stays unchanged."),
+        "<ellipse cx=\"12\" cy=\"6.500\" rx=\"6\" ry=\"2.500\"/><path d=\"M6 6.500v6c0 1.400 2.700 2.500 6 2.500s6-1.100 6-2.500v-6\"/><path d=\"M12 15v6\"/><path d=\"M9.500 18.800l2.500 2.200 2.500-2.200\"/>");
+    column->Add(pixel_row, 0, wxBOTTOM, 6);
     m_brush.SetSelection(0); m_tool.SetSelection(0); m_shape.SetSelection(0);
+}
+
+// Options of the Text / Supports / Drain hole tools (UVtools PixelText, PixelSupport, PixelDrainHole). Only the options of the
+// chosen tool are shown.
+void LayerEditorContent::build_tool_options(wxSizer *column)
+{
+    const auto grid_of = [&](wxPanel *panel) {
+        auto *grid = new wxFlexGridSizer(2, 5, 8);
+        grid->AddGrowableCol(1);
+        panel->SetSizer(grid);
+        return grid;
+    };
+    const auto caption = [&](wxPanel *panel, wxFlexGridSizer *grid, const wxString &label) {
+        grid->Add(new wxStaticText(panel, wxID_ANY, label), 0, wxALIGN_CENTER_VERTICAL);
+    };
+    const auto spin = [&](wxPanel *panel, wxFlexGridSizer *grid, const wxString &label, const char *name, int low, int high, int value, const wxString &tip) {
+        caption(panel, grid, label);
+        auto *ctrl = new wxSpinCtrl(panel, wxID_ANY);
+        ctrl->SetRange(low, high); ctrl->SetValue(value);
+        ctrl->SetMinSize(wxSize(spin_min_width(ctrl), -1));
+        ctrl->SetName(name); ctrl->SetToolTip(tip);
+        set_accessible_name(ctrl, name, tip, AccessibleRole::SpinButton);
+        grid->Add(ctrl, 1, wxEXPAND);
+        return ctrl;
+    };
+    const auto dspin = [&](wxPanel *panel, wxFlexGridSizer *grid, const wxString &label, const char *name, double low, double high, double value, double inc, const wxString &tip) {
+        caption(panel, grid, label);
+        auto *ctrl = new wxSpinCtrlDouble(panel, wxID_ANY, wxEmptyString, wxDefaultPosition, wxDefaultSize, wxSP_ARROW_KEYS, low, high, value, inc);
+        ctrl->SetDigits(2);
+        ctrl->SetMinSize(wxSize(std::max(FromDIP(80), ctrl->GetBestSize().x), -1));
+        ctrl->SetName(name); ctrl->SetToolTip(tip);
+        set_accessible_name(ctrl, name, tip, AccessibleRole::SpinButton);
+        grid->Add(ctrl, 1, wxEXPAND);
+        return ctrl;
+    };
+
+    // Text
+    m_opt_text = new wxPanel(this);
+    auto *tg = grid_of(m_opt_text);
+    caption(m_opt_text, tg, _L("Text"));
+    m_text_value = new wxTextCtrl(m_opt_text, wxID_ANY, "ABC", wxDefaultPosition, wxSize(FromDIP(60), FromDIP(48)), wxTE_MULTILINE);
+    m_text_value->SetName("Text tool string");
+    m_text_value->SetToolTip(_L("The text to write. Press Enter for a new line. Characters outside basic Latin are not available in the Hershey fonts."));
+    set_accessible_name(m_text_value, "Text tool string", m_text_value->GetToolTipText(), AccessibleRole::Text, true);
+    tg->Add(m_text_value, 1, wxEXPAND);
+    caption(m_opt_text, tg, _L("Font"));
+    m_text_font = make_choice(m_opt_text);
+    for (const wxString label : std::initializer_list<wxString>{_L("Simplex"), _L("Plain"), _L("Duplex"), _L("Complex"), _L("Triplex"), _L("Complex small"), _L("Script simplex"), _L("Script complex")})
+        m_text_font->Append(label);
+    m_text_font->SetSelection(0); m_text_font->SetName("Text tool font"); m_text_font->SetMinSize(wxSize(FromDIP(60), -1));
+    tg->Add(m_text_font, 1, wxEXPAND);
+    tg->AddSpacer(0);
+    m_text_italic = new wxCheckBox(m_opt_text, wxID_ANY, _L("Italic"));
+    m_text_italic->SetName("Text tool italic");
+    set_accessible_name(m_text_italic, _L("Italic"), _L("Italic variant of the Hershey font."), AccessibleRole::CheckBox);
+    tg->Add(m_text_italic, 0, wxALIGN_CENTER_VERTICAL);
+    m_text_scale = dspin(m_opt_text, tg, _L("Font scale"), "Text tool font scale", 0.2, 200, 1.0, 0.1, _L("Size of the letters (1.0 = about 22 px tall). Smallest 0.2."));
+    m_text_thickness = spin(m_opt_text, tg, _L("Thickness (px)"), "Text tool thickness", 1, 255, 1, _L("Stroke thickness of the letters in pixels."));
+    m_text_angle = dspin(m_opt_text, tg, _L("Angle (deg)"), "Text tool angle", -360, 360, 0, 1, _L("Rotation around the clicked point; positive is clockwise."));
+    caption(m_opt_text, tg, _L("Alignment"));
+    m_text_align = make_choice(m_opt_text);
+    for (const wxString label : std::initializer_list<wxString>{_L("Left"), _L("Center"), _L("Right")}) m_text_align->Append(label);
+    m_text_align->SetSelection(0); m_text_align->SetName("Text tool alignment"); m_text_align->SetMinSize(wxSize(FromDIP(60), -1));
+    m_text_align->SetToolTip(_L("How the lines of a multi-line text line up."));
+    tg->Add(m_text_align, 1, wxEXPAND);
+    tg->AddSpacer(0);
+    m_text_mirror = new wxCheckBox(m_opt_text, wxID_ANY, _L("Mirror"));
+    m_text_mirror->SetName("Text tool mirror");
+    m_text_mirror->SetToolTip(_L("Flips the text vertically (UVtools Mirror)."));
+    set_accessible_name(m_text_mirror, _L("Mirror"), _L("Flips the text vertically (UVtools Mirror)."), AccessibleRole::CheckBox);
+    tg->Add(m_text_mirror, 0, wxALIGN_CENTER_VERTICAL);
+    column->Add(m_opt_text, 0, wxEXPAND | wxTOP, 4);
+
+    // Supports
+    m_opt_support = new wxPanel(this);
+    auto *sg = grid_of(m_opt_support);
+    m_support_tip = spin(m_opt_support, sg, _L("Tip diameter (px)"), "Support tip diameter", 1, 255, 19, _L("Diameter of the support where it touches the model."));
+    m_support_pillar = spin(m_opt_support, sg, _L("Pillar diameter (px)"), "Support pillar diameter", 1, 255, 32, _L("Diameter the column grows to under the tip."));
+    m_support_base = spin(m_opt_support, sg, _L("Base diameter (px)"), "Support base diameter", 1, 255, 60, _L("Diameter of the lowest layers (the foot on the plate)."));
+    column->Add(m_opt_support, 0, wxEXPAND | wxTOP, 4);
+
+    // Drain hole
+    m_opt_drain = new wxPanel(this);
+    auto *dg = grid_of(m_opt_drain);
+    m_drain_diameter = spin(m_opt_drain, dg, _L("Diameter (px)"), "Drain hole diameter", 1, 65535, 50, _L("Diameter of the hole."));
+    column->Add(m_opt_drain, 0, wxEXPAND | wxTOP, 4);
+
+    m_tool_message = new wxStaticText(this, wxID_ANY, "");
+    m_tool_message->SetName("Tool message");
+    column->Add(m_tool_message, 0, wxEXPAND | wxTOP, 3);
+    update_tool_options();
+}
+
+void LayerEditorContent::update_tool_options(const wxString &error)
+{
+    if (!m_opt_text) return;
+    const int tool = m_tool.GetSelection();
+    m_opt_text->Show(tool == 5);
+    m_opt_support->Show(tool == 6);
+    m_opt_drain->Show(tool == 7);
+    wxString message;
+    if (!error.empty()) message = error;
+    else if (tool == 5) message = _L("Click on the mask to write the text; it uses the grey value above and the range of the selection.");
+    else if (tool == 6 || tool == 7) message = _L("Click on a layer above the first one: layers below it change, the clicked layer does not.");
+    m_tool_message->SetForegroundColour(error.empty() ? wxSystemSettings::GetColour(wxSYS_COLOUR_GRAYTEXT) : wxColour(200, 60, 60));
+    m_tool_message->SetLabel(message);
+    m_tool_message->Show(!message.empty());
+    m_tool_message->Wrap(tool_text_width());
+    Layout(); FitInside();
+}
+
+// The Text tool options as a validated spec; throws RuntimeError with the reason otherwise.
+sla::hershey_text::TextSpec LayerEditorContent::current_text_spec() const
+{
+    sla::hershey_text::TextSpec spec;
+    spec.text = m_text_value->GetValue().utf8_string();
+    while (!spec.text.empty() && (spec.text.back() == '\n' || spec.text.back() == '\r')) spec.text.pop_back();
+    spec.face = m_text_font->GetSelection() + (m_text_italic->GetValue() ? 16 : 0);
+    spec.scale = m_text_scale->GetValue();
+    spec.thickness = m_text_thickness->GetValue();
+    spec.mirror = m_text_mirror->GetValue();
+    spec.angle = m_text_angle->GetValue();
+    static constexpr sla::hershey_text::Alignment kAlign[] = {sla::hershey_text::Alignment::Left, sla::hershey_text::Alignment::Center, sla::hershey_text::Alignment::Right};
+    spec.alignment = kAlign[std::clamp(m_text_align->GetSelection(), 0, 2)];
+    if (spec.text.empty()) throw RuntimeError(_u8L("Type the text to write first."));
+    if (const std::string error = sla::hershey_text::validate_text(spec); !error.empty()) {
+        std::string text = error;
+        while (!text.empty() && text.back() == '\n') text.pop_back();
+        throw RuntimeError(text);
+    }
+    return spec;
 }
 
 void LayerEditorContent::build_paint_controls(wxBoxSizer *root) {
@@ -436,6 +576,7 @@ void LayerEditorContent::build_paint_controls(wxBoxSizer *root) {
     m_radius = spin(tools, _L("Radius (pixels)"), 0, 4096, 3);
     m_radius->SetName("Brush radius (pixels)");
     m_value = spin(tools, _L("Grayscale / threshold"), 0, 255, 255);
+    build_tool_options(left);
     // View bar above the canvas: zoom and fit controls next to the thing they act on.
     m_view_bar = new wxBoxSizer(wxHORIZONTAL);
     m_center_col->Insert(0, m_view_bar, 0, wxEXPAND | wxBOTTOM, 4);
@@ -549,6 +690,8 @@ void LayerEditorContent::build_range_controls(wxBoxSizer *root) {
     m_first->SetRange(1, int(m_document.layer_count())); m_last->SetRange(1, int(m_document.layer_count()));
     m_first->SetValue(1); m_last->SetValue(int(m_document.layer_count()));
     m_first->SetName("First layer"); m_last->SetName("Last layer");
+    set_accessible_name(m_first, "First layer", _L("First layer of the selected range."), AccessibleRole::SpinButton);
+    set_accessible_name(m_last, "Last layer", _L("Last layer of the selected range."), AccessibleRole::SpinButton);
     m_first->SetMinSize(wxSize(spin_min_width(m_first), -1)); m_last->SetMinSize(wxSize(spin_min_width(m_last), -1));
     m_left_needed_dip = std::max(m_left_needed_dip, ToDIP(m_first->GetMinSize().x + m_last->GetMinSize().x + 6) + 20);
     first_last->Add(m_first, 1, wxRIGHT, 6); first_last->Add(m_last, 1);
@@ -609,7 +752,8 @@ void LayerEditorContent::build_range_filters(wxBoxSizer *root) {
                               _L("Erode"), _L("Dilate"), _L("Morphological open"), _L("Morphological close"), _L("Gradient"), _L("White top hat"), _L("Black top hat"), _L("Box blur"), _L("Median blur")})
         m_operation->Append(label);
     m_operation->SetSelection(0); m_operation->SetName("Range operation");
-    m_operation->SetToolTip(_L("Filters use Radius (pixels) and an odd square kernel. Morphology and box blur reflect edges; median blur replicates edges and removes isolated noise. Grayscale is preserved without thresholding."));
+    m_operation->SetToolTip(_L("Filters use Radius (pixels) and an odd square kernel. Morphology and box blur reflect edges; median blur replicates edges and removes isolated noise. Grayscale is preserved without thresholding. "
+                               "Stack, Gaussian and pyramid blur and a 2D kernel are in Operations > Pixels > Blur."));
     m_operation->SetMinSize(wxSize(FromDIP(60), -1));
     filter->Add(m_operation, 1, wxEXPAND);
     left->Add(filter, 0, wxEXPAND);

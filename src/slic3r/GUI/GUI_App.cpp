@@ -96,7 +96,6 @@
 #include "SavePresetDialog.hpp"
 #include "DesktopIntegrationDialog.hpp"
 #include "SendSystemInfoDialog.hpp"
-#include "Downloader.hpp"
 #include "WifiConfigDialog.hpp"
 #include "PresetArchiveDatabase.hpp"
 
@@ -525,9 +524,7 @@ void GUI_App::post_init()
     if (! this->initialized())
         throw Slic3r::RuntimeError("Calling post_init() while not yet initialized");
 
-    if (this->init_params->start_downloader) {
-        start_download(this->init_params->download_url);
-    } else {
+    {
         if (! this->init_params->preset_substitutions.empty())
             show_substitutions_info(this->init_params->preset_substitutions);
 
@@ -622,11 +619,10 @@ GUI_App::GUI_App(EAppMode mode)
     , m_imgui(new ImGuiWrapper())
 	, m_removable_drive_manager(std::make_unique<RemovableDriveManager>())
 	, m_other_instance_message_handler(std::make_unique<OtherInstanceMessageHandler>())
-    , m_downloader(std::make_unique<Downloader>())
 {
 	//app config initializes early becasuse it is used in instance checking in PrusaSlicer.cpp
 	this->init_app_config();
-    // init app downloader after path to datadir is set
+    // init app updater after path to datadir is set
     m_app_updater = std::make_unique<AppUpdater>();
 }
 
@@ -2725,11 +2721,6 @@ GalleryDialog* GUI_App::gallery_dialog()
     return mainframe->gallery_dialog();
 }
 
-Downloader* GUI_App::downloader()
-{
-    return m_downloader.get();
-}
-
 wxString GUI_App::current_language_code_safe() const
 {
 	// Translate the language code to a code, for which Prusa Research maintains translations.
@@ -2805,12 +2796,6 @@ void GUI_App::show_desktop_integration_dialog()
     dialog.ShowModal();
 #endif //__linux__
 }
-
-void GUI_App::show_downloader_registration_dialog()
-{
-    return;
-}
-
 
 void GUI_App::window_pos_save(wxTopLevelWindow* window, const std::string &name)
 {
@@ -3047,42 +3032,6 @@ void GUI_App::app_version_check(bool from_user)
     return;
 }
 
-void GUI_App::start_download(std::string url)
-{
-    BOOST_LOG_TRIVIAL(error) << "Download request ignored in offline-only mode. URL: " << url;
-    return;
-    if (!plater_) {
-        BOOST_LOG_TRIVIAL(error) << "Could not start URL download: plater is nullptr.";
-        return; 
-    }
-
-    #if defined(__APPLE__) || (defined(__linux__) && !defined(SLIC3R_DESKTOP_INTEGRATION))
-    if (app_config && !app_config->get_bool("downloader_url_registered"))
-    {
-        notification_manager()->push_notification(NotificationType::URLNotRegistered);
-        BOOST_LOG_TRIVIAL(error) << "Received command to open URL, but it is not allowed in app configuration. URL: " << url;
-        return;
-    }
-    #endif //defined(__APPLE__) || (defined(__linux__) && !defined(SLIC3R_DESKTOP_INTEGRATION))
-
-    //lets always init so if the download dest folder was changed, new dest is used 
-        boost::filesystem::path dest_folder(app_config->get("url_downloader_dest"));
-        if (dest_folder.empty() || !boost::filesystem::is_directory(dest_folder)) {
-            std::string msg = _u8L("Could not start URL download. Destination folder is not set. Please choose destination folder in Configuration Wizard.");
-            BOOST_LOG_TRIVIAL(error) << msg;
-            show_error(nullptr, msg);
-            return;
-        }
-    m_downloader->init(dest_folder);
-    m_downloader->start_download(url);
-}
-
-void GUI_App::open_wifi_config_dialog(bool forced, const wxString& drive_path/* = {}*/)
-{
-    (void) forced;
-    (void) drive_path;
-    return;
-}
 // Returns true if preset had to be installed.
 bool GUI_App::select_printer_preset(const Preset* preset)
 {
@@ -3099,18 +3048,6 @@ bool GUI_App::select_printer_preset(const Preset* preset)
             
     get_tab(Preset::Type::TYPE_PRINTER)->select_preset(preset->name);
     return is_installed;
-}
-
-bool GUI_App::select_printer_from_connect(const std::string& msg)
-{
-    BOOST_LOG_TRIVIAL(error) << "Connect printer selection ignored in offline-only mode.";
-    return false;
-}
-
-void GUI_App::open_link_in_printables(const std::string& url)
-{
-    BOOST_LOG_TRIVIAL(error) << "Printables link ignored in offline-only mode. URL: " << url;
-    return;
 }
 
 bool LogGui::ignorred_message(const wxString& msg)

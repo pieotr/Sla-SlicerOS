@@ -139,9 +139,9 @@ void LayerEditorContent::export_through_print(const ArchiveEntry *entry, const s
     sla::RepresentationApproval approval;
     if(sla::has_representation_rules(entry->id)) {
         auto representation=sla::plan_export_representation(entry->id,m_print->full_print_config(),&m_document);
-        if(!representation.blockers.empty()) throw ExportError(representation.strict_message("CXDLP"));
+        if(!representation.blockers.empty()) throw ExportError(representation.strict_message(sla::representation_format_label(entry->id)));
         if(!representation.adjustments.empty()) {
-            if(!confirm_export_adjustments(this,_L("CXDLP"),representation.adjustments)) return;
+            if(!confirm_export_adjustments(this,wxString::FromUTF8(sla::representation_format_label(entry->id)),representation.adjustments)) return;
             approval=std::move(representation.adjustments);
         }
     }
@@ -246,9 +246,9 @@ void LayerEditorContent::convert_archive() {
     sla::RepresentationApproval approval;
     if(sla::has_representation_rules(entry->id)) {
         auto representation=sla::plan_export_representation(entry->id,configuration,&m_document);
-        if(!representation.blockers.empty()) throw ExportError(representation.strict_message("CXDLP"));
+        if(!representation.blockers.empty()) throw ExportError(representation.strict_message(sla::representation_format_label(entry->id)));
         if(!representation.adjustments.empty()) {
-            if(!confirm_export_adjustments(this,_L("CXDLP"),representation.adjustments)) return;
+            if(!confirm_export_adjustments(this,wxString::FromUTF8(sla::representation_format_label(entry->id)),representation.adjustments)) return;
             approval=std::move(representation.adjustments);
         }
     }

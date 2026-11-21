@@ -27,6 +27,7 @@ add_executable(${_TEST_NAME}_tests ${_TEST_NAME}_tests_main.cpp
     sla_exposure_finder_raster_tests.cpp
     sla_exposure_finder_table_tests.cpp
     sla_exposure_finder_draft_tests.cpp
+    sla_resin_stock_tests.cpp
     sla_exposure_position_tests.cpp
     sla_exposure_sequence_tests.cpp
     sla_ctb_encrypted_editor_tests.cpp
@@ -54,9 +55,12 @@ add_executable(${_TEST_NAME}_tests ${_TEST_NAME}_tests_main.cpp
     sla_layer_image_tests.cpp
     sla_layer_document_tests.cpp
     sla_layer_large_document_tests.cpp
+    sla_project_save_perf_tests.cpp
     sla_layer_stream_tests.cpp
     sla_layer_brush_tests.cpp
     sla_layer_operations_tests.cpp
+    sla_layer_f41_tests.cpp
+    sla_stir_export_tests.cpp
     sla_layer_ops_document_tests.cpp
     sla_layer_suggestions_tests.cpp
     sla_layer_recipe_tests.cpp
@@ -158,6 +162,9 @@ endif()
 
 add_test(NAME sla_pcb_calibration COMMAND ${_TEST_NAME}_tests "[sla_pcb],[sla_calibration]")
 set_tests_properties(sla_pcb_calibration PROPERTIES LABELS "sla;pcb;calibration;smoke")
+
+add_test(NAME sla_resin_stock COMMAND ${_TEST_NAME}_tests "[sla_resin_stock]")
+set_tests_properties(sla_resin_stock PROPERTIES LABELS "sla;resin;smoke" TIMEOUT 60)
 
 add_test(NAME sla_offline_api COMMAND ${_TEST_NAME}_tests "[sla_offline]")
 set_tests_properties(sla_offline_api PROPERTIES LABELS "sla;offline;smoke" TIMEOUT 15)
@@ -289,6 +296,31 @@ if (Python3_EXECUTABLE AND UNIX AND NOT APPLE)
     sla_add_gui_test(sla_gui_layer_editor  layer_editor_smoke    180)
     sla_add_gui_test(sla_gui_menus         sla_menus_smoke       180)
     sla_add_gui_test(sla_gui_issues        sliced_issues_smoke   300)
+    # Every script of tests/gui/run_suite.py (its fixture table is the single source), one CTest test each. The wrapper
+    # (tests/gui/ctest_suite.py) runs run_suite.py --only <script>, which starts that script in its own private
+    # session; RUN_SERIAL keeps them from overlapping. Label gui-suite lets one select exactly these:
+    #   ctest -L gui-suite -R <name>     (names: sla_gui_suite_<script>, ':' becomes '__')
+    # The default fast selection (-LE "oracle|gui-runtime") never includes them.
+    execute_process(COMMAND python3 ${CMAKE_SOURCE_DIR}/tests/gui/run_suite.py --list
+                    OUTPUT_VARIABLE SLA_GUI_SUITE_SCRIPTS RESULT_VARIABLE _suite_list_rc OUTPUT_STRIP_TRAILING_WHITESPACE)
+    if (_suite_list_rc EQUAL 0 AND SLA_GUI_SUITE_SCRIPTS)
+        string(REPLACE "\n" ";" SLA_GUI_SUITE_SCRIPTS "${SLA_GUI_SUITE_SCRIPTS}")
+        set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/tests/gui/run_suite.py)
+        foreach (_script IN LISTS SLA_GUI_SUITE_SCRIPTS)
+            string(REPLACE ":" "__" _suite_id "${_script}")
+            set(_suite_timeout 1500)
+            if (_script STREQUAL "release_acceptance_smoke")
+                set(_suite_timeout 3600)
+            endif()
+            add_test(NAME sla_gui_suite_${_suite_id}
+                     COMMAND python3 ${CMAKE_SOURCE_DIR}/tests/gui/ctest_suite.py
+                             --binary $<TARGET_FILE:PrusaSlicer> --out ${CMAKE_BINARY_DIR}/gui-suite/${_suite_id}
+                             --script ${_script} --timeout ${_suite_timeout}
+                     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+            set_tests_properties(sla_gui_suite_${_suite_id} PROPERTIES LABELS "sla;gui;gui-runtime;gui-suite"
+                                 SKIP_RETURN_CODE 77 TIMEOUT ${_suite_timeout} RUN_SERIAL TRUE)
+        endforeach()
+    endif()
     option(SLA_GUI_SLOW_TESTS "Also register the slow runtime GUI tests (operations, canvas tools, PCB, calibration, profile I/O)" OFF)
     if (SLA_GUI_SLOW_TESTS)
         sla_add_gui_test(sla_gui_operations   sliced_operations_smoke        900)

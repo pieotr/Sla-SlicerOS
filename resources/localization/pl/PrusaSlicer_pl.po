@@ -34446,3 +34446,505 @@ msgstr "Pominięto %d sekcji FFF/FDM pliku konfiguracji: ta aplikacja obsługuje
 
 msgid "%d FFF/FDM section(s) of the bundle were skipped: this application supports SLA/MSLA printers only."
 msgstr "Pominięto %d sekcji FFF/FDM pakietu: ta aplikacja obsługuje wyłącznie drukarki SLA/MSLA."
+
+msgid "0 = no extra lift: the platform moves only by the layer height and the printer peels each layer by tilting. This needs the tilt function; with tilt off enter a lift (e.g. 5 mm)."
+msgstr "0 = brak dodatkowego podniesienia: platforma przesuwa się tylko o wysokość warstwy, a drukarka odrywa warstwę przechyłem. Wymaga to funkcji przechyłu; przy wyłączonym przechyle wpisz podniesienie (np. 5 mm)."
+
+msgid "The base profile has the tilt function off, so the hop height cannot be 0. Enter a lift (5 mm is a good start)."
+msgstr "Profil bazowy ma wyłączoną funkcję przechyłu, więc wysokość podskoku nie może wynosić 0. Wpisz podniesienie (dobry początek to 5 mm)."
+
+msgid "The printer these materials were for is gone, so they were removed too: %1%."
+msgstr "Drukarki, dla której były te materiały, już nie ma, więc zostały usunięte razem z nią: %1%."
+
+msgid "Materials removed"
+msgstr "Usunięte materiały"
+
+msgid "These materials you created are only for the printer \"%1%\": %2%.\n\nRemove them together with the printer?"
+msgstr "Te utworzone przez Ciebie materiały są tylko dla drukarki \"%1%\": %2%.\n\nUsunąć je razem z drukarką?"
+
+msgid "Remove printer"
+msgstr "Usuń drukarkę"
+
+msgid "Remove them too"
+msgstr "Usuń też materiały"
+
+msgid "Cancel removal"
+msgstr "Anuluj usuwanie"
+
+msgid "Accept export adjustments"
+msgstr "Zatwierdź dopasowania przy eksporcie"
+
+msgid "When the output format cannot store a setting exactly (for example whole seconds, whole mm/s, a fixed lift), write the nearest storable value instead of refusing, like \"Export adjusted values\" in the application window. Every adjusted value is printed as \"<field> <old> -> <new>\". Presets and profiles are never changed. Without this flag the export refuses and lists every problem. Also applies to --sla-run-recipe convert steps."
+msgstr "Gdy format wyjściowy nie potrafi zapisać ustawienia dokładnie (np. pełne sekundy, pełne mm/s, stały skok), zapisz najbliższą wartość zapisywalną zamiast odmawiać, jak \"Export adjusted values\" w oknie aplikacji. Każda zmieniona wartość jest wypisana jako \"<pole> <było> -> <jest>\". Presety i profile nigdy nie są zmieniane. Bez tej flagi eksport odmawia i wylicza wszystkie problemy. Dotyczy też kroków convert w --sla-run-recipe."
+
+msgid "Accept palette conversion"
+msgstr "Zatwierdź konwersję palety"
+
+msgid "When the output format uses fewer grayscale levels than the sliced layers (Anycubic, CBDDLP/Photon, CTB), export a converted copy instead of refusing, like \"Convert export palette\" in the application window. The number of changed pixels is printed. Without this flag the export refuses."
+msgstr "Gdy format wyjściowy ma mniej poziomów szarości niż pocięte warstwy (Anycubic, CBDDLP/Photon, CTB), wyeksportuj skonwertowaną kopię zamiast odmawiać, jak \"Convert export palette\" w oknie aplikacji. Liczba zmienionych pikseli jest wypisana. Bez tej flagi eksport odmawia."
+
+msgid "writes the text from the options below at the clicked point (the baseline-left corner). One Undo step for the whole layer range."
+msgstr "wpisuje tekst z opcji poniżej w klikniętym punkcie (lewy koniec linii bazowej). Jeden krok Cofnij dla całego zakresu warstw."
+
+msgid "draws a support column downward from the clicked layer until it touches the model (UVtools Pixel supports). The clicked layer stays unchanged."
+msgstr "rysuje kolumnę podpory w dół od klikniętej warstwy, aż dotknie modelu (podpory pikselowe UVtools). Kliknięta warstwa pozostaje bez zmian."
+
+msgid "Drain hole"
+msgstr "Otwór drenażowy"
+
+msgid "drills a hole downward from the clicked layer until it reaches empty space (UVtools Drain holes). The clicked layer stays unchanged."
+msgstr "wierci otwór w dół od klikniętej warstwy, aż dotrze do pustej przestrzeni (otwory drenażowe UVtools). Kliknięta warstwa pozostaje bez zmian."
+
+msgid "The text to write. Press Enter for a new line. Characters outside basic Latin are not available in the Hershey fonts."
+msgstr "Tekst do wpisania. Enter wstawia nowy wiersz. Znaki spoza podstawowej łaciny nie są dostępne w czcionkach Hershey."
+
+msgid "Simplex"
+msgstr "Simplex"
+
+msgid "Plain"
+msgstr "Plain"
+
+msgid "Duplex"
+msgstr "Duplex"
+
+msgid "Complex"
+msgstr "Complex"
+
+msgid "Triplex"
+msgstr "Triplex"
+
+msgid "Complex small"
+msgstr "Complex small"
+
+msgid "Script simplex"
+msgstr "Script simplex"
+
+msgid "Script complex"
+msgstr "Script complex"
+
+msgid "Italic variant of the Hershey font."
+msgstr "Kursywa czcionki Hershey."
+
+msgid "Font scale"
+msgstr "Skala czcionki"
+
+msgid "Size of the letters (1.0 = about 22 px tall). Smallest 0.2."
+msgstr "Rozmiar liter (1,0 = ok. 22 px wysokości). Najmniej 0,2."
+
+msgid "Thickness (px)"
+msgstr "Grubość (px)"
+
+msgid "Stroke thickness of the letters in pixels."
+msgstr "Grubość kreski liter w pikselach."
+
+msgid "Angle (deg)"
+msgstr "Kąt (stopnie)"
+
+msgid "Rotation around the clicked point; positive is clockwise."
+msgstr "Obrót wokół klikniętego punktu; dodatni zgodnie z ruchem wskazówek zegara."
+
+msgid "How the lines of a multi-line text line up."
+msgstr "Jak wyrównują się wiersze tekstu wielowierszowego."
+
+msgid "Flips the text vertically (UVtools Mirror)."
+msgstr "Odbija tekst w pionie (Mirror w UVtools)."
+
+msgid "Tip diameter (px)"
+msgstr "Średnica końcówki (px)"
+
+msgid "Diameter of the support where it touches the model."
+msgstr "Średnica podpory w miejscu styku z modelem."
+
+msgid "Pillar diameter (px)"
+msgstr "Średnica słupka (px)"
+
+msgid "Diameter the column grows to under the tip."
+msgstr "Średnica, do jakiej kolumna rośnie pod końcówką."
+
+msgid "Base diameter (px)"
+msgstr "Średnica podstawy (px)"
+
+msgid "Diameter of the lowest layers (the foot on the plate)."
+msgstr "Średnica najniższych warstw (stopa przy platformie)."
+
+msgid "Diameter (px)"
+msgstr "Średnica (px)"
+
+msgid "Diameter of the hole."
+msgstr "Średnica otworu."
+
+msgid "Click on the mask to write the text; it uses the grey value above and the range of the selection."
+msgstr "Kliknij maskę, aby wpisać tekst; używa wartości szarości z góry i zakresu zaznaczenia."
+
+msgid "Click on a layer above the first one: layers below it change, the clicked layer does not."
+msgstr "Kliknij warstwę powyżej pierwszej: zmieniają się warstwy pod nią, kliknięta nie."
+
+msgid "Type the text to write first."
+msgstr "Najpierw wpisz tekst do zapisania."
+
+msgid "First layer of the selected range."
+msgstr "Pierwsza warstwa wybranego zakresu."
+
+msgid "Last layer of the selected range."
+msgstr "Ostatnia warstwa wybranego zakresu."
+
+msgid "Filters use Radius (pixels) and an odd square kernel. Morphology and box blur reflect edges; median blur replicates edges and removes isolated noise. Grayscale is preserved without thresholding. Stack, Gaussian and pyramid blur and a 2D kernel are in Operations > Pixels > Blur."
+msgstr "Filtry używają promienia (w pikselach) i nieparzystego kwadratowego jądra. Morfologia i rozmycie pudełkowe odbijają krawędzie; rozmycie medianowe powiela krawędzie i usuwa pojedynczy szum. Skala szarości jest zachowana bez progowania. Rozmycie stosowe, Gaussa, piramidowe i jądro 2D są w Operacje > Piksele > Rozmycie."
+
+msgid "The first layer cannot be used: click on layer 2 or higher (the columns grow downward)."
+msgstr "Pierwszej warstwy nie można użyć: kliknij warstwę 2 lub wyższą (kolumny rosną w dół)."
+
+msgid "Linked lines"
+msgstr "Połączone linie"
+
+msgid "Linked lines: line thickness (px)"
+msgstr "Połączone linie: grubość linii (px)"
+
+msgid "Linked lines type: thickness of the lines that link the supports. The lines are drawn with the Tab brightness."
+msgstr "Typ Połączone linie: grubość linii łączących podpory. Linie są rysowane jasnością zakładek."
+
+msgid "Linked lines: minimum links per support"
+msgstr "Połączone linie: minimum połączeń na podporę"
+
+msgid "Linked lines type: every support is connected to at least this many neighbours."
+msgstr "Typ Połączone linie: każda podpora jest połączona z co najmniej tyloma sąsiadami."
+
+msgid "Linked: external supports"
+msgstr "Połączone: podpory zewnętrzne"
+
+msgid "Linked lines type: also link the supports on the outline of the raft."
+msgstr "Typ Połączone linie: łącz także podpory na obrysie tratwy."
+
+msgid "The file does not exist: "
+msgstr "Plik nie istnieje: "
+
+msgid "The file could not be read: "
+msgstr "Nie można odczytać pliku: "
+
+msgid "Blur"
+msgstr "Rozmycie"
+
+msgid "Blurs the layer images (UVtools Blur): stack, box, pyramid, median, Gaussian or a 2D kernel. Grey levels are created, so the printer needs anti-aliasing. Reflect-edge filters read the pixels around a region of interest."
+msgstr "Rozmywa obrazy warstw (Blur w UVtools): stosowe, pudełkowe, piramidowe, medianowe, Gaussa lub jądro 2D. Powstają poziomy szarości, więc drukarka musi obsługiwać antyaliasing. Filtry z odbiciem krawędzi czytają piksele wokół obszaru zainteresowania."
+
+msgid "Algorithm"
+msgstr "Algorytm"
+
+msgid "Stack blur"
+msgstr "Rozmycie stosowe"
+
+msgid "Pyramid"
+msgstr "Piramida"
+
+msgid "Gaussian blur"
+msgstr "Rozmycie Gaussa"
+
+msgid "Filter 2D (kernel)"
+msgstr "Filtr 2D (jądro)"
+
+msgid "Pyramid reduces and enlarges the image again. UVtools 7.0 computes the pyramid but never stores it, so there it changes nothing; this slicer applies the described behaviour. Filter 2D uses the raw kernel values (they are not normalised)."
+msgstr "Piramida zmniejsza i ponownie powiększa obraz. UVtools 7.0 liczy piramidę, ale jej nie zapisuje, więc tam nic nie zmienia; ten slicer stosuje opisane zachowanie. Filtr 2D używa surowych wartości jądra (nie są normalizowane)."
+
+msgid "Kernel size (px)"
+msgstr "Rozmiar jądra (px)"
+
+msgid "Width and height of the kernel. Must be odd for Stack, Median and Gaussian blur. Not used by Pyramid and Filter 2D."
+msgstr "Szerokość i wysokość jądra. Dla rozmycia stosowego, medianowego i Gaussa musi być nieparzysta. Nieużywana przez Piramidę i Filtr 2D."
+
+msgid "Kernel (Filter 2D: rows of values 0..255)"
+msgstr "Jądro (Filtr 2D: wiersze wartości 0..255)"
+
+msgid "Filter 2D only. Rows separated by new lines, values by spaces, each 0..255. The values are used as they are (not divided by their sum): the default kernel adds up nine pixels and saturates to 255."
+msgstr "Tylko Filtr 2D. Wiersze w osobnych liniach, wartości oddzielone spacjami, każda 0..255. Wartości są użyte bez zmian (nie są dzielone przez sumę): domyślne jądro sumuje dziewięć pikseli i nasyca się do 255."
+
+msgid "Anchor X (-1 = centre)"
+msgstr "Kotwica X (-1 = środek)"
+
+msgid "Box blur and Filter 2D: horizontal anchor of the kernel."
+msgstr "Rozmycie pudełkowe i Filtr 2D: pozioma kotwica jądra."
+
+msgid "Anchor Y (-1 = centre)"
+msgstr "Kotwica Y (-1 = środek)"
+
+msgid "Box blur and Filter 2D: vertical anchor of the kernel."
+msgstr "Rozmycie pudełkowe i Filtr 2D: pionowa kotwica jądra."
+
+msgid "Mask by image"
+msgstr "Maska z obrazu"
+
+msgid "Multiplies every pixel by a grey picture (UVtools Mask): white keeps the pixel, black clears it, grey dims it. The picture must have the size of the layer (or of the region of interest) unless it is resized."
+msgstr "Mnoży każdy piksel przez szary obraz (Mask w UVtools): biel zachowuje piksel, czerń go czyści, szarość przyciemnia. Obraz musi mieć rozmiar warstwy (lub obszaru zainteresowania), chyba że zostanie przeskalowany."
+
+msgid "Mask picture (PNG)"
+msgstr "Obraz maski (PNG)"
+
+msgid "A grey picture. Colours are converted to grey."
+msgstr "Szary obraz. Kolory są zamieniane na szarość."
+
+msgid "Invert the mask"
+msgstr "Odwróć maskę"
+
+msgid "White clears the pixel and black keeps it."
+msgstr "Biel czyści piksel, a czerń go zachowuje."
+
+msgid "Resize to the layer size"
+msgstr "Przeskaluj do rozmiaru warstwy"
+
+msgid "Bilinear resize. Off: a picture of another size is refused."
+msgstr "Skalowanie dwuliniowe. Wyłączone: obraz o innym rozmiarze jest odrzucany."
+
+msgid "Layer import"
+msgstr "Import warstw"
+
+msgid "Imports pictures (PNG) or printer files as layers (UVtools Layer import): replace, merge, subtract, stack next to the model and more. Layers can be inserted, appended and the rest of the document discarded."
+msgstr "Importuje obrazy (PNG) lub pliki drukarek jako warstwy (Layer import w UVtools): zastępowanie, scalanie, odejmowanie, układanie obok modelu i inne. Warstwy można wstawiać, dopisywać, a resztę dokumentu odrzucić."
+
+msgid "Imports pictures (PNG) or printer files as layers (UVtools Layer import). This document cannot take a different layer list, so only the pixels of existing layers change: Insert, appending layers and discarding layers are not available."
+msgstr "Importuje obrazy (PNG) lub pliki drukarek jako warstwy (Layer import w UVtools). Ten dokument nie przyjmie innej listy warstw, więc zmieniają się tylko piksele istniejących warstw: Wstaw, dopisywanie i odrzucanie warstw są niedostępne."
+
+msgid "Files to import"
+msgstr "Pliki do importu"
+
+msgid "PNG pictures (one per layer, in the listed order) and printer or layer-project files. Several files are joined with |."
+msgstr "Obrazy PNG (po jednym na warstwę, w podanej kolejności) oraz pliki drukarek lub projektów warstw. Kilka plików łączy się znakiem |."
+
+msgid "Import type"
+msgstr "Typ importu"
+
+msgid "Stack"
+msgstr "Stos"
+
+msgid "Merge (add)"
+msgstr "Scal (dodaj)"
+
+msgid "Merge (maximum)"
+msgstr "Scal (maksimum)"
+
+msgid "Insert adds new layers; the other types combine the imported layers with the existing ones."
+msgstr "Wstaw dodaje nowe warstwy; pozostałe typy łączą zaimportowane warstwy z istniejącymi."
+
+msgid "Start layer (1-based)"
+msgstr "Warstwa początkowa (od 1)"
+
+msgid "The first layer of the document that receives the first imported layer."
+msgstr "Pierwsza warstwa dokumentu, która otrzyma pierwszą zaimportowaną warstwę."
+
+msgid "Append layers"
+msgstr "Dopisz warstwy"
+
+msgid "Replace, Stack and Merge add blank layers at the end when the import has more layers than the document has left (append layers when the import is longer)."
+msgstr "Zastąp, Stos i Scal dodają puste warstwy na końcu, gdy import ma więcej warstw, niż zostało w dokumencie (dopisz warstwy, gdy import jest dłuższy)."
+
+msgid "Not available: this document cannot take a different layer list."
+msgstr "Niedostępne: ten dokument nie przyjmie innej listy warstw."
+
+msgid "Discard layers after"
+msgstr "Odrzuć warstwy po"
+
+msgid "Discard layers after the last imported one: removes every layer after the last imported layer."
+msgstr "Odrzuć warstwy po ostatniej zaimportowanej: usuwa wszystkie warstwy po ostatniej zaimportowanej warstwie."
+
+msgid "Stack margin (px)"
+msgstr "Odstęp stosu (px)"
+
+msgid "Stack type: gap between the model and the imported picture."
+msgstr "Typ Stos: odstęp między modelem a importowanym obrazem."
+
+msgid "Choose at least one file to import."
+msgstr "Wybierz co najmniej jeden plik do importu."
+
+msgid "Only PNG pictures can be imported: "
+msgstr "Można importować tylko obrazy PNG: "
+
+msgid "The pictures must all have the same size: "
+msgstr "Wszystkie obrazy muszą mieć ten sam rozmiar: "
+
+msgid "This import adds or removes layers, but this document cannot take a different layer list: "
+msgstr "Ten import dodaje lub usuwa warstwy, ale ten dokument nie przyjmie innej listy warstw: "
+
+msgid "Use Replace or a merge type without appending and without discarding."
+msgstr "Użyj Zastąp lub typu scalania bez dopisywania i bez odrzucania."
+
+msgid "The import would change the layer count."
+msgstr "Import zmieniłby liczbę warstw."
+
+msgid "Stir resin"
+msgstr "Mieszanie żywicy"
+
+msgid "Adds layers at the start of the print that only lift the build plate (UVtools Stir resin), to stir the resin before it is exposed. The new layers sit at Z = 0.001 mm: sliced or generated documents only. Exporting such a document is checked against the target format before anything is written."
+msgstr "Dodaje na początku wydruku warstwy, które tylko unoszą platformę (Stir resin w UVtools), aby wymieszać żywicę przed naświetlaniem. Nowe warstwy leżą na Z = 0,001 mm: tylko dokumenty pocięte lub wygenerowane. Eksport takiego dokumentu jest sprawdzany względem formatu docelowego, zanim cokolwiek zostanie zapisane."
+
+msgid "Stir only"
+msgstr "Tylko mieszanie"
+
+msgid "Stir and print"
+msgstr "Mieszanie i druk"
+
+msgid "Stir only creates a document made of the stir layers alone and drops the print. Stir and print puts the stir layers in front of the existing layers."
+msgstr "Tylko mieszanie tworzy dokument złożony wyłącznie z warstw mieszania i porzuca wydruk. Mieszanie i druk umieszcza warstwy mieszania przed istniejącymi warstwami."
+
+msgid "Number of stirs"
+msgstr "Liczba mieszań"
+
+msgid "Every stir is one extra layer."
+msgstr "Każde mieszanie to jedna dodatkowa warstwa."
+
+msgid "Lights a single pixel so that the layer is not dropped by the printer firmware."
+msgstr "Zapala jeden piksel, aby firmware drukarki nie pominął warstwy."
+
+msgid "Exposure (s, 0 = 0.01 s)"
+msgstr "Naświetlanie (s, 0 = 0,01 s)"
+
+msgid "0 uses 0.01 s (0 for G-code printers)."
+msgstr "0 oznacza 0,01 s (0 dla drukarek G-code)."
+
+msgid "Lift speed (mm/min, 0 = printer maximum)"
+msgstr "Prędkość unoszenia (mm/min, 0 = maksimum drukarki)"
+
+msgid "Retract speed (mm/min, 0 = lift speed)"
+msgstr "Prędkość opadania (mm/min, 0 = prędkość unoszenia)"
+
+msgid "Wait before stir (s)"
+msgstr "Oczekiwanie przed mieszaniem (s)"
+
+msgid "The number of stirs must be greater than 0."
+msgstr "Liczba mieszań musi być większa od 0."
+
+msgid "Redraw model"
+msgstr "Przerysuj model"
+
+msgid "Redraws the supports or the model with a chosen brightness (UVtools Redraw model). It needs the same object sliced a second time as a model-only file (without supports and raft); its layers are matched to the top layers of this document."
+msgstr "Przerysowuje podpory lub model wybraną jasnością (Redraw model w UVtools). Wymaga tego samego obiektu pociętego drugi raz jako plik samego modelu (bez podpór i tratwy); jego warstwy są dopasowywane do górnych warstw tego dokumentu."
+
+msgid "Model-only file"
+msgstr "Plik samego modelu"
+
+msgid "The same object sliced without supports and raft (any printer or layer-project file)."
+msgstr "Ten sam obiekt pocięty bez podpór i tratwy (dowolny plik drukarki lub projektu warstw)."
+
+msgid "Redraw"
+msgstr "Przerysuj"
+
+msgid "How the brightness is combined with the layer. Multiply, Divide and Minimum clear everything outside the redrawn area (as UVtools does)."
+msgstr "Jak jasność łączy się z warstwą. Mnożenie, Dzielenie i Minimum czyszczą wszystko poza przerysowanym obszarem (tak jak UVtools)."
+
+msgid "Contact points only"
+msgstr "Tylko punkty styku"
+
+msgid "Supports: redraw only the support tips that touch the model."
+msgstr "Podpory: przerysuj tylko końcówki podpór dotykające modelu."
+
+msgid "Ignore contactless pixels"
+msgstr "Ignoruj piksele bez styku"
+
+msgid "Choose the model-only file first."
+msgstr "Najpierw wybierz plik samego modelu."
+
+msgid "Images"
+msgstr "Obrazy"
+
+msgid "All files"
+msgstr "Wszystkie pliki"
+
+msgid "Choose files"
+msgstr "Wybierz pliki"
+
+msgid "Table rows as a list (read-only copy for screen readers)"
+msgstr "Wiersze tabeli jako lista (kopia tylko do odczytu dla czytników ekranu)"
+
+msgid "I &printed this file"
+msgstr "&Wydrukowałem ten plik"
+
+msgid "Book the resin of this print against your resin stock"
+msgstr "Zaksięguj żywicę zużytą w tym wydruku w zapasie żywicy"
+
+msgid "&Resin stock"
+msgstr "&Zapas żywicy"
+
+msgid "Manage the bottles of resin you own"
+msgstr "Zarządzaj posiadanymi butelkami żywicy"
+
+msgid "Edit resin"
+msgstr "Edytuj żywicę"
+
+msgid "Add resin"
+msgstr "Dodaj żywicę"
+
+msgid "Resin name"
+msgstr "Nazwa żywicy"
+
+msgid "Bottle volume (ml)"
+msgstr "Pojemność butelki (ml)"
+
+msgid "Density (g/ml)"
+msgstr "Gęstość (g/ml)"
+
+msgid "Bottles in stock"
+msgstr "Butelek w zapasie"
+
+msgid "Remaining in the open bottle (ml)"
+msgstr "Zostało w otwartej butelce (ml)"
+
+msgid "Every field must be a number; the number of bottles must be a whole number."
+msgstr "Każde pole musi być liczbą; liczba butelek musi być liczbą całkowitą."
+
+msgid "Resin stock"
+msgstr "Zapas żywicy"
+
+msgid "Bottles of resin you own. \"I printed this file\" books consumption here."
+msgstr "Butelki żywicy, które posiadasz. „Wydrukowałem ten plik” księguje tu zużycie."
+
+msgid "Bottle (ml)"
+msgstr "Butelka (ml)"
+
+msgid "Bottles"
+msgstr "Butelki"
+
+msgid "Open bottle (ml)"
+msgstr "Otwarta (ml)"
+
+msgid "Consumed (ml)"
+msgstr "Zużyto (ml)"
+
+msgid "Prints"
+msgstr "Wydruki"
+
+msgid "Print time (h)"
+msgstr "Czas druku (h)"
+
+msgid "Add resin..."
+msgstr "Dodaj żywicę..."
+
+msgid "Edit resin..."
+msgstr "Edytuj żywicę..."
+
+msgid "Remove resin"
+msgstr "Usuń żywicę"
+
+msgid "will be removed from the resin stock, including its consumption history. Continue?"
+msgstr "zostanie usunięta z zapasu żywicy wraz z historią zużycia. Kontynuować?"
+
+msgid "I printed this file"
+msgstr "Wydrukowałem ten plik"
+
+msgid "Resin"
+msgstr "Żywica"
+
+msgid "Copies printed"
+msgstr "Wydrukowane kopie"
+
+msgid "Resin used per copy (ml)"
+msgstr "Zużyta żywica na kopię (ml)"
+
+msgid "Print time per copy (s)"
+msgstr "Czas druku na kopię (s)"
+
+msgid "Update stock"
+msgstr "Zaktualizuj zapas"
+
+msgid "Enter a resin used per copy greater than zero and a non-negative print time."
+msgstr "Podaj zużycie żywicy na kopię większe od zera i nieujemny czas druku."
+
+#, c-format
+msgid "Total resin: %s ml, cost: %s.\nBottles in stock: %d -> %d; open bottle: %s ml -> %s ml."
+msgstr "Żywica łącznie: %s ml, koszt: %s.\nButelki w zapasie: %d -> %d; otwarta butelka: %s ml -> %s ml."

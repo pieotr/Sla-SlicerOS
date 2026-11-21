@@ -11,7 +11,6 @@
 #include "Event.hpp"
 #include "I18N.hpp"
 #include "Jobs/ProgressIndicator.hpp"
-#include "Downloader.hpp"
 
 #include <libslic3r/ObjectID.hpp>
 #include <libslic3r/Technologies.hpp>
@@ -28,8 +27,8 @@ namespace GUI {
 
 using EjectDriveNotificationClickedEvent = SimpleEvent;
 wxDECLARE_EVENT(EVT_EJECT_DRIVE_NOTIFICAION_CLICKED, EjectDriveNotificationClickedEvent);
-using ExportGcodeNotificationClickedEvent = SimpleEvent;
-wxDECLARE_EVENT(EVT_EXPORT_GCODE_NOTIFICAION_CLICKED, ExportGcodeNotificationClickedEvent);
+using ExportSlicedNotificationClickedEvent = SimpleEvent;
+wxDECLARE_EVENT(EVT_EXPORT_SLICED_NOTIFICATION_CLICKED, ExportSlicedNotificationClickedEvent);
 using PresetUpdateAvailableClickedEvent = SimpleEvent;
 wxDECLARE_EVENT(EVT_PRESET_UPDATE_AVAILABLE_CLICKED, PresetUpdateAvailableClickedEvent);
 
@@ -114,20 +113,6 @@ enum class NotificationType
 	RepairFinished,
 	// Short meesage to fill space between start and finish of export
 	ExportOngoing,
-	// Progressbar of download from prusaslicer:// url
-	URLDownload,
-	// MacOS specific - PS comes forward even when downloader is not allowed
-	URLNotRegistered,
-	// Config file was detected during startup, open wifi config dialog via hypertext
-	WifiConfigFileDetected,
-	// Info abouty successful login or logout
-	UserAccountID,
-	// When in Connect tab "set as current" is selected and selected presets in plater changes
-	SelectPrinterFromConnect,
-	// Debug notification for connect communication
-	PrusaConnectPrinters,
-    // Transient error on Prusa Account communication - user is informed and has option to cancel (logout)
-    AccountTransientRetry,
     // Failed to download secret repo archive
     FailedSecretVendorUpdateSync
 };
@@ -218,14 +203,6 @@ public:
 	// Download App progress
 	void push_download_progress_notification(const std::string& text, std::function<bool()>	cancel_callback);
 	void set_download_progress_percentage(float percentage);
-	// Download URL progress notif
-	void push_download_URL_progress_notification(size_t id, const std::string& text, std::function<bool(DownloaderUserAction, int)> user_action_callback);
-    void push_download_URL_progress_notification_with_printables_link(size_t id, const std::string& text, const std::string& url, std::function<bool(DownloaderUserAction, int)> user_action_callback, std::function<void(std::string)> hypertext_callback);
-	void set_download_URL_progress(size_t id, float percentage);
-	void set_download_URL_paused(size_t id);
-	void set_download_URL_canceled(size_t id);
-	void set_download_URL_error(size_t id, const std::string& text);
-    void set_download_URL_filename(size_t id, const std::string& filename);
 	// slicing progress
 	void init_slicing_progress_notification(std::function<bool()> cancel_callback);
 	void set_slicing_progress_began();
@@ -505,73 +482,6 @@ private:
 		long					m_hover_time{ 0 };
 	};
 
-	class URLDownloadNotification : public ProgressBarNotification
-	{
-	public:
-		URLDownloadNotification(const NotificationData& n, NotificationIDProvider& id_provider, wxEvtHandler* evt_handler, size_t download_id, std::function<bool(DownloaderUserAction, int)> user_action_callback)
-			//: ProgressBarWithCancelNotification(n, id_provider, evt_handler, cancel_callback)
-			: ProgressBarNotification(n, id_provider, evt_handler)
-			, m_download_id(download_id)
-			, m_user_action_callback(user_action_callback)
-		{
-		}
-		void	set_percentage(float percent) override 
-		{ 
-			m_percentage = percent; 
-			if (m_percentage >= 1.f) {
-				m_notification_start = GLCanvas3D::timestamp_now();
-				m_state = EState::Shown; 
-			} else
-				m_state = EState::NotFading; 
-		}
-		size_t	get_download_id() { return m_download_id; }
-		void	set_user_action_callback(std::function<bool(DownloaderUserAction, int)> user_action_callback) { m_user_action_callback = user_action_callback; }
-		void	set_paused(bool paused) { m_download_paused = paused; }
-		void    set_error_message(const std::string& message) { m_error_message = message; }
-		bool    compare_text(const std::string& text) const override { return false; };
-        void    set_filename(const std::string& filename_line);
-	protected: 
-		void	render_close_button(const float win_size_x, const float win_size_y,
-									const float win_pos_x, const float win_pos_y) override;
-		void    render_close_button_inner( const float win_size_x, const float win_size_y,
-											const float win_pos_x, const float win_pos_y);
-		void    render_pause_cancel_buttons_inner(
-											const float win_size_x, const float win_size_y,
-											const float win_pos_x, const float win_pos_y);
-		void    render_open_button_inner(   const float win_size_x, const float win_size_y,
-											const float win_pos_x, const float win_pos_y);
-		void    render_cancel_button_inner( const float win_size_x, const float win_size_y,
-											const float win_pos_x, const float win_pos_y);
-		void    render_pause_button_inner(  const float win_size_x, const float win_size_y,
-											const float win_pos_x, const float win_pos_y);
-		void	render_bar( const float win_size_x, const float win_size_y,
-							const float win_pos_x, const float win_pos_y) override;
-		void    trigger_user_action_callback(DownloaderUserAction action);
-
-		void    count_spaces() override;
-
-		size_t							m_download_id;
-		std::function<bool(DownloaderUserAction, int)>	m_user_action_callback;
-		bool							m_download_paused {false};
-		std::string						m_error_message;
-	};
-
-    class URLDownloadWithPrintablesLinkNotification : public URLDownloadNotification
-	{
-    public:
-		URLDownloadWithPrintablesLinkNotification(const NotificationData& n, NotificationIDProvider& id_provider, wxEvtHandler* evt_handler, size_t download_id, std::function<bool(DownloaderUserAction, int)> user_action_callback, std::function<void(std::string)> hypertext_callback)
-			: URLDownloadNotification(n, id_provider, evt_handler, download_id, user_action_callback)
-            , m_hypertext_callback_override(hypertext_callback)
-		{
-		}
-    protected: 
-        void	render_text(const float win_size_x, const float win_size_y,
-							const float win_pos_x, const float win_pos_y) override;
-        void    init() override;
-        bool    on_text_click() override;
-        std::function<void(std::string)> m_hypertext_callback_override;
-    };
-
 	class SlicingProgressNotification : public ProgressBarNotification
 	{
 	public:
@@ -805,8 +715,7 @@ private:
 		NotificationType::CustomNotification, 
 		NotificationType::PlaterWarning, 
 		NotificationType::ProgressBar, 
-        NotificationType::SimplifySuggestion,
-		NotificationType::URLDownload
+        NotificationType::SimplifySuggestion
 	};
 	//prepared (basic) notifications
 	// non-static so its not loaded too early. If static, the translations wont load correctly.
@@ -835,17 +744,6 @@ private:
 	{NotificationType::UndoDesktopIntegrationFail, NotificationLevel::WarningNotificationLevel, 10,
 		_u8L("Undo desktop integration failed.") },
 	{NotificationType::ExportOngoing, NotificationLevel::RegularNotificationLevel, 0, _u8L("Exporting.") },
-    {NotificationType::URLNotRegistered
-		, NotificationLevel::RegularNotificationLevel
-		, 10
-		// TRN: The text is followed by a hyperlink saying "here." It is necessary to split it in two phrases, sorry.
-		, _u8L("PrusaSlicer received a download request from supported website, but it's not allowed. You can allow it")
-		, _u8L("here.")
-		,  [](wxEvtHandler* evnthndlr) {
-			wxGetApp().open_preferences("downloader_url_registered", "Other");
-			return true; 
-		} },
-
 			//{NotificationType::NewAppAvailable, NotificationLevel::ImportantNotificationLevel, 20,  _u8L("New version is available."),  _u8L("See Releases page."), [](wxEvtHandler* evnthndlr) {
 			//	wxGetApp().open_browser_with_warning_dialog("https://github.com/prusa3d/PrusaSlicer/releases"); return true; }},
 			//{NotificationType::NewAppAvailable, NotificationLevel::ImportantNotificationLevel, 20,  _u8L("New vesion of PrusaSlicer is available.",  _u8L("Download page.") },

@@ -10,6 +10,7 @@
 #include <wx/button.h>
 #include <wx/checkbox.h>
 #include <wx/choice.h>
+#include <wx/dataview.h>
 #include <wx/dialog.h>
 #include <wx/grid.h>
 #include <wx/msgdlg.h>
@@ -68,6 +69,8 @@ class ExposureFinderForm final : public wxDialog {
     std::map<std::string, wxCheckBox*> m_check;
     std::map<std::string, ComboBox*> m_choice;
     wxGrid *m_rows = nullptr;
+    // Screen-reader view of the same rows: wxGrid cells are not exposed through AT-SPI on GTK, a data view list is.
+    wxDataViewListCtrl *m_row_list = nullptr;
     wxSpinCtrl *m_selected_row = nullptr;
     wxButton *m_edit_row = nullptr;
     wxTextCtrl *m_summary = nullptr;
@@ -271,6 +274,18 @@ class ExposureFinderForm final : public wxDialog {
             for(int col=0;col<4;++col)values[col]=m_rows->GetCellValue(row,col);
             m_rows->SetCellValue(row,4,row_validity(values));
         }
+        refresh_row_list();
+    }
+    // Mirrors the grid (including raw, possibly invalid text and the Validity column) into the accessible list.
+    void refresh_row_list() {
+        if(!m_row_list)return;
+        m_row_list->DeleteAllItems();
+        for(int row=0;row<m_rows->GetNumberRows();++row) {
+            wxVector<wxVariant> cells;
+            cells.push_back(wxVariant(wxString::Format("%d",row+1)));
+            for(int col=0;col<5;++col)cells.push_back(wxVariant(m_rows->GetCellValue(row,col)));
+            m_row_list->AppendItem(cells);
+        }
     }
     void sync_row_selection(int row = -1) {
         if(!m_rows || !m_selected_row)return;
@@ -390,6 +405,15 @@ public:
         const char *columns[]={"Height (mm)","Bottom (s)","Normal (s)","Brightness (0–255)","Validity"};
         for(int col=0;col<5;++col){m_rows->SetColLabelValue(col,columns[col]);m_rows->SetColSize(col,col==3?150:col==4?180:100);}
         m_rows->SetMinSize(wxSize(300,200));table_layout->Add(m_rows,0,wxEXPAND|wxALL,8);
+        {
+            auto *list_caption=new wxStaticText(owner(table),wxID_ANY,_L("Table rows as a list (read-only copy for screen readers)"));
+            table_layout->Add(list_caption,0,wxLEFT|wxRIGHT,10);
+            m_row_list=new wxDataViewListCtrl(owner(table),wxID_ANY,wxDefaultPosition,wxSize(300,120),wxDV_ROW_LINES);
+            m_row_list->SetName("Exposure table rows list");
+            const char *list_columns[]={"Row","Height (mm)","Bottom (s)","Normal (s)","Brightness (0–255)","Validity"};
+            for(int col=0;col<6;++col)m_row_list->AppendTextColumn(wxString::FromUTF8(list_columns[col]),wxDATAVIEW_CELL_INERT,col==0?50:col==5?180:110);
+            table_layout->Add(m_row_list,0,wxEXPAND|wxALL,8);
+        }
         m_rows->Bind(wxEVT_GRID_CELL_CHANGED,[this](wxGridEvent &event){if(!m_populating && event.GetCol()<4){mark_manual();update_row_validity(event.GetRow());}event.Skip();});
         m_rows->Bind(wxEVT_GRID_SELECT_CELL,[this](wxGridEvent &event){sync_row_selection(event.GetRow());event.Skip();});
         sync_row_selection();

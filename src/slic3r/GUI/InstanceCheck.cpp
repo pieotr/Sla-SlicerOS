@@ -624,8 +624,6 @@ bool instance_check(int argc, char** argv, bool app_config_single_instance)
 namespace GUI {
 
 wxDEFINE_EVENT(EVT_LOAD_MODEL_OTHER_INSTANCE, LoadFromOtherInstanceEvent);
-wxDEFINE_EVENT(EVT_START_DOWNLOAD_OTHER_INSTANCE, StartDownloadOtherInstanceEvent);
-wxDEFINE_EVENT(EVT_LOGIN_OTHER_INSTANCE, LoginOtherInstanceEvent);
 wxDEFINE_EVENT(EVT_INSTANCE_GO_TO_FRONT, InstanceGoToFrontEvent);
 wxDEFINE_EVENT(EVT_STORE_READ_REQUEST, SimpleEvent);
 
@@ -791,7 +789,6 @@ void OtherInstanceMessageHandler::handle_message_type_cli(const std::string& dat
 	}
 
 	std::vector<boost::filesystem::path> paths;
-	std::vector<std::string> downloads;
 	// Skip the first argument, it is the path to the slicer executable.
 	auto it = args.begin();
 	for (++ it; it != args.end(); ++ it) {
@@ -799,21 +796,9 @@ void OtherInstanceMessageHandler::handle_message_type_cli(const std::string& dat
 		boost::filesystem::path p = MessageHandlerInternal::get_path(*it);
 		if (! p.string().empty())
 			paths.emplace_back(p);
-#ifdef _WIN32
-		else if (it->rfind("prusaslicer://open/?file=", 0) == 0)
-#else
-	    else if (it->rfind("prusaslicer://open?file=", 0) == 0)
-#endif
-			downloads.emplace_back(*it);
-		else if (it->rfind("prusaslicer://login", 0) == 0) {
-			wxPostEvent(m_callback_evt_handler, LoginOtherInstanceEvent(GUI::EVT_LOGIN_OTHER_INSTANCE, std::string(*it)));
-		}
 	}
 	if (! paths.empty()) {
 		wxPostEvent(m_callback_evt_handler, LoadFromOtherInstanceEvent(GUI::EVT_LOAD_MODEL_OTHER_INSTANCE, std::vector<boost::filesystem::path>(std::move(paths))));
-	}
-	if (!downloads.empty()) {
-		wxPostEvent(m_callback_evt_handler, StartDownloadOtherInstanceEvent(GUI::EVT_START_DOWNLOAD_OTHER_INSTANCE, std::vector<std::string>(std::move(downloads))));
 	}
 }
 void OtherInstanceMessageHandler::handle_message_type_store_read(const std::string& data)

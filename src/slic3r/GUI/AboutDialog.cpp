@@ -80,7 +80,6 @@ CopyrightsDialog::CopyrightsDialog()
     m_html->SetPage(get_html_text());
 
     sizer->Add(m_html, 1, wxEXPAND | wxALL, 15);
-    m_html->Bind(wxEVT_HTML_LINK_CLICKED, &CopyrightsDialog::onLinkClicked, this);
 
     wxStdDialogButtonSizer* buttons = this->CreateStdDialogButtonSizer(wxCLOSE);
     wxGetApp().SetWindowVariantForButton(buttons->GetCancelButton());
@@ -124,9 +123,9 @@ void CopyrightsDialog::fill_entries()
                                                                             , "https://github.com/richgel999/miniz" },
         { "Expat"           , "1998-2000 Thai Open Source Software Center Ltd and Clark Cooper"
                               "2001-2016 Expat maintainers"                 , "http://www.libexpat.org/" },
-        { "Real-Time DXT1/DXT5 C compression library"   
-                                    , "Based on original by fabian \"ryg\" giesen v1.04. "
-                              "Custom version, modified by Yann Collet"     , "https://github.com/Cyan4973/RygsDXTc" },
+        { "stb_dxt (DXT1/DXT5 texture compression)"
+                                    , "Based on the original by fabian \"ryg\" giesen; "
+                              "2017 Sean Barrett (public domain / MIT)"     , "https://github.com/nothings/stb" },
         { "Model file icons."
                             , "Akira Yasuda"                                , "http://3dp0.com/icons-for-stl-and-gcode/" },
         { "AppImage packaging for Linux using AppImageKit"
@@ -135,8 +134,8 @@ void CopyrightsDialog::fill_entries()
                             , "Forrest Smith"                               , "https://www.forrestthewoods.com/" },
         { "fast_float"
                             , "Daniel Lemire, João Paulo Magalhaes and contributors", "https://github.com/fastfloat/fast_float" },
-        { "CuraEngine (Arachne, etc.)"
-                            , "Ultimaker", "https://github.com/Ultimaker/CuraEngine" },
+        { "CuraEngine (polygon index utilities)"
+                            , "2018 Ultimaker B.V. (AGPLv3 or higher)", "https://github.com/Ultimaker/CuraEngine" },
         { "Open CASCADE Technology"
                             , "Open Cascade SAS", "https://github.com/Open-Cascade-SAS/OCCT" }
     };
@@ -166,8 +165,8 @@ wxString CopyrightsDialog::get_html_text()
 
     for (const auto& entry : m_entries) {
         text += wxString::Format(
-                    "<a href=\"%s\">%s</a><br/>"
-                    , entry.link, entry.lib_name);
+                    "%s &ndash; %s<br/>"
+                    , entry.lib_name, entry.link);
 
         if (!entry.copyright.empty())
             text += format_wxstr(
@@ -206,12 +205,6 @@ void CopyrightsDialog::on_dpi_changed(const wxRect &suggested_rect)
     Fit();
 
     Refresh();
-}
-
-void CopyrightsDialog::onLinkClicked(wxHtmlLinkEvent &event)
-{
-    wxGetApp().open_browser_with_warning_dialog(event.GetLinkInfo().GetHref());
-    event.Skip(false);
 }
 
 void CopyrightsDialog::onCloseDialog(wxEvent &)
@@ -290,8 +283,8 @@ AboutDialog::AboutDialog()
             "<font color=%3%>"
             "%4% &copy; 2016-2025 Prusa Research. <br />"
             "%5% &copy; 2011-2018 Alessandro Ranellucci. <br />"
-            "<a href=\"http://slic3r.org/\">Slic3r</a> %6% "
-            "<a href=\"http://www.gnu.org/licenses/agpl-3.0.html\">%7%</a>."
+            "Slic3r (http://slic3r.org/) %6% "
+            "%7% (http://www.gnu.org/licenses/agpl-3.0.html)."
             "<br /><br />"
             "%8%"
             "<br /><br />"
@@ -306,7 +299,6 @@ AboutDialog::AboutDialog()
             , contributors_str);
         m_html->SetPage(text);
         vsizer->Add(m_html, 1, wxEXPAND | wxBOTTOM, 10);
-        m_html->Bind(wxEVT_HTML_LINK_CLICKED, &AboutDialog::onLinkClicked, this);
     }
 
 
@@ -358,12 +350,6 @@ void AboutDialog::on_dpi_changed(const wxRect &suggested_rect)
     Fit();
 
     Refresh();
-}
-
-void AboutDialog::onLinkClicked(wxHtmlLinkEvent &event)
-{
-    wxGetApp().open_browser_with_warning_dialog(event.GetLinkInfo().GetHref());
-    event.Skip(false);
 }
 
 void AboutDialog::onCloseDialog(wxEvent &)

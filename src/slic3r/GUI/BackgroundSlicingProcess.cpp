@@ -268,13 +268,14 @@ void BackgroundSlicingProcess::process_sla()
                 auto representation = sla::plan_export_representation(intent->format(), snapshot->configuration(),
                     document ? &*document : nullptr);
                 check();
-                if (!representation.blockers.empty()) throw ExportError(representation.strict_message("CXDLP"));
+                if (!representation.blockers.empty()) throw ExportError(representation.strict_message(sla::representation_format_label(intent->format())));
                 if (!representation.adjustments.empty()) {
                     const auto accepted = std::make_shared<bool>(false);
                     const auto list = std::make_shared<std::vector<sla::RepresentationAdjustment>>(representation.adjustments);
                     snapshot->generation().check();
-                    const bool completed = this->execute_ui_task([accepted, list] {
-                        *accepted = GUI::confirm_export_adjustments(GUI::wxGetApp().mainframe->m_plater, "CXDLP", *list);
+                    const wxString label = wxString::FromUTF8(sla::representation_format_label(intent->format()));
+                    const bool completed = this->execute_ui_task([accepted, list, label] {
+                        *accepted = GUI::confirm_export_adjustments(GUI::wxGetApp().mainframe->m_plater, label, *list);
                     });
                     check();
                     snapshot->generation().check();

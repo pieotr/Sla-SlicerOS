@@ -295,6 +295,7 @@ sla::LayerDocument::ShapeOp LayerEditorContent::current_shape_op(wxPoint end) co
     op.tool = Doc::ShapeTool(std::max(0, m_stroke_tool-1));
     op.brush = m_stroke_shape; op.radius = m_stroke_radius; op.value = m_stroke_value;
     op.x0 = m_stroke_start.x; op.y0 = m_stroke_start.y; op.x1 = end.x; op.y1 = end.y;
+    op.text = m_stroke_text;
     return op;
 }
 
@@ -306,6 +307,13 @@ void LayerEditorContent::update_stroke_preview(wxPoint from, wxPoint to)
             Doc::draw_line(*m_stroke, from.x, from.y, to.x, to.y, m_stroke_radius, m_stroke_value);
         else
             Doc::draw_stroke(*m_stroke, from.x, from.y, to.x, to.y, m_stroke_radius, m_stroke_value, m_stroke_shape);
+    } else if (m_stroke_dig && m_stroke_base) {
+        // Preview of a column tool: the disc of its first layer (tip circle or hole) on the clicked layer.
+        *m_stroke = *m_stroke_base;
+        const unsigned diameter = std::holds_alternative<Doc::SupportSpec>(*m_stroke_dig) ? std::get<Doc::SupportSpec>(*m_stroke_dig).tip :
+                                                                                       std::get<Doc::DrainSpec>(*m_stroke_dig).diameter;
+        const uint8_t value = std::holds_alternative<Doc::SupportSpec>(*m_stroke_dig) ? std::get<Doc::SupportSpec>(*m_stroke_dig).brightness : uint8_t(0);
+        Doc::draw_line(*m_stroke, m_stroke_start.x, m_stroke_start.y, m_stroke_start.x, m_stroke_start.y, diameter / 2, value);
     } else if (m_stroke_base) {
         *m_stroke = *m_stroke_base;
         Doc::apply_shape(*m_stroke, current_shape_op(to));
@@ -402,6 +410,8 @@ void LayerEditorContent::finish_stroke(bool commit)
     auto points = std::move(m_stroke_points);
     const int tool = m_stroke_tool;
     const auto shape_op = current_shape_op(m_last_pixel);
+    const auto dig = m_stroke_dig;
+    m_stroke_dig.reset();
     if (commit && tool == 2 && m_cols && m_rows) { // remember the rectangle as a ROI candidate
         const int x0 = std::clamp(std::min(shape_op.x0, shape_op.x1), 0, int(m_cols) - 1);
         const int y0 = std::clamp(std::min(shape_op.y0, shape_op.y1), 0, int(m_rows) - 1);
@@ -423,6 +433,10 @@ void LayerEditorContent::finish_stroke(bool commit)
     if (commit) {
         TaskLock working(m_working);
         run_background_layers(this, _L("Paint layers"), [&](const auto &progress) {
+            if (tool >= 6 && dig) { // Supports / Drain hole: dig down from the clicked layer, one Undo step
+                const size_t clicked = size_t(m_layer->GetValue()-1);
+                return m_document.dig_column(clicked, shape_op.x0, shape_op.y0, *dig, selected_plane(), progress);
+            }
             if (tool != 0) return m_document.paint_shape(first, last, shape_op, selected_plane(), progress);
             return m_document.paint_stroke(first, last, points,
                 m_stroke_radius, m_stroke_value, selected_plane(), progress, m_stroke_shape);

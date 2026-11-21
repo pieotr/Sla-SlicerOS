@@ -39,9 +39,7 @@ struct GUI_InitParams
     std::vector<std::string>    input_files;
     CLISelectedProfiles         selected_presets;
 
-    bool                        start_downloader                { false };
     bool                        delete_after_load               { false };
-    std::string                 download_url;
 #if !SLIC3R_OPENGL_ES
     std::pair<int, int>         opengl_version                  { 0, 0 };
     bool                        opengl_debug                    { false };

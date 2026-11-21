@@ -424,9 +424,13 @@ void SLAPrint::write_export_snapshot(const sla::ExportSnapshot &snapshot,
     if (document) {
         std::vector<double> positions; positions.reserve(snapshot.levels().size());
         for (auto level : snapshot.levels()) positions.push_back(double(level) * SCALING_FACTOR);
-        job = create_raster_job_impl(configuration, *document, positions, std::nullopt,
+        // The factory context is validated for the destination actually written, not for the printer's own format.
+        auto factory_configuration = configuration;
+        if (format != "SL1SVG") factory_configuration.set("sla_archive_format", format); // vector: refused later with its own message
+        job = create_raster_job_impl(factory_configuration, *document, positions, std::nullopt,
             document->fresh_job() ? document->fresh_job()->position_policy : sla::ExposurePositionPolicy::IncreasingLayers,
-            &snapshot.statistics(), &generation, checkpoint);
+            &snapshot.statistics(), &generation, checkpoint, RasterJobPurpose::CompleteJob,
+            !(approval && !approval->empty()));
         // The snapshot's exact config and integer grid must survive the
         // temporary raster factory's first-height/coordinate normalization.
         job->m_full_print_config = configuration;
@@ -437,6 +441,7 @@ void SLAPrint::write_export_snapshot(const sla::ExportSnapshot &snapshot,
         // No document: nothing is proven against per-layer rows, so adjusted values go in directly.
         if (approval) sla::apply_representation_adjustments(configuration, *approval);
         job = std::make_unique<SLAPrint>(); job->apply(Model{}, configuration);
+        job->m_strict_representation = true;
         const auto reason = job->validate(); if (!reason.empty()) throw ExportError(reason);
     }
     job->m_printer_input.clear();
@@ -1102,6 +1107,18 @@ std::string SLAPrint::validate(std::vector<std::string>*) const
     }
 
     const auto &format=m_printer_config.sla_archive_format.value;
+    // Settings the container can only store after rounding are not a slicing problem: the export asks (GUI dialog,
+    // --sla-accept-adjustments) or refuses with the full list. Only what no adjustment can fix stops here.
+    bool adjustments_pending = false;
+    if (sla::has_representation_rules(format) && format.rfind("cxdlp", 0) != 0) {
+        DynamicPrintConfig effective;
+        effective.apply(material_config());
+        effective.apply(printer_config());
+        effective.set_key_value("layer_height", new ConfigOptionFloat(default_object_config().layer_height.value));
+        const auto representation = sla::plan_representation(format, effective);
+        if (!representation.blockers.empty()) return representation.strict_message(sla::representation_format_label(format));
+        adjustments_pending = !m_strict_representation && !representation.adjustments.empty(); // the writer's own checks then run at export
+    }
     if (!anycubic_available_versions(format).empty()) {
         try {
             const auto version=sla::generated_anycubic_version(format,m_printer_config.sla_anycubic_version.value);
@@ -1128,10 +1145,10 @@ std::string SLAPrint::validate(std::vector<std::string>*) const
         try { CTBEncryptedArchive::validate_configuration(*this); }
         catch (const std::exception &error) { return error.what(); }
     }
-    if (m_printer_config.sla_archive_format.value == "ctb_v3" ||
+    if (!adjustments_pending && (m_printer_config.sla_archive_format.value == "ctb_v3" ||
         m_printer_config.sla_archive_format.value == "ctb_v4" ||
         m_printer_config.sla_archive_format.value == "ctb_v5" ||
-        m_printer_config.sla_archive_format.value == "ctb_gktwo") {
+        m_printer_config.sla_archive_format.value == "ctb_gktwo")) {
         const auto &format = m_printer_config.sla_archive_format.value;
         const unsigned version = format == "ctb_v3" ? 3 : format == "ctb_v5" ? 5 : 4;
         try { ChituboxCTBModernArchive::validate_configuration(*this, version); }
@@ -1148,7 +1165,7 @@ std::string SLAPrint::validate(std::vector<std::string>*) const
         try { FDGArchive::validate_configuration(*this); }
         catch (const std::exception &error) { return error.what(); }
     }
-    if (m_printer_config.sla_archive_format.value == "svgx") {
+    if (!adjustments_pending && m_printer_config.sla_archive_format.value == "svgx") {
         try { FlashforgeSVGXArchive::validate_configuration(*this); }
         catch (const std::exception &error) { return error.what(); }
     }
@@ -1160,31 +1177,31 @@ std::string SLAPrint::validate(std::vector<std::string>*) const
         try { LongerOrangeArchive::validate_configuration(*this, model); }
         catch (const std::exception &error) { return error.what(); }
     }
-    if (m_printer_config.sla_archive_format.value == "gr1" || m_printer_config.sla_archive_format.value == "mdlp") {
+    if (!adjustments_pending && (m_printer_config.sla_archive_format.value == "gr1" || m_printer_config.sla_archive_format.value == "mdlp")) {
         try { MakerbaseArchive::validate_configuration(*this, m_printer_config.sla_archive_format.value == "mdlp"); }
         catch (const std::exception &error) { return error.what(); }
     }
-    if (m_printer_config.sla_archive_format.value == "jxs") {
+    if (!adjustments_pending && m_printer_config.sla_archive_format.value == "jxs") {
         try { UniformationGKoneArchive::validate_configuration(*this); }
         catch (const std::exception &error) { return error.what(); }
     }
-    if (m_printer_config.sla_archive_format.value == "zcode") {
+    if (!adjustments_pending && m_printer_config.sla_archive_format.value == "zcode") {
         try { ZCodeArchive::validate_configuration(*this); }
         catch (const std::exception &error) { return error.what(); }
     }
-    if (m_printer_config.sla_archive_format.value == "zcodex") {
+    if (!adjustments_pending && m_printer_config.sla_archive_format.value == "zcodex") {
         try { ZCodexArchive::validate_configuration(*this); }
         catch (const std::exception &error) { return error.what(); }
     }
-    if (m_printer_config.sla_archive_format.value == "vdt") {
+    if (!adjustments_pending && m_printer_config.sla_archive_format.value == "vdt") {
         try { VoxeldanceTangoArchive::validate_configuration(*this); }
         catch (const std::exception &error) { return error.what(); }
     }
-    if (m_printer_config.sla_archive_format.value == "klipper" || m_printer_config.sla_archive_format.value == "klipper_rgb") {
+    if (!adjustments_pending && (m_printer_config.sla_archive_format.value == "klipper" || m_printer_config.sla_archive_format.value == "klipper_rgb")) {
         try { KlipperArchive::validate_configuration(*this); }
         catch (const std::exception &error) { return error.what(); }
     }
-    if (m_printer_config.sla_archive_format.value == "qdt") {
+    if (!adjustments_pending && m_printer_config.sla_archive_format.value == "qdt") {
         try { Emake3DGalaxyArchive::validate_configuration(*this); }
         catch (const std::exception &error) { return error.what(); }
     }
@@ -1297,7 +1314,9 @@ void validate_layer_document(const SLAPrint &print, const sla::LayerDocument &do
     if (document.mask_plane_count()>1)
         throw RuntimeError("Multi-plane layer documents must use their native archive writer; raster conversion cannot preserve secondary masks yet");
     if (!document.layer_count() || document.layer_count() != print.print_layers().size())
-        throw RuntimeError("Layer document does not match the sliced result");
+        throw RuntimeError("Layer document does not match the sliced result: it has " + std::to_string(document.layer_count()) +
+                           " layers, the result has " + std::to_string(print.print_layers().size()) + ". An operation that changes the layer list "
+                           "(Stir resin, Clone, Remove, ...) cannot be exported through the generated job; save the layers as a layer project instead.");
     const auto first = document.image(0);
     if (checkpoint) checkpoint();
     const auto &config = print.printer_config();
@@ -1473,7 +1492,7 @@ std::unique_ptr<SLAPrint> SLAPrint::create_raster_job_impl(const DynamicPrintCon
     const sla::LayerDocument &document, const std::vector<double> &positions_z,
     std::optional<sla::FreshLayerProducer> producer, sla::ExposurePositionPolicy position_policy,
     const SLAPrintStatistics *statistics, const sla::ExportGenerationGuard *generation,
-    const std::function<void()> &checkpoint, RasterJobPurpose purpose)
+    const std::function<void()> &checkpoint, RasterJobPurpose purpose, bool validate_format)
 {
     // This mode is private and requires a complete format-owned export plan
     // at its only call site. It must never masquerade as a public raster job
@@ -1511,7 +1530,10 @@ std::unique_ptr<SLAPrint> SLAPrint::create_raster_job_impl(const DynamicPrintCon
     }
     job->throw_if_canceled();
     job->apply(Model{}, config);
-    const auto validation = job->validate();
+    // An approved representation adjustment is applied by the final writer context, which validates the
+    // adjusted values; the dispatch context holding the user's own values must not refuse them first.
+    job->m_strict_representation = true; // an owned export context has no later approval step
+    const auto validation = validate_format ? job->validate() : std::string();
     if (!validation.empty()) throw RuntimeError(validation);
     for (const char *key : {"exposure_time", "initial_exposure_time", "layer_height"}) {
         const double value = config.opt_float(key);
@@ -1635,11 +1657,10 @@ static ThumbnailsList layer_thumbnails(const sla::LayerDocument &document, const
     return result;
 }
 
-void SLAPrint::export_print(const std::string &fname, const ThumbnailsList &thumbnails, const std::string &projectname)
+// The container a file name selects: a compound extension (v1.cxdlp) wins over the printer's own format,
+// which in turn keeps a bare shared suffix (ZIP, CTB, NanoDLP, CWS) on its selected schema/version.
+static const ArchiveEntry *requested_archive_entry(const std::string &fname, const std::string &printer_format)
 {
-    const auto generation = export_generation_guard();
-    throw_if_canceled();
-    if (!finished()) throw ExportError("Slice the model before exporting");
     const auto suffix = boost::filesystem::path(fname).extension().string();
     const auto *requested = get_archive_entry_by_extension(suffix.c_str());
     // Compound extensions identify independent schemas (for example v1.cxdlp).
@@ -1653,7 +1674,7 @@ void SLAPrint::export_print(const std::string &fname, const ThumbnailsList &thum
     // A bare shared suffix (ZIP, CTB, NanoDLP, CWS) keeps the printer's
     // selected schema/version. A more specific registered compound suffix
     // selects its own schema and must not be overridden by a shorter match.
-    if (const auto *selected = get_archive_entry(m_printer_config.sla_archive_format.value.c_str()))
+    if (const auto *selected = get_archive_entry(printer_format.c_str()))
         for (const auto &extension : get_extensions(*selected))
             if ((extension.size() + 1 == suffix_length && boost::algorithm::iends_with(fname, "." + extension)) ||
                 (suffix_length == suffix.size() && boost::algorithm::iends_with(extension, suffix))) {
@@ -1661,6 +1682,15 @@ void SLAPrint::export_print(const std::string &fname, const ThumbnailsList &thum
                 break;
             }
     if (!requested) throw ExportError("Unknown SLA output extension: " + suffix);
+    return requested;
+}
+
+void SLAPrint::export_print(const std::string &fname, const ThumbnailsList &thumbnails, const std::string &projectname)
+{
+    const auto generation = export_generation_guard();
+    throw_if_canceled();
+    if (!finished()) throw ExportError("Slice the model before exporting");
+    const auto *requested = requested_archive_entry(fname, m_printer_config.sla_archive_format.value);
     const auto reason = archive_export_unavailable_reason(requested->id);
     if (!reason.empty()) throw ExportError(reason);
     if (requested->id != m_printer_config.sla_archive_format.value ||
@@ -1689,6 +1719,53 @@ void SLAPrint::export_print(const std::string &fname, const ThumbnailsList &thum
     else {
         throw ExportError(format(_u8L("Unknown archive format: %s"), m_printer_config.sla_archive_format.value));
     }
+}
+
+void SLAPrint::export_print_approved(const std::string &fname, const sla::ExportApprovalOptions &options,
+                                     const ThumbnailsList &thumbnails, const std::string &projectname)
+{
+    // Nothing approved: exactly the strict export.
+    if (!options.accept_adjustments && !options.accept_conversion) { export_print(fname, thumbnails, projectname); return; }
+    throw_if_canceled();
+    if (!finished()) throw ExportError("Slice the model before exporting");
+    const auto *requested = requested_archive_entry(fname, m_printer_config.sla_archive_format.value);
+    const auto reason = archive_export_unavailable_reason(requested->id);
+    if (!reason.empty()) throw ExportError(reason);
+    const std::string format = requested->id;
+    const auto log = [&](const std::string &line) { if (options.log) options.log(line); };
+    const auto snapshot = std::make_shared<const sla::ExportSnapshot>(capture_export_snapshot(thumbnails));
+    const auto &document = snapshot->document();
+    // Palette conversion copy: the GUI asks, the CLI needs --sla-accept-conversion.
+    bool palette_approved = false;
+    const auto precision = sla::generated_mask_precision(format,
+        snapshot->configuration().opt_int("sla_cbddlp_aa"), snapshot->configuration().opt_string("sla_anycubic_version"));
+    if (document && document->fresh_job() && precision != sla::LayerMaskPrecision::Gray8 &&
+        precision != document->fresh_job()->mask_precision) {
+        const auto loss = sla::layer_palette_loss(*document, precision);
+        if (loss.changed_pixels) {
+            const unsigned levels = precision == sla::LayerMaskPrecision::NativeGray7 ? 128 :
+                precision == sla::LayerMaskPrecision::NativeGray4 ? 16 : (1u << sla::mask_bitplanes(precision));
+            const std::string what = "palette conversion: " + format + " uses " + std::to_string(levels) + " grayscale levels, " +
+                std::to_string(loss.changed_pixels) + " pixels change (largest change " + std::to_string(loss.maximum_change) + " of 255)";
+            if (!options.accept_conversion)
+                throw ExportError("Export requires approval of a " + what + ". Pass --sla-accept-conversion to export the converted copy.");
+            palette_approved = true;
+            log("Converted for export: " + what);
+        }
+    }
+    // Settings the destination can only store after rounding (the GUI shows them in one dialog).
+    sla::RepresentationApproval approval;
+    if (sla::has_representation_rules(format)) {
+        auto representation = sla::plan_export_representation(format, snapshot->configuration(), document ? &*document : nullptr);
+        const auto label = sla::representation_format_label(format);
+        if (!representation.blockers.empty() || (!representation.adjustments.empty() && !options.accept_adjustments)) {
+            auto message = representation.strict_message(label);
+            throw ExportError(message);
+        }
+        for (const auto &adjustment : representation.adjustments) log("Adjusted for export: " + adjustment.describe());
+        approval = std::move(representation.adjustments);
+    }
+    sla::ExportRequest(snapshot, format, fname, projectname, palette_approved, std::move(approval)).write();
 }
 
 void SLAPrint::queue_project_layers(std::shared_ptr<const sla::ProjectRasterState> state)
@@ -2028,7 +2105,8 @@ sla::RepresentationPlan sla::plan_export_representation(const std::string &forma
 {
     if (!has_representation_rules(format)) return {};
     DynamicPrintConfig effective;
-    if (document && document->fresh_job()) effective = direct_fresh_export_config(*document, format, config);
+    // CTB v3 is a planned (non direct) writer: its job config is the plain one.
+    if (document && document->fresh_job() && format != "ctb_v3") effective = direct_fresh_export_config(*document, format, config);
     else { effective.apply(SLAFullPrintConfig{}); effective.apply(config); effective.set("sla_archive_format", format); }
     return plan_representation(format, effective);
 }
@@ -2136,7 +2214,8 @@ void SLAPrint::convert_layer_archive_owned(const DynamicPrintConfig &config,
     if (copy_masks) masks=sla::LayerDocument::from_rasters(std::move(rasters), progress);
     auto context=create_raster_job_impl(configuration,masks ? *masks : document,levels,std::nullopt,
         sla::ExposurePositionPolicy::IncreasingLayers,nullptr,&generation,checkpoint,
-        planned_dispatch ? RasterJobPurpose::PlannedConversionDispatch : RasterJobPurpose::CompleteJob);
+        planned_dispatch ? RasterJobPurpose::PlannedConversionDispatch : RasterJobPurpose::CompleteJob,
+        !(approval && !approval->empty()));
     context->export_layer_document_planned(document,format,path,{},"converted", &plan,nullptr,{},LayerExportInput::CallerOwned,approval);
 }
 void SLAPrint::export_layer_document(const sla::LayerDocument &document, const std::string &format,
@@ -2222,7 +2301,9 @@ void SLAPrint::export_layer_document_planned(const sla::LayerDocument &document,
     const auto unavailable = archive_export_unavailable_reason(format.c_str());
     if (!unavailable.empty()) throw ExportError(unavailable);
     if (document.layer_count() != m_printer_input.size())
-        throw RuntimeError("Layer document does not match the sliced result");
+        throw RuntimeError("Layer document does not match the sliced result: it has " + std::to_string(document.layer_count()) +
+                           " layers, the result has " + std::to_string(m_printer_input.size()) + ". An operation that changes the layer list "
+                           "(Stir resin, Clone, Remove, ...) cannot be exported through the generated job; save the layers as a layer project instead.");
     const bool transferring_parameters = plan != nullptr && !plan->direct_fresh;
     if (plan) {
         sla::require_layer_conversion_geometry(*plan, m_full_print_config);

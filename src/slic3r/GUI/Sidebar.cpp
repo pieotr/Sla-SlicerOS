@@ -61,6 +61,10 @@
 #include "PresetComboBoxes.hpp"
 #include "MsgDialog.hpp"
 
+#ifdef __WXGTK__
+#include <gtk/gtk.h>
+#endif
+
 using Slic3r::Preset;
 using Slic3r::GUI::format_wxstr;
 
@@ -447,14 +451,14 @@ Sidebar::Sidebar(Plater *parent)
         (*btn)->Hide();
     };
 
-	init_scalable_btn(&m_btn_export_gcode_removable, "export_to_sd", _L("Export to SD card / Flash drive") + " " + GUI::shortkey_ctrl_prefix() + "U");
+	init_scalable_btn(&m_btn_export_removable, "export_to_sd", _L("Export to SD card / Flash drive") + " " + GUI::shortkey_ctrl_prefix() + "U");
 
     // regular buttons "Slice now" and "Export" 
 
 #ifdef _WIN32
-    const int scaled_height = m_btn_export_gcode_removable->GetBitmapHeight();
+    const int scaled_height = m_btn_export_removable->GetBitmapHeight();
 #else
-    const int scaled_height = m_btn_export_gcode_removable->GetBitmapHeight() + 4;
+    const int scaled_height = m_btn_export_removable->GetBitmapHeight() + 4;
 #endif
     auto init_btn = [this](wxButton **btn, wxString label, const int button_height) {
         *btn = new wxButton(this, wxID_ANY, label, wxDefaultPosition,
@@ -464,7 +468,7 @@ Sidebar::Sidebar(Plater *parent)
         wxGetApp().UpdateDarkUI((*btn), true);
     };
 
-    init_btn(&m_btn_export_gcode, _L("Export") + dots , scaled_height);
+    init_btn(&m_btn_export, _L("Export") + dots , scaled_height);
     init_btn(&m_btn_edit_layers, _L("Edit layers"), scaled_height);
     m_btn_edit_layers->Hide();
     m_btn_edit_layers->Bind(wxEVT_BUTTON, [this](wxCommandEvent &) { m_plater->edit_sliced_layers(); });
@@ -483,8 +487,8 @@ Sidebar::Sidebar(Plater *parent)
     m_btns_sizer = new wxBoxSizer(wxVERTICAL);
 
     auto *complect_btns_sizer = new wxBoxSizer(wxHORIZONTAL);
-    complect_btns_sizer->Add(m_btn_export_gcode, 1, wxEXPAND);
-	complect_btns_sizer->Add(m_btn_export_gcode_removable, 0, wxLEFT, margin_5);
+    complect_btns_sizer->Add(m_btn_export, 1, wxEXPAND);
+	complect_btns_sizer->Add(m_btn_export_removable, 0, wxLEFT, margin_5);
 
     m_btns_sizer->Add(m_btn_reslice, 0, wxEXPAND | wxTOP, margin_5);
     m_btns_sizer->Add(complect_btns_sizer, 0, wxEXPAND | wxTOP, margin_5);
@@ -507,18 +511,18 @@ Sidebar::Sidebar(Plater *parent)
     SetSizer(sizer);
 
     // Events
-    m_btn_export_gcode->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) {
+    m_btn_export->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) {
         // Return from the GTK/accessibility action before entering a modal loop.
-        m_plater->CallAfter([plater = m_plater] { plater->export_gcode(false); });
+        m_plater->CallAfter([plater = m_plater] { plater->export_sliced(false); });
     });
     m_btn_reslice->Bind(wxEVT_BUTTON, [this](wxCommandEvent&)
     {
         if (m_plater->canvas3D()->get_gizmos_manager().is_in_editing_mode(true))
             return;
 
-        const bool export_gcode_after_slicing = wxGetKeyState(WXK_SHIFT);
-        if (export_gcode_after_slicing) {
-            m_plater->export_gcode(true);
+        const bool export_after_slicing = wxGetKeyState(WXK_SHIFT);
+        if (export_after_slicing) {
+            m_plater->export_sliced(true);
             m_plater->select_view_3D("Preview");
         } else {
             m_plater->reslice();
@@ -539,7 +543,7 @@ Sidebar::Sidebar(Plater *parent)
     });
 #endif // _WIN32
 
-    m_btn_export_gcode_removable->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) { m_plater->export_gcode(true); });
+    m_btn_export_removable->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) { m_plater->export_sliced(true); });
 
     this->Bind(wxEVT_COMBOBOX, &Sidebar::on_select_preset, this);
 
@@ -668,11 +672,11 @@ void Sidebar::msw_rescale()
     m_object_manipulation          ->msw_rescale();
 
 #ifdef _WIN32
-    const int scaled_height = m_btn_export_gcode_removable->GetBitmapHeight();
+    const int scaled_height = m_btn_export_removable->GetBitmapHeight();
 #else
-    const int scaled_height = m_btn_export_gcode_removable->GetBitmapHeight() + 4;
+    const int scaled_height = m_btn_export_removable->GetBitmapHeight() + 4;
 #endif
-    m_btn_export_gcode->SetMinSize(wxSize(-1, scaled_height));
+    m_btn_export->SetMinSize(wxSize(-1, scaled_height));
     m_btn_reslice     ->SetMinSize(wxSize(-1, scaled_height));
 
     m_scrolled_panel->Layout();
@@ -683,11 +687,11 @@ void Sidebar::sys_color_changed()
 #ifdef _WIN32
     wxWindowUpdateLocker noUpdates(this);
 
-    for (wxWindow* win : std::vector<wxWindow*>{ this, m_sliced_info->GetStaticBox(), m_object_info->GetStaticBox(), m_btn_reslice, m_btn_export_gcode, m_btn_cancel_slicing })
+    for (wxWindow* win : std::vector<wxWindow*>{ this, m_sliced_info->GetStaticBox(), m_object_info->GetStaticBox(), m_btn_reslice, m_btn_export, m_btn_cancel_slicing })
         wxGetApp().UpdateDarkUI(win);
     for (wxWindow* win : std::vector<wxWindow*>{ m_scrolled_panel, m_presets_panel })
         wxGetApp().UpdateAllStaticTextDarkUI(win);
-    for (wxWindow* btn : std::vector<wxWindow*>{ m_btn_reslice, m_btn_export_gcode, m_btn_cancel_slicing })
+    for (wxWindow* btn : std::vector<wxWindow*>{ m_btn_reslice, m_btn_export, m_btn_cancel_slicing })
         wxGetApp().UpdateDarkUI(btn, true);
 
     m_frequently_changed_parameters->sys_color_changed();
@@ -703,7 +707,7 @@ void Sidebar::sys_color_changed()
     m_object_manipulation->sys_color_changed();
 
     // btn...->msw_rescale() updates icon on button, so use it
-    m_btn_export_gcode_removable->sys_color_changed();
+    m_btn_export_removable->sys_color_changed();
 
     m_scrolled_panel->Layout();
     m_scrolled_panel->Refresh();
@@ -849,16 +853,16 @@ void Sidebar::show_sliced_info_sizer(const bool show)
     if (show)
         update_sliced_info_sizer();
 
-    Layout();
+    relayout_buttons();
     m_scrolled_panel->Refresh();
 }
 
 void Sidebar::enable_buttons(bool enable)
 {
     m_btn_reslice->Enable(enable);
-    m_btn_export_gcode->Enable(enable);
+    m_btn_export->Enable(enable);
     m_btn_edit_layers->Enable(enable && m_plater->can_edit_sliced_layers());
-    m_btn_export_gcode_removable->Enable(enable);
+    m_btn_export_removable->Enable(enable);
 }
 
 void Sidebar::show_cancel_slicing(bool show)
@@ -866,18 +870,39 @@ void Sidebar::show_cancel_slicing(bool show)
     const bool visible=show && m_plater->printer_technology()==ptSLA;
     m_btn_cancel_slicing->Enable(visible);
     m_btn_cancel_slicing->Show(visible);
+    relayout_buttons();
+}
+
+void Sidebar::relayout_buttons()
+{
     Layout();
+#ifdef __WXGTK__
+    // Show()/Hide() of the action buttons is followed by Layout(), which only moves the wx children; the GTK
+    // allocation of the shown buttons is a separate queue_resize cycle. GTK 3 can lose that cycle: a widget on the
+    // path keeps a stale "allocation needed on child" flag, so queue_resize() stops there and never reaches the
+    // toplevel (no idle sizer is started). Evidence from a stuck process (fresh_model_project_smoke): "Edit layers"
+    // and "Export" were visible and mapped but still allocated 1x1, and the window repainted/resized normally;
+    // queue_resize() on every ancestor up to the GtkWindow fixed it at once, on the button or the sidebar alone did
+    // not. Queueing the toplevel itself restarts the sizer, which then descends through every flagged widget.
+    if (GtkWidget *widget = static_cast<GtkWidget*>(GetHandle())) {
+        gtk_widget_queue_resize(widget);
+        if (GtkWidget *toplevel = gtk_widget_get_toplevel(widget))
+            gtk_widget_queue_resize(toplevel);
+    }
+#endif
 }
 
 bool Sidebar::show_reslice(bool show) const {
     return m_btn_reslice->Show(show);
 }
 bool Sidebar::show_export(bool show) const {
-    m_btn_edit_layers->Show(show && m_plater->printer_technology() == ptSLA);
-    return m_btn_export_gcode->Show(show);
+    // Both buttons count as a change: the caller lays the sidebar out only when this returns true.
+    const bool edit_changed = m_btn_edit_layers->Show(show && m_plater->printer_technology() == ptSLA);
+    const bool export_changed = m_btn_export->Show(show);
+    return edit_changed || export_changed;
 }
 bool Sidebar::show_export_removable(bool show) const {
-    return m_btn_export_gcode_removable->Show(show);
+    return m_btn_export_removable->Show(show);
 }
 void Sidebar::update_mode()
 {
@@ -903,7 +928,7 @@ void Sidebar::set_btn_label(const ActionButtonType btn_type, const wxString& lab
     switch (btn_type)
     {
     case ActionButtonType::Reslice:   m_btn_reslice->SetLabelText(label);        break;
-    case ActionButtonType::Export:    m_btn_export_gcode->SetLabelText(label);   break;
+    case ActionButtonType::Export:    m_btn_export->SetLabelText(label);   break;
     }
 }
 

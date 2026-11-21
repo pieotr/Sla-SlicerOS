@@ -77,6 +77,7 @@ struct RunOptions
     std::string output;                     // replaces the path of the last save/convert step (CLI --output);
                                             // without such a step an implicit native save is appended
     bool        dry_run = false;
+    bool        accept_adjustments = false;     // CLI --sla-accept-adjustments: every convert step writes adjusted values
     std::string base_dir;                   // overrides Recipe::base_dir; empty = recipe folder, else current folder
     std::optional<LayerDocument> document;  // start from this document instead of an "open" step
     // (done, total) over the whole recipe in 1/100 of a step. Returning false cancels the run.

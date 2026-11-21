@@ -202,6 +202,35 @@ present on a normal desktop, plus an installed UTF-8 locale (without any, the ap
 "Switching language failed" — minimal container images only). Not verified: a real GPU driver
 on another distribution (the container uses Mesa software rendering).
 
+## Native packages (AppImage, .deb, .rpm)
+
+Built from the portable bundle (see "Portable Linux build" above); the packages contain the same
+tested files and stay fully offline at runtime. Needs a running docker daemon (build time only: docker
+images `ubuntu:22.04` for `dpkg-deb`/`lintian` and `fedora:latest` for `rpmbuild`, plus appimagetool 1.9.1 and the
+type2 AppImage runtime, both pinned by SHA256 in the script).
+
+```bash
+tools/release/make_native_packages.sh dist/sla-slicer-2.9.4-linux-x86_64.tar.gz build-r23/pkg   # or an unpacked bundle dir
+tools/release/test_native_packages.sh build-r23/pkg       # installs/runs/uninstalls them in docker, prints a PASS/FAIL table
+```
+
+Output: `SLA-Slicer-2.9.4-x86_64.AppImage`, `sla-slicer_2.9.4_amd64.deb`, `sla-slicer-2.9.4-1.x86_64.rpm`,
+`SHA256SUMS`, `lintian.txt`.
+
+Install:
+
+```bash
+chmod +x SLA-Slicer-2.9.4-x86_64.AppImage && ./SLA-Slicer-2.9.4-x86_64.AppImage     # without FUSE: add --appimage-extract-and-run
+sudo apt install ./sla-slicer_2.9.4_amd64.deb      # Debian, Ubuntu (apt pulls GTK3, OpenGL, dbus, libSM/libICE, libnotify)
+sudo dnf install ./sla-slicer-2.9.4-1.x86_64.rpm   # Fedora
+sudo apt remove sla-slicer     # or: sudo dnf remove sla-slicer
+```
+
+The packages install the bundle to `/opt/sla-slicer`, a `sla-slicer` command to `/usr/bin`, the desktop entry,
+icons (hicolor) and AppStream metadata; licenses and the SBOM (`manifest.json`) go to `/usr/share/doc/sla-slicer`.
+Lintian reports no errors or warnings; the bundle-specific tags (files in `/opt`, embedded libraries, unstripped
+binaries) are overridden on purpose inside the package. A UTF-8 locale must be installed (see the bundle requirements above).
+
 ## Existing builds after a compiler update
 
 Static libraries containing GCC LTO bytecode must match the compiler used for
@@ -228,7 +257,10 @@ changes may require rebuilding all dependencies using `--clean --deps`.
 ## Native ExposureFinder drawing dependency
 
 Building the app now also requires local OpenCV core/imgproc development files.
-The verified development version is OpenCV 5.0.0 on Linux. Set `OpenCV_DIR` if
+OpenCV >= 4.7 is required (cv::stackBlur); older versions fail at configure time.
+The verified development version is OpenCV 5.x on Linux; the portable docker build
+(`tools/docker/Dockerfile.build`) builds a pinned OpenCV 4.12.0 (the UVtools/Emgu.CV
+version) from the official tarball into /opt/opencv. Set `OpenCV_DIR` if
 its CMake configuration is outside the standard search path. Configure/build
 must use locally prepared dependencies for an offline build. No UVtools/Emgu
 or .NET runtime is used by production calibration code.

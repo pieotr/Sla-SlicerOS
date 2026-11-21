@@ -247,6 +247,41 @@ Operation raise_on_print_finish(const lo::RaiseOnPrintFinishParams &p, const lo:
     };
 }
 
+Operation stir_resin(const lo::StirResinParams &p, const lo::PrinterContext &context, const lo::LayerParams &base_row)
+{
+    return [p, context, base_row](Ctx &ctx) {
+        return guarded([&] {
+            Result r;
+            r.z_mm = ctx.z_mm;
+            r.table = ctx.table;
+            // Layer counts of the leading layers are only needed to recognise a previous stir block.
+            std::vector<std::optional<size_t>> counts(ctx.layer_count);
+            std::vector<size_t> source;
+            size_t first_kept = 0;
+            const lo::RaiseDummyLayer dummy = lo::stir_resin_plan(ctx.layer_count, ctx.width, ctx.height, r.z_mm, r.table, p, context, base_row,
+                [&](size_t i) {
+                    if (ctx.table[i].exposure_s <= 0.01) return true;
+                    if (!counts[i]) counts[i] = ctx.load(i).nonzero_count();
+                    return lo::is_dummy_layer(*counts[i], ctx.table[i].exposure_s);
+                },
+                [&](size_t &x, size_t &y, bool &found) {
+                    const lo::Mask first = ctx.load(0);
+                    for (size_t i = 0; i < first.px.size(); ++i)
+                        if (first.px[i]) { x = i % ctx.width; y = i / ctx.width; found = true; break; }
+                },
+                [&](int &cx, int &cy) { const lo::Rect b = model_bounds(ctx); cx = b.x + b.w / 2; cy = b.y + b.h / 2; },
+                source, first_kept);
+            r.change.list.source_index = source;
+            r.refs.resize(source.size());
+            const Ref blank = ctx.emit(dummy.make(), source.front());
+            for (size_t k = 0; k < source.size(); ++k)
+                r.refs[k] = k < p.stirs ? blank : Ref{source[k], false};
+            if (p.method == lo::StirMethod::StirOnly) r.change.bottom_layer_count = 1;
+            return r;
+        });
+    };
+}
+
 Operation dynamic_layer_height(const lo::DynamicLayerHeightParams &p, const lo::PrinterContext &context)
 {
     return [p, context](Ctx &ctx) {

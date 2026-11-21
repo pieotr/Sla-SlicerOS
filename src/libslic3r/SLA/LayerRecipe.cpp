@@ -11,6 +11,7 @@
 #include <set>
 #include <sstream>
 
+#include <boost/algorithm/string/case_conv.hpp>
 #include <boost/algorithm/string/predicate.hpp>
 #include <boost/filesystem.hpp>
 #include <boost/nowide/fstream.hpp>
@@ -24,10 +25,13 @@
 #include "libslic3r/SLAPrint.hpp"
 #include "ExportRequest.hpp"
 #include "LayerConversionPlan.hpp"
+#include "LayerBlur.hpp"
+#include "HersheyText.hpp"
 #include "LayerExports.hpp"
 #include "LayerIssues.hpp"
 #include "LayerListStream.hpp"
 #include "LayerOperations.hpp"
+#include "LayerRedrawModel.hpp"
 #include "LayerSuggestions.hpp"
 #include "ProjectArchive.hpp"
 
@@ -141,6 +145,20 @@ public:
         if (!v) fail(key, "is required");
         if (!v->is_string() || v->get<std::string>().empty()) fail(key, "expected a non-empty string");
         return v->get<std::string>();
+    }
+
+    // A non-empty array of non-empty strings.
+    std::vector<std::string> required_string_array(const std::string &key)
+    {
+        const Json *v = find(key);
+        if (!v) fail(key, "is required");
+        if (!v->is_array() || v->empty()) fail(key, "expected a non-empty array of strings");
+        std::vector<std::string> out;
+        for (size_t i = 0; i < v->size(); ++i) {
+            if (!(*v)[i].is_string() || (*v)[i].get<std::string>().empty()) throw RecipeError(at(key) + "[" + std::to_string(i) + "]", "expected a non-empty string");
+            out.push_back((*v)[i].get<std::string>());
+        }
+        return out;
     }
 
     template<class T> T choice(const std::string &key, T fallback, const std::vector<std::pair<std::string, T>> &table)
@@ -523,6 +541,23 @@ StepCode compile_threshold(Reader &r)
     return kernel_step(p.selection.first_layer, p.selection.last_layer, [p](const lo::StreamLayout &l) { return lo::threshold_kernel(p, l); });
 }
 
+StepCode compile_blur(Reader &r)
+{
+    lo::BlurParams p;
+    p.selection = read_selection(r);
+    p.algorithm = r.choice("algorithm", lo::BlurAlgorithm::StackBlur,
+                           std::vector<std::pair<std::string, lo::BlurAlgorithm>>{
+                               {"stack_blur", lo::BlurAlgorithm::StackBlur}, {"box_blur", lo::BlurAlgorithm::BoxBlur}, {"pyramid", lo::BlurAlgorithm::Pyramid},
+                               {"median_blur", lo::BlurAlgorithm::MedianBlur}, {"gaussian_blur", lo::BlurAlgorithm::GaussianBlur}, {"filter_2d", lo::BlurAlgorithm::Filter2D}});
+    p.size        = r.uint("size", 1, 4095);
+    p.kernel_text = r.string("kernel", p.kernel_text);
+    p.anchor_x    = r.integer("anchor_x", -1, -1, 4095);
+    p.anchor_y    = r.integer("anchor_y", -1, -1, 4095);
+    r.finish();
+    if (const auto e = lo::validate_blur(p); !e.empty()) r.fail(p.algorithm == lo::BlurAlgorithm::Filter2D ? "kernel" : "size", e);
+    return kernel_step(p.selection.first_layer, p.selection.last_layer, [p](const lo::StreamLayout &l) { return lo::blur_kernel(p, l); });
+}
+
 StepCode compile_solidify(Reader &r)
 {
     lo::SolidifyParams p;
@@ -839,7 +874,8 @@ StepCode compile_raft_relief(Reader &r)
     if (const auto roi = r.rect("roi")) p.roi = *roi;
     p.type = r.choice("type", lo::RaftReliefType::Relief,
                       std::vector<std::pair<std::string, lo::RaftReliefType>>{{"relief", lo::RaftReliefType::Relief}, {"dimming", lo::RaftReliefType::Dimming},
-                                                                              {"decimate", lo::RaftReliefType::Decimate}, {"tabs", lo::RaftReliefType::Tabs}});
+                                                                              {"decimate", lo::RaftReliefType::Decimate}, {"tabs", lo::RaftReliefType::Tabs},
+                                                                              {"linked_lines", lo::RaftReliefType::LinkedLines}});
     p.mask_layer_index    = r.index("mask_layer_index", 0);
     p.ignore_first_layers = r.uint("ignore_first_layers", 0, 1000000);
     p.low_brightness      = uint8_t(r.uint("low_brightness", 0, 255));
@@ -850,6 +886,10 @@ StepCode compile_raft_relief(Reader &r)
     p.high_brightness     = uint8_t(r.uint("high_brightness", 255, 255));
     p.tab_triangle_base   = r.uint("tab_triangle_base", p.tab_triangle_base, 100000);
     p.tab_triangle_height = r.uint("tab_triangle_height", p.tab_triangle_height, 100000);
+    // UVtools' setter clamps the link thickness to >= 4 instead of failing.
+    p.linked_line_thickness = uint8_t(std::max(4u, r.uint("linked_line_thickness", p.linked_line_thickness, 255)));
+    p.linked_minimum_links  = uint8_t(r.uint("linked_minimum_links", p.linked_minimum_links, 255));
+    p.linked_external_supports = r.boolean("linked_external_supports", p.linked_external_supports);
     r.finish();
     if (const auto e = lo::validate_raft_relief(p); !e.empty()) r.fail("type", e);
     return kernel_step(0, lo::kLastLayer, [p](const lo::StreamLayout &l) {
@@ -1155,6 +1195,31 @@ StepCode compile_raise_on_print_finish(Reader &r)
         [p](const auto &, const auto &, const auto &context) { return sla::liststream::raise_on_print_finish(p, context); });
 }
 
+StepCode compile_stir_resin(Reader &r)
+{
+    lo::StirResinParams p;
+    p.method = r.choice("method", lo::StirMethod::StirOnly,
+                        std::vector<std::pair<std::string, lo::StirMethod>>{{"stir_only", lo::StirMethod::StirOnly}, {"stir_and_print", lo::StirMethod::StirAndPrint}});
+    p.stirs                   = r.uint("stirs", p.stirs, 65535);
+    p.output_dummy_pixel      = r.boolean("output_dummy_pixel", true);
+    p.exposure_s              = r.number("exposure_s", 0, 0, 100000);
+    p.lift_height_mm          = r.number("lift_height_mm", p.lift_height_mm, 0, 10000);
+    p.lift_speed              = r.number("lift_speed", 0, 0, 100000);
+    p.retract_speed           = r.number("retract_speed", 0, 0, 100000);
+    p.wait_time_before_stir_s = r.number("wait_time_before_stir_s", 0, 0, 100000);
+    p.wait_time_after_lift_s  = r.number("wait_time_after_lift_s", 0, 0, 100000);
+    r.finish();
+    if (p.stirs == 0) r.fail("stirs", "The number of stirs must be greater than 0.");
+    return parameter_stream_step(
+        0, lo::kLastLayer,
+        [p](const auto &, const auto &, const auto &context) { return lo::validate_stir_resin(p, context); },
+        [p](const auto &, const auto &table, const auto &context) {
+            lo::LayerParams base = table.empty() ? lo::LayerParams{} : table.front();
+            for (const lo::LayerParams &row : table) if (!row.is_bottom) { base = row; break; } // the first normal layer
+            return sla::liststream::stir_resin(p, context, base);
+        });
+}
+
 StepCode compile_timelapse(Reader &r)
 {
     lo::TimelapseParams p;
@@ -1277,6 +1342,258 @@ lo::Mask read_grey_png(const fs::path &file)
     mask.px = std::move(image.buf);
     return mask;
 }
+
+// Mask by image (UVtools Mask): out = round(in * mask / 255). The picture is read when the step runs.
+StepCode compile_mask_image(Reader &r)
+{
+    const std::string image_path = r.required_string("image");
+    lo::MaskImageParams p;
+    p.selection = read_selection(r);
+    p.invert    = r.boolean("invert", false);
+    const bool fit = r.boolean("resize_to_layer", false);
+    r.finish();
+    auto load = [image_path, p, fit](Ctx &x, size_t &w, size_t &h) {
+        lo::MaskImageParams q = p;
+        q.image = read_grey_png(x.resolve(image_path));
+        const auto image = x.document().image(0);
+        w = size_t(image.cols); h = size_t(image.rows);
+        if (fit) {
+            const size_t tw = q.selection.roi.empty() ? w : size_t(q.selection.roi.w), th = q.selection.roi.empty() ? h : size_t(q.selection.roi.h);
+            if (q.image.width != tw || q.image.height != th) q.image = lo::resize_mask_bilinear(q.image, tw, th);
+        }
+        return q;
+    };
+    StepCode c;
+    c.check = [=](Ctx &x) {
+        check_range(x.document(), p.selection.first_layer, p.selection.last_layer);
+        size_t w = 0, h = 0;
+        require_ok(lo::validate_mask_image(load(x, w, h), w, h));
+    };
+    c.run = [=](Ctx &x) {
+        size_t w = 0, h = 0;
+        const lo::MaskImageParams q = load(x, w, h);
+        require_ok(lo::validate_mask_image(q, w, h));
+        require_done(x.document().apply_mask_kernel(LayerMaskPlane::Main, {}, [q](const lo::StreamLayout &l) { return lo::mask_image_kernel(q, l); }, x.progress, {}));
+    };
+    return c;
+}
+
+// Layer import (UVtools Layer import): PNG pictures (one virtual file, in the listed order) and any printer file.
+StepCode compile_layer_import(Reader &r)
+{
+    const std::vector<std::string> files = r.required_string_array("files");
+    lo::LayerImportParams p;
+    p.type = r.choice("import_type", lo::LayerImportType::Stack,
+                      std::vector<std::pair<std::string, lo::LayerImportType>>{
+                          {"insert", lo::LayerImportType::Insert}, {"replace", lo::LayerImportType::Replace}, {"stack", lo::LayerImportType::Stack},
+                          {"merge_sum", lo::LayerImportType::MergeSum}, {"merge_max", lo::LayerImportType::MergeMax}, {"subtract", lo::LayerImportType::Subtract},
+                          {"abs_diff", lo::LayerImportType::AbsDiff}, {"bitwise_and", lo::LayerImportType::BitwiseAnd}, {"bitwise_or", lo::LayerImportType::BitwiseOr},
+                          {"bitwise_xor", lo::LayerImportType::BitwiseXor}});
+    p.start_layer                = r.index("start_layer", 0);
+    p.extend_beyond_layer_count  = r.boolean("extend_beyond_layer_count", true);
+    p.discard_unmodified_layers  = r.boolean("discard_unmodified_layers", false);
+    p.stack_margin               = r.uint("stack_margin", 50, 65535);
+    r.finish();
+    auto load = [files, p](Ctx &x, size_t &width, size_t &height) {
+        lo::LayerImportParams q = p;
+        lo::LayerImportSource pictures;
+        pictures.name = "pictures";
+        for (const std::string &file : files) {
+            const std::string ext = boost::algorithm::to_lower_copy(fs::path(file).extension().string());
+            if (ext == ".png") {
+                lo::Mask m = read_grey_png(x.resolve(file));
+                if (!pictures.layers.empty() && (m.width != pictures.layers.front().width || m.height != pictures.layers.front().height))
+                    throw RuntimeError("the pictures must all have the same size (the picture '" + file + "' is " + std::to_string(m.width) + "x" + std::to_string(m.height) + ")");
+                pictures.layers.push_back(std::move(m));
+            } else if (ext == ".bmp" || ext == ".jpg" || ext == ".jpeg" || ext == ".gif") {
+                throw RuntimeError("the picture '" + file + "' cannot be read: only PNG pictures are supported");
+            }
+        }
+        if (!pictures.layers.empty()) q.sources.push_back(std::move(pictures));
+        for (const std::string &file : files) {
+            const std::string ext = boost::algorithm::to_lower_copy(fs::path(file).extension().string());
+            if (ext == ".png" || ext == ".bmp" || ext == ".jpg" || ext == ".jpeg" || ext == ".gif") continue;
+            const fs::path path = x.resolve(file);
+            if (!fs::is_regular_file(path)) throw RuntimeError("the file '" + path.string() + "' does not exist");
+            LayerDocument other = LayerDocument::load_archive(path.string());
+            lo::LayerImportSource src;
+            src.name = file;
+            for (size_t i = 0; i < other.layer_count(); ++i) {
+                auto image = other.image(i);
+                lo::Mask m(size_t(image.cols), size_t(image.rows));
+                m.px = std::move(image.buf);
+                src.layers.push_back(std::move(m));
+            }
+            q.sources.push_back(std::move(src));
+        }
+        const auto image = x.document().image(0);
+        width = size_t(image.cols); height = size_t(image.rows);
+        return q;
+    };
+    StepCode c;
+    c.changes_layer_list = p.type == lo::LayerImportType::Insert || p.discard_unmodified_layers || (p.extend_beyond_layer_count && (p.type == lo::LayerImportType::Replace || p.type == lo::LayerImportType::Stack ||
+                                                                                                                                  p.type == lo::LayerImportType::MergeSum || p.type == lo::LayerImportType::MergeMax));
+    c.check = [load, p](Ctx &x) {
+        LayerDocument &doc = x.document();
+        check_range(doc, 0, lo::kLastLayer);
+        size_t w = 0, h = 0;
+        const lo::LayerImportParams q = load(x, w, h);
+        require_ok(lo::validate_layer_import(q, doc.layer_count(), w, h));
+        if (lo::layer_import_changes_list(q, doc.layer_count())) require_ok(doc.layer_list_refusal(false));
+    };
+    c.run = [load](Ctx &x) {
+        LayerDocument &doc = x.document();
+        size_t w = 0, h = 0;
+        const lo::LayerImportParams q = load(x, w, h);
+        require_ok(lo::validate_layer_import(q, doc.layer_count(), w, h));
+        std::string report;
+        try {
+            if (lo::layer_import_changes_list(q, doc.layer_count())) {
+                require_ok(doc.layer_list_refusal(false));
+                require_done(doc.apply_layer_list_operation(
+                    [&](std::vector<lo::Mask> &layers, std::vector<double> &z, const LayerProgress &pr) {
+                        LayerDocument::LayerListChange change;
+                        const lo::LayerImportResult res = lo::layer_import_layers(layers, z, q, pr);
+                        change.list = res.list;
+                        report = res.report;
+                        return change;
+                    },
+                    false, layer_pitch_mm(doc), x.progress));
+            } else {
+                require_done(doc.apply_mask_batch(LayerMaskPlane::Main, [&](std::vector<lo::Mask> &layers, const LayerProgress &pr) {
+                    std::vector<double> z(layers.size(), 0.0);
+                    const lo::LayerImportResult res = lo::layer_import_layers(layers, z, q, pr);
+                    if (layers.size() != doc.layer_count()) throw RuntimeError("the import would change the layer count");
+                    report = res.report;
+                }, x.progress));
+            }
+        } catch (const std::invalid_argument &e) {
+            throw RuntimeError(e.what());
+        }
+        if (!report.empty()) x.message = report;
+    };
+    return c;
+}
+
+// Redraw model / supports (UVtools Redraw model): `file` = the same object sliced without supports and raft.
+StepCode compile_redraw_model(Reader &r)
+{
+    const std::string file = r.required_string("file");
+    lo::RedrawModelParams p;
+    if (const auto roi = r.rect("roi")) p.roi = *roi;
+    p.type = r.choice("redraw_type", lo::RedrawType::Supports,
+                      std::vector<std::pair<std::string, lo::RedrawType>>{{"supports", lo::RedrawType::Supports}, {"model", lo::RedrawType::Model}});
+    p.op = r.choice("operator", lo::RedrawOperator::Minimum,
+                    std::vector<std::pair<std::string, lo::RedrawOperator>>{{"set", lo::RedrawOperator::Set}, {"add", lo::RedrawOperator::Add}, {"subtract", lo::RedrawOperator::Subtract},
+                                                                            {"multiply", lo::RedrawOperator::Multiply}, {"divide", lo::RedrawOperator::Divide}, {"minimum", lo::RedrawOperator::Minimum},
+                                                                            {"maximum", lo::RedrawOperator::Maximum}, {"abs_diff", lo::RedrawOperator::AbsDiff}});
+    p.brightness                = uint8_t(r.uint("brightness", 220, 255));
+    p.contact_points_only       = r.boolean("contact_points_only", true);
+    p.ignore_contactless_pixels = r.boolean("ignore_contact_less_pixels", true);
+    r.finish();
+    if (const auto e = lo::validate_redraw_model(p); !e.empty()) r.fail("brightness", e);
+    auto open_body = [file](Ctx &x) {
+        const fs::path path = x.resolve(file);
+        if (!fs::is_regular_file(path)) throw RuntimeError("the model-only file '" + path.string() + "' does not exist");
+        return std::make_shared<LayerDocument>(LayerDocument::load_archive(path.string()));
+    };
+    auto check_files = [p](Ctx &x, const LayerDocument &body) {
+        LayerDocument &doc = x.document();
+        const auto a = doc.image(0), b = body.image(0);
+        require_ok(lo::validate_redraw_model_files(p, doc.layer_count(), size_t(a.cols), size_t(a.rows), body.layer_count(), size_t(b.cols), size_t(b.rows)));
+    };
+    StepCode c;
+    c.check = [=](Ctx &x) { check_range(x.document(), 0, lo::kLastLayer); check_files(x, *open_body(x)); };
+    c.run = [=](Ctx &x) {
+        const auto body = open_body(x);
+        check_files(x, *body);
+        const size_t count = body->layer_count();
+        require_done(x.document().apply_mask_kernel(LayerMaskPlane::Main, {}, [=](const lo::StreamLayout &l) {
+            return lo::redraw_model_kernel(p, l, count, [body](size_t j) {
+                auto image = body->image(j);
+                auto m = std::make_shared<lo::Mask>(size_t(image.cols), size_t(image.rows));
+                m->px = std::move(image.buf);
+                return std::shared_ptr<const lo::Mask>(m);
+            });
+        }, x.progress, {}));
+    };
+    return c;
+}
+
+// ---- Pixel editor tools as recipe steps (UVtools Pixel editor: Text, Supports, Drain holes) ----------------------
+StepCode compile_draw_text(Reader &r)
+{
+    namespace ht = hershey_text;
+    ht::TextSpec spec;
+    spec.text = r.required_string("text");
+    const int x = r.integer("x", 0, -1000000, 1000000), y = r.integer("y", 0, -1000000, 1000000);
+    if (!r.has("x")) r.fail("x", "is required");
+    if (!r.has("y")) r.fail("y", "is required");
+    const lo::LayerSelection selection = read_selection(r, false);
+    const int face = r.choice("font", 0, std::vector<std::pair<std::string, int>>{{"simplex", 0}, {"plain", 1}, {"duplex", 2}, {"complex", 3}, {"triplex", 4},
+                                                                                {"complex_small", 5}, {"script_simplex", 6}, {"script_complex", 7}});
+    spec.face            = face + (r.boolean("italic", false) ? 16 : 0);
+    spec.scale           = r.number("font_scale", 1, 0.2, 200);
+    spec.thickness       = r.integer("thickness", 1, 1, 255);
+    spec.mirror          = r.boolean("mirror", false);
+    spec.alignment       = r.choice("alignment", ht::Alignment::Left, std::vector<std::pair<std::string, ht::Alignment>>{{"none", ht::Alignment::None}, {"left", ht::Alignment::Left},
+                                                                                                                       {"center", ht::Alignment::Center}, {"right", ht::Alignment::Right}});
+    spec.angle           = r.number("angle", 0, -360, 360);
+    spec.line_type       = r.choice("line_type", ht::LineType::AntiAlias, std::vector<std::pair<std::string, ht::LineType>>{{"four_connected", ht::LineType::FourConnected},
+                                    {"eight_connected", ht::LineType::EightConnected}, {"anti_alias", ht::LineType::AntiAlias}});
+    spec.line_gap_offset = r.integer("line_gap_offset", 0, -1000, 1000);
+    const uint8_t brightness = uint8_t(r.uint("brightness", 255, 255));
+    r.finish();
+    if (const auto e = ht::validate_text(spec); !e.empty()) r.fail("text", e);
+    StepCode c;
+    c.check = [selection](Ctx &c2) { check_range(c2.document(), selection.first_layer, selection.last_layer); };
+    c.run = [=](Ctx &c2) {
+        LayerDocument &doc = c2.document();
+        LayerDocument::ShapeOp op;
+        op.tool = LayerDocument::ShapeTool::Text;
+        op.x0 = x; op.y0 = y; op.value = brightness;
+        op.text = std::make_shared<const ht::TextSpec>(spec);
+        const size_t last = std::min(selection.last_layer, doc.layer_count() - 1);
+        require_done(doc.paint_shape(selection.first_layer, last, op, LayerMaskPlane::Main, c2.progress));
+    };
+    return c;
+}
+
+StepCode compile_dig_column(Reader &r, bool support)
+{
+    const size_t layer = r.index("layer", 0);
+    if (!r.has("layer")) r.fail("layer", "is required: the layer that was clicked (the column is dug below it)");
+    const int x = r.integer("x", 0, 0, 1000000), y = r.integer("y", 0, 0, 1000000);
+    if (!r.has("x")) r.fail("x", "is required");
+    if (!r.has("y")) r.fail("y", "is required");
+    LayerDocument::SupportSpec sup;
+    LayerDocument::DrainSpec drain;
+    if (support) {
+        sup.tip       = r.uint("tip_diameter", sup.tip, 255);
+        sup.pillar    = r.uint("pillar_diameter", sup.pillar, 255);
+        sup.base      = r.uint("base_diameter", sup.base, 255);
+        sup.brightness = uint8_t(r.uint("brightness", 255, 255));
+        sup.anti_alias = r.boolean("anti_alias", true);
+        if (sup.tip == 0) r.fail("tip_diameter", "must be greater than 0");
+        if (sup.pillar == 0) r.fail("pillar_diameter", "must be greater than 0");
+        if (sup.base == 0) r.fail("base_diameter", "must be greater than 0");
+    } else {
+        drain.diameter  = r.uint("diameter", drain.diameter, 65535);
+        drain.anti_alias = r.boolean("anti_alias", true);
+        if (drain.diameter == 0) r.fail("diameter", "must be greater than 0");
+    }
+    r.finish();
+    StepCode c;
+    c.check = [layer](Ctx &c2) { check_range(c2.document(), layer, lo::kLastLayer); };
+    c.run = [=](Ctx &c2) {
+        const std::variant<LayerDocument::SupportSpec, LayerDocument::DrainSpec> spec = support ? std::variant<LayerDocument::SupportSpec, LayerDocument::DrainSpec>(sup)
+                                                                                                : std::variant<LayerDocument::SupportSpec, LayerDocument::DrainSpec>(drain);
+        require_done(c2.document().dig_column(layer, x, y, spec, LayerMaskPlane::Main, c2.progress));
+    };
+    return c;
+}
+StepCode compile_draw_support(Reader &r) { return compile_dig_column(r, true); }
+StepCode compile_drill_drain_hole(Reader &r) { return compile_dig_column(r, false); }
 
 StepCode compile_lithophane(Reader &r)
 {
@@ -1664,6 +1981,7 @@ StepCode compile_convert(Reader &r)
     const std::string format = r.required_string("format");
     const std::string path   = r.required_string("path");
     const std::string printer_config = r.string("printer_config");
+    const bool accept_adjustments = r.boolean("accept_adjustments", false);
     r.finish();
     const ArchiveEntry *entry = get_archive_entry(format.c_str());
     if (!entry) {
@@ -1684,8 +2002,18 @@ StepCode compile_convert(Reader &r)
         const std::string final_name = sla_archive_filename(x.output_path(path), entry->ext);
         const DynamicPrintConfig config = load_printer_config(x, printer_config);
         const std::string target = x.stage(final_name, false);
-        NativeArchiveConversionRequest(x.document(), config, entry->id, target, x.progress).write(x.progress);
-        x.message = "converted to '" + format + "' -> " + final_name;
+        // Settings the destination cannot store exactly: refused (listing every one) unless the step or
+        // the command line approves the adjusted values, like the GUI dialog "Adjust values for export".
+        RepresentationApproval approval;
+        std::string adjusted;
+        if (accept_adjustments || x.options->accept_adjustments) {
+            auto representation = plan_export_representation(entry->id, config, &x.document());
+            if (!representation.blockers.empty()) throw RuntimeError(representation.strict_message(representation_format_label(entry->id)));
+            for (const auto &adjustment : representation.adjustments) adjusted += (adjusted.empty() ? "" : "; ") + adjustment.describe();
+            approval = std::move(representation.adjustments);
+        }
+        NativeArchiveConversionRequest(x.document(), config, entry->id, target, x.progress, approval).write(x.progress);
+        x.message = "converted to '" + format + "' -> " + final_name + (adjusted.empty() ? "" : "; adjusted: " + adjusted);
     };
     return c;
 }
@@ -1818,6 +2146,13 @@ const std::vector<OperationEntry> &operations()
         {"resize", compile_resize, "Scale layers by a percentage (UVtools Resize)."},
         {"move", compile_move, "Move or copy the model to an anchor (UVtools Move)."},
         {"threshold", compile_threshold, "Threshold the masks (UVtools Threshold)."},
+        {"blur", compile_blur, "Blur layers: stack, box, pyramid, median, gaussian or a 2D kernel (UVtools Blur)."},
+        {"layer_import", compile_layer_import, "Import PNG pictures or printer files as layers: stack, insert, replace, merge ... (UVtools Layer import; insert / extend / discard: sliced or generated documents only)."},
+        {"redraw_model", compile_redraw_model, "Redraw the supports or the model with a brightness, from a second model-only file (UVtools Redraw model)."},
+        {"mask_image", compile_mask_image, "Multiply the layers by a grey PNG mask (UVtools Mask)."},
+        {"draw_text", compile_draw_text, "Draw Hershey text on a layer range (UVtools Pixel editor: Text)."},
+        {"draw_support", compile_draw_support, "Dig a support column below a clicked layer (UVtools Pixel editor: Supports)."},
+        {"drill_drain_hole", compile_drill_drain_hole, "Drill a drain hole below a clicked layer (UVtools Pixel editor: Drain holes)."},
         {"solidify", compile_solidify, "Fill holes (UVtools Solidify)."},
         {"pattern", compile_pattern, "Repeat the model in a grid (UVtools Pattern)."},
         {"pixel_dimming", compile_pixel_dimming, "Dim wall / inner pixels (UVtools Pixel dimming)."},
@@ -1832,12 +2167,13 @@ const std::vector<OperationEntry> &operations()
         {"phased_exposure", compile_phased_exposure, "Cure layers in several phases (UVtools Phased exposure; sliced or generated documents only)."},
         {"dynamic_lifts", compile_dynamic_lifts, "Lift height / speed from the layer area (UVtools Dynamic lifts)."},
         {"fade_exposure", compile_fade_exposure, "Fade the exposure time over N layers (UVtools Fade exposure time)."},
+        {"stir_resin", compile_stir_resin, "Stir the resin with extra lifts at the start of the print (UVtools Stir resin; sliced or generated documents only)."},
         {"timelapse", compile_timelapse, "Raise the platform for camera shots (UVtools Timelapse; virtual layer mode: sliced or generated documents only)."},
         {"dynamic_layer_height", compile_dynamic_layer_height, "Stack identical layers into thicker ones (UVtools Dynamic layer height; sliced or generated documents only)."},
         {"raise_on_print_finish", compile_raise_on_print_finish, "Append a layer that raises the platform at the end (UVtools Raise platform on print finish; sliced or generated documents only)."},
         {"change_resolution", compile_change_resolution, "Crop / pad the layers to a new resolution (UVtools Change resolution; not for sliced or generated documents)."},
         {"infill", compile_infill, "Replace the model interior by an infill pattern (UVtools Infill)."},
-        {"raft_relief", compile_raft_relief, "Relieve the raft with holes, dimming, decimation or tabs (UVtools Raft relief)."},
+        {"raft_relief", compile_raft_relief, "Relieve the raft with holes, dimming, decimation, tabs or linked lines (UVtools Raft relief)."},
         {"layer_arithmetic", compile_layer_arithmetic, "Compute layers from other layers (UVtools Layer arithmetic)."},
         {"lithophane", compile_lithophane, "Replace all layers by a lithophane of a PNG picture (UVtools Lithophane; sliced or generated documents only)."},
         {"detect_issues", compile_detect_issues, "Detect islands, overhangs, resin traps ...; optional JSON report."},

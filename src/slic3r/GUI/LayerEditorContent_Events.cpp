@@ -14,7 +14,7 @@ void LayerEditorContent::bind_events() {
     m_value->Bind(wxEVT_SPINCTRL,[this](wxSpinEvent &){update_brush_value_hint();});
     m_value->Bind(wxEVT_TEXT,[this](wxCommandEvent &){update_brush_value_hint();});
     m_brush.on_change=[this]{update_brush_value_hint(); update_view_info();};
-    m_tool.on_change=[this]{update_view_info();};
+    m_tool.on_change=[this]{update_view_info(); update_tool_options();};
     m_shape.on_change=[this]{update_view_info();};
     Bind(wxEVT_SIZE,[this](wxSizeEvent &event){
         update_brush_value_hint(); update_mask_plane_info(); event.Skip();
@@ -71,12 +71,29 @@ void LayerEditorContent::on_preview_left_down(wxMouseEvent &event) {
     if (m_working || !m_preview_bitmap.IsOk()) return;
     m_preview->SetFocus();
     if (m_space_down && !m_stroke) { begin_pan(event); return; }
+    const int chosen_tool = m_tool.GetSelection();
+    if (chosen_tool >= 6 && m_layer->GetValue() <= 1) {
+        // UVtools ignores a click on the first layer: nothing lies below it.
+        update_tool_options(_L("The first layer cannot be used: click on layer 2 or higher (the columns grow downward)."));
+        return;
+    }
+    if (chosen_tool >= 6) update_tool_options();
     perform([&] {
         const int requested=m_value->GetValue();
         const bool erasing=m_brush.GetSelection()==1;
         if(!erasing && (requested<0 || requested>255))
             throw RuntimeError("Brush grayscale must be between 0 and 255");
-        if (m_reuse_preview) {
+        // Click tools freeze their options now (the text is validated before anything is drawn).
+        m_stroke_text.reset(); m_stroke_dig.reset();
+        if (chosen_tool == 5) m_stroke_text = std::make_shared<const sla::hershey_text::TextSpec>(current_text_spec());
+        if (chosen_tool == 6)
+            m_stroke_dig = sla::LayerDocument::SupportSpec{unsigned(m_support_tip->GetValue()), unsigned(m_support_pillar->GetValue()),
+                                                           unsigned(m_support_base->GetValue()), m_edit_projection[erasing ? 0 : size_t(std::clamp(requested, 0, 255))], true};
+        if (chosen_tool == 7) m_stroke_dig = sla::LayerDocument::DrainSpec{unsigned(m_drain_diameter->GetValue()), true};
+        if (chosen_tool >= 6) {
+            m_stroke = m_document.image(size_t(m_layer->GetValue()-1), selected_plane()); // a column starts on the clicked layer only
+            m_cols = unsigned(m_stroke->cols); m_rows = unsigned(m_stroke->rows);
+        } else if (m_reuse_preview) {
             const auto *preview = prepared_preview();
             if (!preview) return;
             m_cols = preview->cols; m_rows = preview->rows;
@@ -119,7 +136,7 @@ void LayerEditorContent::on_preview_motion(wxMouseEvent &event) {
     if (!m_working) update_pixel_info(&event);
     if (!m_stroke || !event.LeftIsDown()) return;
     const auto pixel = pixel_at(event);
-    if (pixel == m_last_pixel || m_stroke_tool == 4) return; // fill is decided by the click alone
+    if (pixel == m_last_pixel || m_stroke_tool >= 4) return; // fill, text, supports and drain holes are decided by the click alone
     perform([&] {
         update_stroke_preview(m_last_pixel, pixel);
         if (m_stroke_tool == 0) m_stroke_points.push_back({pixel.x, pixel.y});

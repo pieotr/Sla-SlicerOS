@@ -15,6 +15,10 @@
 #include <nlohmann/json.hpp>
 #include <set>
 #include <sstream>
+#include <thread>
+#include <tbb/parallel_for.h>
+#include <tbb/blocked_range.h>
+#include "LayerMemoryBudget.hpp"
 
 namespace Slic3r::sla {
 // Version 2 persists the current entry graph rather than flattening it to PNGs.
@@ -611,6 +615,24 @@ void validate_png(const png::ReadBuf &bytes, size_t columns, size_t rows) {
       image.rows != rows)
     throw RuntimeError("Cannot decode saved project layer PNG");
 }
+// Every mask is fully decoded once to prove it is a valid grayscale PNG of the screen size.
+// Masks are independent: validate them in batches in parallel (batch size bounded by the
+// decoded-pixel budget), then report progress / honour cancellation in the calling thread.
+// `step(item, items)` runs once per mask, in order, after its batch was validated.
+template<class Step>
+void validate_document_masks(const LayerDocument &document, size_t columns, size_t rows, const Step &step) {
+  const size_t planes=document.mask_plane_count(),items=document.layer_count()*planes;
+  const uint64_t pixels=std::max<uint64_t>(1,uint64_t(columns)*rows);
+  const size_t batch=size_t(std::clamp<uint64_t>(layer_decoded_budget()/pixels,1,std::max<unsigned>(1,std::thread::hardware_concurrency())));
+  for(size_t first=0;first<items;first+=batch) {
+    const size_t last=std::min(items,first+batch);
+    tbb::parallel_for(tbb::blocked_range<size_t>(first,last,1),[&](const tbb::blocked_range<size_t> &range) {
+      for(size_t item=range.begin();item<range.end();++item)
+        validate_png(document.encoded_layer(item/planes,item%planes?LayerMaskPlane::Secondary:LayerMaskPlane::Main),columns,rows);
+    });
+    for(size_t item=first;item<last;++item) step(item,items);
+  }
+}
 } // namespace
 
 std::string raster_source_fingerprint(const Model &model,
@@ -826,11 +848,9 @@ void write_project_layers(mz_zip_archive &archive,
                              metadata.size(), MZ_BEST_SPEED))
     throw FileIOError("Cannot write project layer manifest");
   uint64_t total = 0;
-  for(size_t i=0;i<state.document.layer_count();++i)
-    for(size_t plane=0;plane<state.document.mask_plane_count();++plane) {
-      validate_png(state.document.encoded_layer(i,plane?LayerMaskPlane::Secondary:LayerMaskPlane::Main),image.cols,image.rows);
-      check_layer_progress(progress, ++done, total_steps);
-    }
+  validate_document_masks(state.document,image.cols,image.rows,[&](size_t,size_t) {
+    check_layer_progress(progress, ++done, total_steps);
+  });
   for (size_t i=0;i<ProjectDocumentAccess::size(state.document);++i) {
     const auto bytes=ProjectDocumentAccess::entry(state.document,i);
     if(bytes.sz>document_budget-total)throw RuntimeError("Saved project document exceeds the 1 GiB budget");
@@ -1018,11 +1038,9 @@ std::optional<ProjectRasterState> read_project_layers(const std::string &path, c
       if(!expected.count(entry.first))throw RuntimeError("Unexpected persisted document entry");
     state.document=ProjectDocumentAccess::restore(descriptor,std::move(payloads),metadata.at("version").get<int>());
     if(state.document.layer_count()!=count)throw RuntimeError("Persisted layer count mismatch");
-    for(size_t i=0;i<count;++i)
-      for(size_t plane=0;plane<state.document.mask_plane_count();++plane) {
-        check_layer_progress(progress, i, count);
-        validate_png(state.document.encoded_layer(i,plane?LayerMaskPlane::Secondary:LayerMaskPlane::Main),columns,rows);
-      }
+    validate_document_masks(state.document,columns,rows,[&](size_t item,size_t) {
+      check_layer_progress(progress, item/state.document.mask_plane_count(), count);
+    });
     validate_state(state);check_layer_progress(progress, count, count);return state;
   }
   std::vector<EncodedRaster> layers;

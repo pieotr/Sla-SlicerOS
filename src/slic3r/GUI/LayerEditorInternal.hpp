@@ -68,6 +68,8 @@
 #include <stdexcept>
 #include "libslic3r/SLA/LayerOperations.hpp"
 #include "libslic3r/SLA/LayerExports.hpp"
+#include "libslic3r/SLA/LayerBlur.hpp"
+#include "libslic3r/SLA/LayerRedrawModel.hpp"
 #include <optional>
 #include <algorithm>
 #include <functional>
@@ -177,6 +179,9 @@ struct OpField {
     int digits = 2;                 // Dbl precision
     std::vector<wxString> choices;
     std::string text;               // Text default
+    // File: file dialog filter (empty = pictures) and whether several files may be chosen (stored joined with "|").
+    wxString wildcard;
+    bool multi = false;
 };
 
 // Form values by key. Choices are stored as their index, booleans as 0/1.
@@ -216,6 +221,7 @@ struct OpContext {
     std::string parameter_refusal;
     std::optional<std::pair<double, double>> display_mm;
     bool list_edits_possible = false; // the open document can take a different layer list
+    std::string list_refusal;         // why not (empty when possible)
     layerops::LayerSelection selection() const { return {first, last, roi}; }
 };
 
@@ -245,6 +251,7 @@ struct BuiltOp {
     std::optional<ExportPlan> exporter;
     decltype(LayerOpsJob::lithophane) lithophane;
     decltype(LayerOpsJob::lithophane_stream) lithophane_stream;
+    std::shared_ptr<std::string> report;              // filled by the runner (e.g. skipped import files); shown after Apply
 };
 
 struct OpDef {
@@ -307,6 +314,9 @@ inline void require_range(const OpContext &c)
 }
 } // namespace ops_detail
 
+// LayerOperationCatalog_Batch3.cpp (Wave B of the UVtools operations: Blur, Mask, Layer import, Stir resin, Redraw model)
+void append_batch3_defs(std::vector<OpDef> &defs, const OpContext &initial);
+
 // Defined in LayerEditorCommon.cpp
 void set_dataview_accessible_name(wxWindow *view, const char *name);
 wxString issue_type_label(sla::LayerIssue::Type type);
@@ -321,8 +331,24 @@ using namespace ops_detail;
 
 inline OpField opt_field(const std::string &key, const std::string &label, const std::string &def = "", const wxString &tip = wxString())
 { OpField f; f.kind = OpField::Opt; f.key = key; f.label = wxString::FromUTF8(label); f.text = def; f.tip = tip; return f; }
-inline OpField file_field(const char *key, const wxString &label, const wxString &tip = wxString())
-{ OpField f; f.kind = OpField::File; f.key = key; f.label = label; f.tip = tip; return f; }
+inline OpField file_field(const char *key, const wxString &label, const wxString &tip = wxString(), const wxString &wildcard = wxString(), bool multi = false)
+{ OpField f; f.kind = OpField::File; f.key = key; f.label = label; f.tip = tip; f.wildcard = wildcard; f.multi = multi; return f; }
+
+// Splits the "a|b|c" text of a multi-file field.
+inline std::vector<std::string> split_paths(const std::string &joined)
+{
+    std::vector<std::string> out;
+    size_t start = 0;
+    while (start <= joined.size()) {
+        const size_t end = joined.find('|', start);
+        std::string item = joined.substr(start, end == std::string::npos ? std::string::npos : end - start);
+        const auto b = item.find_first_not_of(" \t");
+        if (b != std::string::npos) out.push_back(item.substr(b, item.find_last_not_of(" \t") - b + 1));
+        if (end == std::string::npos) break;
+        start = end + 1;
+    }
+    return out;
+}
 
 inline const layerops::LayerParams &first_bottom(const std::vector<layerops::LayerParams> &t)
 {

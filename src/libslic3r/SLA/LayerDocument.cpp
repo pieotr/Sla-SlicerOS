@@ -1,4 +1,5 @@
 #include "LayerDocument.hpp"
+#include "PixelDrawing.hpp"
 #include "libslic3r/Execution/ExecutionTBB.hpp"
 #include <exception>
 #include <mutex>
@@ -3491,8 +3492,121 @@ size_t LayerDocument::apply_shape(png::ImageGreyscale &img, const ShapeOp &op)
     case ShapeTool::Rectangle: return fill_rectangle(img, op.x0, op.y0, op.x1, op.y1, op.value);
     case ShapeTool::Ellipse: return fill_ellipse(img, op.x0, op.y0, op.x1, op.y1, op.value);
     case ShapeTool::Fill: return flood_fill(img, op.x0, op.y0, op.value);
+    case ShapeTool::Text:
+        if (!op.text) throw RuntimeError("The Text tool needs a text");
+        return draw_text(img, op.x0, op.y0, *op.text, op.value);
     }
     return 0;
+}
+
+size_t LayerDocument::draw_text(png::ImageGreyscale &img, int x, int y, const hershey_text::TextSpec &spec, uint8_t value)
+{
+    if (!valid_raster(img)) throw RuntimeError("Unsupported raster");
+    if (const std::string error = hershey_text::validate_text(spec); !error.empty()) {
+        std::string text = error;
+        while (!text.empty() && text.back() == '\n') text.pop_back();
+        throw RuntimeError(text);
+    }
+    try {
+        return hershey_text::put_text(img.buf.data(), int(img.rows), int(img.cols), x, y, spec, value);
+    } catch (const std::invalid_argument &e) {
+        throw RuntimeError(e.what());
+    }
+}
+
+// UVtools FileFormat.DrawModifications (Supports / DrainHole). OpenCV's filled circle is used for both the "does the
+// column touch material" test and the drawing, so the result equals UVtools' on the same pixels. Pixels are square:
+// UVtools' PixelsToNormalizedPitch is the identity there.
+namespace {
+size_t count_in_circle(const png::ImageGreyscale &img, int cx_roi, int cy_roi, int roi_x, int roi_y, int size, int radius,
+                       uint8_t circle_value, const std::function<bool(uint8_t)> &lit)
+{
+    const int w = std::min(size, int(img.cols) - roi_x), h = std::min(size, int(img.rows) - roi_y);
+    if (w <= 0 || h <= 0) return 0;
+    std::vector<uint8_t> mask(size_t(w) * size_t(h), 0);
+    pixel_drawing::filled_circle(mask.data(), h, w, cx_roi, cy_roi, radius, circle_value, false);
+    size_t count = 0;
+    for (int row = 0; row < h; ++row)
+        for (int col = 0; col < w; ++col) {
+            const uint8_t m = mask[size_t(row) * size_t(w) + size_t(col)];
+            if (m && lit(img.buf[size_t(roi_y + row) * img.cols + size_t(roi_x + col)])) ++count;
+        }
+    return count;
+}
+} // namespace
+
+LayerDocument::ColumnStep LayerDocument::support_layer_step(png::ImageGreyscale &img, int x, int y, size_t layer_index,
+                                                            unsigned drawn_layers, const SupportSpec &spec)
+{
+    if (!valid_raster(img)) throw RuntimeError("Unsupported raster");
+    if (spec.tip == 0 || spec.pillar == 0 || spec.base == 0) throw RuntimeError("The support diameters must be greater than 0");
+    const int radius = int((layer_index > 10 ? std::min(spec.tip + drawn_layers, spec.pillar) : spec.base) / 2);
+    const int tip_radius = int(spec.tip / 2);
+    const int xs = std::max(0, x - tip_radius), ys = std::max(0, y - tip_radius);
+    // bitwise AND of the layer pixel with the circle brightness (a grey pixel 0x0F & 0xF0 is not counted)
+    const uint8_t brightness = spec.brightness;
+    const size_t white = count_in_circle(img, tip_radius, tip_radius, xs, ys, int(spec.tip), tip_radius, brightness,
+                                         [brightness](uint8_t v) { return (v & brightness) != 0; });
+    // the AND uses the circle's value, so count with the same brightness on both sides
+    if (double(white) >= double(spec.tip) * double(spec.tip) / 3.0)
+        return drawn_layers == 0 ? ColumnStep::Skipped : ColumnStep::Finished;
+    pixel_drawing::filled_circle(img.buf.data(), int(img.rows), int(img.cols), x, y, radius, spec.brightness, spec.anti_alias);
+    return ColumnStep::Drew;
+}
+
+LayerDocument::ColumnStep LayerDocument::drain_layer_step(png::ImageGreyscale &img, int x, int y, unsigned drawn_layers, const DrainSpec &spec)
+{
+    if (!valid_raster(img)) throw RuntimeError("Unsupported raster");
+    if (spec.diameter == 0) throw RuntimeError("The drain hole diameter must be greater than 0");
+    const int radius = int(spec.diameter / 2);
+    const int xs = std::max(0, x - radius), ys = std::max(0, y - radius);
+    const size_t black = count_in_circle(img, radius, radius, xs, ys, int(spec.diameter), radius, 255, [](uint8_t v) { return v <= 100; });
+    if (double(black) >= double(spec.diameter) * double(spec.diameter) / 3.0)
+        return drawn_layers == 0 ? ColumnStep::Skipped : ColumnStep::Finished;
+    pixel_drawing::filled_circle(img.buf.data(), int(img.rows), int(img.cols), x, y, radius, 0, spec.anti_alias);
+    return ColumnStep::Drew;
+}
+
+bool LayerDocument::dig_column(size_t clicked_layer, int x, int y, const std::variant<SupportSpec, DrainSpec> &spec,
+                               LayerMaskPlane plane, const LayerProgress &progress)
+{
+    if (clicked_layer >= layer_count()) throw RuntimeError("The layer is outside the document");
+    if (clicked_layer == 0) return true; // UVtools ignores clicks on the first layer
+    const auto generation = export_generation_guard();
+    const size_t total = clicked_layer;
+    std::vector<Change> changes;
+    size_t history_bytes = 0;
+    unsigned drawn = 0;
+    for (size_t step = 0; step < total; ++step) {
+        const size_t layer = clicked_layer - 1 - step;
+        if (!generation.current()) throw RuntimeError("Layer document changed during the operation");
+        if (progress && !progress(step, total)) return false;
+        auto mask = image(layer, plane);
+        if (x < 0 || y < 0 || size_t(x) >= mask.cols || size_t(y) >= mask.rows)
+            throw RuntimeError("The point is outside of the layer");
+        const ColumnStep result = std::visit([&](const auto &s) {
+            if constexpr (std::is_same_v<std::decay_t<decltype(s)>, SupportSpec>) return support_layer_step(mask, x, y, layer, drawn, s);
+            else return drain_layer_step(mask, x, y, drawn, s);
+        }, spec);
+        if (result == ColumnStep::Finished) break;
+        if (result == ColumnStep::Skipped) continue;
+        ++drawn;
+        quantize_mask(mask.buf);
+        const auto encoded = PNGRasterEncoder{}(mask.buf.data(), mask.cols, mask.rows, 1);
+        if (encoded.size() == 0) throw RuntimeError("Cannot encode edited layer PNG");
+        const auto *bytes = static_cast<const uint8_t *>(encoded.data());
+        std::vector<uint8_t> blob(bytes, bytes + encoded.size());
+        const auto index = layer_entry(layer, plane);
+        if (m_entries[index].same_as(blob)) continue;
+        history_bytes += blob.size() + m_entries[index].size();
+        if (history_bytes > layer_history_edit_budget())
+            throw RuntimeError("This edit exceeds the history budget (" + layer_mib(layer_history_edit_budget()) + ").");
+        changes.push_back({index, m_entries[index].copy(), std::move(blob)});
+    }
+    if (progress && !progress(total, total)) return false;
+    if (!generation.current()) throw RuntimeError("Layer document changed during the operation");
+    commit(std::move(changes));
+    return true;
 }
 
 void LayerDocument::paint(size_t layer, int x, int y, unsigned radius, uint8_t value, LayerMaskPlane plane)

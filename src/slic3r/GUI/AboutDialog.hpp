@@ -55,7 +55,6 @@ private:
     wxHtmlWindow*   m_html;
     std::vector<Entry> m_entries;
 
-    void onLinkClicked(wxHtmlLinkEvent &event);
     void onCloseDialog(wxEvent &);
 
     void fill_entries();
@@ -78,7 +77,6 @@ protected:
     void on_dpi_changed(const wxRect &suggested_rect) override;
     
 private:
-    void onLinkClicked(wxHtmlLinkEvent &event);
     void onCloseDialog(wxEvent &);
     void onCopyrightBtn(wxEvent &);
     void onCopyToClipboard(wxEvent&);

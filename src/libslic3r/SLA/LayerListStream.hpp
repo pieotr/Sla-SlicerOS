@@ -30,6 +30,10 @@ Operation repair_layers(const layerops::RepairLayersParams &);
 Operation phased_exposure(const layerops::PhasedExposureParams &, const layerops::PrinterContext &);
 Operation timelapse(const layerops::TimelapseParams &, const layerops::PrinterContext &);
 Operation raise_on_print_finish(const layerops::RaiseOnPrintFinishParams &, const layerops::PrinterContext &);
+// Stir resin: StirOnly replaces the document by the stir layers (the caller sets the global bottom layer count to 1 through
+// the result's change), StirAndPrint puts them in front of the layers (a previous stir block is removed first).
+// `base_row` = the first normal layer row of the document. Apply with LayerDocument::apply_parameter_list_stream.
+Operation stir_resin(const layerops::StirResinParams &, const layerops::PrinterContext &, const layerops::LayerParams &base_row);
 // `p` already resolved (defaults filled in); the plan reads Z and parameters from the context.
 Operation dynamic_layer_height(const layerops::DynamicLayerHeightParams &, const layerops::PrinterContext &);
 // `bottom_row` / `normal_row`: the parameters of the document's first bottom / normal layer (see the recipe).

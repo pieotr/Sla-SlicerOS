@@ -104,6 +104,7 @@ std::unique_ptr<sla::RasterBase> Emake3DGalaxyArchive::create_raster() const {
 }
 sla::RasterEncoder Emake3DGalaxyArchive::get_encoder() const { return encode_mask; }
 void Emake3DGalaxyArchive::validate_configuration(const SLAPrint &print) {
+    sla::require_representable(print, "qdt");
     const auto &cfg = print.printer_config();
     const bool portrait = cfg.display_orientation.value == sladoPortrait;
     const double width = portrait ? cfg.display_height.value : cfg.display_width.value;

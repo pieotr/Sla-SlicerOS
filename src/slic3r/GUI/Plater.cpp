@@ -539,7 +539,7 @@ struct Plater::priv
 			GUI::show_error(this->q, msg);
 		}
 	}
-    void export_gcode(fs::path output_path, bool output_path_on_removable_media,
+    void export_sliced(fs::path output_path, bool output_path_on_removable_media,
                       const std::string &selected_sla_format = {});
     void reload_from_disk();
     bool replace_volume_with_stl(int object_idx, int volume_idx, const fs::path& new_path, const wxString& snapshot = "");
@@ -853,7 +853,7 @@ void Plater::priv::init()
 
     if (wxGetApp().is_editor()) {
         this->q->Bind(EVT_EJECT_DRIVE_NOTIFICAION_CLICKED, [this](EjectDriveNotificationClickedEvent&) { this->q->eject_drive(); });
-        this->q->Bind(EVT_EXPORT_GCODE_NOTIFICAION_CLICKED, [this](ExportGcodeNotificationClickedEvent&) { this->q->export_gcode(true); });
+        this->q->Bind(EVT_EXPORT_SLICED_NOTIFICATION_CLICKED, [this](ExportSlicedNotificationClickedEvent&) { this->q->export_sliced(true); });
         this->q->Bind(EVT_PRESET_UPDATE_AVAILABLE_CLICKED, [](PresetUpdateAvailableClickedEvent&) {
             GUI_App &app = wxGetApp();
             app.get_preset_updater_wrapper()->on_update_notification_confirm();
@@ -2286,10 +2286,10 @@ bool Plater::priv::restart_background_process(unsigned int state)
     return false;
 }
 
-void Plater::priv::export_gcode(fs::path output_path, bool output_path_on_removable_media,
+void Plater::priv::export_sliced(fs::path output_path, bool output_path_on_removable_media,
                                const std::string &selected_sla_format)
 {
-    wxCHECK_RET(!output_path.empty(), "export_gcode: output_path empty");
+    wxCHECK_RET(!output_path.empty(), "export_sliced: output_path empty");
     
     if (model.objects.empty())
         return;
@@ -3736,17 +3736,18 @@ void Plater::priv::show_action_buttons(const bool ready_to_slice_) const
 		if (sidebar->show_reslice(false) |
 			sidebar->show_export(true) |
 			sidebar->show_export_removable(removable_media_status.has_removable_drives))
-            sidebar->Layout();
+            sidebar->relayout_buttons();
     }
     else
     {
 	    RemovableDriveManager::RemovableDrivesStatus removable_media_status;
 	    if (! ready_to_slice) 
 	    	removable_media_status = wxGetApp().removable_drive_manager()->status();
+        // Not a short-circuit chain: every button must be updated; the edit-layers button is part of show_export().
         if (sidebar->show_reslice(ready_to_slice) |
             sidebar->show_export(!ready_to_slice) |
 			sidebar->show_export_removable(!ready_to_slice && removable_media_status.has_removable_drives))
-            sidebar->Layout();
+            sidebar->relayout_buttons();
     }
 }
 
@@ -5348,7 +5349,7 @@ void Plater::edit_sliced_layers()
     });
 }
 
-void Plater::export_gcode(bool prefer_removable)
+void Plater::export_sliced(bool prefer_removable)
 {
     if (p->model.objects.empty())
         return;
@@ -5376,12 +5377,12 @@ void Plater::export_gcode(bool prefer_removable)
     }
     const fs::path &output_path{*optional_output_path};
 
-    export_gcode_to_path(output_path, [&](const bool path_on_removable_media){
-        p->export_gcode(output_path, path_on_removable_media, selected_sla_format);
+    export_sliced_to_path(output_path, [&](const bool path_on_removable_media){
+        p->export_sliced(output_path, path_on_removable_media, selected_sla_format);
     });
 }
 
-void Plater::export_gcode_to_path(
+void Plater::export_sliced_to_path(
     const fs::path &output_path,
     const std::function<void(bool)> &export_callback
 ) {
@@ -6060,7 +6061,7 @@ void Plater::set_project_filename(const wxString& filename)
     p->set_project_filename(filename);
 }
 
-bool Plater::is_export_gcode_scheduled() const
+bool Plater::is_export_scheduled() const
 {
     return p->background_process.is_export_scheduled();
 }

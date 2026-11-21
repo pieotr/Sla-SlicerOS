@@ -556,7 +556,7 @@ void PreferencesDialog::build()
 		m_optgroup_other = create_options_tab(_L("Other"), tabs);
 		m_optgroup_other->on_change = [this](t_config_option_key opt_key, boost::any value) {
 
-			if (auto it = m_values.find(opt_key); it != m_values.end() && opt_key != "url_downloader_dest") {
+			if (auto it = m_values.find(opt_key); it != m_values.end()) {
 				m_values.erase(it); // we shouldn't change value, if some of those parameters were selected, and then deselected
 				return;
 			}
@@ -1082,25 +1082,6 @@ void PreferencesDialog::create_settings_font_widget()
 	sizer->Add(stb_sizer, 1, wxALIGN_CENTER_VERTICAL);
 
 	m_optgroup_other->sizer->Add(sizer, 1, wxEXPAND | wxTOP, em_unit());
-
-	append_preferences_option_to_searcher(m_optgroup_other, opt_key, title);
-}
-
-void PreferencesDialog::create_downloader_path_sizer()
-{
-	wxWindow* parent = m_optgroup_other->parent();
-
-	wxString title = L("Download path");
-	std::string opt_key = "url_downloader_dest";
-	m_blinkers[opt_key] = new BlinkingBitmap(parent);
-
-	downloader = new DownloaderUtils::Worker(parent);
-
-	auto sizer = new wxBoxSizer(wxHORIZONTAL);
-	sizer->Add(m_blinkers[opt_key], 0, wxRIGHT, 2);
-	sizer->Add(downloader, 1, wxALIGN_CENTER_VERTICAL);
-
-	m_optgroup_other->sizer->Add(sizer, 0, wxEXPAND | wxTOP, em_unit());
 
 	append_preferences_option_to_searcher(m_optgroup_other, opt_key, title);
 }

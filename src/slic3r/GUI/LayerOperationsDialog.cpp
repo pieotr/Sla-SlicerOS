@@ -40,7 +40,8 @@ class LayerOperationsPanel final : public wxPanel {
             c.printer = m_host.printer_context();
         }
         c.display_mm = m_host.display_size_mm();
-        c.list_edits_possible = m_host.list_refusal(false).empty();
+        c.list_refusal = m_host.list_refusal(false);
+        c.list_edits_possible = c.list_refusal.empty();
         return c;
     }
     void build_form(size_t op_index, wxWindow *parent) {
@@ -58,7 +59,10 @@ class LayerOperationsPanel final : public wxPanel {
                 sizer->AddSpacer(0); sizer->Add(box, 0, wxALIGN_CENTER_VERTICAL);
                 ctrl = box;
             } else {
-                sizer->Add(new wxStaticText(panel, wxID_ANY, f.label), 0, wxALIGN_CENTER_VERTICAL);
+                // Long captions wrap at a fixed width: otherwise the widest caption pushes the controls out of the docked column.
+                auto *caption = new wxStaticText(panel, wxID_ANY, f.label);
+                caption->Wrap(FromDIP(150));
+                sizer->Add(caption, 0, wxALIGN_CENTER_VERTICAL);
                 if (f.kind == OpField::Int) {
                     auto *spin = new wxSpinCtrl(panel, wxID_ANY);
                     spin->SetRange(int(f.lo), int(f.hi)); spin->SetValue(int(f.def));
@@ -78,12 +82,21 @@ class LayerOperationsPanel final : public wxPanel {
                     text->SetHint("unchanged");
                     ctrl = text;
                 } else if (f.kind == OpField::File) {
-                    auto *text = new wxTextCtrl(panel, wxID_ANY, wxString::FromUTF8(f.text), wxDefaultPosition, wxSize(120, -1));
+                    auto *text = new wxTextCtrl(panel, wxID_ANY, wxString::FromUTF8(f.text), wxDefaultPosition, wxSize(FromDIP(60), -1));
                     auto *browse = new wxButton(panel, wxID_ANY, _L("Browse..."));
-                    browse->Bind(wxEVT_BUTTON, [text](wxCommandEvent &) {
-                        wxFileDialog open(text, _L("Choose an image"), "", "",
-                            "Images|*.png;*.jpg;*.jpeg;*.bmp;*.gif;*.tif;*.tiff|All files|*", wxFD_OPEN | wxFD_FILE_MUST_EXIST);
-                        if (open.ShowModal() == wxID_OK) text->SetValue(open.GetPath());
+                    browse->SetName(f.label + " " + _L("Browse..."));
+                    const wxString wildcard = f.wildcard.empty() ? wxString(_L("Images") + "|*.png;*.jpg;*.jpeg;*.bmp;*.gif;*.tif;*.tiff|" + _L("All files") + "|*") : f.wildcard;
+                    const bool multi = f.multi;
+                    browse->Bind(wxEVT_BUTTON, [text, wildcard, multi](wxCommandEvent &) {
+                        wxFileDialog open(text, multi ? _L("Choose files") : _L("Choose a file"), "", "", wildcard,
+                                          wxFD_OPEN | wxFD_FILE_MUST_EXIST | (multi ? wxFD_MULTIPLE : 0));
+                        if (open.ShowModal() != wxID_OK) return;
+                        if (!multi) { text->SetValue(open.GetPath()); return; }
+                        wxArrayString paths;
+                        open.GetPaths(paths);
+                        wxString joined;
+                        for (const auto &path : paths) joined += (joined.empty() ? "" : "|") + path;
+                        text->SetValue(joined);
                     });
                     auto *row = new wxBoxSizer(wxHORIZONTAL);
                     row->Add(text, 1, wxEXPAND | wxRIGHT, 4);
@@ -277,6 +290,9 @@ class LayerOperationsPanel final : public wxPanel {
             }
             switch (m_host.run(job)) {
             case RunOutcome::Committed:
+                // Something was skipped on purpose (e.g. import files that do not fit): never silent.
+                if (built->report && !built->report->empty())
+                    wxMessageBox(wxString::FromUTF8(*built->report), title, wxOK | wxICON_INFORMATION, this);
                 // The layer list or the parameter table changed: the editor rebuilds this dialog with fresh defaults.
                 if (job.list_op || job.param_op || job.lithophane || job.document_op || (job.stream && !job.stream_pixels)) { m_host.on_layer_list_changed(); return; }
                 set_message(_L("Applied. Use Undo in the editor to revert (one step)."), false);

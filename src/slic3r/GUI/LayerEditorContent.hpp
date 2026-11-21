@@ -59,6 +59,19 @@ class LayerEditorContent final : public LayerEditorPanel {
     // Pixel-editor state. Tool indices: 0 freehand, 1 line, 2 rectangle, 3 ellipse, 4 flood fill.
     // m_brush: 0 brush, 1 eraser; m_tool: shape tool; m_shape: 0 round, 1 square brush tip.
     ToolGroup m_brush, m_tool, m_shape;
+    // Tool indices 5..7 (m_tool): Text, Supports, Drain hole; their option panels are shown while the tool is chosen.
+    wxPanel *m_opt_text = nullptr, *m_opt_support = nullptr, *m_opt_drain = nullptr;
+    wxStaticText *m_tool_message = nullptr;
+    wxTextCtrl *m_text_value = nullptr;
+    ComboBox *m_text_font = nullptr, *m_text_align = nullptr;
+    wxCheckBox *m_text_italic = nullptr, *m_text_mirror = nullptr;
+    wxSpinCtrlDouble *m_text_scale = nullptr, *m_text_angle = nullptr;
+    wxSpinCtrl *m_text_thickness = nullptr, *m_support_tip = nullptr, *m_support_pillar = nullptr, *m_support_base = nullptr, *m_drain_diameter = nullptr;
+    std::shared_ptr<const sla::hershey_text::TextSpec> m_stroke_text;            // frozen at the click
+    std::optional<std::variant<sla::LayerDocument::SupportSpec, sla::LayerDocument::DrainSpec>> m_stroke_dig;
+    void build_tool_options(wxSizer *column);
+    void update_tool_options(const wxString &error = wxString());
+    sla::hershey_text::TextSpec current_text_spec() const;
     wxStaticText *m_pixel_info = nullptr;
     int m_stroke_tool = 0;
     sla::LayerDocument::BrushShape m_stroke_shape = sla::LayerDocument::BrushShape::Round;

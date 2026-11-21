@@ -178,6 +178,26 @@ Zarządzanie profilami:
 Format eksportu jest zapamiętywany osobno dla każdej drukarki (patrz 7).
 
 
+Zapas żywicy i „I printed this file”
+  Cel: prowadzić ewidencję butelek żywicy i księgować zużycie po wydruku
+  (odpowiednik operacji UVtools „I printed this file”). Zapas to plik
+  resin_stock.json w katalogu danych programu (obok presetów); zapis jest
+  atomowy, więc przerwany zapis nie psuje poprzedniej wersji.
+  File → Resin stock...: lista żywic (nazwa, butelka w ml, koszt, liczba
+  butelek, ml w otwartej butelce, zużyte ml, liczba wydruków, czas druku).
+  Add resin... dodaje żywicę (domyślna nazwa = aktywny preset materiału),
+  Edit resin... zmienia dane butelki (historia zużycia zostaje), Remove resin
+  usuwa po potwierdzeniu. Każda zmiana zapisuje plik od razu.
+  File → I printed this file...: wybierz żywicę (domyślnie aktywny preset),
+  liczbę wydrukowanych kopii oraz zużycie i czas jednej kopii — pola są
+  wypełnione z wyniku slicingu, gdy istnieje, i można je poprawić. Okno
+  pokazuje łączną ilość żywicy, koszt i stan butelek przed i po. „Update
+  stock” zapisuje zużycie liczone jak w UVtools (całe butelki plus reszta
+  z otwartej; gdy reszta nie wystarcza, otwierana jest nowa butelka);
+  Cancel nie zmienia niczego. Uszkodzony plik zapasu nigdy nie jest po
+  cichu zastępowany pustym: program pokazuje błąd z nazwą pliku i go nie
+  zmienia — popraw plik albo odsuń go na bok.
+
 4. Model 3D: import, transformacje, podpory, drążenie
 =====================================================
 
@@ -274,7 +294,10 @@ Narzędzia (nad podglądem):
   Grayscale / threshold 0-255 — jasność pędzla i wartość dla
   progowania/wypełnienia;
 - kształt pociągnięcia: Freehand (odręcznie), Line, Rectangle, Ellipse,
-  Flood fill. Linia, prostokąt, elipsa i wypełnienie działają na całym
+  Flood fill oraz (trzeci rząd) Text, Supports i Drain hole: klik wpisuje
+  tekst (czcionka, skala, grubość, kąt, wyrównanie, odbicie) albo rysuje
+  kolumnę podpory / wierci otwór w dół od klikniętej warstwy (średnice w polach
+  opcji; klik na warstwie 1 jest odrzucany). Każde użycie to jeden Undo. Linia, prostokąt, elipsa i wypełnienie działają na całym
   zakresie warstw wybranym w edytorze i każde jest jednym krokiem Undo;
   ostatni narysowany prostokąt można użyć jako ROI w oknie Operations;
 - Brush grayscale mapping: komunikat pokazuje, jaką jasność naprawdę
@@ -383,9 +406,13 @@ Rectangle) oraz przyciski Preview, Apply, Close i Calculator....
 Operacje (nazwy jak w oknie):
 - Transform: Move, Resize, Rotate, Flip, Pattern, Change resolution.
 - Pixels: Threshold, Solidify, Pixel dimming, Infill (8 wzorów), Pixel
-  arithmetic, Raft relief, Light bleed compensation.
+  arithmetic, Raft relief (także Linked lines), Light bleed compensation, Blur
+  (Stack, Box, Pyramid, Median, Gaussian, Filter 2D), Mask by image, Redraw model
+  (drugi plik z samym modelem).
 - Layers: Clone layers, Remove layers, Change layer height, Layer
-  arithmetic, Double exposure, Repair layers (wyspy, pułapki żywicy,
+  arithmetic, Double exposure, Layer import (PNG i pliki drukarek; Insert,
+  dopisywanie i odrzucanie warstw tylko tam, gdzie lista warstw może się
+  zmienić), Repair layers (wyspy, pułapki żywicy,
   przyssawki, szczeliny, szum), Lithophane (obraz wybrany z dysku; zastępuje
   wszystkie warstwy — gdy bieżący dokument nie przyjmie innej liczby
   warstw, wynik otwiera się jako nowy dokument generowany).
@@ -394,6 +421,9 @@ Operacje (nazwy jak w oknie):
   Dynamic layer height. Zmiana trafia do tabeli parametrów jako jeden krok
   Undo. Pole, którego format nie potrafi zapisać, jest odrzucane z nazwą pola
   (puste pole w Edit parameters = zachowaj zapisaną wartość).
+  Stir resin (warstwy mieszania żywicy w Z = 0,001 mm na początku wydruku; tylko
+  dokumenty wygenerowane; eksport takiego dokumentu tylko do uvj i cxdlpv4, inne
+  formaty odmawiają przed zapisem).
 - Export...: Layer images (PNG lub PGM do folderu), Animated GIF, Heat map,
   Skeleton, HTML report (jeden plik bez zasobów zewnętrznych), STL mesh.
   Eksport działa w tle z Cancel i zapisuje przez plik tymczasowy + zmianę
@@ -687,6 +717,10 @@ ExposureFinder
   są walidowane; przycisk podglądu planu pokazuje, co powstanie, zanim
   wygenerujesz warstwy. Ręczne wiersze zachowują kolejność i duplikaty;
   zaokrąglenia zatwierdzasz przyciskiem Normalize rows.
+  Tabela wierszy ma pod sobą tylko do odczytu listę tych samych wierszy
+  („Table rows as a list”): czytniki ekranu odczytują z niej każdą komórkę
+  (wysokość, ekspozycje, jasność, poprawność), bo siatka edycji sama nie
+  udostępnia komórek technologiom asystującym.
   Jak czytać: oceń wydrukowane komórki; wybierz wiersz tabeli (ekspozycję)
   z najlepiej odwzorowanymi otworami, belkami i bullseye bez zalania i
   niedoświetlenia, po czym wpisz tę ekspozycję w profilu materiału.
@@ -765,6 +799,33 @@ Przykład:
         --slice --output wynik.uvj model.stl
 
 Rozszerzenie domyślnej nazwy wynika z formatu; zmiana formatu zmienia suffix.
+
+Zatwierdzanie zmian przy eksporcie (jak okna GUI "Convert export palette" i
+"Adjust values for export"). Domyślnie CLI jest ścisłe: gdy format docelowy
+nie zapisze wartości dokładnie albo wymaga konwersji palety, eksport kończy się
+błędem z pełną listą wszystkich problemów i nie zostawia pliku. Dwie flagi
+zatwierdzają zmiany z góry:
+
+    --sla-accept-adjustments   zapisz najbliższe wartości zapisywalne (np. pełne
+                               sekundy, pełne mm/s, stały skok formatu, model
+                               Creality dobrany po rozdzielczości) zamiast odmowy;
+    --sla-accept-conversion    wyeksportuj kopię ze skonwertowaną paletą szarości
+                               (Anycubic, CBDDLP/Photon, CTB) zamiast odmowy.
+
+Każda zmiana jest wypisana na standardowe wyjście w postaci
+"Adjusted for export: <pole> <było> -> <jest> (powód)" albo
+"Converted for export: palette conversion: ... pixels change ...". Profile i
+ustawienia nie są zmieniane (tylko zapisany plik). Rzeczy, których żadne
+dopasowanie nie naprawi (drugi stopień ruchu, przejścia, geometria), nadal
+są odmową, razem z resztą na jednej liście. Przykład:
+
+    build/src/prusa-slicer --load drukarka.ini --sla-archive-format SL1 \
+        --sla-accept-adjustments --sla-accept-conversion \
+        --slice --output wynik.v4.ctb model.stl
+
+W przepisach (--sla-run-recipe) krok convert przyjmuje pole
+"accept_adjustments" (domyślnie false) a --sla-run-recipe flagę
+--sla-accept-adjustments (dla wszystkich kroków convert).
 
 Wykrywanie problemów w gotowym pliku:
 

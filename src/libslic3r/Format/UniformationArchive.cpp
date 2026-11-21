@@ -82,6 +82,7 @@ sla::RasterEncoder UniformationGKoneArchive::get_encoder() const {
     };
 }
 void UniformationGKoneArchive::validate_configuration(const SLAPrint &print) {
+    sla::require_representable(print, "jxs");
     const auto &cfg = print.printer_config();
     const bool portrait = cfg.display_orientation.value == sladoPortrait;
     if ((portrait ? cfg.display_pixels_y.value : cfg.display_pixels_x.value) != int(cols) ||

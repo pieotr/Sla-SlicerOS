@@ -21,6 +21,7 @@ sla::RasterEncoder FlashforgeSVGXArchive::get_encoder() const {
 
 void FlashforgeSVGXArchive::validate_configuration(const SLAPrint &print)
 {
+    sla::require_representable(print,"svgx");
     const auto &cfg=print.printer_config();const auto &material=print.material_config();
     if(cfg.display_pixels_x.value<=0||cfg.display_pixels_y.value<=0||
        uint64_t(cfg.display_pixels_x.value)*cfg.display_pixels_y.value>(uint64_t(128)<<20))

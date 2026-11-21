@@ -171,6 +171,8 @@ void export_anet(const std::string &filename, const SLAPrint &print,
   if (layers.empty() || layers.size() != print.print_layers().size() ||
       layers.size() > std::numeric_limits<uint32_t>::max())
     throw ExportError("Anet requires one encoded mask per print layer");
+  // Every setting the container cannot store, in one refusal (the approval route adjusts them beforehand).
+  sla::require_representable(print, &printer == &n7 ? "n7" : "n4");
   const bool portrait = config.display_orientation.value == sladoPortrait;
   const size_t columns = size_t(portrait ? config.display_pixels_y.value
                                          : config.display_pixels_x.value);

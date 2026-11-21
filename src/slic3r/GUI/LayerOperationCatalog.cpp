@@ -239,21 +239,26 @@ std::vector<OpDef> make_layer_operation_defs(const OpContext &initial)
     {
         auto &def = add(OpGroup::Pixels, _L("Raft relief"), _L("Relieves the raft with holes, dimming, decimation or tabs. Works on the whole document; "
                         "the optional region of interest limits it."),
-            {pick("type", _L("Relief type"), {_L("Relief (holes)"), _L("Dimming"), _L("Decimate"), _L("Tabs")}, 0),
+            {pick("type", _L("Relief type"), {_L("Relief (holes)"), _L("Dimming"), _L("Decimate"), _L("Tabs"), _L("Linked lines")}, 0),
              num("mask", _L("First layer with supports (0 = auto-detect)"), 0, 1000000, 0), num("ign", _L("Ignore first layers"), 0, 1000000, 0),
              num("low", _L("Low brightness"), 0, 255, 0), num("dil", _L("Dilate iterations"), 0, 1000, 15), num("margin", _L("Wall margin (px)"), 0, 4096, 40),
              num("hole", _L("Hole diameter (px)"), 1, 4096, 80), num("spacing", _L("Hole spacing (px)"), 0, 4096, 40),
              num("high", _L("Tab brightness"), 0, 255, 255), num("tbase", _L("Tab triangle base (px)"), 1, 4096, 200),
-             num("theight", _L("Tab triangle height (px)"), 1, 4096, 250)},
+             num("theight", _L("Tab triangle height (px)"), 1, 4096, 250),
+             num("lthick", _L("Linked lines: line thickness (px)"), 4, 255, 26, _L("Linked lines type: thickness of the lines that link the supports. The lines are drawn with the Tab brightness.")),
+             num("lmin", _L("Linked lines: minimum links per support"), 0, 255, 4, _L("Linked lines type: every support is connected to at least this many neighbours.")),
+             flag("lext", _L("Linked: external supports"), true, _L("Linked lines type: also link the supports on the outline of the raft."))},
             [](const OpValues &v, const OpContext &c) {
                 static constexpr layerops::RaftReliefType kTypes[] = {layerops::RaftReliefType::Relief, layerops::RaftReliefType::Dimming,
-                                                                       layerops::RaftReliefType::Decimate, layerops::RaftReliefType::Tabs};
+                                                                       layerops::RaftReliefType::Decimate, layerops::RaftReliefType::Tabs, layerops::RaftReliefType::LinkedLines};
                 layerops::RaftReliefParams p;
-                p.roi = c.roi; p.type = kTypes[std::clamp(v.i("type"), 0, 3)];
+                p.roi = c.roi; p.type = kTypes[std::clamp(v.i("type"), 0, 4)];
                 p.mask_layer_index = size_t(v.i("mask")); p.ignore_first_layers = v.u("ign"); p.low_brightness = uint8_t(v.i("low"));
                 p.dilate_iterations = v.u("dil"); p.wall_margin = v.u("margin"); p.hole_diameter = v.u("hole");
                 p.hole_spacing = v.u("spacing"); p.high_brightness = uint8_t(v.i("high"));
                 p.tab_triangle_base = v.u("tbase"); p.tab_triangle_height = v.u("theight");
+                p.linked_line_thickness = uint8_t(std::clamp(v.i("lthick"), 0, 255)); p.linked_minimum_links = uint8_t(std::clamp(v.i("lmin"), 0, 255));
+                p.linked_external_supports = v.b("lext");
                 require_valid(layerops::validate_raft_relief(p));
                 BuiltOp op;
                 op.mask = [p](auto &layers, const auto &, const layerops::LayerSelection &, const sla::LayerProgress &pr) {
@@ -369,6 +374,7 @@ std::vector<OpDef> make_layer_operation_defs(const OpContext &initial)
         def.previewable = false;
     }
     append_batch2_defs(defs, initial);
+    append_batch3_defs(defs, initial);
     return defs;
 }
 

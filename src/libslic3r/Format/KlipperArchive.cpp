@@ -83,6 +83,7 @@ sla::RasterEncoder KlipperArchive::get_encoder() const {
     };
 }
 void KlipperArchive::validate_configuration(const SLAPrint &print) {
+    sla::require_representable(print, "klipper");
     const auto &cfg = print.printer_config();
     if (cfg.display_pixels_x.value < 1 || cfg.display_pixels_y.value < 1 ||
         cfg.display_pixels_x.value > 32768 || cfg.display_pixels_y.value > 32768 ||
