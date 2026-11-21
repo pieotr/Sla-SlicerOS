@@ -38,6 +38,8 @@ namespace Slic3r::CLI
     // Implemented in PrintHelp.cpp
 
     void    print_help(bool include_print_options = false, PrinterTechnology printer_technology = ptAny);
+    // Prints the product version, the build id and the PrusaSlicer base version (--version).
+    void    print_version();
 
     // Implemented in Setup.cpp
 

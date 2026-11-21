@@ -31,7 +31,7 @@ def main():
     directory = Path(tempfile.mkdtemp(prefix='profile-crud-', dir=args.output.resolve()))
     datadir = directory / 'presets'
     shutil.copytree(args.seed, datadir)
-    configuration = datadir / 'PrusaSlicer.ini'
+    configuration = datadir / 'SLA-Slicer.ini'
     def config():
         parsed = configparser.RawConfigParser()
         parsed.read_string('[DEFAULT]\n' + configuration.read_text())

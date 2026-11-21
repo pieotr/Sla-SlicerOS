@@ -61,6 +61,7 @@
 #include <wx/textctrl.h>
 #include <wx/fontutil.h>
 
+#include "libslic3r/LegacyDataMigration.hpp"
 #include "libslic3r/Utils.hpp"
 #include "libslic3r/Model.hpp"
 #include "libslic3r/PresetBundle.hpp"
@@ -185,7 +186,7 @@ static bool run_updater_win()
 {
     // find updater exe
     boost::filesystem::path path_updater = boost::dll::program_location().parent_path() / "prusaslicer-updater.exe";
-    // run updater. Original args: /silent -restartapp prusa-slicer.exe -startappfirst
+    // run updater. Original args: /silent -restartapp sla-slicer.exe -startappfirst
     std::string msg;
     bool res = create_process(path_updater, L"/silent", msg);
     if (!res)
@@ -591,6 +592,12 @@ void GUI_App::post_init()
         CallAfter([this] {
             // preset_updater->sync downloads profile updates and than via event checks updates and incompatible presets. We need to run it on startup.
             // start before cw so it is canceled by cw if needed?
+            // One-time notification about the import of SLA profiles from an existing PrusaSlicer data directory.
+            if (const LegacyMigrationResult &import = last_legacy_migration(); import.performed && !import.copied.empty() && plater_ != nullptr) {
+                // TRN Notification, %1% is the number of imported SLA profiles (printers, resins, process profiles).
+                plater_->get_notification_manager()->push_notification(
+                    format(_u8L("Settings imported from PrusaSlicer: %1% SLA profiles"), import.profile_count()));
+            }
             bool cw_showed = this->config_wizard_startup();
             if (! cw_showed) {
                 // The CallAfter is needed as well, without it, GL extensions did not show.
@@ -675,14 +682,15 @@ static boost::optional<Semver> parse_semver_from_ini(const std::string& path)
 
 void GUI_App::init_app_config()
 {
-	// The app name (SLIC3R_APP_FULL_NAME == SLIC3R_APP_KEY) intentionally stays "PrusaSlicer":
-	// wx derives config/data locations from it and existing user presets must keep loading.
-	// Only the user-visible display name is the product name.
+	// The app name (SLIC3R_APP_FULL_NAME == SLIC3R_APP_KEY == "SLA-Slicer") names the data directory
+	// (~/.config/SLA-Slicer), the ini, the gettext domain and the IPC names. It must differ from a real
+	// PrusaSlicer so that both can be installed side by side without sharing configuration.
+	// The SLA part of an existing PrusaSlicer data directory is copied once at startup (GUI_Run).
 	SetAppName(SLIC3R_APP_FULL_NAME);
 	SetAppDisplayName(SLIC3R_APP_NAME);
 #ifdef __WXGTK__
 	// X11 WM_CLASS instance name and Wayland app_id are derived from the GLib program name
-	// (default: argv[0] == "prusa-slicer"); keep them in line with the product and the .desktop file.
+	// (default: argv[0] == "sla-slicer"); keep them in line with the product and the .desktop file.
 	g_set_prgname("sla-slicer");
 #endif
 
@@ -695,7 +703,7 @@ void GUI_App::init_app_config()
         std::string error = app_config->load();
         if (!error.empty()) {
             // Error while parsing config file. We'll customize the error message and rethrow to be displayed.
-            throw Slic3r::RuntimeError(format("Error parsing PrusaSlicer config file, it is probably corrupted. "
+            throw Slic3r::RuntimeError(format("Error parsing SLA-Slicer config file, it is probably corrupted. "
                     "Try to manually delete the file to recover from the error. Your user profiles will not be affected."
                     "\n\n%1%\n\n%2%", app_config->config_path(), error));
         }
@@ -940,7 +948,7 @@ std::string GUI_App::check_older_app_config(Semver current_version, bool backup)
         std::string error = app_config->load((boost::filesystem::path(older_data_dir_path) / filename).string());
         if (!error.empty()) {
             // Error while parsing config file. We'll customize the error message and rethrow to be displayed.
-            throw Slic3r::RuntimeError(format("Error parsing PrusaSlicer config file, it is probably corrupted. "
+            throw Slic3r::RuntimeError(format("Error parsing SLA-Slicer config file, it is probably corrupted. "
                     "Try to manually delete the file to recover from the error. Your user profiles will not be affected."
                     "\n\n%1%\n\n%2%", app_config->config_path(), error));
         }
@@ -1083,11 +1091,11 @@ bool GUI_App::on_init_inner()
     // Win32 32bit build.
     if (wxPlatformInfo::Get().GetArchName().substr(0, 2) == "64") {
         RichMessageDialog dlg(nullptr,
-            _L("You are running a 32 bit build of PrusaSlicer on 64-bit Windows."
-                "\n32 bit build of PrusaSlicer will likely not be able to utilize all the RAM available in the system."
-                "\nPlease download and install a 64 bit build of PrusaSlicer from https://www.prusa3d.cz/prusaslicer/."
-                "\nDo you wish to continue?"),
-            "PrusaSlicer", wxICON_QUESTION | wxYES_NO);
+            format_wxstr(_L("You are running a 32 bit build of %1% on 64-bit Windows."
+                "\n32 bit build of %1% will likely not be able to utilize all the RAM available in the system."
+                "\nPlease install a 64 bit build of %1%."
+                "\nDo you wish to continue?"), SLIC3R_APP_NAME),
+            SLIC3R_APP_NAME, wxICON_QUESTION | wxYES_NO);
         if (dlg.ShowModal() != wxID_YES)
             return false;
     }
@@ -2208,11 +2216,6 @@ bool GUI_App::load_language(wxString language, bool initial)
 
     // Alternate language code.
     wxLanguage language_dict = wxLanguage(language_info->Language);
-    if (language_info->CanonicalName.BeforeFirst('_') == "sk") {
-    	// Slovaks understand Czech well. Give them the Czech translation.
-    	language_dict = wxLANGUAGE_CZECH;
-		BOOST_LOG_TRIVIAL(trace) << "Using Czech dictionaries for Slovak language";
-    }
 
     // Select language for locales. This language may be different from the language of the dictionary.
     if (language_info == m_language_info_best || language_info == m_language_info_system) {
@@ -2929,12 +2932,12 @@ bool GUI_App::open_login_browser_with_dialog(const wxString& url, wxWindow* pare
 #ifdef __WXMSW__
 void GUI_App::associate_3mf_files()
 {
-    associate_file_type(L".3mf", L"Prusa.Slicer.1", L"PrusaSlicer", true);
+    associate_file_type(L".3mf", L"SlaSlicer.1", L"SLA-Slicer", true);
 }
 
 void GUI_App::associate_stl_files()
 {
-    associate_file_type(L".stl", L"Prusa.Slicer.1", L"PrusaSlicer", true);
+    associate_file_type(L".stl", L"SlaSlicer.1", L"SLA-Slicer", true);
 }
 
 #endif // __WXMSW__

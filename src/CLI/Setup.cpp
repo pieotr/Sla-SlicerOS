@@ -185,7 +185,18 @@ static bool read(Data& data, int argc, const char* const argv[])
             // Just bail out if the configuration value is not understood.
             ConfigSubstitutionContext context(ForwardCompatibilitySubstitutionRule::Disable);
             // Any scalar value of a type different from Bool and String.
-            if (!config->set_deserialize_nothrow(opt_key, value, context, false)) {
+            // set_deserialize_nothrow() only avoids the "invalid value" exception: it still throws for a configuration the
+            // application cannot represent (for example --printer-technology FFF). An exception escaping to main()
+            // would call std::terminate() and abort the process with a core dump instead of reporting the problem.
+            bool ok = false;
+            try {
+                ok = config->set_deserialize_nothrow(opt_key, value, context, false);
+            }
+            catch (const ConfigurationError &ex) {
+                boost::nowide::cerr << "Invalid value supplied for --" << token.c_str() << ": " << ex.what() << std::endl;
+                return false;
+            }
+            if (!ok) {
                 boost::nowide::cerr << "Invalid value supplied for --" << token.c_str() << std::endl;
                 return false;
             }
@@ -228,7 +239,32 @@ static bool setup_common()
 
     // Switch boost::filesystem to utf8.
     try {
-        boost::nowide::nowide_filesystem();
+        try {
+            boost::nowide::nowide_filesystem();
+        }
+        catch (const std::runtime_error&) {
+#if !defined(_WIN32) && !defined(__APPLE__)
+            // LANG / LC_* name a locale that is not generated on this system (for example LANG=de_DE.UTF-8 on a
+            // machine without that locale). Fall back to the always available C.UTF-8 / C locale instead of
+            // refusing to start; the GUI then falls back to English (only English and Polish are shipped).
+            const char* fallbacks[] = { "C.UTF-8", "C" };
+            bool        ok          = false;
+            for (const char* name : fallbacks) {
+                ::setenv("LC_ALL", name, /* replace */ true);
+                ::unsetenv("LANGUAGE");
+                try {
+                    boost::nowide::nowide_filesystem();
+                    ok = true;
+                    break;
+                }
+                catch (const std::runtime_error&) {}
+            }
+            if (!ok)
+                throw;
+#else
+            throw;
+#endif
+        }
     }
     catch (const std::runtime_error& ex) {
         std::string caption = std::string(SLIC3R_APP_NAME) + " Error";
@@ -261,22 +297,22 @@ static bool setup_common()
 
 #ifdef WIN32
     // Notify user that a blacklisted DLL was injected into PrusaSlicer process (for example Nahimic, see GH #5573).
-    // We hope that if a DLL is being injected into a PrusaSlicer process, it happens at the very start of the application,
+    // We hope that if a DLL is being injected into a SLA-Slicer process, it happens at the very start of the application,
     // thus we shall detect them now.
     if (BlacklistedLibraryCheck::get_instance().perform_check()) {
-        std::wstring text = L"Following DLLs have been injected into the PrusaSlicer process:\n\n";
+        std::wstring text = L"Following DLLs have been injected into the SLA-Slicer process:\n\n";
         text += BlacklistedLibraryCheck::get_instance().get_blacklisted_string();
         text += L"\n\n"
-                L"PrusaSlicer is known to not run correctly with these DLLs injected. "
+                L"SLA-Slicer is known to not run correctly with these DLLs injected. "
                 L"We suggest stopping or uninstalling these services if you experience "
-                L"crashes or unexpected behaviour while using PrusaSlicer.\n"
-                L"For example, ASUS Sonic Studio injects a Nahimic driver, which makes PrusaSlicer "
-                L"to crash on a secondary monitor, see PrusaSlicer github issue #5573";
+                L"crashes or unexpected behaviour while using SLA-Slicer.\n"
+                L"For example, ASUS Sonic Studio injects a Nahimic driver, which makes SLA-Slicer "
+                L"to crash on a secondary monitor, see the PrusaSlicer github issue #5573";
         MessageBoxW(NULL, text.c_str(), L"Warning"/*L"Incopatible library found"*/, MB_OK);
     }
 #endif
 
-    // See Invoking prusa-slicer from $PATH environment variable crashes #5542
+    // See Invoking the slicer from $PATH environment variable crashes #5542
     // boost::filesystem::path path_to_binary = boost::filesystem::system_complete(argv[0]);
     boost::filesystem::path path_to_binary = boost::dll::program_location();
 
@@ -332,6 +368,7 @@ bool setup(Data& cli, int argc, char** argv)
         thread_count = cli.misc_config.opt_int("threads");
 
     set_data_dir(cli.misc_config.has("datadir") ? cli.misc_config.opt_string("datadir") : get_default_datadir());
+    set_data_dir_explicit(cli.misc_config.has("datadir"));
 
 #ifdef SLIC3R_GUI
     if (cli.misc_config.has("webdev")) {

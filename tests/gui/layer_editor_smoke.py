@@ -101,7 +101,7 @@ def main():
         configuration.write_text(configuration.read_text()+'display_orientation = landscape\n')
     if args.seed_printer_format or args.printer_geometry:
         seed_config=configparser.RawConfigParser()
-        seed_config.read_string('[DEFAULT]\n'+(args.seed/'PrusaSlicer.ini').read_text())
+        seed_config.read_string('[DEFAULT]\n'+(args.seed/'SLA-Slicer.ini').read_text())
         printer_name=seed_config.get('presets','printer')
         printer_file=args.seed/'printer'/(printer_name+'.ini')
         match=re.search(r'(?m)^sla_archive_format = (.*)$',printer_file.read_text())
@@ -123,7 +123,7 @@ def main():
         # Reused seeds can contain a previously exported format for that name;
         # clear only this synthetic preset's preference in our private copy.
         # The test then checks the requested printer configuration as default.
-        app_ini = datadir / 'PrusaSlicer.ini'
+        app_ini = datadir / 'SLA-Slicer.ini'
         app_ini.write_text(re.sub(r'(?m)^printer_' + 'workflow.ini'.encode().hex() + r' = .*\n',
                                   '', app_ini.read_text()))
         configuration.write_text(re.sub(r'(?m)^sla_archive_format = .*$',
@@ -905,7 +905,7 @@ def main():
                 # The embedded printer retains SL1, so a contextual-label lookup
                 # would fall back to SL1 instead of the source printer's CXDLPv4.
                 source_key='printer_'+manifest['settings']['printer']['name'].encode('utf-8').hex()
-                ini=datadir/'PrusaSlicer.ini'
+                ini=datadir/'SLA-Slicer.ini'
                 lines=ini.read_text().splitlines()
                 updated=[]; in_preferences=False; inserted=False
                 for line in lines:

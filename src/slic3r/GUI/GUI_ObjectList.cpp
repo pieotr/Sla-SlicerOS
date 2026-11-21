@@ -1681,8 +1681,8 @@ bool ObjectList::del_from_cut_object(bool is_cut_connector, bool is_model_part/*
     const wxString msg_end   = is_cut_connector   ? ("\n" + _L("To save cut information you can delete all connectors from all related objects.")) : "";
 
     InfoDialog dialog(wxGetApp().plater(), title,
-                      _L("This action will break a cut information.\n"
-                         "After that PrusaSlicer can't guarantee model consistency.") + "\n\n" +
+                      format_wxstr(_L("This action will break a cut information.\n"
+                         "After that %1% can't guarantee model consistency."), SLIC3R_APP_NAME) + "\n\n" +
                       _L("To manipulate with solid parts or negative volumes you have to invalidate cut information first.") + msg_end,
                       false, buttons_style | wxCANCEL_DEFAULT | wxICON_WARNING);
 

@@ -22,6 +22,7 @@
 #include "libslic3r/FileParserError.hpp"
 #include "libslic3r/Utils.hpp"
 
+#include "../GUI/format.hpp"
 #include "../GUI/GUI.hpp"
 #include "../GUI/GUI_App.hpp"
 #include "../GUI/I18N.hpp"
@@ -344,7 +345,7 @@ static void copy_config_dir_single_level(const boost::filesystem::path &path_src
 {
     if (! boost::filesystem::is_directory(path_dst) && 
         ! boost::filesystem::create_directory(path_dst))
-        throw Slic3r::RuntimeError(std::string("PrusaSlicer was unable to create a directory at ") + path_dst.string());
+        throw Slic3r::RuntimeError(std::string(SLIC3R_APP_NAME " was unable to create a directory at ") + path_dst.string());
 
     for (auto &dir_entry : boost::filesystem::directory_iterator(path_src))
         if (Slic3r::is_ini_file(dir_entry))
@@ -561,8 +562,8 @@ bool take_config_snapshot_cancel_on_error(const AppConfig &app_config, Snapshot:
         return true;
     } catch (std::exception &err) {
         RichMessageDialog dlg(static_cast<wxWindow*>(wxGetApp().mainframe),
-            _L("PrusaSlicer has encountered an error while taking a configuration snapshot.") + "\n\n" + from_u8(err.what()) + "\n\n" + from_u8(message),
-            _L("PrusaSlicer error"),
+            format_wxstr(_L("%1% has encountered an error while taking a configuration snapshot."), SLIC3R_APP_NAME) + "\n\n" + from_u8(err.what()) + "\n\n" + from_u8(message),
+            format_wxstr(_L("%1% error"), SLIC3R_APP_NAME),
             wxYES_NO);
         dlg.SetYesNoLabels(_L("Continue"), _L("Abort"));
         return dlg.ShowModal() == wxID_YES;

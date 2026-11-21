@@ -951,13 +951,13 @@ void UnsavedChangesDialog::build(Preset::Type type, PresetCollection* dependent_
                                                                                                   _L("Ask to save unsaved changes in presets when closing the application or when loading a new project") ;
             wxString action = m_app_config_key == "default_action_on_new_project"   ? _L("You will not be asked about the unsaved changes in presets the next time you create new project") : 
                               m_app_config_key == "default_action_on_select_preset" ? _L("You will not be asked about the unsaved changes in presets the next time you switch a preset") :
-                                                                                      _L("You will not be asked about the unsaved changes in presets the next time you: \n"
-						                                                                    "- Closing PrusaSlicer while some presets are modified,\n"
-						                                                                    "- Loading a new project while some presets are modified") ;
-            wxString msg = _L("PrusaSlicer will remember your action.") + "\n\n" + action + "\n\n" +
+                                                                                      format_wxstr(_L("You will not be asked about the unsaved changes in presets the next time you: \n"
+						                                                                    "- Closing %1% while some presets are modified,\n"
+						                                                                    "- Loading a new project while some presets are modified"), SLIC3R_APP_NAME) ;
+            wxString msg = format_wxstr(_L("%1% will remember your action."), SLIC3R_APP_NAME) + "\n\n" + action + "\n\n" +
                            format_wxstr(_L("Visit \"Preferences\" and check \"%1%\"\nto be asked about unsaved changes again."), preferences_item);
     
-            MessageDialog dialog(nullptr, msg, _L("PrusaSlicer: Don't ask me again"), wxOK | wxCANCEL | wxICON_INFORMATION);
+            MessageDialog dialog(nullptr, msg, format_wxstr(_L("%1%: Don't ask me again"), SLIC3R_APP_NAME), wxOK | wxCANCEL | wxICON_INFORMATION);
             if (dialog.ShowModal() == wxID_CANCEL)
                 m_remember_choice->SetValue(false);
         });

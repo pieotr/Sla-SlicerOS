@@ -16,7 +16,7 @@
     "component": {
       "type": "application",
       "name": "SLA-Slicer",
-      "version": "2.9.4",
+      "version": "1.0.0",
       "licenses": [
         {
           "expression": "AGPL-3.0-only"

@@ -201,7 +201,7 @@ public:
     EAppMode get_app_mode() const { return m_app_mode; }
     bool is_editor() const { return m_app_mode == EAppMode::Editor; }
     bool is_recreating_gui() const { return m_is_recreating_gui; }
-    std::string logo_name() const { return "PrusaSlicer"; }
+    std::string logo_name() const { return "SLA-Slicer"; }
 
     Search::OptionsSearcher& searcher() noexcept { return *m_searcher; }
     void                     set_searcher(Search::OptionsSearcher* searcher) { m_searcher = searcher; }

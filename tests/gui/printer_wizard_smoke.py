@@ -216,7 +216,7 @@ def main():
         assert len(list((datadir / 'printer').glob('*.ini'))) == 2
         report['checks'].append('Cancel preserves saved profiles')
         # AppConfig autosaves while idle. Inspect what the next process will load.
-        config = datadir / 'PrusaSlicer.ini'
+        config = datadir / 'SLA-Slicer.ini'
         wait_for(lambda: config.exists() and ('printer = ' + args.profile + ' (2)\n') in config.read_text(), 'persisted selection')
         proc.terminate(); proc.wait(timeout=5); proc = None
         proc, app = launch()

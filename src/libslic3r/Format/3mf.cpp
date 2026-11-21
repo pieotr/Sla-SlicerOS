@@ -1903,7 +1903,7 @@ namespace Slic3r {
             }
         } else if (m_curr_metadata_name == "Application") {
             // Generator application of the 3MF.
-            // SLIC3R_APP_KEY - SLIC3R_VERSION
+            // "PrusaSlicer-" SLIC3R_VERSION: a file-format marker that other slicers parse, deliberately not SLIC3R_APP_KEY.
             if (boost::starts_with(m_curr_characters, "PrusaSlicer-"))
                 m_prusaslicer_generator_version = Semver::parse(m_curr_characters.substr(12));
         } else if (m_curr_metadata_name == SLIC3RPE_FDM_SUPPORTS_PAINTING_VERSION ||
@@ -2654,7 +2654,7 @@ namespace Slic3r {
             date = date.substr(0, 10);
             stream << " <" << METADATA_TAG << " name=\"CreationDate\">" << date << "</" << METADATA_TAG << ">\n";
             stream << " <" << METADATA_TAG << " name=\"ModificationDate\">" << date << "</" << METADATA_TAG << ">\n";
-            stream << " <" << METADATA_TAG << " name=\"Application\">" << SLIC3R_APP_KEY << "-" << SLIC3R_VERSION << "</" << METADATA_TAG << ">\n";
+            stream << " <" << METADATA_TAG << " name=\"Application\">" << "PrusaSlicer" << "-" << SLIC3R_VERSION << "</" << METADATA_TAG << ">\n";
             stream << " <" << RESOURCES_TAG << ">\n";
             std::string buf = stream.str();
             if (! buf.empty() && ! mz_zip_writer_add_staged_data(&context, buf.data(), buf.size())) {

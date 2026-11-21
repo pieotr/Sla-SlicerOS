@@ -1,274 +1,252 @@
-# Linux Build and Run (one command)
+# Instalacja i budowanie SLA-Slicer
 
-This repository now includes a one-command build script:
+Wersja produktu: 1.0.0. Aplikacja jest tylko SLA i działa w całości offline.
+Instrukcja obsługi: [manual.txt](manual.txt). Kod i architektura: [doc/DEVELOPER.md](doc/DEVELOPER.md).
 
-- `build_linux.sh`
+## 1. Gotowe pakiety (Linux x86_64)
 
-It builds dependencies and the app in the documented static mode, then can run a smoke test.
-
-## What was changed
-
-To make modern Linux toolchains build reliably, the dependency build scripts were hardened:
-
-1. `deps/CMakeLists.txt`
-- `DEP_CMAKE_OPTS` now also forwards `-DCMAKE_POLICY_VERSION_MINIMUM=3.5`.
-- This avoids third-party configure failures under newer CMake versions where old `cmake_minimum_required` compatibility is removed.
-
-2. `deps/+GMP/GMP.cmake`
-- Explicitly passes selected compilers to configure (`CC`, `CXX`).
-- Splits C and C++ flags instead of sharing C++ flags for C checks.
-- Adds `-std=gnu17` for GCC 15+ C compiler checks, which fixes GMP configure failures on modern GCC.
-
-3. `deps/+MPFR/MPFR.cmake`
-- Removes reliance on leaked variables from other dependency files.
-- Uses explicit, local C/C++ flags and host/build target handling.
-- Passes explicit compilers (`CC`, `CXX`) so MPFR matches the GMP toolchain.
-
-These dependency fixes are separate from the ongoing application refactor.
-See [implementation status](doc/REFACTOR_STATUS.md) for runtime changes.
-
-## Prerequisites
-
-Install required system packages (example from project docs):
-
-```bash
-sudo apt-get install -y \
-  git \
-  build-essential \
-  autoconf \
-  cmake \
-  libglu1-mesa-dev \
-  libgtk-3-dev \
-  libdbus-1-dev \
-  texinfo
-```
-
-## One-command build
-
-From repo root:
-
-```bash
-bash ./build_linux.sh --run
-```
-
-This will:
-
-1. Configure and build static deps in `deps/build`.
-2. Configure and build the app in `build`.
-3. Run a smoke test (`prusa-slicer --help`) if `--run` is provided.
-
-Current defaults in `build_linux.sh` are:
-
-- `-DSLIC3R_BUILD_TESTS=OFF`
-
-This keeps the build focused on SLA workflows and improves incremental iteration speed.
-
-## Useful options
-
-```bash
-bash ./build_linux.sh --clean --run
-bash ./build_linux.sh --jobs 4
-bash ./build_linux.sh --jobs 4 --tests --run
-```
-
-- `--clean`: remove previous build directories first.
-- `--jobs N`: app build parallelism.
-- `--run`: run smoke test after build.
-- `--tests`: enable the SLA test target and run fast archive regression and SL1
-  slicing/readback checks. This does not certify all formats. See
-  [testing instructions](doc/TESTING.md) for suite selection and known missing
-  fixtures in the legacy test suites.
-
-`--run` alone checks `--help`; it does not open or exercise the GUI.
-
-## Run the app
-
-```bash
-bash ./run_prusa_slicer.sh
-```
-
-The launcher (`run_prusa_slicer.sh`) passes all arguments to `build/src/prusa-slicer`
-(`sla-slicer` is a symlink to it). Useful ways to start:
-
-```bash
-bash ./run_prusa_slicer.sh                              # normal start, your usual profiles
-bash ./run_prusa_slicer.sh --datadir /path/to/trial     # isolated profiles for experiments
-bash ./run_prusa_slicer.sh --help-sla                   # full list of SLA command-line options
-bash ./run_mid_refactor_tests.sh                        # persistent separate profiles in build/mid-refactor-user-tests
-```
-
-Usage, profiles and the command line are described in [manual.txt](manual.txt)
-(Polish); tests in [doc/TESTING.md](doc/TESTING.md); code layout in
-[doc/DEVELOPER.md](doc/DEVELOPER.md).
-
-The launcher starts the offline SLA application without configuring TLS certificates.
-Application transport code and printer upload backends are excluded; CURL and
-OpenSSL are no longer direct application dependencies. The dependency configuration
-also excludes them. Initial dependency builds can still download source archives
-if those archives are missing locally; prepare the dependency cache in advance
-for a fully offline build. Running the application does not run that build script.
-
-The application is always offline-only; wxWidgets'
-`webview` component is not requested and no WebView source is compiled, so
-`libwebkit2gtk`, `libjavascriptcoregtk` and `libsoup` are no longer linked.
-Check an existing binary with:
-
-```bash
-python3 tests/architecture/verify_offline_no_network_libs.py --binary build/src/prusa-slicer
-```
-
-(After pulling this change, re-run `cmake` on `build/` and rebuild; the check
-fails on binaries built before it. The bundled wxWidgets static libraries in
-`deps/` are unchanged, so no dependency rebuild is needed. Untested.)
-
-## Product name, binary name and user data
-
-- User-visible name: **SLA-Slicer** (`SLIC3R_APP_NAME` in `version.inc`).
-- The storage key `SLIC3R_APP_KEY` intentionally remains `PrusaSlicer`. It names the
-  data directory (`~/.config/PrusaSlicer`, or `$XDG_CONFIG_HOME/PrusaSlicer`) and
-  `PrusaSlicer.ini`, so existing presets, profiles and settings keep working with no
-  migration step and nothing is copied or moved. Renaming the key would orphan them
-  (the datadir lookup lives in `libslic3r/Utils/DirectoriesUtils.cpp`, which a
-  branding change does not touch). Use `--datadir <dir>` to run with an isolated directory.
-- The executable stays `prusa-slicer`; `sla-slicer` is provided as a symlink next to it
-  (build tree and install). Tests and scripts that reference `build/src/prusa-slicer`
-  are unaffected.
-
-## Install and relocatable bundle
-
-Plain install (non-FHS layout, default; installs `bin/prusa-slicer`, `bin/sla-slicer`
-and `resources/`; no G-code viewer files, no udev rules):
-
-```bash
-cmake --install build --prefix /opt/sla-slicer      # untested
-/opt/sla-slicer/bin/sla-slicer
-```
-
-The executable finds its resources at `<exe dir>/../resources` (`src/CLI/Setup.cpp`),
-so the install tree can be moved anywhere. A `-DSLIC3R_FHS=1` configure instead
-bakes the absolute `<prefix>/share/SLA-Slicer` path and is not relocatable.
-
-Relocatable tarball from the local build (needs a finished `bash ./build_linux.sh`):
-
-```bash
-bash tools/make_relocatable_bundle.sh            # writes dist/sla-slicer-<version>-linux-x86_64.tar.gz
-tar xzf dist/sla-slicer-*-linux-x86_64.tar.gz -C /somewhere && /somewhere/sla-slicer-*/sla-slicer
-```
-
-It uses `tools/bundle_native_libraries.py`, then removes every library the host must
-provide: glibc, libstdc++, the GTK/GL/X11/Wayland stack **and the libraries that stack
-itself uses** (libmount, libblkid, libselinux, libpcre, libffi, systemd, compression,
-libpng, expat, ...). Only application-specific libraries stay bundled (OpenCV, TBB,
-libtiff + jbig/deflate, OpenJPEG, libjpeg, libwebp). Such a bundle runs only on
-distributions whose glibc is at least as new as the build machine's (a CachyOS build
-needs glibc 2.43 — Arch/Fedora only).
-
-### Portable Linux build (Docker, glibc 2.35)
-
-For a bundle that runs on older distributions, build inside an Ubuntu 22.04 container
-(glibc 2.35, GCC 12). Needs a running docker daemon and network access during the
-build (apt, PyPI, dependency sources); the result itself is offline.
-
-```bash
-JOBS=8 bash tools/docker/build_portable.sh            # default work dir: ./build-docker (gitignored)
-# -> build-docker/dist/sla-slicer-<version>/ and sla-slicer-<version>-linux-x86_64.tar.gz
-tests/dist/bundle_in_docker.sh build-docker/dist/sla-slicer-<version> \
-    ubuntu:22.04 ubuntu:24.04 debian:12 debian:testing fedora:latest archlinux:latest
-```
-
-`tools/docker/Dockerfile.build` defines the image, `tools/docker/container_build.sh` builds
-the dependency superbuild (first run: hours; cached in `build-docker/work`, ccache in
-`build-docker/ccache`), the app, runs the
-CTest subset that needs no display, and packs the bundle. `BUNDLE_LIBSTDCXX=1` also
-bundles libstdc++/libgcc_s (not needed for the targets below).
-
-Verified 14 November 2026. CLI: `tests/dist/bundle_in_docker.sh` (`ldd`, `--help`, slicing a cube to
-GOO and SL1 with a fresh data directory; container CTest 22/22). GUI: `tests/dist/bundle_gui_in_docker.sh`
-(Xvfb + Mesa software OpenGL, fresh data directory: the main window and the first-run Configuration
-Wizard appear, no error dialog, process alive):
-
-| Distribution | glibc | CLI (slice GOO + SL1) | GUI start (Xvfb) |
-|---|---|---|---|
-| Ubuntu 22.04 | 2.35 | PASS  PASS |
-| Ubuntu 24.04 | 2.39 | PASS  PASS |
-| Debian 12 | 2.36 | PASS  PASS |
-| Debian testing | 2.43 | PASS  PASS |
-| Fedora (latest) | 2.44 | PASS  PASS |
-| Arch Linux (latest) | 2.44 | PASS  PASS |
-
-Bundle requirements: glibc ≥ 2.35, libstdc++ with `GLIBCXX_3.4.30` (GCC ≥ 12), and on
-the host GTK3, OpenGL (Mesa or vendor driver), dbus, libSM/libICE and libnotify — all
-present on a normal desktop, plus an installed UTF-8 locale (without any, the app reports
-"Switching language failed" — minimal container images only). Not verified: a real GPU driver
-on another distribution (the container uses Mesa software rendering).
-
-## Native packages (AppImage, .deb, .rpm)
-
-Built from the portable bundle (see "Portable Linux build" above); the packages contain the same
-tested files and stay fully offline at runtime. Needs a running docker daemon (build time only: docker
-images `ubuntu:22.04` for `dpkg-deb`/`lintian` and `fedora:latest` for `rpmbuild`, plus appimagetool 1.9.1 and the
-type2 AppImage runtime, both pinned by SHA256 in the script).
-
-```bash
-tools/release/make_native_packages.sh dist/sla-slicer-2.9.4-linux-x86_64.tar.gz build-r23/pkg   # or an unpacked bundle dir
-tools/release/test_native_packages.sh build-r23/pkg       # installs/runs/uninstalls them in docker, prints a PASS/FAIL table
-```
-
-Output: `SLA-Slicer-2.9.4-x86_64.AppImage`, `sla-slicer_2.9.4_amd64.deb`, `sla-slicer-2.9.4-1.x86_64.rpm`,
-`SHA256SUMS`, `lintian.txt`.
-
-Install:
-
-```bash
-chmod +x SLA-Slicer-2.9.4-x86_64.AppImage && ./SLA-Slicer-2.9.4-x86_64.AppImage     # without FUSE: add --appimage-extract-and-run
-sudo apt install ./sla-slicer_2.9.4_amd64.deb      # Debian, Ubuntu (apt pulls GTK3, OpenGL, dbus, libSM/libICE, libnotify)
-sudo dnf install ./sla-slicer-2.9.4-1.x86_64.rpm   # Fedora
-sudo apt remove sla-slicer     # or: sudo dnf remove sla-slicer
-```
-
-The packages install the bundle to `/opt/sla-slicer`, a `sla-slicer` command to `/usr/bin`, the desktop entry,
-icons (hicolor) and AppStream metadata; licenses and the SBOM (`manifest.json`) go to `/usr/share/doc/sla-slicer`.
-Lintian reports no errors or warnings; the bundle-specific tags (files in `/opt`, embedded libraries, unstripped
-binaries) are overridden on purpose inside the package. A UTF-8 locale must be installed (see the bundle requirements above).
-
-## Existing builds after a compiler update
-
-Static libraries containing GCC LTO bytecode must match the compiler used for
-linking. A message such as `libtbb.a ... generated with LTO version ... instead
-of the expected ...` means the cached dependency needs rebuilding; disabling
-application LTO does not repair the library.
-
-For the existing bundled TBB source/build layout, rebuild only that dependency:
+Wymagania systemu: glibc 2.35 lub nowszy, libstdc++ z `GLIBCXX_3.4.30` (GCC 12+), GTK3,
+OpenGL (Mesa lub sterownik producenta), dbus, libSM/libICE, libnotify oraz zainstalowana
+lokalizacja UTF-8 (bez niej program zgłasza „Switching language failed” — dotyczy minimalnych
+obrazów kontenerów). Interfejs jest dostępny po angielsku i po polsku; dla każdego innego języka systemu
+(np. `LANG=de_DE.UTF-8`) program uruchamia się po angielsku, także gdy taka lokalizacja nie jest
+wygenerowana w systemie.
 
 ```sh
-cmake -S deps/build/dep_TBB-prefix/src/dep_TBB -B deps/build/builds/TBB \
-  -DTBB_STRICT=OFF
-cmake --build deps/build/builds/TBB --clean-first -j 4
-cmake --install deps/build/builds/TBB
+# AppImage (bez FUSE dodaj --appimage-extract-and-run)
+chmod +x SLA-Slicer-1.0.0-x86_64.AppImage && ./SLA-Slicer-1.0.0-x86_64.AppImage
+
+# Debian, Ubuntu
+sudo apt install ./sla-slicer_1.0.0_amd64.deb
+sudo apt remove sla-slicer
+
+# Fedora
+sudo dnf install ./sla-slicer-1.0.0-1.x86_64.rpm
+sudo dnf remove sla-slicer
+
+# przenośne archiwum (bez instalacji)
+tar xzf sla-slicer-1.0.0-linux-x86_64.tar.gz && ./sla-slicer-1.0.0/sla-slicer
 ```
 
-These commands require a previously configured local dependency build, including
-its install prefix inside `deps/build/destdir/usr/local`. `TBB_STRICT=OFF` allows
-new compiler warnings in the older bundled TBB source without treating them as
-errors. Then rebuild the application and rerun the tests. Other compiler/ABI
-changes may require rebuilding all dependencies using `--clean --deps`.
+Pakiety .deb/.rpm instalują wydanie do `/opt/sla-slicer`, polecenie `sla-slicer` do `/usr/bin`,
+wpis pulpitu, ikony i metadane AppStream; licencje i SBOM trafiają do
+`/usr/share/doc/sla-slicer`. Archiwum i pakiety zawierają te same pliki. Pakiety instalują też
+stronę podręcznika `man sla-slicer` oraz plik AppStream
+`/usr/share/metainfo/io.github.pieotr.SLASlicer.metainfo.xml` (wpis pulpitu to
+`io.github.pieotr.SLASlicer.desktop`).
 
+### 1.1. Weryfikacja pobranych plików
 
-## Native ExposureFinder drawing dependency
+Każde wydanie ma plik `SHA256SUMS` z sumami kontrolnymi wszystkich plików oraz (jeśli wydanie
+jest podpisane) podpis `SHA256SUMS.asc`. Pobierz pliki do jednego katalogu i sprawdź:
 
-Building the app now also requires local OpenCV core/imgproc development files.
-OpenCV >= 4.7 is required (cv::stackBlur); older versions fail at configure time.
-The verified development version is OpenCV 5.x on Linux; the portable docker build
-(`tools/docker/Dockerfile.build`) builds a pinned OpenCV 4.12.0 (the UVtools/Emgu.CV
-version) from the official tarball into /opt/opencv. Set `OpenCV_DIR` if
-its CMake configuration is outside the standard search path. Configure/build
-must use locally prepared dependencies for an offline build. No UVtools/Emgu
-or .NET runtime is used by production calibration code.
+```sh
+sha256sum -c SHA256SUMS                      # sumy kontrolne (--ignore-missing, gdy pobrano tylko część plików)
+gpg --verify SHA256SUMS.asc SHA256SUMS       # podpis; wymaga klucza wydawcy: gpg --import <klucz.asc>
+```
 
-For Linux packaging, `tools/bundle_native_libraries.py` copies the app ELF's
-resolved native-library closure into a new project-local folder and records
-SHA256 provenance. It retains OpenCV's supplied notices. This component does
-not package resources/launcher or certify relocation, CPU/ABI compatibility,
-or the complete license inventory of every other native dependency. Those
-remain explicit release gates. Do not treat the library folder alone as a
-complete portable application.
+`sha256sum` ma wypisać `OK` przy każdym pliku, a `gpg` — `Good signature` dla klucza wydawcy
+(sprawdź jego odcisk palca poza tym wydaniem, np. na stronie projektu). Brak pliku `SHA256SUMS.asc`
+oznacza wydanie niepodpisane: sumy kontrolne chronią wtedy tylko przed uszkodzeniem pliku.
+
+## 2. Budowanie ze źródeł na Linuksie
+
+### 2.1. Wymagania
+
+Potrzebne: kompilator C++17 (GCC 12 lub nowszy), CMake >= 3.16 (do budowy zależności zalecany
+>= 3.28), git, make lub ninja, pkg-config, autoconf/automake/libtool/m4 i texinfo (budowa GMP/MPFR),
+patch, nagłówki GTK3, OpenGL/GLU, dbus, TIFF, PNG, JPEG, OpenJPEG, zlib, X11 oraz **OpenCV >= 4.7**
+(moduły core i imgproc; potrzebne `cv::stackBlur`). Zależności pozostałe (Boost, wxWidgets, TBB,
+CGAL, OpenVDB, ...) skrypt buduje sam ze źródeł i linkuje statycznie. Potrzeba ok. 8 GB RAM; przy
+mniejszej pamięci użyj mniejszego `--jobs`. Ścieżka do repozytorium nie może zawierać spacji.
+Pierwsze budowanie zależności trwa długo (godziny); wynik jest w `deps/build`.
+
+`bash ./build_linux.sh --check` sprawdza brakujące narzędzia i biblioteki oraz wypisuje polecenie
+instalacji dla wykrytej dystrybucji.
+
+**Debian / Ubuntu** (lista sprawdzona na Ubuntu 22.04 przez `tools/docker/Dockerfile.build`):
+
+```sh
+sudo apt-get install -y build-essential git cmake ninja-build pkg-config autoconf automake libtool m4 \
+  texinfo patch curl unzip xz-utils \
+  libgtk-3-dev libgl1-mesa-dev libglu1-mesa-dev libegl1-mesa-dev libdbus-1-dev libsm-dev libice-dev \
+  libnotify-dev libxkbcommon-dev libwayland-dev libx11-dev libxext-dev libxrandr-dev libxi-dev \
+  libtiff-dev libpng-dev libjpeg-dev libopenjp2-7-dev zlib1g-dev libmspack-dev
+```
+
+OpenCV: pakiet `libopencv-dev` ma wymaganą wersję dopiero od Debiana 13 / Ubuntu 25.04 (4.10);
+Debian 12, Ubuntu 22.04 i 24.04 mają 4.5/4.6 — użyj `--bundled-opencv` (p. 2.3). Na Ubuntu 22.04
+CMake z apt (3.22) jest za stary dla budowy zależności: `pip3 install 'cmake>=3.28,<4'`.
+
+**Fedora** (nazwy pakietów wg znajomości dystrybucji, nie sprawdzone w tym repozytorium):
+
+```sh
+sudo dnf install -y gcc gcc-c++ make cmake ninja-build git pkgconf-pkg-config autoconf automake libtool m4 \
+  texinfo patch gtk3-devel mesa-libGL-devel mesa-libGLU-devel libEGL-devel dbus-devel libSM-devel \
+  libICE-devel libnotify-devel libxkbcommon-devel libX11-devel libtiff-devel libpng-devel \
+  libjpeg-turbo-devel openjpeg2-devel zlib-devel opencv-devel
+```
+
+**Arch Linux / CachyOS** (nazwy pakietów wg znajomości dystrybucji; budowanie sprawdzone na CachyOS
+z systemowym OpenCV 5.1):
+
+```sh
+sudo pacman -S --needed base-devel git cmake ninja pkgconf autoconf automake libtool m4 texinfo patch \
+  gtk3 libglvnd glu dbus libsm libice libnotify libxkbcommon libx11 libtiff libpng libjpeg-turbo \
+  openjpeg2 zlib opencv
+```
+
+### 2.2. Budowanie
+
+```sh
+bash ./build_linux.sh --run            # sprawdzenie wymagań, zależności (deps/build), aplikacja (build/), test --help
+bash ./run_sla_slicer.sh               # uruchomienie
+bash ./run_sla_slicer.sh --datadir /sciezka/do/proby    # z osobnym katalogiem danych
+bash ./build_linux.sh --help
+```
+
+Opcje: `--jobs N` (równoległość), `--clean` (usuwa `build` i `deps/build`), `--deps` (wymusza
+przebudowę zależności), `--tests` (buduje testy SLA i uruchamia szybki podzbiór CTest),
+`--bundled-opencv`, `--check`, `--skip-checks`, `--docker`. Plik wykonywalny: `build/src/sla-slicer`.
+Nie wolno przenosić katalogu `deps/build/destdir` po zbudowaniu (wxWidgets zapisuje ścieżkę).
+
+Ręcznie (to samo, co robi skrypt):
+
+```sh
+cmake -S deps -B deps/build -DDEP_WX_GTK3=ON && cmake --build deps/build -- -j1
+cmake -S . -B build -DSLIC3R_STATIC=1 -DSLIC3R_GTK=3 -DSLIC3R_PCH=OFF \
+      -DCMAKE_PREFIX_PATH=$PWD/deps/build/destdir/usr/local
+cmake --build build --target PrusaSlicer -j8
+```
+
+### 2.3. OpenCV
+
+Domyślnie na Linuksie używany jest OpenCV z systemu (`find_package(OpenCV)`, wymagane >= 4.7;
+starszy kończy konfigurację błędem). Jeśli system nie ma OpenCV >= 4.7, zbuduj go razem z
+zależnościami:
+
+```sh
+bash ./build_linux.sh --bundled-opencv        # = cmake -S deps ... -DDEP_OpenCV=ON; wersja 4.12.0, core+imgproc, statycznie
+```
+
+Zależność jest zdefiniowana w `deps/+OpenCV/OpenCV.cmake` (OpenCV 4.12.0, ten sam hash co w
+`tools/docker/Dockerfile.build`). Gdy w prefiksie zależności (`deps/build/destdir/usr/local`)
+jest OpenCV, CMake wybiera właśnie jego. Na Windows i macOS zależność jest budowana domyślnie.
+Wybrać inną instalację można przez `-DOpenCV_DIR=<katalog z OpenCVConfig.cmake>`.
+
+### 2.4. Instalacja z drzewa budowania
+
+```sh
+cmake --install build --prefix /opt/sla-slicer      # bin/sla-slicer + resources/
+```
+
+Plik wykonywalny szuka zasobów w `<katalog exe>/../resources`, więc drzewo można przenosić.
+`-DSLIC3R_FHS=1` zapisuje na stałe ścieżkę `<prefix>/share/SLA-Slicer` (nieprzenośne).
+
+## 3. Przenośne archiwum i pakiety natywne
+
+### 3.1. Przenośne archiwum w kontenerze Docker (glibc 2.35)
+
+Wymaga działającego dockera i sieci w czasie budowania (apt, PyPI, źródła zależności); wynik działa offline.
+
+```sh
+bash ./build_linux.sh --docker                       # lub: JOBS=8 bash tools/docker/build_portable.sh
+# -> build-docker/dist/sla-slicer-<wersja>/ i sla-slicer-<wersja>-linux-x86_64.tar.gz
+```
+
+Do kontenera trafia dokładnie zestaw plików repozytorium (`git ls-files -co --exclude-standard`); bez
+`.git` (archiwum źródeł) kopiowane jest całe drzewo bez katalogów budowania. `tools/docker/Dockerfile.build`
+definiuje obraz (Ubuntu 22.04, GCC 12, OpenCV 4.12.0 w `/opt/opencv`), `tools/docker/container_build.sh`
+buduje zależności (pierwszy raz godziny; cache w `build-docker/work`, ccache w `build-docker/ccache`),
+aplikację, uruchamia testy CTest niewymagające ekranu i pakuje wydanie.
+`BUNDLE_LIBSTDCXX=1` dołącza libstdc++/libgcc_s.
+
+### 3.2. Archiwum z lokalnej kompilacji
+
+```sh
+bash tools/make_relocatable_bundle.sh        # dist/sla-slicer-<wersja>-linux-x86_64.tar.gz (z gotowego build/)
+```
+
+Skrypt używa `tools/bundle_native_libraries.py` i usuwa wszystkie biblioteki, które musi dostarczyć
+system (glibc, libstdc++, GTK/GL/X11/Wayland i ich zależności); zostają biblioteki specyficzne dla
+aplikacji. Takie archiwum działa tylko na dystrybucjach z glibc co najmniej tak nowym jak na maszynie
+budującej — do szerokiej dystrybucji użyj wersji z p. 3.1.
+
+### 3.3. AppImage, .deb, .rpm
+
+Powstają z przenośnego archiwum (wymaga dockera: obrazy `ubuntu:22.04` dla `dpkg-deb`/`lintian`
+i `fedora:latest` dla `rpmbuild`; appimagetool 1.9.1 i środowisko uruchomieniowe type2 są przypięte
+przez SHA256 w skrypcie):
+
+```sh
+bash tools/release/make_native_packages.sh dist/sla-slicer-1.0.0-linux-x86_64.tar.gz /sciezka/wyjscia
+# -> SLA-Slicer-1.0.0-x86_64.AppImage, sla-slicer_1.0.0_amd64.deb, sla-slicer-1.0.0-1.x86_64.rpm, SHA256SUMS, lintian.txt
+```
+
+Wpis pulpitu w pakietach nazywa się `io.github.pieotr.SLASlicer.desktop` (identyfikator komponentu
+AppStream z `src/platform/unix/io.github.pieotr.SLASlicer.metainfo.xml`); skrypt odmawia pracy, gdy
+plik AppStream nie ma wpisu `<release version="<wersja>">`. Strona podręcznika to
+`src/platform/unix/sla-slicer.1` (w pakietach: `/usr/share/man/man1/sla-slicer.1.gz`).
+
+### 3.4. Archiwum źródeł, podpisy i całe wydanie
+
+```sh
+bash tools/release/make_source_tarball.sh /sciezka/wyjscia   # sla-slicer-<wersja>-src.tar.gz
+bash tools/release/sign_release.sh /sciezka/wyjscia [KLUCZ_GPG]   # SHA256SUMS (+ SHA256SUMS.asc z kluczem)
+bash tools/release/make_release.sh dist/sla-slicer-1.0.0-linux-x86_64.tar.gz dist/sla-slicer-1.0.0
+```
+
+Archiwum źródeł zawiera dokładnie zestaw plików repozytorium (`git ls-files -co --exclude-standard`),
+jest odtwarzalne (ta sama zawartość daje ten sam SHA256; czas z `SOURCE_DATE_EPOCH` lub z ostatniego
+commita) i zawiera plik `BUILD_ID`, dzięki czemu budowa bez `.git` pokazuje ten sam identyfikator
+budowy co budowa z repozytorium. `sign_release.sh` bierze klucz z drugiego argumentu lub ze zmiennej
+`SLA_SLICER_GPG_KEY`; bez klucza zapisuje tylko `SHA256SUMS` i wypisuje, jak podpisać później
+(`--per-file` dodaje podpisy `.asc` każdego pliku). `make_release.sh` składa katalog wydania:
+archiwum przenośne, AppImage, .deb, .rpm, archiwum źródeł, `RELEASE_NOTES.md`, `SHA256SUMS`
+(i `SHA256SUMS.asc`, jeśli podano klucz).
+
+## 4. Windows (EKSPERYMENTALNE, niesprawdzone)
+
+`build_win.bat` jest dostosowaną wersją skryptu PrusaSlicera i **nigdy nie był uruchomiony** (autor
+nie miał dostępu do Windows ani MSVC). Wymaga Visual Studio 2019/2022 z narzędziami C++ (CMake w
+zestawie), gita i dostępu do sieci. Zależności (w tym OpenCV 4.12.0, statycznie, tylko Release)
+buduje skrypt; konfiguracje: `RelWithDebInfo` (domyślna), `Release`, `MinSizeRel` — `Debug` nie jest
+obsługiwany. Uruchom w „x64 Native Tools Command Prompt”:
+
+```bat
+build_win -d "c:\src\SLA-Slicer-deps"       :: pierwsze budowanie (zależności + aplikacja)
+build_win -r console                        :: kolejne budowania aplikacji i uruchomienie sla-slicer-console.exe
+build_win -?                                :: pomoc
+```
+
+Wynik: `build\src\<konfiguracja>\sla-slicer.exe` i `sla-slicer-console.exe`. Znane ryzyka: skrypt i
+CMake dla Windows mogą wymagać poprawek; nazwy plików ze znakami spoza ASCII w niektórych zapisach
+formatów nie były sprawdzane. Zgłoś problemy, jeśli uda się zbudować.
+
+## 5. Nazwy, wersje i dane użytkownika
+
+- Nazwa dla użytkownika: **SLA-Slicer** (`SLIC3R_APP_NAME` w `version.inc`); klucz `SLIC3R_APP_KEY`
+  (`SLA-Slicer`) nazywa katalog danych (`~/.config/SLA-Slicer` lub `$XDG_CONFIG_HOME/SLA-Slicer`),
+  plik `SLA-Slicer.ini`, nazwę aplikacji wx, domenę gettext i nazwy instancji D-Bus — zainstalowany
+  PrusaSlicer nigdy nie dzieli konfiguracji z SLA-Slicerem.
+- Pierwsze uruchomienie: jeśli nowy katalog nie istnieje, nie podano `--datadir`, a istnieje
+  `~/.config/PrusaSlicer`, jego część SLA (profile procesów/żywic/drukarek, paczki producentów SLA,
+  `shapes/`, `resin_stock.json`, przefiltrowany `SLA-Slicer.ini`) jest KOPIOWANA; katalog PrusaSlicera
+  nie jest zmieniany. `SLA_SLICER_NO_MIGRATION=1` wyłącza kopiowanie. Logika:
+  `src/libslic3r/LegacyDataMigration.{hpp,cpp}`.
+- Wersje: `SLA_SLICER_VERSION` (1.0.0) to wersja produktu (tytuł okna, About, `--version`, nazwy
+  pakietów). `SLIC3R_VERSION` (2.9.4) to wersja bazy kodu PrusaSlicer używana do zgodności
+  (paczki producentów, nagłówki ini/3MF) i nie jest podbijana przy wydaniu.
+- Identyfikator budowy: `SLIC3R_BUILD_ID` = `SLA-Slicer-<wersja>+<sufiks>`; sufiks to
+  `SLA_SLICER_BUILD_ID` (zmienna CMake lub środowiska), albo pierwsza linia pliku `BUILD_ID` w
+  katalogu głównym (zapisywanego do archiwum źródeł), albo `git describe --always --dirty`, albo
+  `source` bez gita. Budowa w dockerze liczy go na hoście.
+- Plik wykonywalny to `sla-slicer` (drzewo budowania: `build/src/sla-slicer`).
+- Aplikacja jest tylko offline: nie linkuje bibliotek sieciowych (webkit, soup, curl, ssl), CURL i
+  OpenSSL nie są budowane. Źródła zależności są pobierane tylko podczas budowania.
+
+## 6. Naprawa po aktualizacji kompilatora
+
+Biblioteki statyczne zawierające bytecode LTO muszą pasować do kompilatora linkującego. Komunikat
+`libtbb.a ... generated with LTO version ... instead of the expected ...` oznacza, że zależność
+trzeba zbudować ponownie (`bash ./build_linux.sh --deps`, w ostateczności `--clean --deps`).

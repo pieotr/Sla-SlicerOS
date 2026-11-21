@@ -1,0 +1,12 @@
+[Desktop Entry]
+Name=SLA-Slicer
+GenericName=SLA 3D Printing Software
+Icon=SLA-Slicer
+Exec=sla-slicer %F
+Terminal=false
+Type=Application
+MimeType=model/stl;application/vnd.ms-3mfdocument;application/prs.wavefront-obj;application/x-amf;
+Categories=Graphics;3DGraphics;Engineering;
+Keywords=3D;Printing;Slicer;slice;3D;printer;convert;stl;obj;amf;SLA
+StartupNotify=false
+StartupWMClass=sla-slicer

@@ -233,7 +233,7 @@ bool DesktopIntegrationDialog::is_integrated()
     if (path.empty())
         return false;
 
-    // confirmation that PrusaSlicer.desktop exists
+    // confirmation that SLA-Slicer.desktop exists
     struct stat buffer;   
     return (stat (path.c_str(), &buffer) == 0);
 }
@@ -315,11 +315,11 @@ void DesktopIntegrationDialog::perform_desktop_integration()
     // slicer icon
     // iterate thru target_candidates to find icons folder
     for (size_t i = 0; i < target_candidates.size(); ++i) {
-        // Copy icon PrusaSlicer.png from resources_dir()/icons to target_dir_icons/icons/
+        // Copy icon SLA-Slicer.png from resources_dir()/icons to target_dir_icons/icons/
         if (contains_path_dir(target_candidates[i], "icons")) {
             target_dir_icons = target_candidates[i];
-            std::string icon_path = GUI::format("%1%/icons/PrusaSlicer.png",resources_dir());
-            std::string dest_path = GUI::format("%1%/icons/%2%PrusaSlicer%3%.png", target_dir_icons, icon_theme_path, version_suffix);
+            std::string icon_path = GUI::format("%1%/icons/SLA-Slicer.png",resources_dir());
+            std::string dest_path = GUI::format("%1%/icons/%2%SLA-Slicer%3%.png", target_dir_icons, icon_theme_path, version_suffix);
             if (copy_icon(icon_path, dest_path))
                 break; // success
             else
@@ -331,8 +331,8 @@ void DesktopIntegrationDialog::perform_desktop_integration()
               create_path(into_u8(wxFileName::GetHomeDir()), ".local/share/icons" + icon_theme_dirs);
               // copy icon
              target_dir_icons = GUI::format("%1%/.local/share",wxFileName::GetHomeDir());
-              std::string icon_path = GUI::format("%1%/icons/PrusaSlicer.png",resources_dir());
-              std::string dest_path = GUI::format("%1%/icons/%2%PrusaSlicer%3%.png", target_dir_icons, icon_theme_path, version_suffix);
+              std::string icon_path = GUI::format("%1%/icons/SLA-Slicer.png",resources_dir());
+              std::string dest_path = GUI::format("%1%/icons/%2%SLA-Slicer%3%.png", target_dir_icons, icon_theme_path, version_suffix);
              if (!contains_path_dir(target_dir_icons, "icons") 
                 || !copy_icon(icon_path, dest_path)) {
                 // every attempt failed - icon wont be present
@@ -341,19 +341,19 @@ void DesktopIntegrationDialog::perform_desktop_integration()
         }
     }
     if(target_dir_icons.empty()) {
-        BOOST_LOG_TRIVIAL(error) << "Copying PrusaSlicer icon to icons directory failed.";
+        BOOST_LOG_TRIVIAL(error) << "Copying SLA-Slicer icon to icons directory failed.";
     } else 
     	// save path to icon
-        app_config->set("desktop_integration_icon_slicer_path", GUI::format("%1%/icons/%2%PrusaSlicer%3%.png", target_dir_icons, icon_theme_path, version_suffix));
+        app_config->set("desktop_integration_icon_slicer_path", GUI::format("%1%/icons/%2%SLA-Slicer%3%.png", target_dir_icons, icon_theme_path, version_suffix));
 
     // desktop file
     // iterate thru target_candidates to find applications folder
 
     std::string desktop_file = GUI::format(
         "[Desktop Entry]\n"
-        "Name=PrusaSlicer%1%\n"
+        "Name=SLA-Slicer%1%\n"
         "GenericName=3D Printing Software\n"
-        "Icon=PrusaSlicer%2%\n"
+        "Icon=SLA-Slicer%2%\n"
         "Exec=\"%3%\" %%F\n"
         "Terminal=false\n"
         "Type=Application\n"
@@ -368,15 +368,15 @@ void DesktopIntegrationDialog::perform_desktop_integration()
         if (contains_path_dir(target_candidates[i], "applications")) {
             target_dir_desktop = target_candidates[i];
             // Write slicer desktop file
-            std::string path = GUI::format("%1%/applications/PrusaSlicer%2%.desktop", target_dir_desktop, version_suffix);
+            std::string path = GUI::format("%1%/applications/SLA-Slicer%2%.desktop", target_dir_desktop, version_suffix);
             if (create_desktop_file(path, desktop_file)) {
                 candidate_found = true;
-                BOOST_LOG_TRIVIAL(debug) << "PrusaSlicer.desktop file installation success.";
+                BOOST_LOG_TRIVIAL(debug) << "SLA-Slicer.desktop file installation success.";
                 break;
             }
             else {
                 // write failed - try another path
-                BOOST_LOG_TRIVIAL(debug) << "Attempt to PrusaSlicer.desktop file installation failed. failed path: " << target_candidates[i];
+                BOOST_LOG_TRIVIAL(debug) << "Attempt to SLA-Slicer.desktop file installation failed. failed path: " << target_candidates[i];
                 target_dir_desktop.clear();
             }
         }
@@ -387,7 +387,7 @@ void DesktopIntegrationDialog::perform_desktop_integration()
         create_path(into_u8(wxFileName::GetHomeDir()), ".local/share/applications");
         // create desktop file
         target_dir_desktop = GUI::format("%1%/.local/share", wxFileName::GetHomeDir());
-        std::string path = GUI::format("%1%/applications/PrusaSlicer%2%.desktop", target_dir_desktop, version_suffix);
+        std::string path = GUI::format("%1%/applications/SLA-Slicer%2%.desktop", target_dir_desktop, version_suffix);
         if (contains_path_dir(target_dir_desktop, "applications")) {
             if (!create_desktop_file(path, desktop_file)) {
                 // Desktop file not written - end desktop integration
@@ -409,7 +409,7 @@ void DesktopIntegrationDialog::perform_desktop_integration()
         return;
     }
     // save path to desktop file
-    app_config->set("desktop_integration_app_path", GUI::format("%1%/applications/PrusaSlicer%2%.desktop", target_dir_desktop, version_suffix));
+    app_config->set("desktop_integration_app_path", GUI::format("%1%/applications/SLA-Slicer%2%.desktop", target_dir_desktop, version_suffix));
 
     wxGetApp().plater()->get_notification_manager()->push_notification(NotificationType::DesktopIntegrationSuccess);
 }
@@ -449,7 +449,7 @@ void DesktopIntegrationDialog::undo_desktop_integration()
 
 void DesktopIntegrationDialog::find_all_desktop_files(std::vector<boost::filesystem::path>& results)
 {
-    // Try ro find any PrusaSlicer.desktop and PrusaSlicerURLProtocol.desktop files (and the legacy PrusaSlicerGcodeViewer.desktop left by older versions) including alpha and beta
+    // Try ro find any SLA-Slicer.desktop files including alpha and beta
 
     // For regular apps (f.e. appimage) this is true:
     // $XDG_DATA_HOME defines the base directory relative to which user specific data files should be stored. 
@@ -471,7 +471,7 @@ void DesktopIntegrationDialog::find_all_desktop_files(std::vector<boost::filesys
         if (apps_path.empty()) {
             continue;
         }
-        for (const std::string& filename : {"PrusaSlicer","PrusaSlicerGcodeViewer","PrusaSlicerURLProtocol"}) {
+        for (const std::string& filename : {"SLA-Slicer"}) {
             for (const std::string& suffix : {"" , "-beta", "-alpha", "_beta", "_alpha"}) {
                 boost::filesystem::path file_path = apps_path / GUI::format("%1%%2%.desktop", filename, suffix);
                 boost::system::error_code ec;

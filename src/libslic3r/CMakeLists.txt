@@ -211,6 +211,8 @@ set(SLIC3R_SOURCES
     PrincipalComponents2D.hpp
     PrincipalComponents2D.cpp
     AppConfig.cpp
+    LegacyDataMigration.cpp
+    LegacyDataMigration.hpp
     AppConfig.hpp
     PrintBase.cpp
     PrintBase.hpp
@@ -541,14 +543,27 @@ if(OpenCV_VERSION VERSION_LESS 4.7)
 endif()
 set_source_files_properties(SLA/ExposureFinderPattern.cpp SLA/CalibrationRaster.cpp SLA/LayerBlur.cpp SLA/LayerLinkedLines.cpp SLA/HersheyText.cpp SLA/PixelDrawing.cpp SLA/LayerRedrawModel.cpp PROPERTIES
     INCLUDE_DIRECTORIES "${OpenCV_INCLUDE_DIRS}" SKIP_PRECOMPILE_HEADERS ON)
-get_target_property(_sla_cv_core opencv_core IMPORTED_LOCATION_RELEASE)
-get_target_property(_sla_cv_imgproc opencv_imgproc IMPORTED_LOCATION_RELEASE)
+# Release library of the (system or deps-prefix) OpenCV; fall back to other configurations of the same build
+# (a deps build made with another single configuration installs only that one).
+foreach(_sla_cv_tgt IN ITEMS core imgproc)
+    set(_sla_cv_${_sla_cv_tgt} "")
+    foreach(_sla_cv_cfg IN ITEMS RELEASE RELWITHDEBINFO MINSIZEREL NOCONFIG)
+        if(NOT _sla_cv_${_sla_cv_tgt})
+            get_target_property(_sla_cv_loc opencv_${_sla_cv_tgt} IMPORTED_LOCATION_${_sla_cv_cfg})
+            if(_sla_cv_loc)
+                set(_sla_cv_${_sla_cv_tgt} "${_sla_cv_loc}")
+            endif()
+        endif()
+    endforeach()
+endforeach()
 if(NOT _sla_cv_core OR NOT _sla_cv_imgproc)
     message(FATAL_ERROR "OpenCV core/imgproc must provide release libraries")
 endif()
 
+# imgproc before core: required when OpenCV comes from the deps prefix as static archives (single-pass link order).
 target_link_libraries(libslic3r PRIVATE
-    "${_sla_cv_core}" "${_sla_cv_imgproc}"
+    "${_sla_cv_imgproc}" "${_sla_cv_core}"
+    ${CMAKE_DL_LIBS}
     libnest2d
     boost_libs
     clipper

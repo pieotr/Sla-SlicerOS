@@ -142,7 +142,7 @@ endif (MINGW)
 
 if (NOT WIN32 AND NOT APPLE)
     # Binary name on unix like systems (Linux, Unix)
-    set_target_properties(PrusaSlicer PROPERTIES OUTPUT_NAME "prusa-slicer")
+    set_target_properties(PrusaSlicer PROPERTIES OUTPUT_NAME "sla-slicer")
 endif ()
 
 
@@ -199,7 +199,7 @@ if (WIN32)
     endif()
     target_compile_definitions(PrusaSlicer_app_gui PRIVATE -DSLIC3R_WRAPPER_NOCONSOLE)
     add_dependencies(PrusaSlicer_app_gui PrusaSlicer)
-    set_target_properties(PrusaSlicer_app_gui PROPERTIES OUTPUT_NAME "prusa-slicer")
+    set_target_properties(PrusaSlicer_app_gui PROPERTIES OUTPUT_NAME "sla-slicer")
     target_link_libraries(PrusaSlicer_app_gui PRIVATE boost_headeronly)
 
     add_executable(PrusaSlicer_app_console PrusaSlicer_app_msvc.cpp ${CMAKE_CURRENT_BINARY_DIR}/PrusaSlicer.rc)
@@ -209,7 +209,7 @@ if (WIN32)
     endif ()
     target_compile_definitions(PrusaSlicer_app_console PRIVATE -DSLIC3R_WRAPPER_CONSOLE)
     add_dependencies(PrusaSlicer_app_console PrusaSlicer)
-    set_target_properties(PrusaSlicer_app_console PROPERTIES OUTPUT_NAME "prusa-slicer-console")
+    set_target_properties(PrusaSlicer_app_console PROPERTIES OUTPUT_NAME "sla-slicer-console")
     target_link_libraries(PrusaSlicer_app_console PRIVATE boost_headeronly)
 endif ()
 
@@ -229,7 +229,8 @@ if (WIN32)
                 VERBATIM
             )
 
-            if (SLIC3R_GUI)
+            # The application does not use wx WebView; copy the loader only when the dependency build provides it.
+            if (SLIC3R_GUI AND EXISTS "${wxWidgets_ROOT_DIR}/bin/WebView2Loader.dll")
                 add_custom_command(TARGET PrusaSlicer POST_BUILD
                     COMMAND ${CMAKE_COMMAND} -E copy
                     "${wxWidgets_ROOT_DIR}/bin/WebView2Loader.dll"
@@ -243,11 +244,11 @@ if (WIN32)
             COMMENT "Symlinking the resources directory into the build tree"
             VERBATIM
         )
-        if (SLIC3R_GUI)
+        if (SLIC3R_GUI AND EXISTS "${wxWidgets_ROOT_DIR}/bin/WebView2Loader.dll")
             add_custom_command(TARGET PrusaSlicer POST_BUILD
                 COMMAND ${CMAKE_COMMAND} -E copy
                 "${wxWidgets_ROOT_DIR}/bin/WebView2Loader.dll"
-                "${CMAKE_CURRENT_BINARY_DIR}/${CONF}/WebView2Loader.dll")
+                "${CMAKE_CURRENT_BINARY_DIR}/WebView2Loader.dll")
         endif()
     endif ()
 
@@ -258,18 +259,9 @@ if (WIN32)
 else ()
     if (APPLE)
         add_custom_command(TARGET PrusaSlicer POST_BUILD
-            COMMAND ln -sf PrusaSlicer prusa-slicer
+            COMMAND ln -sf PrusaSlicer sla-slicer
             WORKING_DIRECTORY "$<TARGET_FILE_DIR:PrusaSlicer>"
             COMMENT "Symlinking the application executable"
-            VERBATIM)
-    endif ()
-    if (NOT APPLE)
-        # Product name alias. The real binary keeps its historical name so tests and scripts
-        # referencing prusa-slicer keep working.
-        add_custom_command(TARGET PrusaSlicer POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E create_symlink prusa-slicer sla-slicer
-            WORKING_DIRECTORY "$<TARGET_FILE_DIR:PrusaSlicer>"
-            COMMENT "Symlinking sla-slicer -> prusa-slicer"
             VERBATIM)
     endif ()
     if (XCODE)
@@ -293,5 +285,4 @@ if (WIN32)
     endif ()
 else ()
     install(TARGETS PrusaSlicer RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}")
-    install(CODE "execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink prusa-slicer sla-slicer WORKING_DIRECTORY \$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_BINDIR})")
 endif ()

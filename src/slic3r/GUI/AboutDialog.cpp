@@ -27,7 +27,7 @@ AboutDialogLogo::AboutDialogLogo(wxWindow* parent)
     : wxPanel(parent, wxID_ANY, wxDefaultPosition, wxDefaultSize)
 {
     this->SetBackgroundColour(*wxWHITE);
-    this->logo = wxBitmap(from_u8(Slic3r::var("PrusaSlicer_192px.png")), wxBITMAP_TYPE_PNG);
+    this->logo = wxBitmap(from_u8(Slic3r::var("SLA-Slicer_192px.png")), wxBITMAP_TYPE_PNG);
     this->SetMinSize(this->logo.GetSize());
     
     this->Bind(wxEVT_PAINT, &AboutDialogLogo::onRepaint, this);
@@ -244,7 +244,9 @@ AboutDialog::AboutDialog()
     
     // version
     {
-        auto version_string = _L("Version") + " " + std::string(SLIC3R_VERSION);
+        // "SLA-Slicer 1.0.0, based on PrusaSlicer 2.9.4" + the build id (SLIC3R_VERSION is only the base-code version).
+        auto version_string = format_wxstr(_L("%1% %2%, based on PrusaSlicer %3%"), SLIC3R_APP_NAME, SLA_SLICER_VERSION, SLIC3R_VERSION) + "\n" +
+                              format_wxstr(_L("Build: %1%"), SLIC3R_BUILD_ID);
         wxStaticText* version = new wxStaticText(this, wxID_ANY, version_string.c_str(), wxDefaultPosition, wxDefaultSize);
         wxFont version_font = GetFont();
         #ifdef __WXMSW__
@@ -366,7 +368,7 @@ void AboutDialog::onCopyrightBtn(wxEvent &)
 void AboutDialog::onCopyToClipboard(wxEvent&)
 {
     wxTheClipboard->Open();
-    wxTheClipboard->SetData(new wxTextDataObject(_L("Version") + " " + std::string(SLIC3R_VERSION)));
+    wxTheClipboard->SetData(new wxTextDataObject(format_wxstr("%1% %2% (%3%), based on PrusaSlicer %4%", SLIC3R_APP_NAME, SLA_SLICER_VERSION, SLIC3R_BUILD_ID, SLIC3R_VERSION)));
     wxTheClipboard->Close();
 }
 

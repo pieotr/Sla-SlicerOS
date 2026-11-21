@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Copyright 2026 SLA-Slicer contributors. CC0-1.0 -->
+<component type="desktop-application">
+  <id>io.github.pieotr.SLASlicer</id>
+  <name>SLA-Slicer</name>
+  <summary>Offline slicer for SLA/MSLA resin printers</summary>
+  <summary xml:lang="pl">Slicer SLA/MSLA do drukarek żywicznych, działający w pełni offline</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>AGPL-3.0-only</project_license>
+  <developer id="io.github.pieotr">
+    <name>SLA-Slicer contributors</name>
+  </developer>
+  <description>
+    <p>SLA-Slicer is a fork of PrusaSlicer 2.9.4 for resin (SLA/MSLA) 3D printers. It works fully offline: no update checks, no downloads, no telemetry.</p>
+    <p>Prepare models, generate supports and slice them into layers, edit the sliced layers and export to many printer archive formats such as SL1, CTB, Photon, PWMX, GOO, CXDLP, UVJ and NanoDLP. Exposure and calibration tools and a command line with layer recipes are included.</p>
+    <p xml:lang="pl">SLA-Slicer to fork programu PrusaSlicer 2.9.4 dla drukarek 3D żywicznych (SLA/MSLA). Działa w pełni offline: bez sprawdzania aktualizacji, pobierania danych i telemetrii.</p>
+    <p xml:lang="pl">Przygotuj modele, wygeneruj podpory i potnij je na warstwy, edytuj pocięte warstwy i eksportuj do wielu formatów plików drukarek, takich jak SL1, CTB, Photon, PWMX, GOO, CXDLP, UVJ i NanoDLP. W programie są też narzędzia ekspozycji i kalibracji oraz wiersz poleceń z przepisami warstw.</p>
+  </description>
+  <launchable type="desktop-id">io.github.pieotr.SLASlicer.desktop</launchable>
+  <url type="homepage">https://github.com/pieotr/Sla-SlicerOS</url>
+  <url type="bugtracker">https://github.com/pieotr/Sla-SlicerOS/issues</url>
+  <categories>
+    <category>Graphics</category>
+    <category>3DGraphics</category>
+    <category>Engineering</category>
+  </categories>
+  <keywords>
+    <keyword>3D printing</keyword>
+    <keyword>slicer</keyword>
+    <keyword>SLA</keyword>
+    <keyword>MSLA</keyword>
+    <keyword>resin</keyword>
+    <keyword xml:lang="pl">druk 3D</keyword>
+    <keyword xml:lang="pl">żywica</keyword>
+  </keywords>
+  <provides>
+    <binary>sla-slicer</binary>
+  </provides>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="1.0.0" date="2026-11-21">
+      <description>
+        <p>First stable release: SLA-only, fully offline, English and Polish user interface.</p>
+        <p xml:lang="pl">Pierwsze stabilne wydanie: tylko SLA, w pełni offline, interfejs w języku angielskim i polskim.</p>
+      </description>
+    </release>
+  </releases>
+</component>

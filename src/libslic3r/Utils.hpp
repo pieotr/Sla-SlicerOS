@@ -64,6 +64,9 @@ std::string custom_shapes_dir();
 void set_data_dir(const std::string &path);
 // Return a full path to the GUI resource files.
 const std::string& data_dir();
+// True when the data directory was given explicitly (--datadir) instead of being the per-user default.
+void set_data_dir_explicit(bool explicit_dir);
+bool data_dir_explicit();
 
 // Format an output path for debugging purposes.
 // Writes out the output path prefix to the console for the first time the function is called,

@@ -1,64 +1,87 @@
 # SLA-Slicer
 
-Slicer żywiczny (SLA/MSLA, ekran LCD) oparty na PrusaSlicer 2.9.4, ograniczony
-do SLA i działający w całości offline. Tnie model 3D na warstwy-maski, pozwala
-poprawić je pikselowo (widok Sliced, wykrywanie problemów), generuje warstwy
-PCB z Gerberów oraz kalibracje i zapisuje pliki w formatach drukarek
-(80 identyfikatorów formatów w rejestrze). Nie ma G-code, druku FFF/FDM ani
-funkcji sieciowych.
+SLA-Slicer 1.0.0 to slicer żywiczny (SLA/MSLA, drukarki z ekranem LCD) oparty na
+kodzie PrusaSlicer 2.9.4, ograniczony do druku SLA i działający w całości offline.
+Nie ma G-code, druku FFF/FDM ani funkcji sieciowych (wysyłanie na drukarkę, aktualizacje,
+konta).
 
-Stan: projekt w trakcie przebudowy, gałąź `testing`; żaden z celów G1-G15 nie
-jest jeszcze w pełni ukończony. Żaden format nie został sprawdzony na drukarce;
-zgodność z UVtools 7.0.0 jest sprawdzana niezależnym odczytem (bramka z 12.11.2026:
-402 PASS, 42 przypadki, w których wzorzec jest wadliwy lub nie ma czytnika —
-CWS, CXDLP v1, SL1SVG — rozstrzygnięte niezależnymi dekoderami, 116 celowych
-odmów writerów, 0 prawdziwych defektów). Zmiany interfejsu z ostatnich prac
-(okna Issues i Operations, narzędzia płótna, PCB, kalibracje, profile) mają
-testy logiki, ale nie były jeszcze sprawdzone ręcznie w działającym programie.
+SLA-Slicer nie jest powiązany z Prusa Research. PrusaSlicer jest znakiem/produktem
+Prusa Research; nazwa jest tu użyta wyłącznie do wskazania pochodzenia kodu.
 
-## Szybki start (Linux, GTK3)
+## Najważniejsze funkcje
+
+- Slicing modeli 3D (STL, OBJ, 3MF) na warstwy-maski z podporami, wydrążaniem, padem
+  i podglądem warstw.
+- Zapis w 80 identyfikatorach formatów drukarek (SL1/SL1S, Anycubic, CTB/CBDDLP/Photon,
+  GOO, CXDLP, Klipper, NanoDLP, ZCode i inne; pełna lista w
+  [doc/COMPATIBILITY_INVENTORY.md](doc/COMPATIBILITY_INVENTORY.md)).
+- Edytor warstw (widok Sliced): pędzel, gumka, zakresy warstw, operacje na maskach,
+  wykrywanie problemów (wyspy, nawisy, pułapki powietrza, przyssawki), Undo/Redo,
+  zapis do pliku drukarki.
+- Ekspozycja PCB z plików Gerber i Excellon (maska, miedź, otwory).
+- Kalibracje odpowiadające UVtools (Exposure Finder, tabele ekspozycji, wzorce
+  testowe) liczone natywnie w C++.
+- Tryb wsadowy i automatyzacja: CLI (`sla-slicer --help-sla`), JSON z wynikami,
+  kody wyjścia — [doc/AUTOMATION.md](doc/AUTOMATION.md).
+- Interfejs po polsku i po angielsku.
+
+Stan i ograniczenia wersji: [CHANGELOG.md](CHANGELOG.md).
+
+## Instalacja
+
+Gotowe pakiety dla Linuksa x86_64 (glibc 2.35 lub nowszy, GTK3, OpenGL):
+
+- AppImage: `chmod +x SLA-Slicer-1.0.0-x86_64.AppImage && ./SLA-Slicer-1.0.0-x86_64.AppImage`
+- Debian/Ubuntu: `sudo apt install ./sla-slicer_1.0.0_amd64.deb`
+- Fedora: `sudo dnf install ./sla-slicer-1.0.0-1.x86_64.rpm`
+- Przenośne archiwum: `tar xzf sla-slicer-1.0.0-linux-x86_64.tar.gz` i uruchomienie
+  `sla-slicer-1.0.0/sla-slicer`.
+
+Szczegóły (wymagania, pakiety natywne, odinstalowanie): [install.md](install.md).
+
+## Budowanie ze źródeł
+
+Linux (zalecane, GTK3):
 
 ```sh
-bash ./build_linux.sh --jobs 4 --run     # zależności + aplikacja, test --help
-bash ./run_prusa_slicer.sh               # uruchomienie
-bash ./run_prusa_slicer.sh --datadir /sciezka/do/proby   # z osobnym katalogiem danych
+bash ./build_linux.sh --run          # sprawdza wymagania, buduje zależności i aplikację
+bash ./run_sla_slicer.sh             # uruchomienie
+bash ./build_linux.sh --help         # opcje: --tests, --jobs N, --bundled-opencv, --docker, ...
 ```
 
-Plik wykonywalny: `build/src/prusa-slicer` (dowiązanie `sla-slicer`). Dane
-użytkownika zostają w katalogu `PrusaSlicer` (nazwa historyczna, celowo
-niezmieniona).
+`--docker` buduje przenośne archiwum w kontenerze Ubuntu 22.04. Wymagania pakietowe
+dla Debiana/Ubuntu, Fedory i Archa oraz opis OpenCV: [install.md](install.md).
+
+Windows: `build_win.bat` — **EKSPERYMENTALNE, niesprawdzone** (autor nie miał
+kompilatora MSVC; skrypt jest dostosowaną wersją skryptu PrusaSlicera).
+
+## Dane użytkownika
+
+Konfiguracja leży w `~/.config/SLA-Slicer` (plik `SLA-Slicer.ini`), oddzielnie od
+zainstalowanego PrusaSlicera. Przy pierwszym uruchomieniu, jeżeli nowy katalog nie
+istnieje, a istnieje `~/.config/PrusaSlicer`, jego część SLA (profile drukarek,
+żywic i procesów, kształty, stan żywic) jest KOPIOWANA do nowego katalogu; katalog
+PrusaSlicera nie jest zmieniany. Wyłącza to `SLA_SLICER_NO_MIGRATION=1`.
+Osobny katalog do prób: `sla-slicer --datadir /sciezka`.
 
 ## Dokumentacja
 
-- [Instrukcja użytkownika (po polsku)](manual.txt) — profile, model, slicing,
-  edytor Sliced, formaty, PCB, kalibracje, CLI, rozwiązywanie problemów, ograniczenia
+- [Instrukcja użytkownika](manual.txt) (po polsku): profile, model, slicing, edytor warstw,
+  formaty, PCB, kalibracje, CLI, rozwiązywanie problemów
 - [Budowanie i instalacja](install.md)
-- [Dokumentacja deweloperska](doc/DEVELOPER.md) — architektura, konwencje, dodawanie formatu
-- [Testowanie](doc/TESTING.md) — CTest, oracle UVtools i polityka kodów wyjścia, benchmark, testy GUI
-- [Licencje komponentów](doc/THIRD_PARTY_LICENSES.md) i [SBOM](doc/SBOM.json) (CycloneDX 1.5,
-  generowany przez `python3 -I tools/generate_sbom.py`)
-- [Stan wymagań i znane braki](doc/TODO_STATUS.md) — jedyne bieżące źródło stanu
-- [Cel projektu](doc/GOAL.md)
-
-Pozostałe pliki w `doc/` (raporty `M2_*`, `*_2026-10-*`, audyty) to historia prac,
-nie opis stanu bieżącego.
-
-## Testy
-
-```sh
-bash ./build_linux.sh --tests --jobs 4
-ctest --test-dir build --output-on-failure -L smoke
-UVTOOLS_CMD=/sciezka/do/UVtoolsCmd ctest --test-dir build -L oracle   # opcjonalnie
-```
-
-Szczegóły: [doc/TESTING.md](doc/TESTING.md).
+- [Lista zmian i znane ograniczenia](CHANGELOG.md)
+- [Dokumentacja deweloperska](doc/DEVELOPER.md), [testowanie](doc/TESTING.md),
+  [automatyzacja](doc/AUTOMATION.md), [edytor warstw](doc/LAYER_EDITOR.md),
+  [PCB](doc/PCB_CALIBRATION.md), [architektura kalibracji](doc/EXPOSURE_CALIBRATION_ARCHITECTURE.md),
+  [tłumaczenia](doc/Localization_guide.md), [zależności](doc/Dependencies.md)
+- [Licencje komponentów](doc/THIRD_PARTY_LICENSES.md) i [SBOM](doc/SBOM.json) (CycloneDX 1.5)
 
 ## Licencja
 
-AGPLv3 (patrz `LICENSE`), tak jak PrusaSlicer, z którego pochodzi kod.
+AGPLv3 (patrz [LICENSE](LICENSE)), tak jak PrusaSlicer, z którego pochodzi kod.
 Algorytmy UVtools przeniesione natywnie do C++ (wykrywanie problemów, operacje na
-warstwach, eksporty, sugestie, kalibracje, kodeki) pozostają na licencji AGPL-3.0
-z uznaniem autora: Tiago Conceição (sn4k3) i współautorzy UVtools,
-<https://github.com/sn4k3/UVtools>; w aplikacji nie ma kodu ani procesu UVtools.
-Biblioteki zewnętrzne (Boost, wxWidgets, OpenVDB, CGAL, GMP/MPFR, OpenCV i inne)
-mają własne licencje: [doc/THIRD_PARTY_LICENSES.md](doc/THIRD_PARTY_LICENSES.md).
+warstwach, eksporty, kalibracje, kodeki) pozostają na licencji AGPL-3.0 z uznaniem
+autora: Tiago Conceição (sn4k3) i współautorzy UVtools, <https://github.com/sn4k3/UVtools>;
+w aplikacji nie ma kodu ani procesu UVtools. Biblioteki zewnętrzne (Boost, wxWidgets,
+OpenVDB, CGAL, GMP/MPFR, OpenCV i inne) mają własne licencje:
+[doc/THIRD_PARTY_LICENSES.md](doc/THIRD_PARTY_LICENSES.md).

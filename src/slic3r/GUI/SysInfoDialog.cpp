@@ -47,7 +47,8 @@ std::string get_main_info(bool format_as_html)
 
     if (!format_as_html)
         out << b_start << SLIC3R_APP_NAME << b_end << line_end;
-    out << b_start << "Version:   "             << b_end << SLIC3R_VERSION << line_end;
+    out << b_start << "Version:   "             << b_end << SLA_SLICER_VERSION << line_end;
+    out << b_start << "Based on:  "             << b_end << "PrusaSlicer " << SLIC3R_VERSION << line_end;
     
     std::string build_id = SLIC3R_BUILD_ID;
     out << b_start << "Build:     " << b_end << build_id << line_end;

@@ -1745,6 +1745,12 @@ CLIActionsConfigDef::CLIActionsConfigDef()
     def->cli = "help|h";
     def->set_default_value(new ConfigOptionBool(false));
 
+    def = this->add("version", coBool);
+    def->label = L("Version");
+    def->tooltip = L("Show the product version, the build id and the PrusaSlicer version this application is based on.");
+    def->cli = "version";
+    def->set_default_value(new ConfigOptionBool(false));
+
     def = this->add("help_sla", coBool);
     def->label = L("Help (SLA options)");
     def->tooltip = L("Show the full list of SLA print configuration options.");
@@ -1892,8 +1898,8 @@ CLIMiscConfigDef::CLIMiscConfigDef()
 
     def = this->add("config_compatibility", coEnum);
     def->label = L("Forward-compatibility rule when loading configurations from config files and project files (3MF, AMF).");
-    def->tooltip = L("This version of PrusaSlicer may not understand configurations produced by the newest PrusaSlicer versions. "
-        "For example, newer PrusaSlicer may extend the list of supported firmware flavors. One may decide to "
+    def->tooltip = L("This version of the application may not understand configurations produced by the newest versions. "
+        "For example, a newer version may extend the list of supported firmware flavors. One may decide to "
         "bail out or to substitute an unknown value with a default silently or verbosely.");
     def->set_enum<ForwardCompatibilitySubstitutionRule>({
         { "disable",        L("Bail out on unknown configuration values") },
@@ -1968,8 +1974,8 @@ CLIMiscConfigDef::CLIMiscConfigDef()
 
     def = this->add("single_instance", coBool);
     def->label = L("Single instance mode");
-    def->tooltip = L("If enabled, the command line arguments are sent to an existing instance of GUI PrusaSlicer, "
-                     "or an existing PrusaSlicer window is activated. "
+    def->tooltip = L("If enabled, the command line arguments are sent to an existing instance of the GUI application, "
+                     "or an existing application window is activated. "
                      "Overrides the \"single_instance\" configuration value from application preferences.");
 
     def = this->add("delete-after-load", coString);

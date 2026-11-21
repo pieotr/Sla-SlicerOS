@@ -98,9 +98,9 @@ std::pair<std::string, bool> SlicingProcessCompletedEvent::format_error_message(
                               "be glad if you reported it."), SLIC3R_APP_NAME);
         error += "\n\n" + std::string(ex.what());
     } catch (const HardCrash &ex) {
-        error = GUI::format(_L("PrusaSlicer has encountered a fatal error: \"%1%\""), ex.what()) + "\n\n" +
-        		_u8L("Please save your project and restart PrusaSlicer. "
-                     "We would be glad if you reported the issue.");
+        error = GUI::format(_L("%1% has encountered a fatal error: \"%2%\""), SLIC3R_APP_NAME, ex.what()) + "\n\n" +
+        		GUI::format(_u8L("Please save your project and restart %1%. "
+                     "We would be glad if you reported the issue."), SLIC3R_APP_NAME);
     } catch (PlaceholderParserError &ex) {
 		error = ex.what();
 		monospace = true;

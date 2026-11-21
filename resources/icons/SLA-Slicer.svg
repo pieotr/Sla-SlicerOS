@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <title>SLA-Slicer</title>
+  <rect width="256" height="256" rx="52" fill="#12203f"/>
+  <!-- UV light cone falling onto the layer being cured -->
+  <path d="M52 28H204L170 100H86Z" fill="#8b5cf6"/>
+  <!-- stacked resin layers (slices) -->
+  <rect x="86" y="108" width="84" height="30" rx="8" fill="#c4b5fd"/>
+  <rect x="64" y="146" width="128" height="30" rx="8" fill="#22d3ee"/>
+  <rect x="40" y="184" width="176" height="30" rx="8" fill="#22d3ee"/>
+</svg>

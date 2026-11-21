@@ -37,7 +37,7 @@ static void start_new_slicer_instance(const std::vector<wxString> paths_to_open,
 	wxString path;
 	wxFileName::SplitPath(wxStandardPaths::Get().GetExecutablePath(), &path, nullptr, nullptr, wxPATH_NATIVE);
 	path += "\\";
-	path += "prusa-slicer.exe";
+	path += "sla-slicer.exe";
 	std::vector<const wchar_t*> args;
 	args.reserve(4);
 	args.emplace_back(path.wc_str());
@@ -61,8 +61,7 @@ static void start_new_slicer_instance(const std::vector<wxString> paths_to_open,
 	boost::filesystem::path bin_path = into_path(wxStandardPaths::Get().GetExecutablePath());
 #if defined(__linux__)
 	{
-		// Relaunch the binary that is really running (prusa-slicer or its sla-slicer
-		// symlink); a hard-coded name breaks renamed or relocated packages.
+		// Relaunch the binary that is really running (sla-slicer); a hard-coded name breaks renamed or relocated packages.
 		boost::system::error_code ec;
 		const boost::filesystem::path self = boost::filesystem::canonical("/proc/self/exe", ec);
 		if (!ec && !self.empty())

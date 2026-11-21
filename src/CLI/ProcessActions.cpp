@@ -205,6 +205,9 @@ bool process_actions(Data& cli, const DynamicPrintConfig& print_config, std::vec
     if (actions.has("help")) {
         print_help();
     }
+    if (actions.has("version")) {
+        print_version();
+    }
     if (actions.has("help_sla")) {
         print_help(true, ptSLA);
     }

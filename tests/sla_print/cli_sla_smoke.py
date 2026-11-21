@@ -20,7 +20,7 @@ def main():
     model = repository / 'tests/data/test_stl/ASCII/20mmbox-LF.stl'
     presets = output / 'presets'
     presets.mkdir(exist_ok=True)
-    (presets / 'PrusaSlicer.ini').write_text('[presets]\nprinter = CLI SLA\nsla_print = CLI process\nsla_material = CLI resin\n')
+    (presets / 'SLA-Slicer.ini').write_text('[presets]\nprinter = CLI SLA\nsla_print = CLI process\nsla_material = CLI resin\n')
     for directory in ('printer', 'sla_print', 'sla_material'):
         (presets / directory).mkdir(exist_ok=True)
     (presets / 'printer/CLI SLA.ini').write_text('printer_technology = SLA\ndisplay_width = 12\ndisplay_height = 8\n')

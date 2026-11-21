@@ -124,11 +124,18 @@ static void print_help(const ConfigDef& config_def, bool show_defaults, std::fun
     }
 }
 
+void print_version()
+{
+    boost::nowide::cout << SLIC3R_APP_NAME " " SLA_SLICER_VERSION << std::endl
+                        << "Build: " SLIC3R_BUILD_ID << std::endl
+                        << "Based on PrusaSlicer " SLIC3R_VERSION << std::endl;
+}
+
 void print_help(bool include_print_options/* = false*/, PrinterTechnology printer_technology/* = ptAny*/)
 {
     printer_technology = ptSLA;
     boost::nowide::cout
-        << SLIC3R_BUILD_ID << " " << "based on Slic3r"
+        << SLIC3R_BUILD_ID << " based on PrusaSlicer " SLIC3R_VERSION
 #ifdef SLIC3R_GUI
         << " (with GUI support)"
 #else /* SLIC3R_GUI */
@@ -136,7 +143,7 @@ void print_help(bool include_print_options/* = false*/, PrinterTechnology printe
 #endif /* SLIC3R_GUI */
         << std::endl
         << "https://github.com/prusa3d/PrusaSlicer" << std::endl << std::endl
-        << "Usage: prusa-slicer [ INPUT ] [ OPTIONS ] [ ACTIONS ] [ TRANSFORM ] [ file.stl ... ]" << std::endl;
+        << "Usage: sla-slicer [ INPUT ] [ OPTIONS ] [ ACTIONS ] [ TRANSFORM ] [ file.stl ... ]" << std::endl;
 
     boost::nowide::cout
         << std::endl

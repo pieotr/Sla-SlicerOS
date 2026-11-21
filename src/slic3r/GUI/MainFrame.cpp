@@ -110,7 +110,7 @@ static wxIcon main_frame_icon(GUI_App::EAppMode app_mode)
     }
     return wxIcon(path, wxBITMAP_TYPE_ICO);
 #else // _WIN32
-    return wxIcon(Slic3r::var("PrusaSlicer_128px.png"), wxBITMAP_TYPE_PNG);
+    return wxIcon(Slic3r::var("SLA-Slicer_128px.png"), wxBITMAP_TYPE_PNG);
 #endif // _WIN32
 }
 
@@ -137,7 +137,7 @@ DPIFrame(NULL, wxID_ANY, "", wxDefaultPosition, wxDefaultSize, wxDEFAULT_FRAME_S
 #ifdef __APPLE__
     // Initialize the docker task bar icon.
     m_taskbar_icon = std::make_unique<PrusaSlicerTaskBarIcon>(wxTBI_DOCK);
-    m_taskbar_icon->SetIcon(wxIcon(Slic3r::var("PrusaSlicer-mac_128px.png"), wxBITMAP_TYPE_PNG), SLIC3R_APP_NAME);
+    m_taskbar_icon->SetIcon(wxIcon(Slic3r::var("SLA-Slicer_128px.png"), wxBITMAP_TYPE_PNG), SLIC3R_APP_NAME);
 #endif // __APPLE__
 
     // Load the icon either from the exe, or from the ico file.
@@ -523,25 +523,12 @@ void MainFrame::update_title()
         }
     }
 
-    std::string build_id = SLIC3R_BUILD_ID;
-    size_t 		idx_plus = build_id.find('+');
-    if (idx_plus != build_id.npos) {
-    	// Parse what is behind the '+'. If there is a number, then it is a build number after the label, and full build ID is shown.
-    	int commit_after_label;
-    	if (! boost::starts_with(build_id.data() + idx_plus + 1, "UNKNOWN") && 
-            (build_id.at(idx_plus + 1) == '-' || sscanf(build_id.data() + idx_plus + 1, "%d-", &commit_after_label) == 0)) {
-    		// It is a release build.
-    		build_id.erase(build_id.begin() + idx_plus, build_id.end());    		
+    // "<project> - SLA-Slicer <product version>"; the git/build suffix is shown in About and --help only.
+    title += wxString::FromUTF8(SLIC3R_APP_NAME " " SLA_SLICER_VERSION);
 #if defined(_WIN32) && ! defined(_WIN64)
-    		// People are using 32bit slicer on a 64bit machine by mistake. Make it explicit.
-            build_id += " 32 bit";
+    // People are using 32bit slicer on a 64bit machine by mistake. Make it explicit.
+    title += " 32 bit";
 #endif
-    	}
-    }
-
-    title += wxString(build_id);
-    if (wxGetApp().is_editor())
-        title += (" " + _L("based on Slic3r"));
 
     SetTitle(title);
 }
@@ -1938,7 +1925,7 @@ SettingsDialog::SettingsDialog(MainFrame* mainframe)
         SetIcon(wxIcon(szExeFileName, wxBITMAP_TYPE_ICO));
     }
 #else
-    SetIcon(wxIcon(var("PrusaSlicer_128px.png"), wxBITMAP_TYPE_PNG));
+    SetIcon(wxIcon(var("SLA-Slicer_128px.png"), wxBITMAP_TYPE_PNG));
 #endif // _WIN32
 
     this->Bind(wxEVT_SHOW, [this](wxShowEvent& evt) {

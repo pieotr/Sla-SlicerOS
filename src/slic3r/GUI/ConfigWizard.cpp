@@ -2814,8 +2814,8 @@ void PageSummary::rebuild()
 PageFilesAssociation::PageFilesAssociation(ConfigWizard* parent)
     : ConfigWizardPage(parent, _L("Files association"), _L("Files association"))
 {
-    cb_3mf = new wxCheckBox(this, wxID_ANY, _L("Associate .3mf files to PrusaSlicer"));
-    cb_stl = new wxCheckBox(this, wxID_ANY, _L("Associate .stl files to PrusaSlicer"));
+    cb_3mf = new wxCheckBox(this, wxID_ANY, format_wxstr(_L("Associate .3mf files to %1%"), SLIC3R_APP_NAME));
+    cb_stl = new wxCheckBox(this, wxID_ANY, format_wxstr(_L("Associate .stl files to %1%"), SLIC3R_APP_NAME));
 
     append(cb_3mf);
     append(cb_stl);
@@ -3004,7 +3004,7 @@ wxDECLARE_EVENT(EVT_INDEX_PAGE, wxCommandEvent);
 
 ConfigWizardIndex::ConfigWizardIndex(wxWindow *parent)
     : wxPanel(parent)
-    , bg(ScalableBitmap(parent, "PrusaSlicer_192px_transparent.png", 192))
+    , bg(ScalableBitmap(parent, "SLA-Slicer_192px.png", 192))
     , item_active(NO_ITEM)
     , item_hover(-1)
     , last_page(NO_ITEM)

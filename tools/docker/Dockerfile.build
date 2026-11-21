@@ -1,0 +1,50 @@
+# Portable Linux build environment for SLA-Slicer (goal G14).
+# Oldest base that still builds the project: Ubuntu 22.04 (glibc 2.35, GCC 12 from the main archive).
+# The project needs C++17 only (CMAKE_CXX_STANDARD 17) and CMake >= 3.13; CMake is taken from PyPI because the
+# dependency superbuild needs a newer CMake than the 3.22 shipped by jammy.
+# OpenCV is NOT taken from apt (jammy ships 4.5.4, but the layer-blur code needs cv::stackBlur, 4.7+): a pinned 4.12.0
+# (the version UVtools/Emgu.CV uses) is built from the official tarball below into /opt/opencv.
+# Everything else linked dynamically (TIFF, PNG, JPEG, ...) comes from this old base, so the bundle's
+# lib/ never requires a glibc newer than 2.35.
+FROM ubuntu:22.04
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      ca-certificates curl git rsync xz-utils unzip patch file pkg-config \
+      build-essential g++-12 gcc-12 make ninja-build ccache autoconf automake libtool m4 yasm nasm gettext \
+      python3 python3-pip binutils \
+      libgtk-3-dev libgl1-mesa-dev libglu1-mesa-dev libegl1-mesa-dev libdbus-1-dev libsm-dev libice-dev \
+      libnotify-dev libxkbcommon-dev libwayland-dev libx11-dev libxext-dev libxrandr-dev libxi-dev \
+      libtiff-dev libpng-dev libjpeg-dev libopenjp2-7-dev zlib1g-dev libmspack-dev \
+      libssl-dev libcurl4-openssl-dev \
+      xvfb xauth libgtk-3-0 \
+ && pip3 install --no-cache-dir 'cmake>=3.28,<4' \
+ && update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-12 100 \
+ && update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-12 100 \
+ && update-alternatives --install /usr/bin/cc cc /usr/bin/gcc-12 100 \
+ && update-alternatives --install /usr/bin/c++ c++ /usr/bin/g++-12 100 \
+ && rm -rf /var/lib/apt/lists/*
+# GMP's build needs makeinfo (gmp.info); separate layer so the big layer above stays cached.
+RUN apt-get update && apt-get install -y --no-install-recommends texinfo && rm -rf /var/lib/apt/lists/*
+# Pinned OpenCV 4.12.0, core+imgproc only. No network use beyond the tarball itself (no IPP/ITT download, no
+# 3rdparty codecs, no TBB/OpenMP: the app bundles its own static TBB). Shared libs, installed to /opt/opencv
+# without an install RUNPATH (the bundle loads them via its launcher; lintian rejects /opt/opencv/lib RUNPATH).
+ARG OPENCV_VERSION=4.12.0
+ARG OPENCV_SHA256=44c106d5bb47efec04e531fd93008b3fcd1d27138985c5baf4eafac0e1ec9e9d
+RUN mkdir /tmp/ocv && cd /tmp/ocv \
+ && curl -fsSL -o opencv.tar.gz "https://github.com/opencv/opencv/archive/refs/tags/${OPENCV_VERSION}.tar.gz" \
+ && echo "${OPENCV_SHA256}  opencv.tar.gz" | sha256sum -c - \
+ && tar xzf opencv.tar.gz && cmake -S "opencv-${OPENCV_VERSION}" -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+      -DCMAKE_INSTALL_PREFIX=/opt/opencv -DBUILD_LIST=core,imgproc -DBUILD_SHARED_LIBS=ON -DCMAKE_SKIP_INSTALL_RPATH=ON \
+      -DBUILD_TESTS=OFF -DBUILD_PERF_TESTS=OFF -DBUILD_EXAMPLES=OFF -DBUILD_DOCS=OFF -DBUILD_opencv_apps=OFF \
+      -DBUILD_opencv_python3=OFF -DBUILD_opencv_python2=OFF -DBUILD_JAVA=OFF -DBUILD_opencv_java=OFF \
+      -DBUILD_PACKAGE=OFF -DBUILD_ZLIB=ON -DBUILD_PROTOBUF=OFF -DBUILD_ITT=OFF \
+      -DWITH_IPP=OFF -DWITH_ITT=OFF -DWITH_TBB=OFF -DWITH_OPENMP=OFF -DWITH_OPENCL=OFF -DWITH_FFMPEG=OFF \
+      -DWITH_GTK=OFF -DWITH_QT=OFF -DWITH_EIGEN=OFF -DWITH_LAPACK=OFF -DWITH_PROTOBUF=OFF -DWITH_JPEG=OFF \
+      -DWITH_PNG=OFF -DWITH_TIFF=OFF -DWITH_WEBP=OFF -DWITH_OPENJPEG=OFF -DWITH_JASPER=OFF -DWITH_OPENEXR=OFF \
+      -DWITH_V4L=OFF -DWITH_1394=OFF -DOPENCV_GENERATE_PKGCONFIG=OFF \
+ && cmake --build build -j"$(nproc)" && cmake --install build \
+ && echo /opt/opencv/lib > /etc/ld.so.conf.d/opencv.conf && ldconfig \
+ && cd / && rm -rf /tmp/ocv
+ENV OpenCV_DIR=/opt/opencv/lib/cmake/opencv4
+ENV CCACHE_DIR=/ccache CMAKE_C_COMPILER_LAUNCHER=ccache CMAKE_CXX_COMPILER_LAUNCHER=ccache
+WORKDIR /work
