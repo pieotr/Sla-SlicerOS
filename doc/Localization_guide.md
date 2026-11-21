@@ -1,5 +1,12 @@
 # Localization and translation guide
 
+> **SLA-Slicer:** only English (source strings) and Polish (`resources/localization/pl`) are shipped and maintained; the
+> catalogs of the other PrusaSlicer languages were removed because they lacked all strings added by the fork.
+> `resources/localization/wx_locale/pl.po` holds the wxWidgets strings merged into the Polish catalog. Regenerate the
+> template with `cmake --build build --target gettext_make_pot` (the file list is `resources/localization/list.txt`), merge with
+> `msgmerge`, add the wx strings with `msgcat --use-first`, and compile with `msgfmt -c --check-format`. A system language
+> without a catalog (for example `LANG=de_DE.UTF-8`) falls back to English. The notes below are the upstream guide.
+
 The purpose of this guide is to describe how to contribute to the PrusaSlicer translations. We use GNUgettext for extracting string resources from the project and PoEdit for editing translations.
 
 Those can be downloaded here: 

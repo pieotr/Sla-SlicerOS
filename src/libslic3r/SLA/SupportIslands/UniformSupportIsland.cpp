@@ -1,6 +1,11 @@
 #include "UniformSupportIsland.hpp"
+#include "IslandCellIntersections.hpp"
+#include "SupportAlignmentTransaction.hpp"
 
 #include <cmath>
+#include <chrono>
+#include <cstdlib>
+#include <cstring>
 #include <optional>
 #include <vector>
 #include <cassert>
@@ -43,6 +48,10 @@
 //#define SLA_SAMPLE_ISLAND_UTILS_DEBUG_PARTS_PATH "C:/data/temp/parts/part<<COUNTER>>.svg"
 
 namespace {
+void check_support_cancel(const std::function<void()> &cancel) {
+    if (cancel) cancel();
+}
+
 using namespace Slic3r;
 using namespace Slic3r::sla;
 
@@ -211,7 +220,8 @@ SVG draw_island_graph(const std::string &path, const ExPolygon &island,
 /// <param name="config"> Sampling configuration
 /// Maximal distance between neighbor points +
 /// Term criteria for align: Minimal sample move and Maximal count of iteration</param>
-void align_samples(SupportIslandPoints &samples, const ExPolygon &island, const SampleConfig &config);
+void align_samples(SupportIslandPoints &samples, const ExPolygon &island, const SampleConfig &config,
+                   const std::function<void()> &throw_on_cancel);
 
 void draw(SVG &svg, const SupportIslandPoints &supportIslandPoints, coord_t radius, bool write_type = true);
 
@@ -346,46 +356,6 @@ bool is_points_in_distance(const Point & p,
 }
 #endif // NDEBUG
 
-void move_duplicit_positions(SupportIslandPoints &supports, const Points &prev_position) {
-    // remove duplicit points when exist
-    Points aligned = to_points(supports);
-    std::vector<size_t> sorted(aligned.size());
-    std::iota(sorted.begin(), sorted.end(), 0);
-    auto cmp_index = [&aligned](size_t a_index, size_t b_index) {
-        // sort by x and than by y
-        const Point &a = aligned[a_index];
-        const Point &b = aligned[b_index];
-        return a.x() < b.x() || (a.x() == b.x() && a.y() < b.y());
-    };
-    std::sort(sorted.begin(), sorted.end(), cmp_index);
-
-    auto get_duplicit_index = [](const std::vector<size_t> &sorted, const Points& aligned) {
-        const Point *prev_p = &aligned[sorted.front()];
-        for (size_t i = 1; i < sorted.size(); ++i){
-            if (const Point &p = aligned[sorted[i]]; *prev_p == p) {
-                return sorted[i];
-            } else {
-                prev_p = &p;
-            }
-        }
-        return sorted.size();
-    };
-
-    do {
-        size_t duplicit_index = get_duplicit_index(sorted, aligned);
-        if (duplicit_index >= sorted.size())
-            return; // without duplicit points
-
-        // divide last move to half
-        Point new_pos = prev_position[duplicit_index] / 2 + aligned[duplicit_index] / 2;
-        coord_t move_distance = supports[duplicit_index]->move(new_pos);
-        assert(move_distance > 0); // It must move
-        aligned[duplicit_index] = supports[duplicit_index]->point; // update aligned position
-        // IMPROVE: Resort duplicit index use std::rotate 
-        std::sort(sorted.begin(), sorted.end(), cmp_index);
-    } while (true); // end when no duplicit index 
-}
-
 /// <summary>
 /// once align
 /// </summary>
@@ -395,21 +365,113 @@ void move_duplicit_positions(SupportIslandPoints &supports, const Points &prev_p
 /// Maximal distance between neighbor points +
 /// Term criteria for align: Minimal sample move and Maximal count of iteration</param>
 /// <returns>Maximal distance of move during aligning.</returns>
-coord_t align_once(
+// Opt-in wall-clock diagnostics: no clock reads or per-cell instrumentation
+// in the default path, and no geometry, ordering or FP-environment changes.
+struct AlignmentProfile {
+    using Clock = std::chrono::steady_clock;
+    size_t iterations = 0;
+    size_t generated_cells = 0;
+    size_t movable_cells = 0;
+    size_t active_clip_cells = 0;
+    std::chrono::nanoseconds points_and_cgal{0};
+    std::chrono::nanoseconds mask_and_clip{0};
+    std::chrono::nanoseconds ordered_movement{0};
+    std::chrono::nanoseconds duplicate_resolution{0};
+    uint64_t clip_subject_setup_ns = 0;
+    uint64_t clip_island_setup_ns = 0;
+    uint64_t clip_execute_ns = 0;
+    uint64_t clip_destruction_ns = 0;
+    uint64_t clip_conversion_ns = 0;
+    uint64_t maximum_cell_ns = 0;
+    size_t profiled_cells = 0;
+    size_t subject_vertices = 0;
+    size_t island_vertices = 0;
+    size_t contour_vertices = 0;
+    size_t hole_vertices = 0;
+    size_t disjoint_holes = 0;
+    size_t disjoint_hole_vertices = 0;
+};
+
+bool alignment_profile_enabled()
+{
+    static const bool enabled = [] {
+        const char *value = std::getenv("SLA_PROFILE_ISLAND_ALIGNMENT");
+        return value != nullptr && std::strcmp(value, "1") == 0;
+    }();
+    return enabled;
+}
+
+bool alignment_clip_setup_profile_enabled()
+{
+    static const bool enabled=[] {
+        const char *value=std::getenv("SLA_PROFILE_ISLAND_CLIP_SETUP");
+        return value != nullptr && std::strcmp(value,"1")==0;
+    }();
+    return enabled;
+}
+
+std::optional<coord_t> align_once(
     SupportIslandPoints &supports, 
     const ExPolygon &island, 
-    const SampleConfig &config) 
-{  
+    const SampleConfig &config, const std::function<void()> &throw_on_cancel,
+    AlignmentProfile *profile)
+{
+    check_support_cancel(throw_on_cancel);
+    auto phase_start = profile ? AlignmentProfile::Clock::now() : AlignmentProfile::Clock::time_point{};
     // IMPROVE: Do not calculate voronoi diagram out of island(only triangulate island)
     // https://stackoverflow.com/questions/23823345/how-to-construct-a-voronoi-diagram-inside-a-polygon 
     // IMPROVE1: add accessor to point coordinate do not copy points
     // IMPROVE2: add filter for create cell polygon only for moveable samples
     Points points = to_points(supports);
+    SupportAlignmentTransaction alignment(supports);
     coord_t max_distance = std::max(std::max(
         config.thin_max_distance, 
         config.thick_inner_max_distance),
         config.thick_outline_max_distance); 
     Polygons cell_polygons = create_voronoi_cells_cgal(points, max_distance);
+    if (profile) {
+        const auto now = AlignmentProfile::Clock::now();
+        profile->points_and_cgal += std::chrono::duration_cast<std::chrono::nanoseconds>(now - phase_start);
+        profile->generated_cells += cell_polygons.size();
+        phase_start = now;
+    }
+    check_support_cancel(throw_on_cancel);
+    std::vector<uint8_t> active(supports.size());
+    for (size_t i = 0; i < supports.size(); ++i) {
+        active[i] = supports[i]->can_move();
+        if (profile && active[i]) {
+            ++profile->movable_cells;
+            if (i < cell_polygons.size() && cell_polygons[i].points.size() >= 3) ++profile->active_clip_cells;
+        }
+    }
+    // Clip from the same immutable point/cell snapshot. Movement below stays
+    // sequential, including restrictions and duplicate-position resolution.
+    std::vector<IslandCellClipProfile> clip_profile;
+    const bool detail=profile && alignment_clip_setup_profile_enabled();
+    const auto cell_intersections = intersect_island_cells(cell_polygons, island, active, throw_on_cancel,
+        detail ? &clip_profile : nullptr);
+    if(detail)for(const auto &cell:clip_profile) {
+        if(!cell.completed)continue;
+        ++profile->profiled_cells;
+        profile->subject_vertices+=cell.subject_vertices;
+        profile->island_vertices+=cell.island_vertices;
+        profile->contour_vertices+=cell.contour_vertices;
+        profile->hole_vertices+=cell.hole_vertices;
+        profile->disjoint_holes+=cell.disjoint_holes;
+        profile->disjoint_hole_vertices+=cell.disjoint_hole_vertices;
+        profile->clip_subject_setup_ns+=cell.subject_setup_ns;
+        profile->clip_island_setup_ns+=cell.island_setup_ns;
+        profile->clip_execute_ns+=cell.execute_ns;
+        profile->clip_destruction_ns+=cell.destruction_ns;
+        profile->clip_conversion_ns+=cell.conversion_ns;
+        profile->maximum_cell_ns=std::max(profile->maximum_cell_ns,cell.subject_setup_ns+
+            cell.island_setup_ns+cell.execute_ns+cell.destruction_ns+cell.conversion_ns);
+    }
+    if (profile) {
+        const auto now = AlignmentProfile::Clock::now();
+        profile->mask_and_clip += std::chrono::duration_cast<std::chrono::nanoseconds>(now - phase_start);
+        phase_start = now;
+    }
     
 #ifdef SLA_SAMPLE_ISLAND_UTILS_STORE_ALIGN_ONCE_TO_SVG_PATH
     std::string color_of_island = "#FF8080";             // LightRed. Should not be visible - cell color should overlap
@@ -429,6 +491,7 @@ coord_t align_once(
     // Maximal move during align each loop of align it should decrease
     coord_t max_move = 0;
     for (size_t i = 0; i < supports.size(); i++) {
+        if ((i%32)==0) check_support_cancel(throw_on_cancel);
         const Polygon &cell_polygon = cell_polygons[i];
         SupportIslandPointPtr &support = supports[i];
 
@@ -448,7 +511,7 @@ coord_t align_once(
             continue; // do not align point with invalid cell
 
         // IMPROVE: add intersection polygon with expolygon
-        Polygons intersections = intersection(cell_polygon, island);
+        const Polygons &intersections = cell_intersections[i];
         const Polygon *island_cell = nullptr;
         if (intersections.size() == 1) {
             island_cell = &intersections.front();
@@ -508,12 +571,24 @@ coord_t align_once(
 #endif // SLA_SAMPLE_ISLAND_UTILS_STORE_ALIGN_ONCE_TO_SVG_PATH
     }
 
-    move_duplicit_positions(supports, points);
+    if (profile) {
+        const auto now = AlignmentProfile::Clock::now();
+        profile->ordered_movement += std::chrono::duration_cast<std::chrono::nanoseconds>(now - phase_start);
+        phase_start = now;
+    }
+    const bool accepted = alignment.commit(throw_on_cancel);
+    if (profile) {
+        profile->duplicate_resolution += std::chrono::duration_cast<std::chrono::nanoseconds>(AlignmentProfile::Clock::now() - phase_start);
+        ++profile->iterations;
+    }
+    if (!accepted) return std::nullopt;
     return max_move;
 }
 
-void align_samples(SupportIslandPoints &samples, const ExPolygon &island, const SampleConfig & config)
+void align_samples(SupportIslandPoints &samples, const ExPolygon &island, const SampleConfig & config,
+                   const std::function<void()> &throw_on_cancel)
 {
+    check_support_cancel(throw_on_cancel);
     if (samples.size() == 1)
         return; // Do not align one support
 
@@ -531,11 +606,43 @@ void align_samples(SupportIslandPoints &samples, const ExPolygon &island, const 
     if (!exist_moveable) 
         return; // no support to align
 
+    std::optional<AlignmentProfile> profile;
+    if (alignment_profile_enabled()) profile.emplace();
     size_t count_iteration = config.count_iteration; // copy
     coord_t max_move        = 0;
     while (--count_iteration > 1) {
-        max_move = align_once(samples, island, config);        
+        check_support_cancel(throw_on_cancel);
+        const auto movement = align_once(samples, island, config, throw_on_cancel, profile ? &*profile : nullptr);
+        if (!movement) break; // A rejected step has restored the last valid contacts.
+        max_move = *movement;
         if (max_move < config.minimal_move) break;
+    }
+
+    if (profile) {
+        BOOST_LOG_TRIVIAL(info) << "SLA island alignment profile: supports=" << samples.size()
+            << " iterations=" << profile->iterations
+            << " generated_cells=" << profile->generated_cells
+            << " movable_cells=" << profile->movable_cells
+            << " active_clip_cells=" << profile->active_clip_cells
+            << " points_cgal_ns=" << profile->points_and_cgal.count()
+            << " mask_clip_ns=" << profile->mask_and_clip.count()
+            << " ordered_movement_ns=" << profile->ordered_movement.count()
+            << " duplicates_ns=" << profile->duplicate_resolution.count()
+            << " kernel=" << (island_cell_bbox_clip_enabled() ? "bbox" : "full");
+        if(alignment_clip_setup_profile_enabled())
+            BOOST_LOG_TRIVIAL(info) << "SLA island clip setup profile: cells=" << profile->profiled_cells
+                << " subject_vertices=" << profile->subject_vertices
+                << " island_vertices=" << profile->island_vertices
+                << " contour_vertices=" << profile->contour_vertices
+                << " hole_vertices=" << profile->hole_vertices
+                << " disjoint_holes=" << profile->disjoint_holes
+                << " disjoint_hole_vertices=" << profile->disjoint_hole_vertices
+                << " subject_setup_task_ns_sum=" << profile->clip_subject_setup_ns
+                << " island_setup_task_ns_sum=" << profile->clip_island_setup_ns
+                << " execute_task_ns_sum=" << profile->clip_execute_ns
+                << " destruction_task_ns_sum=" << profile->clip_destruction_ns
+                << " conversion_task_ns_sum=" << profile->clip_conversion_ns
+                << " maximum_cell_ns=" << profile->maximum_cell_ns;
     }
 
 #ifdef SLA_SAMPLE_ISLAND_UTILS_STORE_ALIGNED_TO_SVG_PATH
@@ -553,11 +660,13 @@ void align_samples(SupportIslandPoints &samples, const ExPolygon &island, const 
 }
 
 void align_samples_with_permanent(
-    SupportIslandPoints &samples, const ExPolygon &island, const Points& permanent, const SampleConfig &config)
+    SupportIslandPoints &samples, const ExPolygon &island, const Points& permanent, const SampleConfig &config,
+    const std::function<void()> &throw_on_cancel)
 {
+    check_support_cancel(throw_on_cancel);
     assert(!permanent.empty());
     if (permanent.empty())
-        return align_samples(samples, island, config);
+        return align_samples(samples, island, config, throw_on_cancel);
     
     // detect whether add adding support points 
     size_t tolerance = 1 + size_t(permanent.size() * 0.1); // 1 + 10% of permanent points
@@ -574,6 +683,7 @@ void align_samples_with_permanent(
         return points[idx][dim]; };
     KDTreeIndirect<2, coord_t, decltype(point_accessor)> tree(point_accessor, samples.size());
     for (size_t i = 0; i < permanent.size(); ++i) {
+        if ((i%32)==0) check_support_cancel(throw_on_cancel);
         std::array<size_t, 5> closests = find_closest_points<5>(tree, permanent[i]);        
         bool found_closest = false;
         for (size_t idx : closests) {
@@ -604,7 +714,7 @@ void align_samples_with_permanent(
         samples.push_back(
             std::make_unique<SupportIslandNoMovePoint>(p, SupportIslandPoint::Type::permanent));
     
-    align_samples(samples, island, config);
+    align_samples(samples, island, config, throw_on_cancel);
 
     // remove permanent samples inserted for aligning
     samples.erase(std::remove_if(samples.begin(), samples.end(), [](const SupportIslandPointPtr &sample) {
@@ -2640,8 +2750,19 @@ void draw(SVG &svg, const SupportIslandPoints &supportIslandPoints, coord_t radi
 //////////////////////////////
 namespace Slic3r::sla {
 SupportIslandPoints uniform_support_island(
-    const ExPolygon &island, const Points& permanent, const SampleConfig &config){
+    const ExPolygon &island, const Points& permanent, const SampleConfig &config,
+    const std::function<void()> &throw_on_cancel){
+    check_support_cancel(throw_on_cancel);
+    auto phase_started = std::chrono::steady_clock::now();
+    const auto log_phase = [&](const char *name) {
+        check_support_cancel(throw_on_cancel);
+        const auto now = std::chrono::steady_clock::now();
+        BOOST_LOG_TRIVIAL(info) << "Support island: " << name << " "
+            << std::chrono::duration<double>(now-phase_started).count() << " s";
+        phase_started = now;
+    };
     ExPolygon simplified_island = get_simplified(island, config);
+    log_phase("simplification");
 #ifdef OPTION_TO_STORE_ISLAND
     std::string path;
     if (!config.path.empty()) {
@@ -2671,6 +2792,7 @@ SupportIslandPoints uniform_support_island(
     Geometry::VoronoiDiagram vd;
     Lines lines = to_lines(simplified_island);
     vd.construct_voronoi(lines.begin(), lines.end());
+    log_phase("Voronoi");
     assert(vd.get_issue_type() == Geometry::VoronoiDiagram::IssueType::NO_ISSUE_DETECTED);
     if (vd.get_issue_type() != Geometry::VoronoiDiagram::IssueType::NO_ISSUE_DETECTED) {
         // error state suppport island by one point
@@ -2689,12 +2811,14 @@ SupportIslandPoints uniform_support_island(
     }
     Voronoi::annotate_inside_outside(vd, lines);
     VoronoiGraph skeleton = VoronoiGraphUtils::create_skeleton(vd, lines);
+    log_phase("skeleton");
     VoronoiGraph::ExPath longest_path;
 
     const VoronoiGraph::Node *start_node = VoronoiGraphUtils::getFirstContourNode(skeleton);
     // every island has to have a point on contour
     assert(start_node != nullptr);
     longest_path = VoronoiGraphUtils::create_longest_path(start_node);
+    log_phase("longest path");
 
 #ifdef OPTION_TO_STORE_ISLAND // add voronoi diagram with longest path into image
     if (!path.empty()) draw_island_graph(path, island, simplified_island, skeleton, longest_path, lines, config);
@@ -2734,10 +2858,12 @@ SupportIslandPoints uniform_support_island(
     // 4) Divide island on Thin & Thick part and support by parts
     SupportIslandPoints supports;
     auto [thin, thick] = separate_thin_thick(longest_path, lines, config);
+    log_phase("thin/thick separation");
     assert(!thin.empty() || !thick.empty());
     for (const ThinPart &part : thin) create_supports_for_thin_part(part, supports, config);
     for (const ThickPart &part : thick) create_supports_for_thick_part(part, supports, lines, config);
 
+    log_phase("sampling");
     // At least 2 support points are neccessary after thin/thick sampling heuristic
     if (supports.size() <= 2){
         SupportIslandInnerPoint::Type type = SupportIslandInnerPoint::Type::two_points_backup;
@@ -2761,9 +2887,10 @@ SupportIslandPoints uniform_support_island(
 
     // allign samples
     if (permanent.empty())
-        align_samples(supports, island, config);
+        align_samples(supports, island, config, throw_on_cancel);
     else 
-        align_samples_with_permanent(supports, island, permanent, config);
+        align_samples_with_permanent(supports, island, permanent, config, throw_on_cancel);
+    log_phase("alignment");
 
 #ifdef OPTION_TO_STORE_ISLAND
     if (!path.empty()) {
@@ -2785,10 +2912,13 @@ SupportIslandPoints uniform_support_island(
 
 // Follow implementation "create_supports_for_thick_part("
 SupportIslandPoints uniform_support_peninsula(
-    const Peninsula &peninsula, const Points& permanent, const SampleConfig &config){
+    const Peninsula &peninsula, const Points& permanent, const SampleConfig &config,
+    const std::function<void()> &throw_on_cancel){
+    check_support_cancel(throw_on_cancel);
     // create_peninsula_field
     float delta = static_cast<float>(config.minimal_distance_from_outline);
     Field field = create_field(peninsula.unsuported_area, delta, peninsula.is_outline);
+    check_support_cancel(throw_on_cancel);
     assert(!field.inner.empty());
     if (field.inner.empty())
         return {}; // no inner part
@@ -2810,6 +2940,7 @@ SupportIslandPoints uniform_support_peninsula(
 #endif // SLA_SAMPLE_ISLAND_UTILS_STORE_PENINSULA_FIELD_TO_SVG_PATH
 
     SupportIslandPoints results = sample_outline(field, config);
+    check_support_cancel(throw_on_cancel);
     // Inner must survive after sample field for aligning supports(move along outline)
     auto inner = std::make_shared<ExPolygons>(field.inner);    
     Points inner_points = sample_expolygons_with_centering(*inner, config.thick_inner_max_distance);    
@@ -2819,9 +2950,10 @@ SupportIslandPoints uniform_support_peninsula(
     
     // allign samples
     if (permanent.empty())
-        align_samples(results, peninsula.unsuported_area, config);
+        align_samples(results, peninsula.unsuported_area, config, throw_on_cancel);
     else
-        align_samples_with_permanent(results, peninsula.unsuported_area, permanent, config);
+        align_samples_with_permanent(results, peninsula.unsuported_area, permanent, config, throw_on_cancel);
+    check_support_cancel(throw_on_cancel);
     return results;
 }
 

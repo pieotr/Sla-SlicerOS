@@ -4,11 +4,23 @@
 ///|/
 
 #include "SupportPointGenerator.hpp"
+#include "SupportOverhangSafetyOffset.hpp"
+#include "PeninsulaMinimumOffsetReuse.hpp"
+#include "SupportLinkIntersections.hpp"
+#include <chrono>
+#include <array>
+#include <cstdint>
+#include <cstdlib>
+#include <string_view>
+#include <functional>
+#include <map>
+#include <boost/log/trivial.hpp>
 
 #include "libslic3r/Execution/ExecutionTBB.hpp" // parallel preparation of data for sampling
 #include "libslic3r/Execution/Execution.hpp"
 #include "libslic3r/KDTreeIndirect.hpp"
 #include "libslic3r/ClipperUtils.hpp"
+#include "libslic3r/ClipperOffsetProfile.hpp"
 #include "libslic3r/AABBTreeLines.hpp" // closest point to layer part
 #include "libslic3r/AABBMesh.hpp" // move_on_mesh_surface Should be in another file
 // SupportIslands
@@ -294,8 +306,9 @@ void support_part_overhangs(
 /// <param name="permanent">z coordinate of part</param>
 /// <param name="cfg"></param>
 void support_island(const LayerPart &part, NearPoints& near_points, float part_z,
-    const Points &permanent, const SupportPointGeneratorConfig &cfg) {
-    SupportIslandPoints samples = uniform_support_island(*part.shape, permanent, cfg.island_configuration);
+    const Points &permanent, const SupportPointGeneratorConfig &cfg, const ThrowOnCancel &throw_on_cancel) {
+    throw_on_cancel();
+    SupportIslandPoints samples = uniform_support_island(*part.shape, permanent, cfg.island_configuration, throw_on_cancel);
     for (const SupportIslandPointPtr &sample : samples)
         near_points.add(LayerSupportPoint{
             SupportPoint{
@@ -314,10 +327,11 @@ void support_island(const LayerPart &part, NearPoints& near_points, float part_z
 }
 
 void support_peninsulas(const Peninsulas& peninsulas, NearPoints& near_points, float part_z,
-    const Points &permanent, const SupportPointGeneratorConfig &cfg) {
+    const Points &permanent, const SupportPointGeneratorConfig &cfg, const ThrowOnCancel &throw_on_cancel) {
     for (const Peninsula& peninsula: peninsulas) {
+        throw_on_cancel();
         SupportIslandPoints peninsula_supports =
-            uniform_support_peninsula(peninsula, permanent, cfg.island_configuration);
+            uniform_support_peninsula(peninsula, permanent, cfg.island_configuration, throw_on_cancel);
         for (const SupportIslandPointPtr &support : peninsula_supports)
             near_points.add(LayerSupportPoint{
                 SupportPoint{
@@ -406,28 +420,35 @@ bool exist_same_points(const ExPolygon &shape, const Points& prev_points) {
 }
 #endif // NDEBUG
 
-Points sample_overhangs(const LayerPart& part, double dist2) {
+Points sample_overhangs(const LayerPart& part, double dist2, const ThrowOnCancel &throw_on_cancel,
+    const Polygons *prepared_clip=nullptr) {
+    throw_on_cancel();
     const ExPolygon &shape = *part.shape;
 
     // Collect previous expolygons by links collected in loop before    
     ExPolygons prev_shapes = get_shapes(part.prev_parts);
     assert(!prev_shapes.empty());
-    ExPolygons overhangs = diff_ex(shape, prev_shapes, ApplySafetyOffset::Yes);
+    ExPolygons overhangs = prepared_clip ? diff_ex(shape, *prepared_clip, ApplySafetyOffset::No) :
+        diff_ex(shape, prev_shapes, ApplySafetyOffset::Yes);
+    throw_on_cancel();
     if (overhangs.empty()) // above part is smaller in whole contour
         return {};
     
     Points prev_points = to_points(prev_shapes);
     std::sort(prev_points.begin(), prev_points.end());
+    throw_on_cancel();
 
     // TODO: solve case when shape and prev points has same point
     assert(!exist_same_points(shape, prev_points));
         
-    auto sample_overhang = [&prev_points, dist2](const Polygon &polygon, Points &samples) {
+    auto sample_overhang = [&prev_points, dist2, &throw_on_cancel](const Polygon &polygon, Points &samples) {
         const Points &pts = polygon.points;
         // first point which is not part of shape
         Points::const_iterator first_bad = pts.end();
         Points::const_iterator start_it = pts.end();
         for (auto it = pts.begin(); it != pts.end(); ++it) {
+            if (size_t(it-pts.begin()) % 256 == 0)
+                throw_on_cancel();
             const Point &p = *it;
             if (contain_point(p, prev_points)) {
                 if (first_bad == pts.end()) {
@@ -564,21 +585,120 @@ void remove_supports_out_of_part(NearPoints &near_points, const LayerPart &part,
 /// <param name="part">IN/OUT island part containing peninsulas</param>
 /// <param name="min_peninsula_width">minimal width of overhang to become peninsula</param>
 /// <param name="self_supported_width">supported distance from mainland</param>
-void create_peninsulas(LayerPart &part, const PrepareSupportConfig &config) {
+// Diagnostic slots belong to independent jobs; reduce only after the TBB barrier.
+struct PeninsulaProfile {
+    std::array<int64_t, 9> elapsed_ns{};
+    uint64_t previous_links = 0, previous_vertices = 0, current_vertices = 0;
+    uint64_t below_lines = 0, candidates = 0, retained = 0;
+    uint64_t annotation_queries = 0, candidate_edges = 0;
+    bool covered_return = false, tiny_return = false, completed = false;
+    // Completed offset work is distinct from the existing interval, which may
+    // also include another job's call_once computation and waiting.
+    bool minimum_requested = false, minimum_slot = false, minimum_computed = false;
+    int64_t minimum_compute_ns = 0;
+    ClipperOffsetProfile minimum_kernel;
+    uint64_t minimum_output_polygons = 0, minimum_output_vertices = 0;
+};
+
+void create_peninsulas(LayerPart &part, const PrepareSupportConfig &config,
+    const ThrowOnCancel &throw_on_cancel, PeninsulaProfile *profile = nullptr,
+    detail::PeninsulaMinimumOffsetSlot *minimum_offset_slot = nullptr) {
+    using Clock = std::chrono::steady_clock;
+    Clock::time_point phase_start{};
+    if (profile != nullptr)
+        phase_start = Clock::now();
+    const auto checkpoint = [profile, &phase_start](size_t phase) {
+        if (profile != nullptr) {
+            const auto now = Clock::now();
+            profile->elapsed_ns[phase] += std::chrono::duration_cast<
+                std::chrono::nanoseconds>(now - phase_start).count();
+            phase_start = now;
+        }
+    };
+
+    throw_on_cancel();
     assert(config.peninsula_min_width > config.peninsula_self_supported_width);
-    const ExPolygons below_shapes = get_shapes(part.prev_parts);
-    const ExPolygons below_expanded = offset_ex(below_shapes, config.peninsula_min_width, ClipperLib::jtSquare);
     const ExPolygon &part_shape = *part.shape;
+    const ExPolygons below_shapes = get_shapes(part.prev_parts);
+    checkpoint(0);
+    if (profile != nullptr) {
+        profile->previous_links = part.prev_parts.size();
+        const auto vertices = [](const ExPolygon &shape) {
+            uint64_t count = shape.contour.points.size();
+            for (const Polygon &hole : shape.holes)
+                count += hole.points.size();
+            return count;
+        };
+        profile->current_vertices = vertices(part_shape);
+        for (const ExPolygon &shape : below_shapes)
+            profile->previous_vertices += vertices(shape);
+        // Exclude diagnostic counting from the following geometry bucket.
+        phase_start = Clock::now();
+    }
+    // A covered part has no overhang at all. A nonnegative expansion cannot
+    // expose any new region, so avoid two costly offsets and edge matching.
+    // Use polygon difference, including holes and the union of all linked
+    // parts; bounding boxes or matching contour points alone are insufficient.
+    if (config.peninsula_min_width >= 0 && config.peninsula_self_supported_width >= 0) {
+        const bool covered = diff_ex(part_shape, below_shapes).empty();
+        checkpoint(1);
+        throw_on_cancel();
+        if (covered) {
+            if (profile != nullptr)
+                profile->covered_return = profile->completed = true;
+            return;
+        }
+    }
+    ExPolygons local_minimum_offset;
+    if (profile != nullptr) {
+        profile->minimum_requested = true;
+        profile->minimum_slot = minimum_offset_slot != nullptr;
+    }
+    const auto compute_minimum_offset = [&] {
+        if (profile == nullptr)
+            return offset_ex(below_shapes, config.peninsula_min_width, ClipperLib::jtSquare);
+        const auto started = Clock::now();
+        ExPolygons result = offset_ex_profiled(below_shapes, config.peninsula_min_width,
+            profile->minimum_kernel, ClipperLib::jtSquare);
+        profile->minimum_compute_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
+            Clock::now() - started).count();
+        profile->minimum_computed = true;
+        profile->minimum_output_polygons = result.size();
+        // Count sizes, not point values, after the measured kernel. This does
+        // not retain output geometry or introduce a second result cache.
+        for (const ExPolygon &shape : result) {
+            profile->minimum_output_vertices += shape.contour.points.size();
+            for (const Polygon &hole : shape.holes)
+                profile->minimum_output_vertices += hole.points.size();
+        }
+        return result;
+    };
+    // Repeated immutable inputs share only this pure offset, after each job's
+    // covered guard. Downstream differences/annotations remain independent.
+    const ExPolygons &below_expanded = minimum_offset_slot != nullptr
+        ? minimum_offset_slot->get(compute_minimum_offset, throw_on_cancel)
+        : (local_minimum_offset = compute_minimum_offset());
+    checkpoint(2);
+    throw_on_cancel();
     ExPolygons over_peninsula = diff_ex(part_shape, below_expanded);
-    if (over_peninsula.empty())
+    checkpoint(3);
+    throw_on_cancel();
+    if (over_peninsula.empty()) {
+        if (profile != nullptr)
+            profile->tiny_return = profile->completed = true;
         return; // only tiny overhangs
+    }
 
     ExPolygons below_self_supported = offset_ex(below_shapes, config.peninsula_self_supported_width, ClipperLib::jtSquare);
+    checkpoint(4);
+    throw_on_cancel();
     // exist weird edge case, where expand function return empty result
     assert(below_self_supported.empty());
 
     // exist layer part over peninsula limit
     ExPolygons peninsulas_shape = diff_ex(part_shape, below_self_supported);
+    checkpoint(5);
+    throw_on_cancel();
 
     // IMPROVE: Anotate source of diff by ClipperLib_Z
     Lines below_lines = to_lines(below_self_supported);
@@ -597,12 +717,20 @@ void create_peninsulas(LayerPart &part, const PrepareSupportConfig &config) {
     auto is_lower = [&belowe_line_angle](size_t i1, size_t i2) {
         return belowe_line_angle[i1] < belowe_line_angle[i2]; };
     std::sort(idx.begin(), idx.end(), is_lower);
+    checkpoint(6);
+    if (profile != nullptr) {
+        profile->below_lines = below_lines.size();
+        profile->candidates = peninsulas_shape.size();
+    }
+    throw_on_cancel();
 
     // Check, wheather line exist in set of belowe lines
     // True .. line exist in previous layer (or partialy overlap previous line), connection to land
     // False .. line is made by border of current layer part(peninsula coast)
-    auto exist_belowe = [&get_angle, &idx, &below_lines, &belowe_line_angle]
+    auto exist_belowe = [&get_angle, &idx, &below_lines, &belowe_line_angle, profile]
     (const Line &l) {
+        if (profile != nullptr)
+            ++profile->annotation_queries;
         // It is edge case of expand
         if (below_lines.empty())
             return false;
@@ -643,6 +771,8 @@ void create_peninsulas(LayerPart &part, const PrepareSupportConfig &config) {
             }
         }
         while (is_over || belowe_line_angle[*it_idx] < hi_angle) {
+            if (profile != nullptr)
+                ++profile->candidate_edges;
             const Line &l2 = below_lines[*it_idx];
             coord_t l2_low = l2.a[mayorit_idx];
             coord_t l2_high = l2.b[mayorit_idx];
@@ -667,18 +797,32 @@ void create_peninsulas(LayerPart &part, const PrepareSupportConfig &config) {
 
     // anotate source of peninsula: overhang VS previous layer  
     for (const ExPolygon &peninsula : peninsulas_shape) {
+        throw_on_cancel();
         // Check that peninsula is wide enough(min_peninsula_width)
-        if (intersection_ex(ExPolygons{peninsula}, over_peninsula).empty())
+        // Keep the exact original intersection and early-return ordering.
+        if (profile != nullptr)
+            phase_start = Clock::now();
+        const bool narrow = intersection_ex(ExPolygons{peninsula}, over_peninsula).empty();
+        checkpoint(7);
+        if (narrow)
             continue; 
 
         // need to know shape and edges of peninsula
         Lines lines = to_lines(peninsula);
         std::vector<bool> is_outline(lines.size());
         // when line overlap with belowe lines it is not outline
-        for (size_t i = 0; i < lines.size(); i++) 
+        for (size_t i = 0; i < lines.size(); i++) {
+            if (i % 256 == 0)
+                throw_on_cancel();
             is_outline[i] = !exist_belowe(lines[i]);
+        }
         part.peninsulas.push_back(Peninsula{peninsula, is_outline});
+        checkpoint(8);
+        if (profile != nullptr)
+            ++profile->retained;
     }
+    if (profile != nullptr)
+        profile->completed = true;
 }
 
 struct LayerPartIndex {
@@ -973,6 +1117,15 @@ SupportPointGeneratorData Slic3r::sla::prepare_generator_data(
     if (slices.empty() || slices.size() != heights.size())
         return SupportPointGeneratorData{};
 
+    throw_on_cancel();
+    auto phase_started = std::chrono::steady_clock::now();
+    const auto log_phase = [&](const char *name) {
+        throw_on_cancel();
+        const auto now = std::chrono::steady_clock::now();
+        BOOST_LOG_TRIVIAL(info) << "Support preparation: " << name << " "
+            << std::chrono::duration<double>(now-phase_started).count() << " s";
+        phase_started = now;
+    };
     // Move input into result
     SupportPointGeneratorData result;
     result.slices = std::move(slices);
@@ -983,10 +1136,7 @@ SupportPointGeneratorData Slic3r::sla::prepare_generator_data(
     // Generate Extents and SampleLayers
     execution::for_each(ex_tbb, size_t(0), result.slices.size(),
     [&result, &heights, throw_on_cancel](size_t layer_id) {
-        if ((layer_id % 128) == 0)
-            // Don't call the following function too often as it flushes
-            // CPU write caches due to synchronization primitves.
-            throw_on_cancel();
+        throw_on_cancel();
 
         Layer &layer = result.layers[layer_id];
         layer.print_z = heights[layer_id]; // copy
@@ -1001,47 +1151,110 @@ SupportPointGeneratorData Slic3r::sla::prepare_generator_data(
         }        
     }, 4 /*gransize*/);
 
-    // Link parts by intersections
+    log_phase("bounds");
+    // Individual layers can contain very different amounts of geometry. Keep
+    // expensive clipping jobs splittable down to one layer instead of leaving
+    // a few eight-layer batches on the critical path. Each job writes only its
+    // own derived buffers (and the adjacent layer's distinct next_parts field).
+    // Bounding-box clipping is the production default. Explicit 0 retains
+    // the full kernel for diagnostics and comparisons. Eligibility counters
+    // describe that full kernel only; never label its timings as bbox work.
+    const char *link_profile_env = std::getenv("SLA_PROFILE_SUPPORT_LINK_REDUCTION");
+    const bool link_profile_enabled = link_profile_env && std::string_view(link_profile_env) == "1";
+    const char *link_bbox_env = std::getenv("SLA_EXPERIMENT_SUPPORT_LINK_BBOX");
+    const bool link_bbox_enabled = link_bbox_env == nullptr || std::string_view(link_bbox_env) != "0";
+    if (link_profile_enabled && link_bbox_enabled)
+        throw RuntimeError("Support-link bbox experiment cannot be combined with full-kernel reduction profiling");
+
+    // One counter slot belongs to each layer job. Reduction happens only after
+    // the existing TBB barrier, with no atomics in the nested pair loop.
+    std::vector<detail::SupportLinkReductionProfile> link_profiles(
+        link_profile_enabled ? result.layers.size() : 0);
     execution::for_each(ex_tbb, size_t(1), result.slices.size(),
-    [&result, throw_on_cancel](size_t layer_id) {
-        if ((layer_id % 16) == 0)
-            throw_on_cancel();
+    [&result, &link_profiles, link_profile_enabled, link_bbox_enabled, throw_on_cancel](size_t layer_id) {
+        throw_on_cancel();
 
         LayerParts &parts_above = result.layers[layer_id].parts;
-        LayerParts &parts_below = result.layers[layer_id-1].parts;
+        LayerParts &parts_below = result.layers[layer_id - 1].parts;
+        auto *profile = link_profile_enabled ? &link_profiles[layer_id] : nullptr;
         for (auto it_above = parts_above.begin(); it_above < parts_above.end(); ++it_above) {
             for (auto it_below = parts_below.begin(); it_below < parts_below.end(); ++it_below) {
-                // Improve: do some sort of parts + skip some of them
-                if (!it_above->shape_extent.overlap(it_below->shape_extent))
-                    continue; // no bounding box overlap
+                throw_on_cancel();
+                if (profile)
+                    ++profile->pairs;
+                // Keep the closed bbox rejection and cancellation positions.
+                if (!it_above->shape_extent.overlap(it_below->shape_extent)) {
+                    if (profile)
+                        ++profile->bbox_rejected;
+                    continue;
+                }
 
-                // Improve: test could be done faster way
-                Polygons polys = intersection(*it_above->shape, *it_below->shape);
+                const auto clip_started = profile ? std::chrono::steady_clock::now() :
+                                                    std::chrono::steady_clock::time_point{};
+                Polygons polys = link_bbox_enabled ?
+                    detail::intersect_support_link_bbox(*it_above->shape, *it_below->shape) :
+                    intersection(*it_above->shape, *it_below->shape);
+                const auto clip_finished = profile ? std::chrono::steady_clock::now() :
+                                                     std::chrono::steady_clock::time_point{};
+                throw_on_cancel();
+                if (profile) {
+                    profile->clip_task_ns_sum += std::chrono::duration_cast<std::chrono::nanoseconds>(
+                        clip_finished - clip_started).count();
+                    profile->observe(*it_above->shape, *it_below->shape, !polys.empty());
+                }
                 if (polys.empty())
-                    continue; // no intersection
+                    continue;
 
-                // TODO: check minimal intersection!
-
+                // Preserve both owner indices and their append order.
                 it_above->prev_parts.push_back(it_below);
                 it_below->next_parts.push_back(it_above);
             }
         }
-    }, 8 /* gransize */);
+    }, 1 /* independently schedulable clipping layer */);
 
+    BOOST_LOG_TRIVIAL(info) << "Support link intersection kernel=" << (link_bbox_enabled ? "bbox" : "full");
+    if (link_profile_enabled) {
+        detail::SupportLinkReductionProfile total;
+        for (const auto &entry : link_profiles)
+            total.append(entry);
+        BOOST_LOG_TRIVIAL(info) << "Support link reduction profile: pairs=" << total.pairs
+            << " bbox_rejected=" << total.bbox_rejected << " full_calls=" << total.full_calls
+            << " nonempty=" << total.nonempty << " subject_vertices=" << total.subject_vertices
+            << " clip_vertices=" << total.clip_vertices
+            << " retained_clip_vertices=" << total.retained_clip_vertices
+            << " reduced_pairs=" << total.reduced_pairs << " fallback_calls=" << total.fallback_calls
+            << " clip_task_ns_sum=" << total.clip_task_ns_sum
+            << " kernel=full diagnostic_reduction_only=1";
+    }
+    log_phase("link intersections");
     // erase unsupportable model parts
     SmallParts small_parts = get_small_parts(result.layers, config.minimal_bounding_sphere_radius);
     if(!small_parts.empty()) erase(small_parts, result.layers);
 
+    log_phase("small parts");
     // Sample overhangs part of island
     double sample_distance_in_um = scale_(config.discretize_overhang_step);
     double sample_distance_in_um2 = sample_distance_in_um * sample_distance_in_um;
     execution::for_each(ex_tbb, size_t(1), result.layers.size(),
     [&result, sample_distance_in_um2, throw_on_cancel](size_t layer_id) {
-        if ((layer_id % 32) == 0)
-            throw_on_cancel();
+        throw_on_cancel();
 
         LayerParts &parts = result.layers[layer_id].parts;
+        struct ClipEntry { size_t uses=0; bool ready=false, disabled=false; Polygons paths; };
+        std::map<detail::PeninsulaPreviousShapes,ClipEntry,detail::PeninsulaPreviousShapesLess> prepared;
+        for (const auto &part:parts) {
+            throw_on_cancel();
+            if (part.prev_parts.empty()) continue;
+            detail::PeninsulaPreviousShapes key;
+            for (const auto &link:part.prev_parts) key.push_back(link->shape);
+            ++prepared[key].uses;
+        }
+        // Per-layer ownership: no cross-worker references or retained print state.
+        // The cap accounts vector capacities, not allocator bookkeeping.
+        constexpr size_t cache_budget=8*1024*1024;
+        size_t cached_bytes=0;
         for (auto it_part = parts.begin(); it_part < parts.end(); ++it_part) {
+            throw_on_cancel();
             if (it_part->prev_parts.empty())
                 continue; // island
 
@@ -1049,32 +1262,288 @@ SupportPointGeneratorData Slic3r::sla::prepare_generator_data(
             // soo one will know source shape of point and do not have to search this
             // information Get inspiration at
             // https://github.com/Prusa-Development/PrusaSlicerPrivate/blob/e00c46f070ec3d6fc325640b0dd10511f8acf5f7/src/libslic3r/PerimeterGenerator.cpp#L399
-            it_part->samples = sample_overhangs(*it_part, sample_distance_in_um2);
+            detail::PeninsulaPreviousShapes key;
+            for (const auto &link:it_part->prev_parts) key.push_back(link->shape);
+            auto &entry=prepared.at(key);
+            Polygons scratch;
+            const Polygons *clip=nullptr;
+            if (entry.uses>1 && !entry.disabled) {
+                if (!entry.ready) {
+                    scratch=prepare_support_safety_offset(get_shapes(it_part->prev_parts));
+                    throw_on_cancel();
+                    size_t bytes=scratch.capacity()*sizeof(Polygon);
+                    for (const auto &polygon:scratch) bytes+=polygon.points.capacity()*sizeof(Point);
+                    if (bytes<=cache_budget-cached_bytes) {
+                        entry.paths=std::move(scratch);entry.ready=true;cached_bytes+=bytes;
+                    } else {
+                        entry.disabled=true;clip=&scratch;
+                    }
+                }
+                if (entry.ready) clip=&entry.paths;
+            }
+            it_part->samples = sample_overhangs(*it_part, sample_distance_in_um2, throw_on_cancel,clip);
         }
-    }, 8 /* gransize */);
+    }, 1 /* independently schedulable clipping layer */);
 
-    // Detect peninsula
-    execution::for_each(ex_tbb, size_t(1), result.layers.size(),
-    [&layers = result.layers, &config, throw_on_cancel](size_t layer_id) {
-        if ((layer_id % 32) == 0)
+    log_phase("overhang sampling");
+    // Schedule independent parts rather than serializing all geometry of a
+    // busy layer inside one task. Parts and links are stable after erase;
+    // each job reads linked shapes and writes only its own peninsula vector.
+    std::vector<LayerPart *> peninsula_jobs;
+    for (size_t layer_id = 1; layer_id < result.layers.size(); ++layer_id) {
+        throw_on_cancel();
+        for (auto &part : result.layers[layer_id].parts) {
             throw_on_cancel();
-        LayerParts &parts = layers[layer_id].parts;
-        for (auto it_part = parts.begin(); it_part < parts.end(); ++it_part) {
-            if (it_part->prev_parts.empty())
-                continue; // island
-            create_peninsulas(*it_part, config);
+            if (!part.prev_parts.empty())
+                peninsula_jobs.push_back(&part);
         }
-    }, 8 /* gransize */);
-
-    // calc extended parts, more info PrepareSupportConfig::removing_delta
-    execution::for_each(ex_tbb, size_t(1), result.layers.size(),
-    [&layers = result.layers, delta = config.removing_delta, throw_on_cancel](size_t layer_id) {
-        if ((layer_id % 16) == 0)
+    }
+    const char *reuse_env = std::getenv("SLA_EXPERIMENT_PENINSULA_OFFSET_REUSE");
+    // Keep an internal opt-out for exact uncached regression/performance runs;
+    // this is phase-local derived geometry, never a persisted print setting.
+    const bool reuse_minimum_offsets = reuse_env == nullptr || std::string_view(reuse_env) != "0";
+    std::unique_ptr<detail::PeninsulaMinimumOffsetReuse> minimum_offset_reuse;
+    if (reuse_minimum_offsets) {
+        std::vector<detail::PeninsulaPreviousShapes> inputs;
+        inputs.reserve(peninsula_jobs.size());
+        for (const LayerPart *part : peninsula_jobs) {
             throw_on_cancel();
-        LayerParts &parts = layers[layer_id].parts;
-        for (auto it_part = parts.begin(); it_part < parts.end(); ++it_part)
-            it_part->extend_shape = offset_ex(*it_part->shape, delta, ClipperLib::jtSquare);
-    }, 8 /* gransize */);
+            auto &key = inputs.emplace_back();
+            key.reserve(part->prev_parts.size());
+            for (const PartLink &link : part->prev_parts)
+                key.push_back(link->shape);
+        }
+        minimum_offset_reuse = std::make_unique<detail::PeninsulaMinimumOffsetReuse>(inputs, throw_on_cancel);
+    }
+    const char *profile_env = std::getenv("SLA_PROFILE_SUPPORT_PENINSULAS");
+    const bool profile_peninsulas = profile_env != nullptr && std::string_view(profile_env) == "1";
+    std::vector<PeninsulaProfile> peninsula_profiles;
+    if (profile_peninsulas)
+        peninsula_profiles.resize(peninsula_jobs.size());
+    std::vector<double> peninsula_job_seconds(peninsula_jobs.size());
+    execution::for_each(ex_tbb, size_t(0), peninsula_jobs.size(),
+    [&peninsula_jobs, &peninsula_job_seconds, &peninsula_profiles, &minimum_offset_reuse, profile_peninsulas, &config, throw_on_cancel](size_t job_id) {
+        throw_on_cancel();
+        const auto started = std::chrono::steady_clock::now();
+        create_peninsulas(*peninsula_jobs[job_id], config, throw_on_cancel,
+            profile_peninsulas ? &peninsula_profiles[job_id] : nullptr,
+            minimum_offset_reuse ? minimum_offset_reuse->slot(job_id) : nullptr);
+        peninsula_job_seconds[job_id] = std::chrono::duration<double>(
+            std::chrono::steady_clock::now()-started).count();
+    }, 1 /* independently schedulable clipping part */);
+    if (minimum_offset_reuse) {
+        BOOST_LOG_TRIVIAL(info) << "Peninsula minimum-offset reuse: repeated_groups="
+            << minimum_offset_reuse->repeated_groups()
+            << "; repeated_groups_computed=" << minimum_offset_reuse->computed_after_join()
+            << "; repeated_reads_reused=" << minimum_offset_reuse->reused_after_join();
+        // No retained geometry beyond this phase and its barrier.
+        minimum_offset_reuse.reset();
+    }
+    const double peninsula_max_seconds = peninsula_job_seconds.empty() ? 0. :
+        *std::max_element(peninsula_job_seconds.begin(), peninsula_job_seconds.end());
+    BOOST_LOG_TRIVIAL(info) << "Support preparation: peninsula jobs " << peninsula_jobs.size()
+        << "; maximum job " << peninsula_max_seconds << " s";
+
+    if (profile_peninsulas) {
+        // Emit only metadata after the barrier. Shapes stay immutable, and no
+        // extra offset, sorting, copying or contour normalization is performed.
+        for (size_t i = 0; i < peninsula_profiles.size(); ++i) {
+            const PeninsulaProfile &entry = peninsula_profiles[i];
+            if (!entry.minimum_requested)
+                continue;
+            throw_on_cancel();
+            const PartLinks &previous = peninsula_jobs[i]->prev_parts;
+            uint64_t holes = 0;
+            for (const PartLink &link : previous) {
+                throw_on_cancel();
+                holes += link->shape->holes.size();
+            }
+            BOOST_LOG_TRIVIAL(info) << "Peninsula minimum job: id=" << i
+                << "; input_polygons=" << previous.size() << "; input_holes=" << holes
+                << "; input_vertices=" << entry.previous_vertices
+                << "; shared_slot=" << (entry.minimum_slot ? 1 : 0)
+                << "; computed=" << (entry.minimum_computed ? 1 : 0)
+                << "; output_polygons=" << entry.minimum_output_polygons
+                << "; output_vertices=" << entry.minimum_output_vertices
+                << "; request_interval_ns=" << entry.elapsed_ns[2]
+                << "; compute_interval_ns=" << entry.minimum_compute_ns;
+            if (entry.minimum_computed) {
+                const auto &kernel = entry.minimum_kernel;
+                BOOST_LOG_TRIVIAL(info) << "Peninsula offset kernel: id=" << i
+                    << "; outer_ns=" << kernel.elapsed_ns[ClipperOffsetProfile::Outer]
+                    << "; holes_ns=" << kernel.elapsed_ns[ClipperOffsetProfile::Holes]
+                    << "; combine_ns=" << kernel.elapsed_ns[ClipperOffsetProfile::Combine]
+                    << "; union_ns=" << kernel.elapsed_ns[ClipperOffsetProfile::Union]
+                    << "; tree_ns=" << kernel.elapsed_ns[ClipperOffsetProfile::Tree]
+                    << "; outer_calls=" << kernel.calls[ClipperOffsetProfile::Outer]
+                    << "; holes_calls=" << kernel.calls[ClipperOffsetProfile::Holes]
+                    << "; combine_calls=" << kernel.calls[ClipperOffsetProfile::Combine]
+                    << "; union_calls=" << kernel.calls[ClipperOffsetProfile::Union]
+                    << "; tree_calls=" << kernel.calls[ClipperOffsetProfile::Tree]
+                    << "; hole_offsets=" << kernel.hole_offsets;
+            }
+        }
+        PeninsulaProfile total;
+        size_t completed = 0, covered = 0, tiny = 0, longest = 0;
+        for (size_t i = 0; i < peninsula_profiles.size(); ++i) {
+            const PeninsulaProfile &entry = peninsula_profiles[i];
+            for (size_t j = 0; j < total.elapsed_ns.size(); ++j)
+                total.elapsed_ns[j] += entry.elapsed_ns[j];
+            total.previous_links += entry.previous_links;
+            total.previous_vertices += entry.previous_vertices;
+            total.current_vertices += entry.current_vertices;
+            total.below_lines += entry.below_lines;
+            total.candidates += entry.candidates;
+            total.retained += entry.retained;
+            total.annotation_queries += entry.annotation_queries;
+            total.candidate_edges += entry.candidate_edges;
+            completed += entry.completed;
+            covered += entry.covered_return;
+            tiny += entry.tiny_return;
+            if (peninsula_job_seconds[i] > peninsula_job_seconds[longest])
+                longest = i;
+        }
+        BOOST_LOG_TRIVIAL(info) << "Peninsula profile: completed=" << completed
+            << "; covered=" << covered << "; tiny=" << tiny
+            << "; links=" << total.previous_links << "; prev_vertices=" << total.previous_vertices
+            << "; current_vertices=" << total.current_vertices << "; below_lines=" << total.below_lines
+            << "; candidates=" << total.candidates << "; retained=" << total.retained
+            << "; queries=" << total.annotation_queries << "; candidate_edges=" << total.candidate_edges;
+        static const char *names[] = {"copy", "covered_diff", "min_offset", "overhang_diff",
+            "self_offset", "peninsula_diff", "line_index", "width_intersection", "annotation"};
+        for (size_t j = 0; j < total.elapsed_ns.size(); ++j)
+            BOOST_LOG_TRIVIAL(info) << "Peninsula profile bucket: " << names[j]
+                << "; task_elapsed_ns=" << total.elapsed_ns[j]
+                << "; longest_job_ns=" << (peninsula_profiles.empty() ? 0 : peninsula_profiles[longest].elapsed_ns[j]);
+
+        // Metadata only, after all part jobs: exact ordered pointer sequences
+        // preserve multiplicity and are scoped to one immutable config/phase.
+        // No geometry cache is constructed and no part geometry is modified.
+        const auto reuse_started = std::chrono::steady_clock::now();
+        using PreviousShapes = std::vector<const ExPolygon *>;
+        struct OrderedShapesLess {
+            bool operator()(const PreviousShapes &left, const PreviousShapes &right) const {
+                return std::lexicographical_compare(left.begin(), left.end(), right.begin(), right.end(),
+                    std::less<const ExPolygon *>{});
+            }
+        };
+        struct ReuseEligibility {
+            size_t completed = 0, minimum_offset = 0, self_offset = 0;
+        };
+        std::map<PreviousShapes, ReuseEligibility, OrderedShapesLess> ordered_inputs;
+        for (size_t i = 0; i < peninsula_jobs.size(); ++i) {
+            const PeninsulaProfile &entry = peninsula_profiles[i];
+            if (!entry.completed)
+                continue;
+            PreviousShapes previous;
+            previous.reserve(peninsula_jobs[i]->prev_parts.size());
+            for (const PartLink &link : peninsula_jobs[i]->prev_parts)
+                previous.push_back(link->shape);
+            ReuseEligibility &eligible = ordered_inputs[std::move(previous)];
+            ++eligible.completed;
+            // Covered jobs execute neither offset. Tiny jobs execute minimum
+            // offset but return before self offset; do not count self reuse.
+            if (!entry.covered_return) {
+                ++eligible.minimum_offset;
+                if (!entry.tiny_return)
+                    ++eligible.self_offset;
+            }
+        }
+        size_t repeated_inputs = 0, minimum_calls = 0, minimum_groups = 0, minimum_avoidable = 0;
+        size_t self_calls = 0, self_groups = 0, self_avoidable = 0;
+        size_t maximum_minimum_group = 0, maximum_self_group = 0;
+        for (const auto &group : ordered_inputs) {
+            const ReuseEligibility &eligible = group.second;
+            repeated_inputs += eligible.completed > 1;
+            minimum_calls += eligible.minimum_offset;
+            self_calls += eligible.self_offset;
+            if (eligible.minimum_offset > 1) {
+                ++minimum_groups;
+                minimum_avoidable += eligible.minimum_offset - 1;
+            }
+            if (eligible.self_offset > 1) {
+                ++self_groups;
+                self_avoidable += eligible.self_offset - 1;
+            }
+            maximum_minimum_group = std::max(maximum_minimum_group, eligible.minimum_offset);
+            maximum_self_group = std::max(maximum_self_group, eligible.self_offset);
+        }
+        const auto reuse_elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(
+            std::chrono::steady_clock::now() - reuse_started).count();
+        BOOST_LOG_TRIVIAL(info) << "Peninsula ordered-input metadata: groups=" << ordered_inputs.size()
+            << "; repeated_completed_groups=" << repeated_inputs
+            << "; min_calls=" << minimum_calls << "; min_repeated_groups=" << minimum_groups
+            << "; min_avoidable_calls=" << minimum_avoidable << "; min_max_group=" << maximum_minimum_group
+            << "; self_calls=" << self_calls << "; self_repeated_groups=" << self_groups
+            << "; self_avoidable_calls=" << self_avoidable << "; self_max_group=" << maximum_self_group
+            << "; metadata_elapsed_ns=" << reuse_elapsed;
+    }
+
+    log_phase("peninsulas");
+    // Offsetting an exactly repeated shape with the same delta is pure. Track
+    // representatives only after small-part removal, when layer part vectors
+    // and their shape pointers are stable. The first layer intentionally has
+    // no extended shapes and must never become a representative.
+    const auto offsets_started = std::chrono::steady_clock::now();
+    std::vector<std::vector<LayerPart *>> offset_sources(result.layers.size());
+    size_t reused_offsets = 0, total_offsets = 0;
+    for (size_t layer_id = 1; layer_id < result.layers.size(); ++layer_id) {
+        throw_on_cancel();
+        auto &parts = result.layers[layer_id].parts;
+        auto &sources = offset_sources[layer_id];
+        sources.reserve(parts.size());
+        for (size_t part_id = 0; part_id < parts.size(); ++part_id) {
+            throw_on_cancel();
+            LayerPart *source = &parts[part_id];
+            if (layer_id > 1) {
+                const auto &previous = result.layers[layer_id - 1].parts;
+                // Full ordered contour and hole equality; bounds or matching
+                // outer contours alone cannot establish an identical offset.
+                if (part_id < previous.size() && *source->shape == *previous[part_id].shape) {
+                    source = offset_sources[layer_id - 1][part_id];
+                    ++reused_offsets;
+                }
+            }
+            sources.push_back(source);
+            ++total_offsets;
+        }
+    }
+    const auto offsets_planned = std::chrono::steady_clock::now();
+    // Compute each representative once. A separate synchronous phase below
+    // copies completed outputs, so no worker reads a concurrently written shape.
+    execution::for_each(ex_tbb, size_t(1), result.layers.size(),
+    [&layers = result.layers, &offset_sources, delta = config.removing_delta, throw_on_cancel](size_t layer_id) {
+        throw_on_cancel();
+        auto &parts = layers[layer_id].parts;
+        for (size_t part_id = 0; part_id < parts.size(); ++part_id) {
+            throw_on_cancel();
+            auto &part = parts[part_id];
+            if (offset_sources[layer_id][part_id] != &part)
+                continue;
+            part.extend_shape = offset_ex(*part.shape, delta, ClipperLib::jtSquare);
+            throw_on_cancel();
+        }
+    }, 1 /* independently schedulable clipping layer */);
+    const auto offsets_computed = std::chrono::steady_clock::now();
+    execution::for_each(ex_tbb, size_t(1), result.layers.size(),
+    [&layers = result.layers, &offset_sources, throw_on_cancel](size_t layer_id) {
+        throw_on_cancel();
+        auto &parts = layers[layer_id].parts;
+        for (size_t part_id = 0; part_id < parts.size(); ++part_id) {
+            throw_on_cancel();
+            auto &part = parts[part_id];
+            const auto *source = offset_sources[layer_id][part_id];
+            if (source != &part)
+                part.extend_shape = source->extend_shape;
+        }
+    }, 1);
+    const auto offsets_copied = std::chrono::steady_clock::now();
+    BOOST_LOG_TRIVIAL(info) << "Support preparation: reused extended offsets "
+        << reused_offsets << "/" << total_offsets
+        << "; planning " << std::chrono::duration<double>(offsets_planned-offsets_started).count()
+        << " s; compute " << std::chrono::duration<double>(offsets_computed-offsets_planned).count()
+        << " s; copy " << std::chrono::duration<double>(offsets_copied-offsets_computed).count() << " s";
+    log_phase("extended shapes");
     return result;
 }
 
@@ -1512,7 +1981,7 @@ LayerSupportPoints generate_support_points(
                 grids.emplace_back(&result); // only island add new grid
                 Points permanent =
                     get_permanents(permanent_supports, permanent_index, layer_id, part_id);
-                support_island(part, grids.back(), layer.print_z, permanent, config);
+                support_island(part, grids.back(), layer.print_z, permanent, config, throw_on_cancel);
                 copy_permanent_supports(
                     grids.back(), permanent_supports, permanent_index, layer.print_z, layer_id,
                     part_id, config
@@ -1530,7 +1999,7 @@ LayerSupportPoints generate_support_points(
                 // only get copy of points do not modify permanent_index
                 Points permanent =
                     get_permanents(permanent_supports, permanent_index, layer_id, part_id);
-                support_peninsulas(part.peninsulas, near_points, layer.print_z, permanent, config);
+                support_peninsulas(part.peninsulas, near_points, layer.print_z, permanent, config, throw_on_cancel);
             }
             copy_permanent_supports(
                 near_points, permanent_supports, permanent_index, layer.print_z, layer_id, part_id,

@@ -35,7 +35,6 @@ namespace Slic3r {
 
 class Model;
 class ModelInstance;
-class ModelWipeTower;
 class Print;
 class SLAPrint;
 class SLAPrintObject;
@@ -45,20 +44,6 @@ class DynamicPrintConfig;
 namespace arr2 {
 
 using SelectionPredicate = std::function<bool(int)>;
-
-// Objects implementing this interface should know how to present the wipe tower
-// as an Arrangeable. If the wipe tower is not present, the overloads of visit() shouldn't do
-// anything. (See MissingWipeTowerHandler)
-class WipeTowerHandler
-{
-public:
-    virtual ~WipeTowerHandler() = default;
-
-    virtual void visit(std::function<void(Arrangeable &)>) = 0;
-    virtual void visit(std::function<void(const Arrangeable &)>) const = 0;
-    virtual void set_selection_predicate(SelectionPredicate pred) = 0;
-    virtual ObjectID get_id() const = 0;
-};
 
 // Something that has a bounding box and can be displaced by arbitrary 2D offset and rotated
 // by arbitrary rotation. Used as targets to place on virtual beds. Normally this would correspond
@@ -113,20 +98,17 @@ public:
 
     virtual std::vector<bool> selected_objects() const = 0;
     virtual std::vector<bool> selected_instances(int obj_id) const = 0;
-    virtual bool is_wipe_tower_selected(int wipe_tower_index) const = 0;
 };
 
 class FixedSelection : public Slic3r::arr2::SelectionMask
 {
     std::vector<std::vector<bool>> m_seldata;
-    bool                           m_wp = false;
 
 public:
     FixedSelection() = default;
 
-    explicit FixedSelection(std::initializer_list<std::vector<bool>> seld,
-                            bool wp = false)
-        : m_seldata{std::move(seld)}, m_wp{wp}
+    explicit FixedSelection(std::initializer_list<std::vector<bool>> seld)
+        : m_seldata{std::move(seld)}
     {}
 
     explicit FixedSelection(const Model &m);
@@ -139,64 +121,6 @@ public:
     {
         return obj_id < int(m_seldata.size()) ? m_seldata[obj_id] :
                                                 std::vector<bool>{};
-    }
-
-    bool is_wipe_tower_selected(int) const override { return m_wp; }
-};
-
-// Common part of any Arrangeable which is a wipe tower
-struct ArrangeableWipeTowerBase: public Arrangeable
-{
-    ObjectID oid;
-
-    Polygon poly;
-    SelectionPredicate selection_pred;
-    int bed_index{0};
-
-    ArrangeableWipeTowerBase(
-        const ObjectID &objid,
-        Polygon shape,
-        int bed_index,
-        SelectionPredicate selection_predicate = [](int){ return false; })
-        : oid{objid},
-          poly{std::move(shape)},
-          bed_index{bed_index},
-          selection_pred{std::move(selection_predicate)}
-    {}
-
-    ObjectID id() const override { return oid; }
-    ObjectID geometry_id() const override { return {}; }
-
-    ExPolygons full_outline() const override
-    {
-        auto cpy = poly;
-        return {ExPolygon{std::move(cpy)}};
-    }
-
-    Polygon convex_outline() const override
-    {
-        return poly;
-    }
-
-    bool is_selected() const override
-    {
-        return selection_pred(bed_index);
-    }
-
-    int get_bed_index() const override;
-    bool assign_bed(int /*bed_idx*/) override;
-
-    int priority() const override { return 1; }
-
-    std::optional<int> bed_constraint() const override {
-        return this->bed_index;
-    }
-
-    void transform(const Vec2d &transl, double rot) override {}
-
-    void imbue_data(AnyWritable &datastore) const override
-    {
-        datastore.write("is_wipe_tower", {});
     }
 };
 
@@ -212,7 +136,6 @@ class ArrangeableSlicerModel: public ArrangeableModel
 {
 protected:
     AnyPtr<Model> m_model;
-    std::vector<AnyPtr<WipeTowerHandler>> m_wths; // Determines how wipe tower is handled
     AnyPtr<VirtualBedHandler> m_vbed_handler; // Determines how virtual beds are handled
     AnyPtr<const SelectionMask> m_selmask;  // Determines which objects are selected/unselected
     BedConstraints m_bed_constraints;
@@ -248,17 +171,14 @@ class SceneBuilder: public SceneBuilderBase<SceneBuilder>
 {
 protected:
     AnyPtr<Model> m_model;
-    std::vector<AnyPtr<WipeTowerHandler>> m_wipetower_handlers;
     BedConstraints m_bed_constraints;
     std::optional<std::set<ObjectID>> m_considered_instances;
     AnyPtr<VirtualBedHandler> m_vbed_handler;
     AnyPtr<const SelectionMask> m_selection;
 
     AnyPtr<const SLAPrint> m_sla_print;
-    AnyPtr<const Print>    m_fff_print;
     bool m_xl_printer = false;
 
-    void set_brim_and_skirt();
 
 public:
     SceneBuilder();
@@ -270,19 +190,11 @@ public:
 
     SceneBuilder && set_model(Model &mdl);
 
-    SceneBuilder && set_fff_print(AnyPtr<const Print> fffprint);
     SceneBuilder && set_sla_print(AnyPtr<const SLAPrint> mdl_print);
 
     using SceneBuilderBase<SceneBuilder>::set_bed;
 
     SceneBuilder &&set_bed(const DynamicPrintConfig &cfg, const Vec2crd &gap);
-    SceneBuilder &&set_bed(const Print &print, const Vec2crd &gap);
-
-    SceneBuilder && set_wipe_tower_handlers(std::vector<AnyPtr<WipeTowerHandler>> &&handlers)
-    {
-        m_wipetower_handlers = std::move(handlers);
-        return std::move(*this);
-    }
 
     SceneBuilder && set_bed_constraints(BedConstraints &&bed_constraints)
     {
@@ -401,9 +313,6 @@ public:
 std::vector<size_t> selected_object_indices(const SelectionMask &sm);
 std::vector<size_t> selected_instance_indices(int obj_idx, const SelectionMask &sm);
 
-coord_t get_skirt_inset(const Print &fffprint);
-
-coord_t brim_offset(const PrintObject &po);
 
 // unscaled coords are necessary to be able to handle bigger coordinate range
 // than what is available with scaled coords. This is useful when working with

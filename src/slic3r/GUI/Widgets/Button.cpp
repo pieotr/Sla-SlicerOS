@@ -3,6 +3,8 @@
 #include <wx/dcgraph.h>
 #include <wx/dc.h>
 #include <wx/dcclient.h>
+#include <wx/utils.h>
+#include "../GUI_Utils.hpp"
 
 BEGIN_EVENT_TABLE(Button, StaticBox)
 
@@ -49,6 +51,7 @@ bool Button::Create(wxWindow* parent, wxString text, wxString icon, long style, 
     state_handler.attach({&text_color});
     state_handler.update_binds();
     wxWindow::SetLabel(text);
+    Slic3r::GUI::set_accessible_name(this, wxStripMenuCodes(text), wxString(), Slic3r::GUI::AccessibleRole::PushButton);
     if (!icon.IsEmpty()) {
         this->active_icon = ScalableBitmap(this, icon.ToStdString(), iconSize);
     }
@@ -59,6 +62,7 @@ bool Button::Create(wxWindow* parent, wxString text, wxString icon, long style, 
 void Button::SetLabel(const wxString& label)
 {
     wxWindow::SetLabel(label);
+    Slic3r::GUI::set_accessible_name(this, wxStripMenuCodes(label), wxString(), Slic3r::GUI::AccessibleRole::PushButton);
     messureSize();
     Refresh();
 }

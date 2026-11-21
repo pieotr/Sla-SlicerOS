@@ -149,6 +149,9 @@ list(REMOVE_DUPLICATES SYSTEM_PROVIDED_PACKAGES)
 
 include(CMakeDependentOption)
 option(${PROJECT_NAME}_SELECT_ALL "Choose all external projects to be built." ON)
+# The application is offline-only: network transport dependencies (CURL, OpenSSL) are never built.
+# Their definitions stay in deps/+CURL and deps/+OpenSSL but are excluded here unconditionally.
+list(REMOVE_ITEM FOUND_PACKAGES CURL OpenSSL)
 
 find_package(Git REQUIRED)
 
@@ -227,7 +230,8 @@ if (DEP_DEBUG AND NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
 
   # Exclude the libraries which have no problem to link to Debug builds in
   # Release mode (mostly C libraries)
-  set(DEP_DEBUG_EXCLUDES GMP MPFR OpenSSL NanoSVG TIFF JPEG ZLIB heatshrink)
+  # (OpenCV: the application links only its release libraries.)
+  set(DEP_DEBUG_EXCLUDES GMP MPFR OpenSSL NanoSVG TIFF JPEG ZLIB OpenCV)
   if (UNIX)
     # Making a separate debug build on Unix of wx is a nightmare
     list(APPEND DEP_DEBUG_EXCLUDES wxWidgets)

@@ -15,8 +15,12 @@ namespace Slic3r::sla {
 /// <param name="permanent">Place supported by already existing supports</param>
 /// <param name="config">Configuration of support density</param>
 /// <returns>Support points laying inside of the island</returns>
+// Cancellation is checked between stages and alignment cells. The callback
+// may run on clipping workers and must be thread safe. An exception publishes
+// no result and leaves the caller's island/permanent inputs unchanged.
 SupportIslandPoints uniform_support_island(
-    const ExPolygon &island, const Points &permanent, const SampleConfig &config);
+    const ExPolygon &island, const Points &permanent, const SampleConfig &config,
+    const std::function<void()> &throw_on_cancel = {});
 
 /// <summary>
 /// Distribute support points across peninsula
@@ -26,7 +30,8 @@ SupportIslandPoints uniform_support_island(
 /// <param name="config">Density distribution parameters</param>
 /// <returns>Support points laying inside of the peninsula</returns>
 SupportIslandPoints uniform_support_peninsula(
-    const Peninsula &peninsula, const Points& permanent, const SampleConfig &config);
+    const Peninsula &peninsula, const Points& permanent, const SampleConfig &config,
+    const std::function<void()> &throw_on_cancel = {});
 
 /// <summary>
 /// Check for tests that developer do not forget disable visualization after debuging.

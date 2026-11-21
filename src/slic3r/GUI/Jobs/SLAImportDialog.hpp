@@ -22,6 +22,7 @@
 #include "slic3r/GUI/GUI.hpp"
 #include "slic3r/GUI/GUI_App.hpp"
 #include "slic3r/GUI/Plater.hpp"
+#include "slic3r/GUI/Widgets/ComboBox.hpp"
 
 #include <boost/algorithm/string.hpp>
 
@@ -83,7 +84,7 @@ std::string get_readers_wildcard()
 
 class SLAImportDialog: public wxDialog, public SLAImportJobView {
     wxFilePickerCtrl *m_filepicker;
-    wxComboBox *m_import_dropdown, *m_quality_dropdown;
+    ComboBox *m_import_dropdown, *m_quality_dropdown;
 
 public:
     SLAImportDialog(Plater *plater)
@@ -109,9 +110,9 @@ public:
             _(L("Import model only"))
         };
 
-        m_import_dropdown = new wxComboBox(
-            this, wxID_ANY, inp_choices[0], wxDefaultPosition, wxDefaultSize,
-            inp_choices.size(), inp_choices.data(), wxCB_READONLY | wxCB_DROPDOWN);
+        m_import_dropdown = create_readonly_combo(this, "Import mode", wxString(),
+            wxArrayString(inp_choices.size(), inp_choices.data()), 0);
+        m_import_dropdown->SetMinSize(wxSize(18 * wxGetApp().em_unit(), -1));
 
         szchoices->Add(m_import_dropdown);
         szchoices->AddStretchSpacer(1);
@@ -123,9 +124,9 @@ public:
             _L("Fast")
         };
 
-        m_quality_dropdown = new wxComboBox(
-            this, wxID_ANY, qual_choices[1], wxDefaultPosition, wxDefaultSize,
-            qual_choices.size(), qual_choices.data(), wxCB_READONLY | wxCB_DROPDOWN);
+        m_quality_dropdown = create_readonly_combo(this, "Import quality", wxString(),
+            wxArrayString(qual_choices.size(), qual_choices.data()), 1);
+        m_quality_dropdown->SetMinSize(wxSize(12 * wxGetApp().em_unit(), -1));
         szchoices->Add(m_quality_dropdown, 1);
 
         m_import_dropdown->Bind(wxEVT_COMBOBOX, [this](wxCommandEvent &) {

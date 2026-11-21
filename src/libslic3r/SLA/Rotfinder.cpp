@@ -206,7 +206,10 @@ XYRotation from_transform3f(const Transform3f &tr)
 
 inline bool is_on_floor(const SLAPrintObjectConfig &cfg)
 {
-    auto opt_elevation = cfg.support_object_elevation.getFloat();
+    // The elevation is per tree type, as in SLAPrintObject::get_elevation().
+    auto opt_elevation = cfg.support_tree_type.value == sla::SupportTreeType::Default ?
+                             cfg.support_object_elevation.getFloat() :
+                             cfg.branchingsupport_object_elevation.getFloat();
     auto opt_padaround = cfg.pad_around_object.getBool();
 
     return opt_elevation < EPSILON || opt_padaround;

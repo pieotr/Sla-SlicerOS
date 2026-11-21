@@ -33,7 +33,7 @@
 #include "MsgDialog.hpp"
 #include "format.hpp"
 
-#include "libslic3r/Print.hpp"
+#include "libslic3r/Utils.hpp"
 
 namespace Slic3r {
 
@@ -200,7 +200,7 @@ static void add_config_substitutions(const ConfigSubstitutions& conf_substitutio
 static wxString substitution_message(const wxString& changes)
 {
 	return
-		_L("Most likely the configuration was produced by a newer version of PrusaSlicer or by some PrusaSlicer fork.") + " " +
+		format_wxstr(_L("Most likely the configuration was produced by a newer version of %1% or by some other fork of PrusaSlicer."), SLIC3R_APP_NAME) + " " +
 		_L("The following values were substituted:") + "\n" + changes + "\n\n" +
 		_L("Review the substitutions and adjust them if needed.");
 }
@@ -211,12 +211,9 @@ void show_substitutions_info(const PresetsConfigSubstitutions& presets_config_su
 
 	auto preset_type_name = [](Preset::Type type) {
 		switch (type) {
-			case Preset::TYPE_PRINT:			return _L("Print settings");
 			case Preset::TYPE_SLA_PRINT:		return _L("SLA print settings");
-			case Preset::TYPE_FILAMENT:			return _L("Filament");
 			case Preset::TYPE_SLA_MATERIAL:		return _L("SLA material");
 			case Preset::TYPE_PRINTER: 			return _L("Printer");
-			case Preset::TYPE_PHYSICAL_PRINTER:	return _L("Physical Printer");
 			default: assert(false);				return wxString();
 		}
 	};

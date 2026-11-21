@@ -13,7 +13,6 @@
 
 #include <libslic3r/Model.hpp>
 #include <libslic3r/MultipleBeds.hpp>
-#include <libslic3r/Print.hpp>
 #include <libslic3r/SLAPrint.hpp>
 #include <libslic3r/Geometry/ConvexHull.hpp>
 #include <libslic3r/ClipperUtils.hpp>
@@ -31,32 +30,6 @@
 
 namespace Slic3r { namespace arr2 {
 
-coord_t get_skirt_inset(const Print &fffprint)
-{
-    float skirt_inset = 0.f;
-
-    if (fffprint.has_skirt()) {
-        float skirtflow = fffprint.objects().empty()
-                              ? 0
-                              : fffprint.skirt_flow().width();
-        skirt_inset = fffprint.config().skirts.value * skirtflow
-                      + fffprint.config().skirt_distance.value;
-    }
-
-    return scaled(skirt_inset);
-}
-
-coord_t brim_offset(const PrintObject &po)
-{
-    const BrimType brim_type       = po.config().brim_type.value;
-    const float    brim_separation = po.config().brim_separation.getFloat();
-    const float    brim_width      = po.config().brim_width.getFloat();
-    const bool     has_outer_brim  = brim_type == BrimType::btOuterOnly ||
-                                brim_type == BrimType::btOuterAndInner;
-
-    // How wide is the brim? (in scaled units)
-    return has_outer_brim ? scaled(brim_width + brim_separation) : 0;
-}
 
 size_t model_instance_count (const Model &m)
 {
@@ -165,36 +138,13 @@ inline static bool is_infinite_bed(const ExtendedBed &ebed) noexcept
     return ret;
 }
 
-void SceneBuilder::set_brim_and_skirt()
-{
-    if (!m_fff_print)
-        return;
-
-    m_brims_offs = 0;
-
-    for (const PrintObject *po : m_fff_print->objects()) {
-        if (po) {
-            m_brims_offs = std::max(m_brims_offs, brim_offset(*po));
-        }
-    }
-
-    m_skirt_offs = get_skirt_inset(*m_fff_print);
-}
 
 void SceneBuilder::build_scene(Scene &sc) &&
 {
-    if (m_sla_print && !m_fff_print) {
+    if (m_sla_print) {
         m_arrangeable_model = std::make_unique<ArrangeableSLAPrint>(m_sla_print.get(), *this);
     } else {
         m_arrangeable_model = std::make_unique<ArrangeableSlicerModel>(*this);
-    }
-
-    if (m_fff_print && !m_sla_print) {
-        if (is_infinite_bed(m_bed)) {
-            set_bed(*m_fff_print, Vec2crd::Zero());
-        } else {
-            set_brim_and_skirt();
-        }
     }
 
     // Call the parent class implementation of build_scene to finish constructing of the scene
@@ -213,39 +163,17 @@ void SceneBuilder::build_arrangeable_slicer_model(ArrangeableSlicerModel &amodel
         m_vbed_handler = VirtualBedHandler::create(m_bed);
     }
 
-    if (m_fff_print && !m_xl_printer)
-        m_xl_printer = is_XL_printer(m_fff_print->config());
 
-    const bool has_wipe_tower{std::any_of(
-        m_wipetower_handlers.begin(),
-        m_wipetower_handlers.end(),
-        [](const AnyPtr<WipeTowerHandler> &handler){
-            bool is_on_current_bed{false};
-            handler->visit([&](const Arrangeable &arrangeable){
-                is_on_current_bed = arrangeable.get_bed_index() == s_multiple_beds.get_active_bed();
-            });
-            return is_on_current_bed;
-        }
-    )};
-
-    if (m_xl_printer && !has_wipe_tower) {
+    if (m_xl_printer) {
         m_bed = XLBed{bounding_box(m_bed), bed_gap(m_bed)};
     }
 
     amodel.m_vbed_handler = std::move(m_vbed_handler);
     amodel.m_model = std::move(m_model);
     amodel.m_selmask = std::move(m_selection);
-    amodel.m_wths = std::move(m_wipetower_handlers);
     amodel.m_bed_constraints = std::move(m_bed_constraints);
     amodel.m_considered_instances = std::move(m_considered_instances);
 
-    for (auto &wth : amodel.m_wths) {
-        wth->set_selection_predicate(
-            [&amodel](int wipe_tower_index){
-                return amodel.m_selmask->is_wipe_tower_selected(wipe_tower_index);
-            }
-        );
-    }
 }
 
 int XStriderVBedHandler::get_bed_index(const VBedPlaceable &obj) const
@@ -374,7 +302,7 @@ Transform3d GridStriderVBedHandler::get_physical_bed_trafo(int bed_idx) const
     return ret;
 }
 
-FixedSelection::FixedSelection(const Model &m) : m_wp{true}
+FixedSelection::FixedSelection(const Model &m)
 {
     m_seldata.resize(m.objects.size());
     for (size_t i = 0; i < m.objects.size(); ++i) {
@@ -444,11 +372,6 @@ SceneBuilder &&SceneBuilder::set_model(Model &mdl)
     return std::move(*this);
 }
 
-SceneBuilder &&SceneBuilder::set_fff_print(AnyPtr<const Print> mdl_print)
-{
-    m_fff_print = std::move(mdl_print);
-    return std::move(*this);
-}
 
 SceneBuilder &&SceneBuilder::set_sla_print(AnyPtr<const SLAPrint> mdl_print)
 {
@@ -470,34 +393,11 @@ SceneBuilder &&SceneBuilder::set_bed(const DynamicPrintConfig &cfg, const Vec2cr
     return std::move(*this);
 }
 
-SceneBuilder &&SceneBuilder::set_bed(const Print &print, const Vec2crd &gap)
-{
-    Points bedpts = get_bed_shape(print.config());
-
-    if (is_XL_printer(print.config())) {
-        m_bed = XLBed{get_extents(bedpts), gap};
-    } else {
-        m_bed = arr2::to_arrange_bed(bedpts, gap);
-    }
-
-    set_brim_and_skirt();
-
-    return std::move(*this);
-}
 
 SceneBuilder &&SceneBuilder::set_sla_print(const SLAPrint *slaprint)
 {
     m_sla_print = slaprint;
     return std::move(*this);
-}
-
-int ArrangeableWipeTowerBase::get_bed_index() const {
-    return this->bed_index;
-}
-
-bool ArrangeableWipeTowerBase::assign_bed(int bed_idx)
-{
-    return bed_idx == this->bed_index;
 }
 
 bool PhysicalOnlyVBedHandler::assign_bed(VBedPlaceable &inst, int bed_idx)
@@ -516,20 +416,12 @@ void ArrangeableSlicerModel::for_each_arrangeable(
     std::function<void(Arrangeable &)> fn)
 {
     for_each_arrangeable_(*this, fn);
-
-    for (auto &wth : m_wths) {
-        wth->visit(fn);
-    }
 }
 
 void ArrangeableSlicerModel::for_each_arrangeable(
     std::function<void(const Arrangeable &)> fn) const
 {
     for_each_arrangeable_(*this, fn);
-
-    for (auto &wth : m_wths) {
-        wth->visit(fn);
-    }
 }
 
 ObjectID ArrangeableSlicerModel::add_arrangeable(const ObjectID &prototype_id)
@@ -594,13 +486,6 @@ void ArrangeableSlicerModel::for_each_arrangeable_(Self &&self, Fn &&fn)
 template<class Self, class Fn>
 void ArrangeableSlicerModel::visit_arrangeable_(Self &&self, const ObjectID &id, Fn &&fn)
 {
-    for (auto &wth : self.m_wths) {
-        if (id == wth->get_id()) {
-            wth->visit(fn);
-            return;
-        }
-    }
-
     auto [inst, pos] = find_instance_by_id(*self.m_model, id);
 
     if (inst) {
@@ -666,20 +551,12 @@ void ArrangeableSLAPrint::for_each_arrangeable(
     std::function<void(Arrangeable &)> fn)
 {
     for_each_arrangeable_(*this, fn);
-
-    for (auto &wth : m_wths) {
-        wth->visit(fn);
-    }
 }
 
 void ArrangeableSLAPrint::for_each_arrangeable(
     std::function<void(const Arrangeable &)> fn) const
 {
     for_each_arrangeable_(*this, fn);
-
-    for (auto &wth : m_wths) {
-        wth->visit(fn);
-    }
 }
 
 template<class Self, class Fn>

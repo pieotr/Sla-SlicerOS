@@ -68,13 +68,6 @@ template<class ArrItem> std::optional<Vec2crd> get_gravity_sink(const ArrItem &i
     return ret;
 }
 
-template<class ArrItem> bool is_wipe_tower(const ArrItem &itm)
-{
-    constexpr const char * Key = "is_wipe_tower";
-
-    return has_key(itm, Key);
-}
-
 }} // namespace Slic3r::arr2
 
 #endif // ARRANGEKERNELUTILS_HPP

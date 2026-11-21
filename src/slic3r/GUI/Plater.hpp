@@ -26,12 +26,10 @@
 #include "Sidebar.hpp"
 #include "Selection.hpp"
 
-#include "libslic3r/GCode/GCodeProcessor.hpp"
 #include "Jobs/Job.hpp"
 #include "Jobs/Worker.hpp"
-#include "libslic3r/GCode/ThumbnailData.hpp"
+#include "libslic3r/Thumbnails/ThumbnailData.hpp"
 #include "slic3r/GUI/Camera.hpp"
-#include "slic3r/Utils/PrintHost.hpp"
 
 class wxString;
 
@@ -66,7 +64,6 @@ class Mouse3DController;
 class NotificationManager;
 struct Camera;
 class GLToolbar;
-class UserAccount;
 class PresetArchiveDatabase;
 enum class ArrangeSelectionMode;
 
@@ -85,6 +82,7 @@ public:
     bool is_project_dirty() const;
     bool is_presets_dirty() const;
     void update_project_dirty_from_presets();
+    void on_sla_layer_document_changed();
     int  save_project_if_dirty(const wxString& reason);
     void reset_project_dirty_after_save();
     void reset_project_dirty_initial_presets();
@@ -102,11 +100,20 @@ public:
     //const SLAPrint& sla_print() const;
     //SLAPrint& sla_print();
     
-    Print& active_fff_print();
     SLAPrint& active_sla_print();
+    bool can_edit_sliced_layers();
+    void edit_sliced_layers();
+    void open_layer_file(const std::string &path = {});
+    // Main commands follow the visible editor; scene-save internals stay separate.
+    bool has_active_sliced_editor() const;
+    bool has_active_layer_document() const;
+    bool can_use_sliced_editor() const;
+    bool save_layer_document(bool save_as);
+    void export_sliced_document();
+    // Captures the generated job; the caller may release it after this returns.
+    bool open_generated_layers(SLAPrint &job);
+    bool can_close_sliced_workspace(bool discard_current_project);
 
-    std::vector<std::unique_ptr<Print>>& get_fff_prints();
-    const std::vector<GCodeProcessorResult>& get_gcode_results() const;
 
     void new_project();
     void load_project();
@@ -115,11 +122,6 @@ public:
     void import_zip_archive();
     void import_sl1_archive();
     void extract_config_from_project();
-    void load_gcode();
-    void load_gcode(const wxString& filename);
-    void reload_gcode_from_disk();
-    void convert_gcode_to_ascii();
-    void convert_gcode_to_binary();
     void reload_print();
     void object_list_changed();
     void generate_thumbnail(ThumbnailData& data, unsigned int w, unsigned int h, const ThumbnailsParams& thumbnail_params, Camera::EType camera_type);
@@ -133,7 +135,6 @@ public:
 
     bool preview_zip_archive(const boost::filesystem::path& input_file);
 
-    const wxString& get_last_loaded_gcode() const { return m_last_loaded_gcode; }
 
     enum class UpdateParams {
         FORCE_FULL_SCREEN_REFRESH = 1,
@@ -177,7 +178,11 @@ public:
     const Worker & get_ui_job_worker() const;
 
     void select_view(const std::string& direction);
+    // An explicit full Slice action already submitted its SLA task. Its
+    // automatic Preview navigation may skip a second submission; ordinary
+    // navigation keeps the default, including partial-support tasks.
     void select_view_3D(const std::string& name);
+    void select_view_3D(const std::string& name, bool request_sla_slice);
 
     bool is_preview_shown() const;
     bool is_preview_loaded() const;
@@ -191,8 +196,6 @@ public:
 
     bool is_sidebar_collapsed() const;
     void collapse_sidebar(bool show);
-
-    bool is_view3D_layers_editing_enabled() const;
 
     // Called after the Preferences dialog is closed and the program settings are saved.
     // Update the UI based on the current preferences.
@@ -212,31 +215,18 @@ public:
     bool is_selection_empty() const;
     void scale_selection_to_fit_print_volume();
     void convert_unit(ConversionType conv_type);
-    void toggle_layers_editing(bool enable);
 
     void apply_cut_object_to_model(size_t init_obj_idx, const ModelObjectPtrs& cut_objects);
 
-    void with_mocked_fff_background_process(
-        Print &print,
-        GCodeProcessorResult &result,
-        const int bed_index,
-        const std::function<void()> &callable
-    );
-    void export_gcode(bool prefer_removable);
-    void export_all_gcodes(bool prefer_removable);
+    void export_sliced(bool prefer_removable);
     void export_stl_obj(bool extended = false, bool selection_only = false);
     bool export_3mf(const boost::filesystem::path& output_path = boost::filesystem::path());
     void reload_from_disk();
     void replace_with_stl();
     void reload_all_from_disk();
-    bool has_toolpaths_to_export() const;
-    void export_toolpaths_to_obj() const;
     void reslice();
-    void reslice_FFF_until_step(PrintObjectStep step, const ModelObject &object, bool postpone_error_messages = false);
     void reslice_SLA_until_step(SLAPrintObjectStep step, const ModelObject &object, bool postpone_error_messages = false);
 
-    void clear_before_change_volume(ModelVolume &mv, const std::string &notification_msg);
-    void clear_before_change_mesh(int obj_idx, const std::string &notification_msg);
     void changed_mesh(int obj_idx);
 
     void changed_object(ModelObject &object);
@@ -245,15 +235,9 @@ public:
     void schedule_background_process(bool schedule = true);
     bool is_background_process_update_scheduled() const;
     void suppress_background_process(const bool stop_background_process) ;
-    void send_gcode();
-    void send_gcode_inner(DynamicPrintConfig* physical_printer_config);
+    bool cancel_slicing();
 	void eject_drive();
 
-    std::optional<PrintHostJob> get_connect_print_host_job(bool multiple_beds);
-    void connect_gcode();
-    void connect_gcode_all();
-    void printables_to_connect_gcode(const std::string& url);
-    std::string get_upload_filename();
 
     void take_snapshot(const std::string &snapshot_name);
     void take_snapshot(const wxString &snapshot_name);
@@ -273,18 +257,11 @@ public:
     void enter_gizmos_stack();
     void leave_gizmos_stack();
 
-    bool update_filament_colors_in_full_config();
     void on_config_change(const DynamicPrintConfig &config);
-    void force_filament_colors_update();
-    void force_filament_cb_update();
     void force_print_bed_update();
     // On activating the parent window.
     void on_activate(bool active);
 
-    std::vector<std::string> get_extruder_color_strings_from_plater_config(const GCodeProcessorResult* const result = nullptr) const;
-    std::vector<std::string> get_color_strings_for_color_print(const GCodeProcessorResult* const result = nullptr) const;
-    std::vector<ColorRGBA> get_extruder_colors_from_plater_config() const;
-    std::vector<ColorRGBA> get_colors_for_color_print() const;
 
     void update_menus();
     void show_action_buttons(const bool is_ready_to_slice) const;
@@ -294,7 +271,7 @@ public:
     wxString get_project_filename(const wxString& extension = wxEmptyString) const;
     void set_project_filename(const wxString& filename);
 
-    bool is_export_gcode_scheduled() const;
+    bool is_export_scheduled() const;
     
     const Selection& get_selection() const;
     int get_selected_object_idx();
@@ -332,7 +309,6 @@ public:
     bool can_split_to_objects() const;
     bool can_split_to_volumes() const;
     bool can_arrange() const;
-    bool can_layers_editing() const;
     bool can_paste_from_clipboard() const;
     bool can_copy_to_clipboard() const;
     bool can_undo() const;
@@ -369,11 +345,7 @@ public:
 
     void set_preview_layers_slider_values_range(int bottom, int top);
 
-    void update_preview_moves_slider(std::optional<int> visible_range_min = std::nullopt, std::optional<int> visible_range_max = std::nullopt);
-    void enable_preview_moves_slider(bool enable);
 
-    void reset_gcode_toolpaths();
-    void reset_last_loaded_gcode() { m_last_loaded_gcode = ""; }
 
     const Mouse3DController& get_mouse3d_controller() const;
     Mouse3DController& get_mouse3d_controller();
@@ -385,11 +357,6 @@ public:
     NotificationManager* get_notification_manager();
     const NotificationManager* get_notification_manager() const;
 
-    UserAccount* get_user_account();
-    const UserAccount* get_user_account() const;
-
-    void toggle_remember_user_account_session();
-    void act_with_user_account();
 
     void init_notification_manager();
 
@@ -441,30 +408,27 @@ public:
     void toggle_render_statistic_dialog();
     bool is_render_statistic_dialog_visible() const;
 
-    void set_keep_current_preview_type(bool value);
-
 	// Wrapper around wxWindow::PopupMenu to suppress error messages popping out while tracking the popup menu.
 	bool PopupMenu(wxMenu *menu, const wxPoint& pos = wxDefaultPosition);
     bool PopupMenu(wxMenu *menu, int x, int y) { return this->PopupMenu(menu, wxPoint(x, y)); }
 
     // get same Plater/ObjectList menus
-    wxMenu* object_menu();
     wxMenu* part_menu();
     wxMenu* text_part_menu();
     wxMenu* svg_part_menu();
     wxMenu* sla_object_menu();
     wxMenu* default_menu();
     wxMenu* instance_menu();
-    wxMenu* layer_menu();
     wxMenu* multi_selection_menu();
 
 private:
     std::optional<fs_path> get_default_output_file();
     std::optional<wxString> check_output_path_has_error(const boost::filesystem::path& path) const;
-    std::optional<fs_path> get_output_path(const std::string &start_dir, const fs_path &default_output_file);
+    std::optional<fs_path> get_output_path(const std::string &start_dir, const fs_path &default_output_file,
+                                         std::string *selected_sla_format = nullptr);
     std::optional<fs_path> get_multiple_output_dir(const std::string &start_dir);
 
-    void export_gcode_to_path(const fs_path &output_path, const std::function<void(bool)> &export_callback);
+    void export_sliced_to_path(const fs_path &output_path, const std::function<void(bool)> &export_callback);
     void reslice_until_step_inner(int step, const ModelObject &object, bool postpone_error_messages);
 
     struct priv;
@@ -475,8 +439,6 @@ private:
     // are shown after the pop-up dialog closes.
     bool 	 m_tracking_popup_menu = false;
     wxString m_tracking_popup_menu_error_message;
-
-    wxString m_last_loaded_gcode;
 
     void suppress_snapshots();
     void allow_snapshots();

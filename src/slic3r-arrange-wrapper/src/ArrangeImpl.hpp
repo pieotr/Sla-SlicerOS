@@ -55,8 +55,6 @@ void arrange(SelectionStrategy &&selstrategy,
         auto bedidx = get_bed_index(itm);
         if (bedidx >= 0) {
             pilebb[bedidx].merge(fixed_bounding_box(itm));
-            if (is_wipe_tower(itm))
-                bed_occupied[bedidx] = true;
         }
     }
 
@@ -126,7 +124,7 @@ void arrange(SelectionStrategy &&selstrategy,
         d += corr;
 
         for (auto &itm : items)
-            if (get_bed_index(itm) == static_cast<int>(bedidx) && !is_wipe_tower(itm))
+            if (get_bed_index(itm) == static_cast<int>(bedidx))
                 translate(itm, d);
     }
 }
@@ -228,9 +226,6 @@ void fill_rotations(const Range<It>           &items,
         return;
 
     for (auto &itm : items) {
-        if (is_wipe_tower(itm)) // Rotating the wipe tower is currently problematic
-            continue;
-
         // Use the minimum bounding box rotation as a starting point.
         auto minbbr = get_min_area_bounding_box_rotation(itm);
         std::vector<double> rotations =
@@ -317,16 +312,10 @@ class DefaultArranger: public Arranger<ArrItem> {
 
         fill_rotations(items, bed, m_settings);
 
-        bool with_wipe_tower = std::any_of(items.begin(), items.end(),
-                                           [](auto &itm) {
-                                               return is_wipe_tower(itm);
-                                           });
-
         // With rectange bed, and no fixed items, let's use an infinite bed
         // with RectangleOverfitKernelWrapper. It produces better results than
         // a pure RectangleBed with inner-fit polygon calculation.
-        if (!with_wipe_tower &&
-            m_settings.get_arrange_strategy() == ArrangeSettingsView::asAuto &&
+        if (m_settings.get_arrange_strategy() == ArrangeSettingsView::asAuto &&
             IsRectangular<Bed>) {
             PackStrategyNFP base_strategy{std::move(kernel), ep, Accuracy, stop_cond};
 

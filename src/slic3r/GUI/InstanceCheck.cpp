@@ -111,7 +111,7 @@ namespace instance_check_internal
 
 #ifdef _WIN32
 
-	static HWND l_prusa_slicer_hwnd;
+	static HWND l_sla_slicer_hwnd;
 	static BOOL CALLBACK EnumWindowsProc(_In_ HWND   hwnd, _In_ LPARAM lParam)
 	{
 		//checks for other instances of prusaslicer, if found brings it to front and return false to stop enumeration and quit this instance
@@ -129,7 +129,7 @@ namespace instance_check_internal
 			return true;
 		std::wstring classNameString(className);
 		std::wstring wndTextString(wndText);
-		if (wndTextString.find(L"PrusaSlicer") != std::wstring::npos && classNameString == L"wxWindowNR") {
+		if (wndTextString.find(boost::nowide::widen(SLIC3R_APP_NAME)) != std::wstring::npos && classNameString == L"wxWindowNR") {
 			//check if other instances has same instance hash
 			//if not it is not same version(binary) as this version 
 			HANDLE   handle = GetProp(hwnd, L"Instance_Hash_Minor");
@@ -146,7 +146,7 @@ namespace instance_check_internal
 			if(my_instance_hash == other_instance_hash)
 			{
 				BOOST_LOG_TRIVIAL(debug) << "win enum - found correct instance";
-				l_prusa_slicer_hwnd = hwnd;
+				l_sla_slicer_hwnd = hwnd;
 				ShowWindow(hwnd, maximized ? SW_SHOWMAXIMIZED : SW_SHOW);
 				SetForegroundWindow(hwnd);
 				return false;
@@ -172,7 +172,7 @@ namespace instance_check_internal
 			data_to_send.dwData = 1;
 			data_to_send.cbData = sizeof(TCHAR) * (wcslen(*command_line_args.get()) + 1);
 			data_to_send.lpData = *command_line_args.get();
-			SendMessage(l_prusa_slicer_hwnd, WM_COPYDATA, 0, (LPARAM)&data_to_send);
+			SendMessage(l_sla_slicer_hwnd, WM_COPYDATA, 0, (LPARAM)&data_to_send);
 			return true;  
 		}
 	    return false;
@@ -195,7 +195,7 @@ namespace instance_check_internal
 			return true;
 		std::wstring classNameString(className);
 		std::wstring wndTextString(wndText);
-		if (wndTextString.find(L"PrusaSlicer") != std::wstring::npos && classNameString == L"wxWindowNR") {
+		if (wndTextString.find(boost::nowide::widen(SLIC3R_APP_NAME)) != std::wstring::npos && classNameString == L"wxWindowNR") {
 			//check if other instances has same instance hash
 			//if not it is not same version(binary) as this version 
 			HANDLE   handle = GetProp(hwnd, L"Instance_Hash_Minor");
@@ -400,8 +400,8 @@ namespace instance_check_internal
 		dbus_uint32_t 	serial = 0;
 		const char* sigval = message_text.c_str();
 		std::string   	method_name = "Message";
-		//std::string		interface_name = "com.prusa3d.prusaslicer.MulticastListener.Object" + reciever_id;
-		//std::string		object_name = "/com/prusa3d/prusaslicer/MulticastListener/Object" + reciever_id;
+		//std::string		interface_name = "org.slaslicer.MulticastListener.Object" + reciever_id;
+		//std::string		object_name = "/org/slaslicer/MulticastListener/Object" + reciever_id;
 		std::string		object_name = "/" + interface_name;
 		std::replace(object_name.begin(), object_name.end(), '.', '/');
 
@@ -454,7 +454,7 @@ namespace instance_check_internal
 	static void multicast_message_inner(const std::string &message_text)
 	{
 		BOOST_LOG_TRIVIAL(debug) << __FUNCTION__;
-		std::string pattern = R"(com\.prusa3d\.prusaslicer\.MulticastListener\.Object\d+)";
+		std::string pattern = R"(org\.slaslicer\.MulticastListener\.Object\d+)";
 		std::vector<std::string> instances;
 		std::string my_pid = std::to_string(get_current_pid());
 
@@ -489,11 +489,11 @@ namespace instance_check_internal
 			DBusError 		err;
 			dbus_uint32_t 	serial = 0;
 			const char* sigval = message_text.c_str();
-			//std::string		interface_name = "com.prusa3d.prusaslicer.InstanceCheck";
-			std::string		interface_name = "com.prusa3d.prusaslicer.InstanceCheck.Object" + version;
+			//std::string		interface_name = "org.slaslicer.InstanceCheck";
+			std::string		interface_name = "org.slaslicer.InstanceCheck.Object" + version;
 			std::string   	method_name = "AnotherInstance";
-			//std::string		object_name = "/com/prusa3d/prusaslicer/InstanceCheck";
-			std::string		object_name = "/com/prusa3d/prusaslicer/InstanceCheck/Object" + version;
+			//std::string		object_name = "/org/slaslicer/InstanceCheck";
+			std::string		object_name = "/org/slaslicer/InstanceCheck/Object" + version;
 
 
 			// initialise the error value
@@ -624,8 +624,6 @@ bool instance_check(int argc, char** argv, bool app_config_single_instance)
 namespace GUI {
 
 wxDEFINE_EVENT(EVT_LOAD_MODEL_OTHER_INSTANCE, LoadFromOtherInstanceEvent);
-wxDEFINE_EVENT(EVT_START_DOWNLOAD_OTHER_INSTANCE, StartDownloadOtherInstanceEvent);
-wxDEFINE_EVENT(EVT_LOGIN_OTHER_INSTANCE, LoginOtherInstanceEvent);
 wxDEFINE_EVENT(EVT_INSTANCE_GO_TO_FRONT, InstanceGoToFrontEvent);
 wxDEFINE_EVENT(EVT_STORE_READ_REQUEST, SimpleEvent);
 
@@ -791,7 +789,6 @@ void OtherInstanceMessageHandler::handle_message_type_cli(const std::string& dat
 	}
 
 	std::vector<boost::filesystem::path> paths;
-	std::vector<std::string> downloads;
 	// Skip the first argument, it is the path to the slicer executable.
 	auto it = args.begin();
 	for (++ it; it != args.end(); ++ it) {
@@ -799,21 +796,9 @@ void OtherInstanceMessageHandler::handle_message_type_cli(const std::string& dat
 		boost::filesystem::path p = MessageHandlerInternal::get_path(*it);
 		if (! p.string().empty())
 			paths.emplace_back(p);
-#ifdef _WIN32
-		else if (it->rfind("prusaslicer://open/?file=", 0) == 0)
-#else
-	    else if (it->rfind("prusaslicer://open?file=", 0) == 0)
-#endif
-			downloads.emplace_back(*it);
-		else if (it->rfind("prusaslicer://login", 0) == 0) {
-			wxPostEvent(m_callback_evt_handler, LoginOtherInstanceEvent(GUI::EVT_LOGIN_OTHER_INSTANCE, std::string(*it)));
-		}
 	}
 	if (! paths.empty()) {
 		wxPostEvent(m_callback_evt_handler, LoadFromOtherInstanceEvent(GUI::EVT_LOAD_MODEL_OTHER_INSTANCE, std::vector<boost::filesystem::path>(std::move(paths))));
-	}
-	if (!downloads.empty()) {
-		wxPostEvent(m_callback_evt_handler, StartDownloadOtherInstanceEvent(GUI::EVT_START_DOWNLOAD_OTHER_INSTANCE, std::vector<std::string>(std::move(downloads))));
 	}
 }
 void OtherInstanceMessageHandler::handle_message_type_store_read(const std::string& data)
@@ -875,7 +860,7 @@ namespace InstanceCheckMessageHandlerDBusInternal
 	        "       <arg name=\"data\" direction=\"out\" type=\"s\" />"
 	        "     </method>"
 	        "   </interface>"
-	        "   <interface name=\"com.prusa3d.prusaslicer.InstanceCheck\">"
+	        "   <interface name=\"org.slaslicer.InstanceCheck\">"
 	        "     <method name=\"AnotherInstance\">"
 	        "       <arg name=\"data\" direction=\"in\" type=\"s\" />"
 	        "     </method>"
@@ -891,7 +876,7 @@ namespace InstanceCheckMessageHandlerDBusInternal
 	    dbus_message_unref(reply);
 	}
 
-	//method AnotherInstance receives message from another PrusaSlicer instance 
+	//method AnotherInstance receives message from another instance
 	static void handle_method_another_instance(DBusConnection *connection, DBusMessage *request)
 	{
 	    DBusError     err;
@@ -917,7 +902,7 @@ namespace InstanceCheckMessageHandlerDBusInternal
 	{
 		const char* interface_name = dbus_message_get_interface(message);
 	    const char* member_name    = dbus_message_get_member(message);
-	    std::string our_interface  = "com.prusa3d.prusaslicer.InstanceCheck.Object" + wxGetApp().get_instance_hash_string();
+	    std::string our_interface  = "org.slaslicer.InstanceCheck.Object" + wxGetApp().get_instance_hash_string();
 	    BOOST_LOG_TRIVIAL(trace) << "DBus message received: interface: " << interface_name << ", member: " << member_name;
 	    if (0 == strcmp("org.freedesktop.DBus.Introspectable", interface_name) && 0 == strcmp("Introspect", member_name)) {		
 	        InstanceCheckMessageHandlerDBusInternal::respond_to_introspect(connection, message);
@@ -941,8 +926,8 @@ void OtherInstanceMessageHandler::listen_instance_check()
     DBusObjectPathVTable vtable;
     std::string 		 instance_hash  = wxGetApp().get_instance_hash_string();
     BOOST_LOG_TRIVIAL(debug) << __FUNCTION__ << " " << instance_hash;
-	std::string			 interface_name = "com.prusa3d.prusaslicer.InstanceCheck.Object" + instance_hash;
-    std::string			 object_name 	= "/com/prusa3d/prusaslicer/InstanceCheck/Object" + instance_hash;
+	std::string			 interface_name = "org.slaslicer.InstanceCheck.Object" + instance_hash;
+    std::string			 object_name 	= "/org/slaslicer/InstanceCheck/Object" + instance_hash;
 
     //BOOST_LOG_TRIVIAL(debug) << "init dbus listen " << interface_name << " " << object_name;
     dbus_error_init(&err);
@@ -970,7 +955,7 @@ void OtherInstanceMessageHandler::listen_instance_check()
 	    return;
 	}
 	if (DBUS_REQUEST_NAME_REPLY_PRIMARY_OWNER != name_req_val) {
-		BOOST_LOG_TRIVIAL(error) << "Not primary owner of DBus name - probably another PrusaSlicer instance is running.";
+		BOOST_LOG_TRIVIAL(error) << "Not primary owner of DBus name - probably another " SLIC3R_APP_NAME " instance is running.";
 	    BOOST_LOG_TRIVIAL(error) << "Dbus Messages listening terminating.";
 	    dbus_connection_unref(conn);
 	    return;
@@ -1030,7 +1015,7 @@ namespace MulticastMessageHandlerDBusInternal
 	        "       <arg name=\"data\" direction=\"out\" type=\"s\" />"
 	        "     </method>"
 	        "   </interface>"
-	        "   <interface name=\"com.prusa3d.prusaslicer.MulticastListener\">"
+	        "   <interface name=\"org.slaslicer.MulticastListener\">"
 	        "     <method name=\"Message\">"
 	        "       <arg name=\"data\" direction=\"in\" type=\"s\" />"
 	        "     </method>"
@@ -1046,7 +1031,7 @@ namespace MulticastMessageHandlerDBusInternal
 	    dbus_message_unref(reply);
 	}
 
-	//method Message receives message from another PrusaSlicer instance 
+	//method Message receives message from another instance
 	static void handle_method_message(DBusConnection *connection, DBusMessage *request)
 	{
 		BOOST_LOG_TRIVIAL(debug) << __FUNCTION__;
@@ -1069,7 +1054,7 @@ namespace MulticastMessageHandlerDBusInternal
 	{
 		const char* interface_name = dbus_message_get_interface(message);
 	    const char* member_name    = dbus_message_get_member(message);
-	    std::string our_interface  = "com.prusa3d.prusaslicer.MulticastListener.Object" + std::to_string(get_current_pid());
+	    std::string our_interface  = "org.slaslicer.MulticastListener.Object" + std::to_string(get_current_pid());
 	    BOOST_LOG_TRIVIAL(debug) << "DBus message received: interface: " << interface_name << ", member: " << member_name;
 	    if (0 == strcmp("org.freedesktop.DBus.Introspectable", interface_name) && 0 == strcmp("Introspect", member_name)) {		
 	        MulticastMessageHandlerDBusInternal::respond_to_introspect(connection, message);
@@ -1092,8 +1077,8 @@ void OtherInstanceMessageHandler::listen_multicast()
     int 				 name_req_val;
     DBusObjectPathVTable vtable;
     std::string 		 pid  = std::to_string(get_current_pid());
-	std::string			 interface_name = "com.prusa3d.prusaslicer.MulticastListener.Object" + pid;
-    std::string			 object_name 	= "/com/prusa3d/prusaslicer/MulticastListener/Object" + pid;
+	std::string			 interface_name = "org.slaslicer.MulticastListener.Object" + pid;
+    std::string			 object_name 	= "/org/slaslicer/MulticastListener/Object" + pid;
 
     BOOST_LOG_TRIVIAL(debug) << __FUNCTION__ << " " << interface_name;
     dbus_error_init(&err);
@@ -1121,7 +1106,7 @@ void OtherInstanceMessageHandler::listen_multicast()
 	    return;
 	}
 	if (DBUS_REQUEST_NAME_REPLY_PRIMARY_OWNER != name_req_val) {
-		BOOST_LOG_TRIVIAL(error) << "listen_multicast: Not primary owner of DBus name - probably another PrusaSlicer instance is running.";
+		BOOST_LOG_TRIVIAL(error) << "listen_multicast: Not primary owner of DBus name - probably another " SLIC3R_APP_NAME " instance is running.";
 	    BOOST_LOG_TRIVIAL(error) << "listen_multicast: Dbus Messages listening terminating.";
 	    dbus_connection_unref(conn);
 	    return;

@@ -47,7 +47,6 @@ public:
     {
         Invalid,
         Empty,
-        WipeTower,
         SingleModifier,
         MultipleModifier,
         SingleVolume,
@@ -215,7 +214,6 @@ public:
     void clear();
 
     bool is_empty() const { return m_type == Empty; }
-    bool is_wipe_tower() const { return m_type == WipeTower; }
     bool is_any_modifier() const { return is_single_modifier() || is_multiple_modifier(); }
     bool is_single_modifier() const { return m_type == SingleModifier; }
     bool is_multiple_modifier() const { return m_type == MultipleModifier; }

@@ -1,0 +1,22 @@
+{
+  "reference": "build/implementation-2026-10-02-next/full-oracle/libcvextern.so",
+  "reference_sha256": "e9182672c6f2742473b0cec9dce19d318c9f4c3e7ac43fdb9b46dd2cc0f04c7b",
+  "glyphs": 3301,
+  "font_faces": 16,
+  "arrays": {
+    "HersheySimplex": 96,
+    "HersheyPlain": 96,
+    "HersheyDuplex": 96,
+    "HersheyComplex": 160,
+    "HersheyTriplex": 96,
+    "HersheyComplexSmall": 96,
+    "HersheyScriptSimplex": 96,
+    "HersheyScriptComplex": 96,
+    "HersheyPlainItalic": 96,
+    "HersheyComplexItalic": 96,
+    "HersheyTriplexItalic": 96,
+    "HersheyComplexSmallItalic": 96
+  },
+  "generated_header_sha256": "96a26596655960f4c8e21233786fecf17df455f7349f92c724e4efd4b4d55456",
+  "license": "OpenCV 4.12 Apache-2.0; see OpenCV-Apache-2.0.txt"
+}

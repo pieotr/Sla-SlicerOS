@@ -34,7 +34,6 @@
 #include <boost/thread.hpp>
 
 #include "libslic3r/Model.hpp"
-#include "libslic3r/Print.hpp"
 #include "libslic3r/PresetBundle.hpp"
 #include "libslic3r/Format/3mf.hpp"
 #include "libslic3r/Semver.hpp"

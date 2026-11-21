@@ -13,11 +13,9 @@
 
 #include "ClipperUtils.hpp"
 #include "Geometry/ConvexHull.hpp"
-#include "libslic3r/GCode/GCodeProcessor.hpp"
 #include "Point.hpp"
 #include "admesh/stl.h"
 #include "libslic3r/BoundingBox.hpp"
-#include "libslic3r/ExtrusionRole.hpp"
 #include "libslic3r/Geometry/Circle.hpp"
 #include "libslic3r/Polygon.hpp"
 
@@ -383,46 +381,6 @@ BuildVolume::ObjectState BuildVolume::volume_state_bbox(const BoundingBoxf3 volu
     return state;
 }
 
-bool BuildVolume::all_paths_inside(const GCodeProcessorResult& paths, const BoundingBoxf3& paths_bbox, bool ignore_bottom) const
-{
-    auto move_valid = [](const GCodeProcessorResult::MoveVertex &move) {
-        return move.type == EMoveType::Extrude && move.extrusion_role != GCodeExtrusionRole::Custom && move.width != 0.f && move.height != 0.f;
-    };
-    static constexpr const double epsilon = BedEpsilon;
-
-    switch (m_type) {
-    case Type::Rectangle:
-    {
-        BoundingBox3Base<Vec3d> build_volume = this->bounding_volume().inflated(epsilon);
-        if (m_max_print_height == 0.0)
-            build_volume.max.z() = std::numeric_limits<double>::max();
-        if (ignore_bottom)
-            build_volume.min.z() = -std::numeric_limits<double>::max();
-        return build_volume.contains(paths_bbox);
-    }
-    case Type::Circle:
-    {
-        const Vec2f c = unscaled<float>(m_circle.center);
-        const float r = unscaled<double>(m_circle.radius) + epsilon;
-        const float r2 = sqr(r);
-        return m_max_print_height == 0.0 ?
-            std::all_of(paths.moves.begin(), paths.moves.end(), [move_valid, c, r2](const GCodeProcessorResult::MoveVertex &move)
-                { return ! move_valid(move) || (to_2d(move.position) - c).squaredNorm() <= r2; }) :
-            std::all_of(paths.moves.begin(), paths.moves.end(), [move_valid, c, r2, z = m_max_print_height + epsilon](const GCodeProcessorResult::MoveVertex& move)
-                { return ! move_valid(move) || ((to_2d(move.position) - c).squaredNorm() <= r2 && move.position.z() <= z); });
-    }
-    case Type::Convex:
-    //FIXME doing test on convex hull until we learn to do test on non-convex polygons efficiently.
-    case Type::Custom:
-        return m_max_print_height == 0.0 ?
-            std::all_of(paths.moves.begin(), paths.moves.end(), [move_valid, this](const GCodeProcessorResult::MoveVertex &move) 
-                { return ! move_valid(move) || Geometry::inside_convex_polygon(m_top_bottom_convex_hull_decomposition_bed, to_2d(move.position).cast<double>()); }) :
-            std::all_of(paths.moves.begin(), paths.moves.end(), [move_valid, this, z = m_max_print_height + epsilon](const GCodeProcessorResult::MoveVertex &move)
-                { return ! move_valid(move) || (Geometry::inside_convex_polygon(m_top_bottom_convex_hull_decomposition_bed, to_2d(move.position).cast<double>()) && move.position.z() <= z); });
-    default:
-        return true;
-    }
-}
 
 template<typename Fn>
 inline bool all_inside_vertices_normals_interleaved(const std::vector<float> &paths, Fn fn)

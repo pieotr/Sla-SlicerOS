@@ -7,13 +7,14 @@
 #include <cmath>
 
 #include "RulerForDoubleSlider.hpp"
-#include "libslic3r/CustomGCode.hpp"
 #include "libslic3r/libslic3r.h"
 
 using namespace Slic3r;
-using namespace CustomGCode;
 
 namespace DoubleSlider {
+
+// Tolerance used when searching for a value in the sorted list of layer heights.
+static constexpr double epsilon() { return 0.0011; }
 
 static const double PIXELS_PER_SM_DEFAULT  = 96./*DEFAULT_DPI*/ * 5. / 25.4;
 

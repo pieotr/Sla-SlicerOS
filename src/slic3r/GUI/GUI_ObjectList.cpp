@@ -13,11 +13,9 @@
 #include "GUI_ObjectList.hpp"
 #include "GUI_Factories.hpp"
 #include "GUI_ObjectManipulation.hpp"
-#include "GUI_ObjectLayers.hpp"
 #include "GUI_App.hpp"
 #include "I18N.hpp"
 #include "Plater.hpp"
-#include "BitmapComboBox.hpp"
 #include "GalleryDialog.hpp"
 #include "MainFrame.hpp"
 #include "slic3r/Utils/UndoRedo.hpp"
@@ -39,7 +37,6 @@
 #include <boost/algorithm/string.hpp>
 #include <wx/progdlg.h>
 #include <wx/listbook.h>
-#include <wx/numformatter.h>
 #include <wx/bookctrl.h> // IWYU pragma: keep
 
 #include "slic3r/Utils/FixModelByWin10.hpp"
@@ -69,11 +66,6 @@ static const Selection& scene_selection()
 static DynamicPrintConfig& printer_config()
 {
     return wxGetApp().preset_bundle->printers.get_edited_preset().config;
-}
-
-static int extruders_count()
-{
-    return wxGetApp().extruders_edited_cnt();
 }
 
 static void take_snapshot(const wxString& snapshot_name) 
@@ -117,7 +109,7 @@ ObjectList::ObjectList(wxWindow* parent) :
 
 #ifndef __APPLE__
         // On Windows and Linux:
-        // It's not invoked KillFocus event for "temporary" panels (like "Manipulation panel", "Settings", "Layer ranges"),
+        // It's not invoked KillFocus event for "temporary" panels (like "Manipulation panel", "Settings"),
         // if we change selection in object list.
         // see https://github.com/prusa3d/PrusaSlicer/issues/3303
         // But, if we call SetFocus() for ObjectList it will cause an invoking of a KillFocus event for "temporary" panels  
@@ -183,7 +175,7 @@ ObjectList::ObjectList(wxWindow* parent) :
 //    Bind(wxEVT_KEY_DOWN, &ObjectList::OnChar, this);
     {
         // Accelerators
-        wxAcceleratorEntry entries[33];
+        wxAcceleratorEntry entries[13];
         entries[0].Set(wxACCEL_CTRL, (int)'C', wxID_COPY);
         entries[1].Set(wxACCEL_CTRL, (int)'X', wxID_CUT);
         entries[2].Set(wxACCEL_CTRL, (int)'V', wxID_PASTE);
@@ -198,13 +190,7 @@ ObjectList::ObjectList(wxWindow* parent) :
         entries[11].Set(wxACCEL_NORMAL, WXK_NUMPAD_SUBTRACT, wxID_REMOVE);
         entries[12].Set(wxACCEL_NORMAL, int('p'), wxID_PRINT);
 
-        int numbers_cnt = 1;
-        for (auto char_number : { '0', '1', '2', '3', '4', '5', '6', '7', '8', '9' }) {
-            entries[12 + numbers_cnt].Set(wxACCEL_NORMAL, int(char_number), wxID_LAST + numbers_cnt);
-            entries[22 + numbers_cnt].Set(wxACCEL_NORMAL, WXK_NUMPAD0 + numbers_cnt - 1, wxID_LAST + numbers_cnt);
-            numbers_cnt++;
-        }
-        wxAcceleratorTable accel(33, entries);
+        wxAcceleratorTable accel(13, entries);
         SetAcceleratorTable(accel);
 
         this->Bind(wxEVT_MENU, [this](wxCommandEvent &evt) { this->copy();                      }, wxID_COPY);
@@ -217,11 +203,6 @@ ObjectList::ObjectList(wxWindow* parent) :
         this->Bind(wxEVT_MENU, [this](wxCommandEvent &evt) { this->decrease_instances();        }, wxID_REMOVE);
         this->Bind(wxEVT_MENU, [this](wxCommandEvent &evt) { this->toggle_printable_state();    }, wxID_PRINT);
         
-        for (int i = 0; i < 10; i++)
-            this->Bind(wxEVT_MENU, [this, i](wxCommandEvent &evt) {
-                if (extruders_count() > 1 && i <= extruders_count())
-                    this->set_extruder_for_selected_items(i);
-            }, wxID_LAST+i+1);
     }
 #else //__WXOSX__
     Bind(wxEVT_CHAR, [this](wxKeyEvent& event) { key_event(event); }); // doesn't work on OSX
@@ -359,17 +340,6 @@ void ObjectList::create_objects_ctrl()
     AppendBitmapColumn(" ", colPrint, wxDATAVIEW_CELL_INERT, 3*em,
         wxALIGN_CENTER_HORIZONTAL, wxDATAVIEW_COL_RESIZABLE);
 
-    // column Extruder of the view control:
-    BitmapChoiceRenderer* bmp_choice_renderer = new BitmapChoiceRenderer();
-    bmp_choice_renderer->set_can_create_editor_ctrl_function([this]() {
-        return m_objects_model->GetItemType(GetSelection()) & (itVolume | itLayer | itObject);
-    });
-    bmp_choice_renderer->set_default_extruder_idx([this]() {
-        return m_objects_model->GetDefaultExtruderIdx(GetSelection());
-    });
-    AppendColumn(new wxDataViewColumn(_L("Extruder"), bmp_choice_renderer,
-        colExtruder, 8*em, wxALIGN_CENTER_HORIZONTAL, wxDATAVIEW_COL_RESIZABLE));
-
     // column ItemEditing of the view control:
     AppendBitmapColumn(_L("Editing"), colEditing, wxDATAVIEW_CELL_INERT, 3*em,
         wxALIGN_CENTER_HORIZONTAL, wxDATAVIEW_COL_RESIZABLE);
@@ -380,7 +350,6 @@ void ObjectList::create_objects_ctrl()
     {
         GetColumn(colName)->SetWidth(20*em);
         GetColumn(colPrint)->SetWidth(3*em);
-        GetColumn(colExtruder)->SetWidth(8*em);
         GetColumn(colEditing) ->SetWidth(7*em);
     }
 }
@@ -585,106 +554,7 @@ ModelConfig& ObjectList::get_item_config(const wxDataViewItem& item) const
 
     assert(obj_idx >= 0 || ((type & itVolume) && vol_idx >=0));
     return type & itVolume ?(*m_objects)[obj_idx]->volumes[vol_idx]->config :
-           type & itLayer  ?(*m_objects)[obj_idx]->layer_config_ranges[m_objects_model->GetLayerRangeByItem(item)] :
                             (*m_objects)[obj_idx]->config;
-}
-
-void ObjectList::update_extruder_values_for_items(const size_t max_extruder)
-{
-    for (size_t i = 0; i < m_objects->size(); ++i)
-    {
-        wxDataViewItem item = m_objects_model->GetItemById(i);
-        if (!item) continue;
-            
-        auto object = (*m_objects)[i];
-        wxString extruder;
-        if (!object->config.has("extruder") ||
-            size_t(object->config.extruder()) > max_extruder)
-            extruder = _(L("default"));
-        else
-            extruder = wxString::Format("%d", object->config.extruder());
-
-        m_objects_model->SetExtruder(extruder, item);
-
-        if (object->volumes.size() > 1) {
-            for (size_t id = 0; id < object->volumes.size(); id++) {
-                item = m_objects_model->GetItemByVolumeId(i, id);
-                if (!item) continue;
-                if (!object->volumes[id]->config.has("extruder") ||
-                    size_t(object->volumes[id]->config.extruder()) > max_extruder)
-                    extruder = _(L("default"));
-                else
-                    extruder = wxString::Format("%d", object->volumes[id]->config.extruder()); 
-
-                m_objects_model->SetExtruder(extruder, item);
-            }
-        }
-    }
-}
-
-void ObjectList::update_objects_list_extruder_column(size_t extruders_count)
-{
-    if (printer_technology() == ptSLA)
-        extruders_count = 1;
-
-    m_prevent_update_extruder_in_config = true;
-
-    if (m_objects && extruders_count > 1)
-        update_extruder_values_for_items(extruders_count);
-
-    update_extruder_colors();
-
-    // set show/hide for this column 
-    set_extruder_column_hidden(extruders_count <= 1);
-    //a workaround for a wrong last column width updating under OSX 
-    GetColumn(colEditing)->SetWidth(25);
-
-    m_prevent_update_extruder_in_config = false;
-}
-
-void ObjectList::update_extruder_colors()
-{
-    m_objects_model->UpdateColumValues(colExtruder);
-}
-
-void ObjectList::set_extruder_column_hidden(const bool hide) const
-{
-    GetColumn(colExtruder)->SetHidden(hide);
-}
-
-void ObjectList::update_extruder_in_config(const wxDataViewItem& item)
-{
-    if (m_prevent_update_extruder_in_config)
-        return;
-
-    const ItemType item_type = m_objects_model->GetItemType(item);
-    if (item_type & itObject) {
-        const int obj_idx = m_objects_model->GetIdByItem(item);
-        m_config = &(*m_objects)[obj_idx]->config;
-    }
-    else {
-        const int obj_idx = m_objects_model->GetIdByItem(m_objects_model->GetTopParent(item));
-        if (item_type & itVolume)
-        {
-        const int volume_id = m_objects_model->GetVolumeIdByItem(item);
-        if (obj_idx < 0 || volume_id < 0)
-            return;
-        m_config = &(*m_objects)[obj_idx]->volumes[volume_id]->config;
-        }
-        else if (item_type & itLayer)
-            m_config = &get_item_config(item);
-    }
-
-    if (!m_config)
-        return;
-
-    take_snapshot(_(L("Change Extruder")));
-
-    const int extruder = m_objects_model->GetExtruderNumber(item);
-    m_config->set_key_value("extruder", new ConfigOptionInt(extruder));
-
-    // update scene
-    wxGetApp().plater()->update();
 }
 
 static wxString get_item_name(const std::string& name, const bool is_text_volume)
@@ -709,7 +579,7 @@ void ObjectList::update_name_in_model(const wxDataViewItem& item) const
             //update object name with text marker in ObjectList
             m_objects_model->SetName(get_item_name(obj->name, true), item);
         }
-        // Renaming an object should invalidate gcode export - schedule Print::apply call.
+        // Renaming an object should invalidate the export - schedule Print::apply call.
         wxGetApp().plater()->schedule_background_process();
         return;
     }
@@ -770,82 +640,13 @@ void ObjectList::selection_changed()
     if (const wxDataViewItem item = GetSelection())
     {
         const ItemType type = m_objects_model->GetItemType(item);
-        // to correct visual hints for layers editing on the Scene
-        if (type & (itLayer|itLayerRoot)) {
-            wxGetApp().obj_layers()->reset_selection();
-            
-            if (type & itLayerRoot)
-                wxGetApp().plater()->canvas3D()->handle_sidebar_focus_event("", false);
-            else {
-                wxGetApp().obj_layers()->set_selectable_range(m_objects_model->GetLayerRangeByItem(item));
-                wxGetApp().obj_layers()->update_scene_from_editor_selection();
-            }
-        }
-        else if (type & itVolume) {
+        if (type & itVolume) {
             if (printer_technology() == ptSLA)
                 wxGetApp().plater()->canvas3D()->set_sla_view_type(scene_selection().get_first_volume()->composite_id, GLCanvas3D::ESLAViewType::Original);
         }
     }
 
     part_selection_changed();
-}
-
-void ObjectList::copy_layers_to_clipboard()
-{
-    wxDataViewItemArray sel_layers;
-    GetSelections(sel_layers);
-
-    const int obj_idx = m_objects_model->GetObjectIdByItem(sel_layers.front());
-    if (obj_idx < 0 || (int)m_objects->size() <= obj_idx)
-        return;
-
-    const t_layer_config_ranges& ranges = object(obj_idx)->layer_config_ranges;
-    t_layer_config_ranges& cache_ranges = m_clipboard.get_ranges_cache();
-
-    if (sel_layers.Count() == 1 && m_objects_model->GetItemType(sel_layers.front()) & itLayerRoot)
-    {
-        cache_ranges.clear();
-        cache_ranges = ranges;
-        return;
-    }
-
-    for (const auto& layer_item : sel_layers)
-        if (m_objects_model->GetItemType(layer_item) & itLayer) {
-            auto range = m_objects_model->GetLayerRangeByItem(layer_item);
-            auto it = ranges.find(range);
-            if (it != ranges.end())
-                cache_ranges[it->first] = it->second;
-        }
-}
-
-void ObjectList::paste_layers_into_list()
-{
-    const int obj_idx = m_objects_model->GetObjectIdByItem(GetSelection());
-    t_layer_config_ranges& cache_ranges = m_clipboard.get_ranges_cache();
-
-    if (obj_idx < 0 || (int)m_objects->size() <= obj_idx || 
-        cache_ranges.empty() || printer_technology() == ptSLA)
-        return;
-
-    const wxDataViewItem object_item = m_objects_model->GetItemById(obj_idx);
-    wxDataViewItem layers_item = m_objects_model->GetLayerRootItem(object_item);
-    if (layers_item)
-        m_objects_model->Delete(layers_item);
-
-    t_layer_config_ranges& ranges = object(obj_idx)->layer_config_ranges;
-
-    // and create Layer item(s) according to the layer_config_ranges
-    for (const auto& range : cache_ranges)
-        ranges.emplace(range);
-
-    layers_item = add_layer_root_item(object_item);
-
-    changed_object(obj_idx);
-
-    select_item(layers_item);
-#ifndef __WXOSX__
-    selection_changed();
-#endif //no __WXOSX__
 }
 
 void ObjectList::copy_settings_to_clipboard()
@@ -866,7 +667,7 @@ void ObjectList::paste_settings_into_list()
         item = m_objects_model->GetParent(item);
 
     ItemType item_type = m_objects_model->GetItemType(item);
-    if(!(item_type & (itObject | itVolume |itLayer)))
+    if(!(item_type & (itObject | itVolume)))
         return;
 
     DynamicPrintConfig& config_cache = m_clipboard.get_config_cache();
@@ -876,9 +677,9 @@ void ObjectList::paste_settings_into_list()
     auto part_options = SettingsFactory::get_options(true);
 
     for (const std::string& opt_key: keys) {
-        if (item_type & (itVolume | itLayer) &&
+        if (item_type & itVolume &&
             std::find(part_options.begin(), part_options.end(), opt_key) == part_options.end())
-            continue; // we can't to add object specific options for the part's(itVolume | itLayer) config 
+            continue; // we can't to add object specific options for the part's config 
 
         const ConfigOption* option = config_cache.option(opt_key);
         if (option)
@@ -967,9 +768,6 @@ void ObjectList::list_manipulation(const wxPoint& mouse_pos, bool evt_context_me
     wxDataViewColumn* col = nullptr;
     HitTest(mouse_pos, item, col);
 
-    if (m_extruder_editor)
-        m_extruder_editor->Hide();
-
     /* Note: Under OSX right click doesn't send "selection changed" event.
      * It means that Selection() will be return still previously selected item.
      * Thus under OSX we should force UnselectAll(), when item and col are nullptr,
@@ -1023,9 +821,6 @@ void ObjectList::list_manipulation(const wxPoint& mouse_pos, bool evt_context_me
             else if (evt_context_menu)
                 show_context_menu(evt_context_menu); // show context menu for "Name" column too
         }
-	    // workaround for extruder editing under OSX 
-	    else if (wxOSX && evt_context_menu && title == _("Extruder"))
-	        extruder_editing();
 	}
 
 #ifndef __WXMSW__
@@ -1050,7 +845,7 @@ void ObjectList::show_context_menu(const bool evt_context_menu)
         if (item)
         {
             const ItemType type = m_objects_model->GetItemType(item);
-            if (!(type & (itObject | itVolume | itLayer | itInstance)))
+            if (!(type & (itObject | itVolume | itInstance)))
                 return;
             if (type & itVolume) {
                 int obj_idx, vol_idx;
@@ -1064,9 +859,7 @@ void ObjectList::show_context_menu(const bool evt_context_menu)
                     plater->part_menu();
             }
             else
-                menu = type & itInstance             ? plater->instance_menu() :
-                       type & itLayer                ? plater->layer_menu() :
-                       printer_technology() == ptFFF ? plater->object_menu() : plater->sla_object_menu();
+                menu = type & itInstance ? plater->instance_menu() : plater->sla_object_menu();
         }
         else if (evt_context_menu)
             menu = plater->default_menu();
@@ -1074,45 +867,6 @@ void ObjectList::show_context_menu(const bool evt_context_menu)
 
     if (menu)
         plater->PopupMenu(menu);
-}
-
-void ObjectList::extruder_editing()
-{
-    wxDataViewItem item = GetSelection();
-    if (!item || !(m_objects_model->GetItemType(item) & (itVolume | itObject | itLayer)))
-        return;
-
-    wxRect rect = this->GetItemRect(item, GetColumn(colExtruder));
-    wxPoint pos = rect.GetPosition();
-    pos.y -= 4;
-    wxSize size = rect.GetSize();
-    size.SetWidth(size.GetWidth() + 8);
-
-    apply_extruder_selector(&m_extruder_editor, this, L("default"), pos, size);
-
-    m_extruder_editor->SetSelection(m_objects_model->GetExtruderNumber(item));
-    m_extruder_editor->Show();
-
-    auto set_extruder = [this]()
-    {
-        wxDataViewItem item = GetSelection();
-        if (!item) return;
-
-        const int selection = m_extruder_editor->GetSelection();
-        if (selection >= 0) 
-            m_objects_model->SetExtruder(m_extruder_editor->GetString(selection), item);
-
-        m_extruder_editor->Hide();
-        update_extruder_in_config(item);
-        Refresh();
-    };
-
-    // to avoid event propagation to other sidebar items
-    m_extruder_editor->Bind(wxEVT_COMBOBOX, [set_extruder](wxCommandEvent& evt)
-    {
-        set_extruder();
-        evt.StopPropagation();
-    });
 }
 
 void ObjectList::copy()
@@ -1132,15 +886,12 @@ bool ObjectList::copy_to_clipboard()
     if (sels.IsEmpty())
         return false;
     ItemType type = m_objects_model->GetItemType(sels.front());
-    if (!(type & (itSettings | itLayer | itLayerRoot))) {
+    if (!(type & itSettings)) {
         m_clipboard.reset();
         return false;
     }
 
-    if (type & itSettings)
-        copy_settings_to_clipboard();
-    if (type & (itLayer | itLayerRoot))
-        copy_layers_to_clipboard();
+    copy_settings_to_clipboard();
 
     m_clipboard.set_type(type);
     return true;
@@ -1148,15 +899,12 @@ bool ObjectList::copy_to_clipboard()
 
 bool ObjectList::paste_from_clipboard()
 {
-    if (!(m_clipboard.get_type() & (itSettings | itLayer | itLayerRoot))) {
+    if (!(m_clipboard.get_type() & itSettings)) {
         m_clipboard.reset();
         return false;
     }
 
-    if (m_clipboard.get_type() & itSettings)
-        paste_settings_into_list();
-    if (m_clipboard.get_type() & (itLayer | itLayerRoot))
-        paste_layers_into_list();
+    paste_settings_into_list();
 
     return true;
 }
@@ -1206,18 +954,6 @@ void ObjectList::key_event(wxKeyEvent& event)
         decrease_instances();
     else if (event.GetUnicodeKey() == 'p')
         toggle_printable_state();
-    else if (extruders_count() > 1) {
-        std::vector<wxChar> numbers = { '0', '1', '2', '3', '4', '5', '6', '7', '8', '9' };
-        wxChar key_char = event.GetUnicodeKey();
-        if (std::find(numbers.begin(), numbers.end(), key_char) != numbers.end()) {
-            long extruder_number;
-            if (wxNumberFormatter::FromString(wxString(key_char), &extruder_number) &&
-                extruders_count() >= extruder_number)
-                set_extruder_for_selected_items(int(extruder_number));
-        }
-        else
-            event.Skip();
-    }
     else
         event.Skip();
 }
@@ -1422,14 +1158,11 @@ void ObjectList::add_category_to_settings_from_selection(const std::vector< std:
     assert(m_config);
     auto opt_keys = m_config->keys();
 
-    const wxString snapshot_text =  item_type & itLayer   ? _L("Add Settings for Layers") :
-                                    item_type & itVolume  ? _L("Add Settings for Sub-object") :
+    const wxString snapshot_text =  item_type & itVolume  ? _L("Add Settings for Sub-object") :
                                                             _L("Add Settings for Object");
     take_snapshot(snapshot_text);
 
-    const DynamicPrintConfig& from_config = printer_technology() == ptFFF ? 
-                                            wxGetApp().preset_bundle->prints.get_edited_preset().config : 
-                                            wxGetApp().preset_bundle->sla_prints.get_edited_preset().config;
+    const DynamicPrintConfig& from_config = wxGetApp().preset_bundle->sla_prints.get_edited_preset().config;
 
     for (auto& opt : category_options) {
         auto& opt_key = opt.first;
@@ -1448,7 +1181,7 @@ void ObjectList::add_category_to_settings_from_selection(const std::vector< std:
     }
 
     // Add settings item for object/sub-object and show them 
-    if (!(item_type & (itObject | itVolume | itLayer)))
+    if (!(item_type & (itObject | itVolume)))
         item = m_objects_model->GetTopParent(item);
     show_settings(add_settings_item(item, &m_config->get()));
 }
@@ -1463,12 +1196,11 @@ void ObjectList::add_category_to_settings_from_frequent(const std::vector<std::s
     assert(m_config);
     auto opt_keys = m_config->keys();
 
-    const wxString snapshot_text = item_type & itLayer  ? _L("Add Settings Bundle for Height range") :
-                                   item_type & itVolume ? _L("Add Settings Bundle for Sub-object") :
+    const wxString snapshot_text = item_type & itVolume ? _L("Add Settings Bundle for Sub-object") :
                                                           _L("Add Settings Bundle for Object");
     take_snapshot(snapshot_text);
 
-    const DynamicPrintConfig& from_config = wxGetApp().preset_bundle->prints.get_edited_preset().config;
+    const DynamicPrintConfig& from_config = wxGetApp().preset_bundle->sla_prints.get_edited_preset().config;
     for (auto& opt_key : options)
     {
         if (find(opt_keys.begin(), opt_keys.end(), opt_key) == opt_keys.end()) {
@@ -1483,7 +1215,7 @@ void ObjectList::add_category_to_settings_from_frequent(const std::vector<std::s
     }
 
     // Add settings item for object/sub-object and show them 
-    if (!(item_type & (itObject | itVolume | itLayer)))
+    if (!(item_type & (itObject | itVolume)))
         item = m_objects_model->GetTopParent(item);
     show_settings(add_settings_item(item, &m_config->get()));
 }
@@ -1635,8 +1367,6 @@ void ObjectList::load_from_files(const wxArrayString& input_files, ModelObject& 
         // Mesh will be centered when loading.
         ModelVolume* new_volume = model_object.add_volume(std::move(mesh), type);
         new_volume->name = boost::filesystem::path(input_file).filename().string();
-        // set a default extruder value, since user can't add it manually
-        new_volume->config.set_key_value("extruder", new ConfigOptionInt(0));
         // update source data
         new_volume->source.input_file = input_file;
         new_volume->source.object_idx = obj_idx;
@@ -1736,8 +1466,6 @@ void ObjectList::load_generic_subobject(const std::string& type_name, const Mode
 
     const wxString name = _L("Generic") + "-" + _(type_name);
     new_volume->name = into_u8(name);
-    // set a default extruder value, since user can't add it manually
-    new_volume->config.set_key_value("extruder", new ConfigOptionInt(0));
     new_volume->source.is_from_builtin_objects = true;
 
     select_item([this, obj_idx, new_volume]() {
@@ -1827,8 +1555,6 @@ void ObjectList::load_mesh_object(const TriangleMesh &mesh, const std::string &n
     new_object->sort_volumes(wxGetApp().app_config->get_bool("order_volumes"));
     new_volume->name = name;
 
-    // set a default extruder value, since user can't add it manually
-    new_volume->config.set_key_value("extruder", new ConfigOptionInt(0));
     new_object->invalidate_bounding_box();
     
     auto bb = mesh.bounding_box();
@@ -1877,10 +1603,6 @@ bool ObjectList::del_subobject_item(wxDataViewItem& item)
         del_settings_from_config(parent);
     else if (type & itInstanceRoot && obj_idx != -1)
         del_instances_from_object(obj_idx);
-    else if (type & itLayerRoot && obj_idx != -1)
-        del_layers_from_object(obj_idx);
-    else if (type & itLayer && obj_idx != -1)
-        del_layer_from_object(obj_idx, m_objects_model->GetLayerRangeByItem(item));
     else if (type & itInfo && obj_idx != -1)
         del_info_item(obj_idx, item_info_type);
     else if (idx == -1 || !del_subobject_from_object(obj_idx, idx, type))
@@ -1907,53 +1629,11 @@ void ObjectList::del_info_item(const int obj_idx, InfoItemType type)
     GLCanvas3D* cnv = plater->canvas3D();
 
     switch (type) {
-    case InfoItemType::CustomSupports:
-        cnv->get_gizmos_manager().reset_all_states();
-        Plater::TakeSnapshot(plater, _L("Remove paint-on supports"));
-        for (ModelVolume* mv : (*m_objects)[obj_idx]->volumes)
-            mv->supported_facets.reset();
-        break;
-
-    case InfoItemType::CustomSeam:
-        cnv->get_gizmos_manager().reset_all_states();
-        Plater::TakeSnapshot(plater, _L("Remove paint-on seam"));
-        for (ModelVolume* mv : (*m_objects)[obj_idx]->volumes)
-            mv->seam_facets.reset();
-        break;
-
     case InfoItemType::CutConnectors:
         if (!del_from_cut_object(true)) {
             // there is no need to post EVT_GLCANVAS_SCHEDULE_BACKGROUND_PROCESS if nothing was changed
             return; 
         }
-        break;
-
-    case InfoItemType::MmSegmentation:
-        cnv->get_gizmos_manager().reset_all_states();
-        Plater::TakeSnapshot(plater, _L("Remove Multi Material painting"));
-        for (ModelVolume* mv : (*m_objects)[obj_idx]->volumes)
-            mv->mm_segmentation_facets.reset();
-        break;
-
-    case InfoItemType::FuzzySkin:
-        cnv->get_gizmos_manager().reset_all_states();
-        Plater::TakeSnapshot(plater, _L("Remove paint-on fuzzy skin"));
-        for (ModelVolume* mv : (*m_objects)[obj_idx]->volumes)
-            mv->fuzzy_skin_facets.reset();
-        break;
-
-    case InfoItemType::Sinking:
-        Plater::TakeSnapshot(plater, _L("Shift objects to bed"));
-        (*m_objects)[obj_idx]->ensure_on_bed();
-        cnv->reload_scene(true, true);
-        break;
-
-    case InfoItemType::VariableLayerHeight:
-        Plater::TakeSnapshot(plater, _L("Remove variable layer height"));
-        (*m_objects)[obj_idx]->layer_height_profile.clear();
-        if (cnv->is_layers_editing_enabled())
-            //cnv->post_event(SimpleEvent(EVT_GLTOOLBAR_LAYERSEDITING));
-            cnv->force_main_toolbar_left_action(cnv->get_main_toolbar_item_id("layersediting"));
         break;
 
     case InfoItemType::Undef : assert(false); break;
@@ -1963,27 +1643,13 @@ void ObjectList::del_info_item(const int obj_idx, InfoItemType type)
 
 void ObjectList::del_settings_from_config(const wxDataViewItem& parent_item)
 {
-    const bool is_layer_settings = m_objects_model->GetItemType(parent_item) == itLayer;
-
-    const size_t opt_cnt = m_config->keys().size();
-    if ((opt_cnt == 1 && m_config->has("extruder")) ||
-        (is_layer_settings && opt_cnt == 2 && m_config->has("extruder") && m_config->has("layer_height")))
+    (void)parent_item;
+    if (m_config->keys().empty())
         return;
 
     take_snapshot(_(L("Delete Settings")));
 
-    int extruder = m_config->has("extruder") ? m_config->extruder() : -1;
-
-    coordf_t layer_height = 0.0;
-    if (is_layer_settings)
-        layer_height = m_config->opt_float("layer_height");
-
     m_config->reset();
-
-    if (extruder >= 0)
-        m_config->set_key_value("extruder", new ConfigOptionInt(extruder));
-    if (is_layer_settings)
-        m_config->set_key_value("layer_height", new ConfigOptionFloat(layer_height));
 
     changed_object();
 }
@@ -2004,26 +1670,6 @@ void ObjectList::del_instances_from_object(const int obj_idx)
     changed_object(obj_idx);
 }
 
-void ObjectList::del_layer_from_object(const int obj_idx, const t_layer_height_range& layer_range)
-{
-    const auto del_range = object(obj_idx)->layer_config_ranges.find(layer_range);
-    if (del_range == object(obj_idx)->layer_config_ranges.end())
-        return;
-
-    take_snapshot(_(L("Delete Height Range")));
-        
-    object(obj_idx)->layer_config_ranges.erase(del_range);
-
-    changed_object(obj_idx);
-}
-
-void ObjectList::del_layers_from_object(const int obj_idx)
-{
-    object(obj_idx)->layer_config_ranges.clear();
-
-    changed_object(obj_idx);
-}
-
 bool ObjectList::del_from_cut_object(bool is_cut_connector, bool is_model_part/* = false*/, bool is_negative_volume/* = false*/)
 {
     const long buttons_style = is_cut_connector   ? (wxYES | wxNO | wxCANCEL) : (wxYES | wxCANCEL);
@@ -2035,8 +1681,8 @@ bool ObjectList::del_from_cut_object(bool is_cut_connector, bool is_model_part/*
     const wxString msg_end   = is_cut_connector   ? ("\n" + _L("To save cut information you can delete all connectors from all related objects.")) : "";
 
     InfoDialog dialog(wxGetApp().plater(), title,
-                      _L("This action will break a cut information.\n"
-                         "After that PrusaSlicer can't guarantee model consistency.") + "\n\n" +
+                      format_wxstr(_L("This action will break a cut information.\n"
+                         "After that %1% can't guarantee model consistency."), SLIC3R_APP_NAME) + "\n\n" +
                       _L("To manipulate with solid parts or negative volumes you have to invalidate cut information first.") + msg_end,
                       false, buttons_style | wxCANCEL_DEFAULT | wxICON_WARNING);
 
@@ -2059,7 +1705,7 @@ bool ObjectList::del_subobject_from_object(const int obj_idx, const int idx, con
 {
     assert(idx >= 0);
     if (m_objects->empty() || int(m_objects->size()) <= obj_idx)
-        // Cannot delete a wipe tower
+        // Nothing to delete
         return false;
 
     ModelObject* object = (*m_objects)[obj_idx];
@@ -2093,11 +1739,6 @@ bool ObjectList::del_subobject_from_object(const int obj_idx, const int idx, con
                 object->config.apply(last_volume->config);
                 last_volume->config.reset();
 
-                // update extruder color in ObjectList
-                if (obj_item) {
-                    wxString extruder = object->config.has("extruder") ? wxString::Format("%d", object->config.extruder()) : _L("default");
-                    m_objects_model->SetExtruder(extruder, obj_item);
-                }
                 // add settings to the object, if it has them
                 add_settings_item(obj_item, &object->config.get());
             }
@@ -2136,9 +1777,6 @@ void ObjectList::split()
 
     ModelVolume* volume;
     if (!get_volume_by_item(item, volume)) return;
-    DynamicPrintConfig&	config = printer_config();
-	const ConfigOption *nozzle_dmtrs_opt = config.option("nozzle_diameter", false);
-	const auto nozzle_dmrs_cnt = (nozzle_dmtrs_opt == nullptr) ? size_t(1) : dynamic_cast<const ConfigOptionFloats*>(nozzle_dmtrs_opt)->values.size();
     if (!volume->is_splittable()) {
         wxMessageBox(_(L("The selected object couldn't be split because it contains only one part.")));
         return;
@@ -2146,11 +1784,7 @@ void ObjectList::split()
 
     take_snapshot(_(L("Split to Parts")));
 
-    // Before splitting volume we have to remove all custom supports, seams, fuzzy skin and multi-material painting.
-    wxGetApp().plater()->clear_before_change_mesh(obj_idx, _u8L("Custom supports, seams, fuzzy skin and multi-material painting were "
-                                                                "removed after splitting the object."));
-
-    ModelProcessing::split(volume, nozzle_dmrs_cnt);
+    ModelProcessing::split(volume);
 
     (*m_objects)[obj_idx]->input_file.clear();
 
@@ -2162,8 +1796,8 @@ void ObjectList::split()
     // update printable state for new volumes on canvas3D
     wxGetApp().plater()->canvas3D()->update_instance_printable_state_for_object(obj_idx);
 
-    // After removing custom supports, seams, fuzzy skin, and multi-material painting, we have to update info about the object to remove information about
-    // custom supports, seams, fuzzy skin, and multi-material painting in the right panel.
+    // After removing custom supports, we have to update info about the object to remove information about
+    // custom supports in the right panel.
     wxGetApp().obj_list()->update_info_items(obj_idx);
 }
 
@@ -2304,17 +1938,6 @@ void ObjectList::merge(bool to_multipart_object)
                     config.set_key_value(opt_key, option->clone());
                 }
             }
-            // save extruder value if it was set
-            if (object->volumes.size() == 1 && find(opt_keys.begin(), opt_keys.end(), "extruder") != opt_keys.end()) {
-                ModelVolume* volume = new_object->volumes.back();
-                const ConfigOption* option = from_config.option("extruder");
-                if (option)
-                    volume->config.set_key_value("extruder", option->clone());
-            }
-
-            // merge layers
-            for (const auto& range : object->layer_config_ranges)
-                new_object->layer_config_ranges.emplace(range);
         }
 
         new_object->center_around_origin();
@@ -2351,77 +1974,6 @@ void ObjectList::merge(bool to_multipart_object)
 
         changed_object(obj_idx);
     }
-}
-
-void ObjectList::layers_editing()
-{
-    const Selection& selection = scene_selection();
-    const int obj_idx = selection.get_object_idx();
-    wxDataViewItem item = obj_idx >= 0 && GetSelectedItemsCount() > 1 && selection.is_single_full_object() ? 
-                          m_objects_model->GetItemById(obj_idx) :
-                          GetSelection();
-
-    if (!item)
-        return;
-
-    const wxDataViewItem obj_item = m_objects_model->GetTopParent(item);
-    wxDataViewItem layers_item = m_objects_model->GetLayerRootItem(obj_item);
-
-    // if it doesn't exist now
-    if (!layers_item.IsOk())
-    {
-        t_layer_config_ranges& ranges = object(obj_idx)->layer_config_ranges;
-
-        // set some default value
-        if (ranges.empty()) {
-            take_snapshot(_(L("Add Layers")));
-            ranges[{ 0.0f, 2.0f }].assign_config(get_default_layer_config(obj_idx));
-        }
-
-        // create layer root item
-        layers_item = add_layer_root_item(obj_item);
-    }
-    if (!layers_item.IsOk())
-        return;
-
-    // to correct visual hints for layers editing on the Scene, reset previous selection
-    wxGetApp().obj_layers()->reset_selection();
-    wxGetApp().plater()->canvas3D()->handle_sidebar_focus_event("", false);
-
-    // select LayerRoor item and expand
-    select_item(layers_item);
-    Expand(layers_item);
-}
-
-wxDataViewItem ObjectList::add_layer_root_item(const wxDataViewItem obj_item)
-{
-    const int obj_idx = m_objects_model->GetIdByItem(obj_item);
-    if (obj_idx < 0 || 
-        object(obj_idx)->layer_config_ranges.empty() ||
-        printer_technology() == ptSLA)
-        return wxDataViewItem(nullptr);
-
-    // create LayerRoot item
-    wxDataViewItem layers_item = m_objects_model->AddLayersRoot(obj_item);
-
-    // and create Layer item(s) according to the layer_config_ranges
-    for (const auto& range : object(obj_idx)->layer_config_ranges)
-        add_layer_item(range.first, layers_item);
-
-    Expand(layers_item);
-    return layers_item;
-}
-
-DynamicPrintConfig ObjectList::get_default_layer_config(const int obj_idx)
-{
-    DynamicPrintConfig config;
-    coordf_t layer_height = object(obj_idx)->config.has("layer_height") ? 
-                            object(obj_idx)->config.opt_float("layer_height") : 
-                            wxGetApp().preset_bundle->prints.get_edited_preset().config.opt_float("layer_height");
-    config.set_key_value("layer_height",new ConfigOptionFloat(layer_height));
-    config.set_key_value("extruder",    new ConfigOptionInt(0));
-
-    return config;
 }
 
 bool ObjectList::get_volume_by_item(const wxDataViewItem& item, ModelVolume*& volume)
@@ -2628,7 +2180,6 @@ void ObjectList::changed_object(const int obj_idx/* = -1*/) const
 
 void ObjectList::part_selection_changed()
 {
-    if (m_extruder_editor) m_extruder_editor->Hide();
     int obj_idx = -1;
     int volume_id = -1;
     m_config = nullptr;
@@ -2636,7 +2187,6 @@ void ObjectList::part_selection_changed()
 
     bool update_and_show_manipulations = false;
     bool update_and_show_settings = false;
-    bool update_and_show_layers = false;
 
     bool enable_manipulation     {true};
     bool disable_ss_manipulation {false};
@@ -2730,33 +2280,7 @@ void ObjectList::part_selection_changed()
                     coordinates_type = ECoordinatesType::World;
                 update_and_show_manipulations = true;
 
-                if (type == itInfo) {
-                    InfoItemType info_type = m_objects_model->GetInfoItemType(item);
-                    switch (info_type)
-                    {
-                    case InfoItemType::VariableLayerHeight:
-                    {
-                        wxGetApp().plater()->toggle_layers_editing(true);
-                        break;
-                    }
-                    case InfoItemType::CustomSupports:
-                    case InfoItemType::CustomSeam:
-                    case InfoItemType::MmSegmentation:
-                    case InfoItemType::FuzzySkin:
-                    {
-                        GLGizmosManager::EType gizmo_type = info_type == InfoItemType::CustomSupports   ? GLGizmosManager::EType::FdmSupports :
-                                                            info_type == InfoItemType::CustomSeam       ? GLGizmosManager::EType::Seam :
-                                                            info_type == InfoItemType::FuzzySkin        ? GLGizmosManager::EType::FuzzySkin :
-                                                            GLGizmosManager::EType::MmSegmentation;
-                        if (gizmos_mgr.get_current_type() != gizmo_type)
-                            gizmos_mgr.open_gizmo(gizmo_type);
-                        break;
-                    }
-                    case InfoItemType::Sinking:
-                    default: { break; }
-                    }
-                }
-                else
+                if (type != itInfo)
                     disable_ss_manipulation = object->is_cut();
             }
             else {
@@ -2769,10 +2293,6 @@ void ObjectList::part_selection_changed()
                         og_name = _L("Part Settings to modify");
                         volume_id = m_objects_model->GetVolumeIdByItem(parent);
                         m_config = &object->volumes[volume_id]->config;
-                    }
-                    else if (parent_type & itLayer) {
-                        og_name = _L("Layer range Settings to modify");
-                        m_config = &get_item_config(parent);
                     }
                     update_and_show_settings = true;
                 }
@@ -2791,13 +2311,6 @@ void ObjectList::part_selection_changed()
                     // fill m_config by object's values
                     m_config = &object->config;
                     disable_ss_manipulation = object->is_cut();
-                }
-                else if (type & (itLayerRoot|itLayer)) {
-                    og_name = type & itLayerRoot ? _L("Height ranges") : _L("Settings for height range");
-                    update_and_show_layers = true;
-
-                    if (type & itLayer)
-                        m_config = &get_item_config(item);
                 }
             }
         }
@@ -2830,11 +2343,6 @@ void ObjectList::part_selection_changed()
     if (update_and_show_settings)
         wxGetApp().obj_settings()->get_og()->set_name(" " + og_name + " ");
 
-    if (printer_technology() == ptSLA)
-        update_and_show_layers = false;
-    else if (update_and_show_layers)
-        wxGetApp().obj_layers()->get_og()->set_name(" " + og_name + " ");
-
     update_min_height();
 
     Sidebar& panel = wxGetApp().sidebar();
@@ -2850,7 +2358,6 @@ void ObjectList::part_selection_changed()
     wxGetApp().plater()->canvas3D()->enable_moving(enable_manipulation); // ysFIXME
     wxGetApp().obj_manipul() ->UpdateAndShow(update_and_show_manipulations);
     wxGetApp().obj_settings()->UpdateAndShow(update_and_show_settings);
-    wxGetApp().obj_layers()  ->UpdateAndShow(update_and_show_layers);
     wxGetApp().sidebar().show_info_sizer();
 
     panel.Layout();
@@ -2914,47 +2421,10 @@ void ObjectList::update_info_items(size_t obj_idx, wxDataViewItemArray* selectio
     wxDataViewItem item_obj = m_objects_model->GetItemById(obj_idx);
     assert(item_obj.IsOk());
 
-    for (InfoItemType type : {InfoItemType::CustomSupports,
-                              InfoItemType::CustomSeam,
-                              InfoItemType::CutConnectors,
-                              InfoItemType::MmSegmentation,
-                              InfoItemType::FuzzySkin,
-                              InfoItemType::Sinking,
-                              InfoItemType::VariableLayerHeight}) {
+    for (InfoItemType type : {InfoItemType::CutConnectors}) {
         wxDataViewItem item = m_objects_model->GetInfoItemByType(item_obj, type);
         bool shows = item.IsOk();
-        bool should_show = false;
-
-        switch (type) {
-        case InfoItemType::CustomSupports :
-        case InfoItemType::CustomSeam :
-        case InfoItemType::MmSegmentation :
-        case InfoItemType::FuzzySkin :
-            should_show = printer_technology() == ptFFF
-                       && std::any_of(model_object->volumes.begin(), model_object->volumes.end(),
-                                      [type](const ModelVolume *mv) {
-                                          return !(type == InfoItemType::CustomSupports ? mv->supported_facets.empty() :
-                                                   type == InfoItemType::CustomSeam     ? mv->seam_facets.empty() :
-                                                   type == InfoItemType::FuzzySkin      ? mv->fuzzy_skin_facets.empty() :
-                                                                                          mv->mm_segmentation_facets.empty());
-                                      });
-            break;
-
-        case InfoItemType::CutConnectors:
-            should_show = model_object->is_cut() && model_object->has_connectors() && model_object->volumes.size() > 1;
-            break;
-        case InfoItemType::VariableLayerHeight :
-            should_show = printer_technology() == ptFFF
-                       && ! model_object->layer_height_profile.empty();
-            break;
-        case InfoItemType::Sinking:
-        {
-            should_show = printer_technology() == ptFFF &&
-                wxGetApp().plater()->canvas3D()->is_object_sinking(obj_idx);
-            break;
-        }
-        default: break;
-        }
+        const bool should_show = model_object->is_cut() && model_object->has_connectors() && model_object->volumes.size() > 1;
 
         if (! shows && should_show) {
             m_objects_model->AddInfoChild(item_obj, type);
@@ -2978,11 +2448,6 @@ void ObjectList::update_info_items(size_t obj_idx, wxDataViewItemArray* selectio
             }
         }
     }
-}
-
-static wxString extruder2str(int extruder)
-{
-    return extruder == 0 ? _L("default") : wxString::Format("%d", extruder);
 }
 
 static bool can_add_volumes_to_object(const ModelObject* object)
@@ -3034,8 +2499,7 @@ wxDataViewItemArray ObjectList::add_volumes_to_object_in_list(size_t obj_idx, st
                 volume->type(),
                 volume->is_text(),
                 volume->is_svg(),
-                get_warning_icon_name(volume->mesh().stats()),
-                extruder2str(volume->config.has("extruder") ? volume->config.extruder() : 0));
+                get_warning_icon_name(volume->mesh().stats()));
             add_settings_item(vol_item, &volume->config.get());
 
             if (add_to_selection && add_to_selection(volume))
@@ -3053,7 +2517,6 @@ void ObjectList::add_object_to_list(size_t obj_idx, bool call_selection_changed)
     auto model_object = (*m_objects)[obj_idx];
     const wxString& item_name = get_item_name(model_object->name, model_object->is_text());
     const auto item = m_objects_model->AddObject(item_name,
-                      extruder2str(model_object->config.has("extruder") ? model_object->config.extruder() : 0),
                       get_warning_icon_name(model_object->mesh().stats()),
                       model_object->is_cut());
 
@@ -3077,9 +2540,6 @@ void ObjectList::add_object_to_list(size_t obj_idx, bool call_selection_changed)
 
     // add settings to the object, if it has those
     add_settings_item(item, &model_object->config.get());
-
-    // Add layers if it has
-    add_layer_root_item(item);
 
 #ifndef __WXOSX__ 
     if (call_selection_changed)
@@ -3170,10 +2630,6 @@ bool ObjectList::delete_from_model_and_list(const std::vector<ItemForDelete>& it
                 ModelObject* obj = object(item->obj_idx);
                 if (obj->volumes.size() == 1) {
                     wxDataViewItem parent = m_objects_model->GetItemById(item->obj_idx);
-                    if (obj->config.has("extruder")) {
-                        const wxString extruder = wxString::Format("%d", obj->config.extruder());
-                        m_objects_model->SetExtruder(extruder, parent);
-                    }
                     // If last volume item with warning was deleted, unmark object item
                     m_objects_model->UpdateWarningIcon(parent, get_warning_icon_name(ModelProcessing::get_object_mesh_stats(obj)));
                 }
@@ -3305,11 +2761,11 @@ void ObjectList::remove()
                 return item;
         }
         else {
-            if (type & (itLayer | itInstance)) {
-                // In case there is just one layer or two instances and we delete it, del_subobject_item will
+            if (type & itInstance) {
+                // In case there are just two instances and we delete one, del_subobject_item will
                 // also remove the parent item. Selection should therefore pass to the top parent (object).
                 wxDataViewItemArray children;
-                if (m_objects_model->GetChildren(parent, children) == (type & itLayer ? 1 : 2))
+                if (m_objects_model->GetChildren(parent, children) == 2)
                     parent = m_objects_model->GetTopParent(item);
             }
 
@@ -3351,264 +2807,6 @@ void ObjectList::remove()
     }
 }
 
-void ObjectList::del_layer_range(const t_layer_height_range& range)
-{
-    const int obj_idx = get_selected_obj_idx();
-    if (obj_idx < 0) return;
-
-    t_layer_config_ranges& ranges = object(obj_idx)->layer_config_ranges;
-
-    wxDataViewItem selectable_item = GetSelection();
-
-    if (ranges.size() == 1)
-        selectable_item = m_objects_model->GetParent(selectable_item);
-
-    wxDataViewItem layer_item = m_objects_model->GetItemByLayerRange(obj_idx, range);
-    del_subobject_item(layer_item);
-
-    select_item(selectable_item);
-}
-
-static double get_min_layer_height(const int extruder_idx)
-{
-    const DynamicPrintConfig& config = wxGetApp().preset_bundle->printers.get_edited_preset().config;
-    return config.opt_float("min_layer_height", std::max(0, extruder_idx - 1));
-}
-
-static double get_max_layer_height(const int extruder_idx)
-{
-    const DynamicPrintConfig& config = wxGetApp().preset_bundle->printers.get_edited_preset().config;
-    int extruder_idx_zero_based = std::max(0, extruder_idx - 1);
-    double max_layer_height = config.opt_float("max_layer_height", extruder_idx_zero_based);
-
-    // In case max_layer_height is set to zero, it should default to 75 % of nozzle diameter:
-    if (max_layer_height < EPSILON)
-        max_layer_height = 0.75 * config.opt_float("nozzle_diameter", extruder_idx_zero_based);
-
-    return max_layer_height;
-}
-
-// When editing this function, please synchronize the conditions with can_add_new_range_after_current().
-void ObjectList::add_layer_range_after_current(const t_layer_height_range current_range)
-{
-    const int obj_idx = get_selected_obj_idx();
-    assert(obj_idx >= 0);
-    if (obj_idx < 0) 
-        // This should not happen.
-        return;
-
-    const wxDataViewItem layers_item = GetSelection();
-
-    auto& ranges = object(obj_idx)->layer_config_ranges;
-    auto it_range = ranges.find(current_range);
-    assert(it_range != ranges.end());
-    if (it_range == ranges.end())
-        // This shoudl not happen.
-        return;
-
-    auto it_next_range = it_range;
-    bool changed = false;
-    if (++ it_next_range == ranges.end())
-    {
-        // Adding a new layer height range after the last one.
-        take_snapshot(_(L("Add Height Range")));
-        changed = true;
-
-        const t_layer_height_range new_range = { current_range.second, current_range.second + 2. };
-        ranges[new_range].assign_config(get_default_layer_config(obj_idx));
-        add_layer_item(new_range, layers_item);
-    }
-    else if (const std::pair<coordf_t, coordf_t> &next_range = it_next_range->first; current_range.second <= next_range.first)
-    {
-        const int layer_idx = m_objects_model->GetItemIdByLayerRange(obj_idx, next_range);
-        assert(layer_idx >= 0);
-        if (layer_idx >= 0) 
-        {
-            if (current_range.second == next_range.first)
-            {
-                // Splitting the next layer height range to two.
-                const auto old_config = ranges.at(next_range);
-                const coordf_t delta = next_range.second - next_range.first;
-                // Layer height of the current layer.
-                const coordf_t old_min_layer_height = get_min_layer_height(old_config.opt_int("extruder"));
-                // Layer height of the layer to be inserted.
-                const coordf_t new_min_layer_height = get_min_layer_height(0);
-                if (delta >= old_min_layer_height + new_min_layer_height - EPSILON) {
-                    const coordf_t middle_layer_z = (new_min_layer_height > 0.5 * delta) ?
-	                    next_range.second - new_min_layer_height :
-                    	next_range.first + std::max(old_min_layer_height, 0.5 * delta);
-                    t_layer_height_range new_range = { middle_layer_z, next_range.second };
-
-                    Plater::TakeSnapshot snapshot(wxGetApp().plater(), _(L("Add Height Range")));
-                    changed = true;
-
-                    // create new 2 layers instead of deleted one
-                    // delete old layer
-
-                    wxDataViewItem layer_item = m_objects_model->GetItemByLayerRange(obj_idx, next_range);
-                    del_subobject_item(layer_item);
-
-                    ranges[new_range] = old_config;
-                    add_layer_item(new_range, layers_item, layer_idx);
-
-                    new_range = { current_range.second, middle_layer_z };
-                    ranges[new_range].assign_config(get_default_layer_config(obj_idx));
-                    add_layer_item(new_range, layers_item, layer_idx);
-                }
-            }
-            else if (next_range.first - current_range.second >= get_min_layer_height(0) - EPSILON)
-            {
-                // Filling in a gap between the current and a new layer height range with a new one.
-                take_snapshot(_(L("Add Height Range")));
-                changed = true;
-
-                const t_layer_height_range new_range = { current_range.second, next_range.first };
-                ranges[new_range].assign_config(get_default_layer_config(obj_idx));
-                add_layer_item(new_range, layers_item, layer_idx);
-            }
-        }
-    }
-
-    if (changed)
-        changed_object(obj_idx);
-
-    // The layer range panel is updated even if this function does not change the layer ranges, as the panel update
-    // may have been postponed from the "kill focus" event of a text field, if the focus was lost for the "add layer" button.
-    // select item to update layers sizer
-    select_item(layers_item);
-}
-
-// Returning an empty string means that the layer could be added after the current layer.
-// Otherwise an error tooltip is returned.
-// When editing this function, please synchronize the conditions with add_layer_range_after_current().
-wxString ObjectList::can_add_new_range_after_current(const t_layer_height_range current_range)
-{
-    const int obj_idx = get_selected_obj_idx();
-    assert(obj_idx >= 0);
-    if (obj_idx < 0)
-        // This should not happen.
-        return "ObjectList assert";
-
-    auto& ranges = object(obj_idx)->layer_config_ranges;
-    auto it_range = ranges.find(current_range);
-    assert(it_range != ranges.end());
-    if (it_range == ranges.end())
-        // This shoudl not happen.
-        return "ObjectList assert";
-
-    auto it_next_range = it_range;
-    if (++ it_next_range == ranges.end())
-    	// Adding a layer after the last layer is always possible.
-        return "";
-    
-    if (const std::pair<coordf_t, coordf_t>& next_range = it_next_range->first; current_range.second <= next_range.first)
-    {
-        if (current_range.second == next_range.first) {
-            if (next_range.second - next_range.first < get_min_layer_height(it_next_range->second.opt_int("extruder")) + get_min_layer_height(0) - EPSILON)
-                return _(L("Cannot insert a new layer range after the current layer range.\n"
-                	       "The next layer range is too thin to be split to two\n"
-                	       "without violating the minimum layer height."));
-        } else if (next_range.first - current_range.second < get_min_layer_height(0) - EPSILON) {
-            return _(L("Cannot insert a new layer range between the current and the next layer range.\n"
-            	       "The gap between the current layer range and the next layer range\n"
-            	       "is thinner than the minimum layer height allowed."));
-        }
-    } else
-	    return _(L("Cannot insert a new layer range after the current layer range.\n"
-	    		   "Current layer range overlaps with the next layer range."));
-
-	// All right, new layer height range could be inserted.
-	return "";
-}
-
-void ObjectList::add_layer_item(const t_layer_height_range& range, 
-                                const wxDataViewItem layers_item, 
-                                const int layer_idx /* = -1*/)
-{
-    const int obj_idx = m_objects_model->GetObjectIdByItem(layers_item);
-    if (obj_idx < 0) return;
-
-    const DynamicPrintConfig& config = object(obj_idx)->layer_config_ranges[range].get();
-    if (!config.has("extruder"))
-        return;
-
-    const auto layer_item = m_objects_model->AddLayersChild(layers_item, 
-                                                            range, 
-                                                            extruder2str(config.opt_int("extruder")),
-                                                            layer_idx);
-    add_settings_item(layer_item, &config);
-}
-
-bool ObjectList::edit_layer_range(const t_layer_height_range& range, coordf_t layer_height)
-{
-    // Use m_selected_object_id instead of get_selected_obj_idx()
-    // because of get_selected_obj_idx() return obj_idx for currently selected item.
-    // But edit_layer_range(...) function can be called, when Selection in ObjectList could be changed
-    const int obj_idx = m_selected_object_id ; 
-    if (obj_idx < 0) 
-        return false;
-
-    ModelConfig* config = &object(obj_idx)->layer_config_ranges[range];
-    if (fabs(layer_height - config->opt_float("layer_height")) < EPSILON)
-        return false;
-
-    const int extruder_idx = config->opt_int("extruder");
-
-    if (layer_height >= get_min_layer_height(extruder_idx) && 
-        layer_height <= get_max_layer_height(extruder_idx)) 
-    {
-        config->set_key_value("layer_height", new ConfigOptionFloat(layer_height));
-        changed_object(obj_idx);
-        return true;
-    }
-
-    return false;
-}
-
-bool ObjectList::edit_layer_range(const t_layer_height_range& range, const t_layer_height_range& new_range, bool dont_update_ui)
-{
-    // Use m_selected_object_id instead of get_selected_obj_idx()
-    // because of get_selected_obj_idx() return obj_idx for currently selected item.
-    // But edit_layer_range(...) function can be called, when Selection in ObjectList could be changed
-    const int obj_idx = m_selected_object_id;
-    if (obj_idx < 0) return false;
-
-    take_snapshot(_L("Edit Height Range"));
-
-    const ItemType sel_type = m_objects_model->GetItemType(GetSelection());
-
-    auto& ranges = object(obj_idx)->layer_config_ranges;
-
-    {
-        ModelConfig config = std::move(ranges[range]);
-        ranges.erase(range);
-        ranges[new_range] = std::move(config);
-    }
-
-    changed_object(obj_idx);
-    
-    wxDataViewItem root_item = m_objects_model->GetLayerRootItem(m_objects_model->GetItemById(obj_idx));
-    // To avoid update selection after deleting of a selected item (under GTK)
-    // set m_prevent_list_events to true
-    m_prevent_list_events = true;
-    m_objects_model->DeleteChildren(root_item);
-
-    if (root_item.IsOk()) {
-        // create Layer item(s) according to the layer_config_ranges
-        for (const auto& r : ranges)
-            add_layer_item(r.first, root_item);
-    }
-
-    // if this function was invoked from wxEVT_CHANGE_SELECTION selected item could be other than itLayer or itLayerRoot      
-    if (!dont_update_ui && (sel_type & (itLayer | itLayerRoot)))
-        select_item(sel_type&itLayer ? m_objects_model->GetItemByLayerRange(obj_idx, new_range) : root_item);
-
-    Expand(root_item);
-
-    m_prevent_list_events = false;
-    return true;
-}
-
 void ObjectList::init_objects()
 {
     m_objects = &wxGetApp().model().objects;
@@ -3646,33 +2844,20 @@ bool ObjectList::is_connectors_item_selected(const wxDataViewItemArray& sels) co
     return false;
 }
 
-int ObjectList::get_selected_layers_range_idx() const
-{
-    const wxDataViewItem& item = GetSelection();
-    if (!item) 
-        return -1;
-
-    const ItemType type = m_objects_model->GetItemType(item);
-    if (type & itSettings && m_objects_model->GetItemType(m_objects_model->GetParent(item)) != itLayer)
-        return -1;
-
-    return m_objects_model->GetLayerIdByItem(type & itLayer ? item : m_objects_model->GetParent(item));
-}
-
 void ObjectList::update_selections()
 {
     const Selection& selection = scene_selection();
     wxDataViewItemArray sels;
 
-    if ( ( m_selection_mode & (smSettings|smLayer|smLayerRoot) ) == 0)
+    if ( ( m_selection_mode & smSettings ) == 0)
         m_selection_mode = smInstance;
 
-    // We doesn't update selection if itSettings | itLayerRoot | itLayer Item for the current object/part is selected
-    if (GetSelectedItemsCount() == 1 && m_objects_model->GetItemType(GetSelection()) & (itSettings | itLayerRoot | itLayer))
+    // We doesn't update selection if itSettings Item for the current object/part is selected
+    if (GetSelectedItemsCount() == 1 && m_objects_model->GetItemType(GetSelection()) & itSettings)
     {
         const auto item = GetSelection();
         if (selection.is_single_full_object()) {
-            if (m_objects_model->GetItemType(m_objects_model->GetParent(item)) & (itObject | itLayerRoot | itLayer) &&
+            if (m_objects_model->GetItemType(m_objects_model->GetParent(item)) & itObject &&
                 m_objects_model->GetObjectIdByItem(item) == selection.get_object_idx() )
                 return;
             sels.Add(m_objects_model->GetItemById(selection.get_object_idx()));
@@ -3686,7 +2871,7 @@ void ObjectList::update_selections()
         // then select this instance in ObjectList
         else if (selection.is_single_full_instance())
             sels.Add(m_objects_model->GetItemByInstanceId(selection.get_object_idx(), selection.get_instance_idx()));
-        // Can be the case, when we have selected itSettings | itLayerRoot | itLayer in the ObjectList and selected object/instance in the Scene
+        // Can be the case, when we have selected itSettings in the ObjectList and selected object/instance in the Scene
         // and then select some object/instance in 3DScene using Ctrt+left click
         // see https://github.com/prusa3d/PrusaSlicer/issues/5517
         else {
@@ -3703,26 +2888,12 @@ void ObjectList::update_selections()
     else if (selection.is_single_full_object() || selection.is_multiple_full_object())
     {
         const Selection::ObjectIdxsToInstanceIdxsMap& objects_content = selection.get_content();
-        // it's impossible to select Settings, Layer or LayerRoot for several objects
-        if (!selection.is_multiple_full_object() && (m_selection_mode & (smSettings | smLayer | smLayerRoot)))
+        // it's impossible to select Settings for several objects
+        if (!selection.is_multiple_full_object() && (m_selection_mode & smSettings))
         {
             auto obj_idx = objects_content.begin()->first;
             wxDataViewItem obj_item = m_objects_model->GetItemById(obj_idx);
-            if (m_selection_mode & smSettings)
-            {
-                if (m_selected_layers_range_idx < 0)
-                    sels.Add(m_objects_model->GetSettingsItem(obj_item));
-                else
-                    sels.Add(m_objects_model->GetSettingsItem(m_objects_model->GetItemByLayerId(obj_idx, m_selected_layers_range_idx)));
-            }
-            else if (m_selection_mode & smLayerRoot)
-                sels.Add(m_objects_model->GetLayerRootItem(obj_item));
-            else if (m_selection_mode & smLayer) {
-                if (m_selected_layers_range_idx >= 0)
-                    sels.Add(m_objects_model->GetItemByLayerId(obj_idx, m_selected_layers_range_idx));
-                else
-                    sels.Add(obj_item);
-            }
+            sels.Add(m_objects_model->GetSettingsItem(obj_item));
         }
         else {
         for (const auto& object : objects_content) {
@@ -3930,7 +3101,7 @@ void ObjectList::update_selections_on_canvas()
         wxDataViewItem item = GetSelection();
         if (m_objects_model->GetInfoItemType(item) == InfoItemType::CutConnectors)
             selection.remove_all();
-        if (m_objects_model->GetItemType(item) & (itSettings | itInstanceRoot | itLayerRoot | itLayer))
+        if (m_objects_model->GetItemType(item) & (itSettings | itInstanceRoot))
             add_to_selection(m_objects_model->GetParent(item), selection, instance_idx, mode);
         else
             add_to_selection(item, selection, instance_idx, mode);
@@ -4039,12 +3210,11 @@ void ObjectList::select_item_all_children()
     else {
         const auto item = GetSelection();
         const ItemType item_type = m_objects_model->GetItemType(item);
-        // Some volume/layer/instance is selected    =>  select all volumes/layers/instances inside the current object
-        if (item_type & (itVolume | itInstance | itLayer))
+        // Some volume/instance is selected    =>  select all volumes/instances inside the current object
+        if (item_type & (itVolume | itInstance))
             m_objects_model->GetChildren(m_objects_model->GetParent(item), sels);
 
-        m_selection_mode = item_type&itVolume ? smVolume : 
-                           item_type&itLayer  ? smLayer  : smInstance;
+        m_selection_mode = item_type&itVolume ? smVolume : smInstance;
     }
 
     SetSelections(sels);
@@ -4054,7 +3224,6 @@ void ObjectList::select_item_all_children()
 // update selection mode for non-multiple selection
 void ObjectList::update_selection_mode()
 {
-    m_selected_layers_range_idx=-1;
     // All items are unselected 
     if (!GetSelection())
     {
@@ -4065,7 +3234,6 @@ void ObjectList::update_selection_mode()
 
     const ItemType type = m_objects_model->GetItemType(GetSelection());
     m_selection_mode =  type & itSettings ? smUndef  :
-                        type & itLayer    ? smLayer  :
                         type & itVolume   ? smVolume : smInstance;
 }
 
@@ -4077,7 +3245,7 @@ bool ObjectList::check_last_selection(wxString& msg_str)
         
     const bool is_shift_pressed = wxGetKeyState(WXK_SHIFT);
 
-    /* We can't mix Volumes, Layers and Objects/Instances.
+    /* We can't mix Volumes and Objects/Instances.
      * So, show information about it
      */
     const ItemType type = m_objects_model->GetItemType(m_last_selected_item);
@@ -4098,16 +3266,14 @@ bool ObjectList::check_last_selection(wxString& msg_str)
     };
 
     if (impossible_multi_selection(itVolume, smVolume) ||
-        impossible_multi_selection(itLayer,  smLayer ) ||
         type & itSettings ||
         (type & itVolume   && !(m_selection_mode & smVolume  )) ||
-        (type & itLayer    && !(m_selection_mode & smLayer   )) ||
         (type & itInstance && !(m_selection_mode & smInstance))
         )
     {
         // Inform user why selection isn't completed
         const wxString item_type = m_selection_mode & smInstance ? _(L("Object or Instance")) : 
-                                   m_selection_mode & smVolume   ? _(L("Part")) : _(L("Layer"));
+                                   _(L("Part"));
 
         msg_str = wxString::Format( _(L("Unsupported selection")) + "\n\n" + 
                                     _(L("You started your selection with %s Item.")) + "\n" +
@@ -4144,7 +3310,7 @@ void ObjectList::fix_multiselection_conflicts()
     wxDataViewItemArray sels;
     GetSelections(sels);
 
-    if (m_selection_mode & (smVolume|smLayer))
+    if (m_selection_mode & smVolume)
     {
         // identify correct parent of the initial selected item
         const wxDataViewItem& parent = m_objects_model->GetParent(m_last_selected_item == sels.front() ? sels.back() : sels.front());
@@ -4153,7 +3319,7 @@ void ObjectList::fix_multiselection_conflicts()
         wxDataViewItemArray children; // selected volumes from current parent
         m_objects_model->GetChildren(parent, children);
 
-        const ItemType item_type = m_selection_mode & smVolume ? itVolume : itLayer;
+        const ItemType item_type = itVolume;
 
         for (const auto& child : children)
             if (IsSelected(child) && m_objects_model->GetItemType(child) & item_type)
@@ -4347,8 +3513,6 @@ void ObjectList::last_volume_is_deleted(const int obj_idx)
     // clear volume's config values
     volume->config.reset();
 
-    // set a default extruder value, since user can't add it manually
-    volume->config.set_key_value("extruder", new ConfigOptionInt(0));
 }
 
 void ObjectList::update_and_show_object_settings_item()
@@ -4440,42 +3604,6 @@ void ObjectList::update_object_list_by_printer_technology()
 
         // Update volumes list in respect to the print mode
         add_volumes_to_object_in_list(obj_idx);
-
-        // Update Layers Items
-        wxDataViewItem layers_item = m_objects_model->GetLayerRootItem(object_item);
-        if (!layers_item)
-            layers_item = add_layer_root_item(object_item);
-        else if (printer_technology() == ptSLA) {
-            // If layers root item will be deleted from the list, so
-            // it's need to be deleted from selection array, if it was there
-            wxDataViewItemArray del_items;
-            bool some_layers_was_selected = false;
-            m_objects_model->GetAllChildren(layers_item, del_items);
-            for (auto& del_item:del_items)
-                if (sel.Index(del_item) != wxNOT_FOUND) {
-                    some_layers_was_selected = true;
-                    sel.Remove(del_item);
-                }
-            if (sel.Index(layers_item) != wxNOT_FOUND) {
-                some_layers_was_selected = true;
-                sel.Remove(layers_item);
-            }
-
-            // delete all "layers" items
-            m_objects_model->Delete(layers_item);
-
-            // Select object_item, if layers_item doesn't exist for item anymore, but was some of layer items was/were selected
-            if (some_layers_was_selected)
-                sel.Add(object_item);
-        }
-        else {
-            wxDataViewItemArray all_obj_layers;
-            m_objects_model->GetChildren(layers_item, all_obj_layers);
-
-            for (auto item : all_obj_layers)
-                // update settings for layer
-                update_settings_item_and_selection(item, sel);
-        }
     }
 
     // restore selection:
@@ -4661,8 +3789,6 @@ void ObjectList::fix_through_winsdk()
             msg += "\n";
         }
 
-        plater->clear_before_change_mesh(obj_idx, _u8L("Custom supports, seams, fuzzy skin and multimaterial painting were "
-                                                       "removed after repairing the mesh."));
         std::string res;
         if (!fix_model_by_win10_sdk_gui(*(object(obj_idx)), vol_idx, progress_dlg, msg, res))
             return false;
@@ -4757,7 +3883,6 @@ void ObjectList::msw_rescale()
 
     GetColumn(colName    )->SetWidth(20 * em);
     GetColumn(colPrint   )->SetWidth( 3 * em);
-    GetColumn(colExtruder)->SetWidth( 8 * em);
     GetColumn(colEditing )->SetWidth( 3 * em);
 
     Layout();
@@ -4777,12 +3902,6 @@ void ObjectList::ItemValueChanged(wxDataViewEvent &event)
 {
     if (event.GetColumn() == colName)
         update_name_in_model(event.GetItem());
-    else if (event.GetColumn() == colExtruder) {
-        wxDataViewItem item = event.GetItem();
-        if (m_objects_model->GetItemType(item) == itObject)
-            m_objects_model->UpdateVolumesExtruderBitmap(item);
-        update_extruder_in_config(item);
-    }
 }
 
 void ObjectList::OnEditingStarted(wxDataViewEvent &event)
@@ -4818,49 +3937,6 @@ void ObjectList::OnEditingDone(wxDataViewEvent &event)
     Plater* plater = wxGetApp().plater();
     if (plater)
         plater->set_current_canvas_as_dirty();
-}
-
-void ObjectList::set_extruder_for_selected_items(const int extruder) const 
-{
-    wxDataViewItemArray sels;
-    GetSelections(sels);
-
-    if (sels.empty())
-        return;
-
-    take_snapshot(_L("Change Extruders"));
-
-    for (const wxDataViewItem& item : sels)
-    {
-        ModelConfig& config = get_item_config(item);
-        
-        if (config.has("extruder")) {
-            if (extruder == 0)
-                config.erase("extruder");
-            else
-                config.set("extruder", extruder);
-        }
-        else if (extruder > 0)
-            config.set_key_value("extruder", new ConfigOptionInt(extruder));
-
-        const wxString extruder_str = extruder == 0 ? wxString (_(L("default"))) : 
-                                      wxString::Format("%d", config.extruder());
-
-        auto const type = m_objects_model->GetItemType(item);
-
-        /* We can change extruder for Object/Volume only.
-         * So, if Instance is selected, get its Object item and change it
-         */
-        m_objects_model->SetExtruder(extruder_str, type & itInstance ? m_objects_model->GetTopParent(item) : item);
-
-        const int obj_idx = type & itObject ? m_objects_model->GetIdByItem(item) :
-                            m_objects_model->GetIdByItem(m_objects_model->GetTopParent(item));
-
-        wxGetApp().plater()->canvas3D()->ensure_on_bed(obj_idx, printer_technology() != ptSLA);
-    }
-
-    // update scene
-    wxGetApp().plater()->update();
 }
 
 wxDataViewItemArray ObjectList::reorder_volumes_and_get_selection(size_t obj_idx, std::function<bool(const ModelVolume*)> add_to_selection/* = nullptr*/)

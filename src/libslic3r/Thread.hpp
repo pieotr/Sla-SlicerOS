@@ -54,7 +54,7 @@ std::optional<std::string> get_current_thread_name();
 
 // To be called somewhere before the TBB threads are spinned for the first time, to
 // give them names recognizible in the debugger.
-// Also it sets locale of the worker threads to "C" for the G-code generator to produce "." as a decimal separator.
+// Also it sets locale of the worker threads to "C" for the exporters to produce "." as a decimal separator.
 void name_tbb_thread_pool_threads_set_locale();
 
 template<class Fn>
@@ -95,7 +95,7 @@ private:
 
 ThreadData& thread_data();
 
-// For unknown reasons and in sporadic cases when GCode export is processing, some participating thread
+// For unknown reasons and in sporadic cases when the export is processing, some participating thread
 // in tbb::parallel_pipeline has not set locales to "C", probably because this thread is newly spawned.
 // So in this class method on_scheduler_entry is called for every thread before it starts participating
 // in tbb::parallel_pipeline to ensure that locales are set correctly

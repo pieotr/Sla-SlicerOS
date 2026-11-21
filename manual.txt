@@ -1,0 +1,1007 @@
+SLA-Slicer — instrukcja użytkownika
+===================================
+
+Wersja 1.0.0 (21 listopada 2026). Opisano to, co istnieje w kodzie. Rzeczy niesprawdzone lub
+niedokończone są wymienione wprost w rozdziale 12. Znacznik "[GUI nieprzetestowane]"
+oznacza okno/funkcję, która się kompiluje i ma testy logiki, ale nie była jeszcze
+uruchomiona ręcznie w działającej aplikacji. Zmiany i znane ograniczenia:
+CHANGELOG.md. Licencje składników: doc/THIRD_PARTY_LICENSES.md.
+
+SLA-Slicer to slicer żywiczny (SLA/MSLA, ekran LCD) oparty na PrusaSlicer.
+Tnie model 3D na warstwy-maski, pozwala je poprawić pikselowo i zapisuje
+plik w formacie drukarki. Nie ma G-code, druku FFF/FDM ani wysyłania
+plików przez sieć: program działa w całości offline.
+
+Spis treści
+-----------
+ 1. Instalacja i uruchomienie (offline)
+ 2. Pierwsza drukarka (LCD = stół; orientacja; odbicia)
+ 3. Profile drukarki, żywicy i procesu
+ 4. Model 3D: import, transformacje, podpory, drążenie
+ 5. Slicing i podgląd
+ 6. Widok Sliced: edycja warstw, pędzel, zakresy, Undo/Redo, problemy
+ 7. Formaty i wersje eksportu
+ 8. PCB
+ 9. Kalibracje
+10. Wiersz poleceń
+11. Rozwiązywanie problemów
+12. Ograniczenia znane
+
+
+1. Instalacja i uruchomienie (offline)
+======================================
+
+Program buduje się ze źródeł (Linux, GTK3). Pełny opis: install.md; opis dla
+programistów: doc/DEVELOPER.md.
+W skrócie, w katalogu Sla-SlicerOS:
+
+    bash ./build_linux.sh --run          # zależności + aplikacja, test --help
+    bash ./run_sla_slicer.sh           # uruchomienie aplikacji
+
+Plik wykonywalny nazywa się build/src/sla-slicer. Tytuł okna i nazwa produktu to "SLA-Slicer".
+
+Offline: aplikacja nie łączy się z siecią. Nie ma aktualizacji, logowania,
+katalogu profili online, serwerów wydruku ani kolejki wysyłania. Pierwsze
+budowanie zależności może pobrać archiwa źródłowe, jeśli nie ma ich lokalnie;
+uruchamianie programu niczego nie pobiera.
+
+Dane użytkownika leżą we własnym katalogu SLA-Slicer
+(~/.config/SLA-Slicer lub $XDG_CONFIG_HOME/SLA-Slicer; plik ustawień
+SLA-Slicer.ini), oddzielnie od zainstalowanego PrusaSlicera.
+
+Pierwszy start i import z PrusaSlicera: jeśli katalog SLA-Slicer jeszcze nie
+istnieje, nie podano --datadir, a istnieje ~/.config/PrusaSlicer, program
+JEDNORAZOWO KOPIUJE z niego tylko część SLA: profile procesu SLA, żywice,
+profile drukarek SLA, pakiety producentów z drukarkami SLA, własne kształty,
+stan zapasu żywicy oraz przefiltrowane ustawienia (bez wyborów i ustawień FFF).
+Katalog PrusaSlicera nie jest zmieniany ani przenoszony. Po imporcie pojawia się
+powiadomienie "Zaimportowano ustawienia z PrusaSlicer: profile SLA: N"; log
+zawiera listę skopiowanych plików. Zmienna SLA_SLICER_NO_MIGRATION=1 wyłącza import.
+Wersja programu (1.0.0) i numer kompilacji są widoczne w oknie "O programie"
+oraz w poleceniach --help i --version.
+Do bezpiecznych prób użyj osobnego katalogu:
+
+    bash ./run_sla_slicer.sh --datadir /sciezka/do/proby
+
+
+Instalacja systemowa i paczka relokowalna są opisane w install.md, ale
+NIE zostały jeszcze sprawdzone na czystym komputerze (rozdział 12).
+
+
+2. Pierwsza drukarka (LCD = stół; orientacja; odbicia)
+======================================================
+
+Przy pierwszym uruchomieniu startuje kreator konfiguracji (Configuration
+Wizard). Wybierz drukarkę SLA z biblioteki albo zdefiniuj własną
+(Custom Printer → Custom SLA printer, oparta na wskazanym profilu bazowym).
+Dla własnej drukarki kreator pyta o wysokość druku oraz o parametry ekranu:
+Display width / height (mm) i Display pixels X / Y.
+
+Zasada podstawowa: STÓŁ JEST WYLICZANY Z EKRANU LCD. Pole robocze to
+prostokąt o wymiarach ekranu w mm; nie ma osobnego edytora kształtu stołu.
+Zmiana szerokości lub wysokości ekranu od razu zmienia stół w scenie 3D.
+
+Ustawienia ekranu (Printer Settings → General → Display):
+- Display width / height — fizyczne wymiary aktywnej części LCD, mm.
+- Display pixels X / Y — rozdzielczość w pikselach.
+- Display orientation — landscape lub portrait.
+- Display mirror X / Y — odbicie obrazu poziome / pionowe.
+- Mirror flag in file header (tylko tryb Expert) — flaga odbicia zapisywana
+  w NAGŁÓWKU pliku wyjściowego (CTB/CBDDLP/Photon, PHZ, FDG, CXDLP v4,
+  Chitubox ZIP, OSF, OSLA, CWS, GOO, VDT, Klipper, NanoDLP). Wartości:
+  Automatic (domyślnie — dokładnie to, co program zapisywał dotychczas),
+  No mirror, Horizontal, Vertical, Horizontal and vertical. To nie zmienia
+  obrazów warstw (te odbijają Display mirror X / Y), tylko metadane, które
+  czyta firmware drukarki lub UVtools. Zmieniaj tylko wtedy, gdy Twoja
+  drukarka drukuje model odbity albo podwójnie odbity; sprawdź na małym,
+  asymetrycznym wydruku testowym. Formaty z jedną flagą tak/nie (CTB,
+  PHZ, FDG, CXDLP v4, Chitubox ZIP) zapisują dowolne odbicie jako „tak”,
+  NanoDLP tylko poziome. Ustawienie stosuje się przy eksporcie i konwersji
+  z profilem drukarki; zwykły zapis otwartego pliku w edytorze warstw
+  zachowuje jego nagłówek bez zmian.
+
+Jak czytać orientację i odbicia (potwierdzone pikselowo, patrz rozdział 7):
+- Wymiary display_* opisują fizyczny, nieobrócony ekran.
+- Orientacja portrait zamienia osie OBRAZU (obraz warstwy jest obracany
+  o 90°); nie zamienia wymiarów sceny 3D. Zmiana orientacji lub odbić nie
+  zmienia więc stołu w widoku 3D, tylko układ pikseli w pliku.
+- Odbicia dotyczą obrazu warstw, nie modelu.
+- Nie każdy format potrafi zapisać dowolną kombinację (np. niektóre formaty
+  CTB nie zapisują odbicia w osi Y). Wtedy eksport zostaje odrzucony z
+  konkretnym komunikatem, zamiast zapisać plik o złej orientacji.
+
+Dla drukarki ustaw też Max print height (wysokość druku, mm) oraz w
+Corrections: korekty względne X/Y/Z, absolute correction, elephant foot
+compensation i gamma correction (gamma 0 = progowanie bez antyaliasingu).
+
+Printer model (firmware) w sekcji Output to identyfikator zapisywany w pliku
+drukarki; część formatów (np. CXDLPv4) wymaga go niepustego.
+
+
+3. Profile drukarki, żywicy i procesu
+=====================================
+
+Są trzy rodzaje profili. Panel boczny pokazuje po jednym z każdego;
+ikona edycji lub Window otwiera pełne ustawienia:
+
+    Ctrl+2  Print Settings    (proces: warstwa, podpory, podstawa, drążenie)
+    Ctrl+3  Material Settings (żywica: ekspozycje, ruchy, butelka, cena)
+    Ctrl+4  Printer Settings  (ekran, korekty, format eksportu)
+
+Wszystkie panele pokazują pełny poziom opcji; nie ma trybu
+Beginner/Normal/Expert.
+
+Printer Settings → General:
+- Size and coordinates: tekstura/model stołu, Max print height.
+- Display, Corrections, Exposure (limity min/max ekspozycji), Tilt timing
+  (fast/slow/high viscosity), Output: Printer model (firmware), format
+  eksportu, Anycubic file version, CBDDLP / Photon AA planes (1-16 płaszczyzn),
+  PHZ encryption key, SLA output precision (minimalna rozdzielczość czasów,
+  w nanosekundach).
+- Strony: General, NanoDLP controller (profil kontrolera, tylko dla formatów
+  NanoDLP), Notes, Dependencies.
+
+Material Settings:
+- Material: kolor, typ, producent, gęstość, butelka (objętość, masa, koszt) —
+  służą do szacowania zużycia i kosztu.
+- Layers / Exposure: wysokość warstwy, ekspozycja zwykła i początkowa.
+- LCD exposure and motion: liczba warstw dolnych, czasy oczekiwania, wysokości
+  i prędkości podnoszenia/cofania, PWM, warstwy przejściowe. Sekcja Output
+  compatibility mówi, czy bieżący format potrafi zapisać wpisane wartości,
+  a jeśli nie, które ustawienie poprawić. Parametry, których kodek nie
+  zachowa, blokują eksport przed zapisem pliku.
+
+Print Settings (strony): Layers and perimeters (wysokość warstwy, faded
+layers), Supports, Pad, Hollowing, Advanced (Slice closing radius, Slicing
+Mode), Output options, Dependencies.
+
+Zarządzanie profilami:
+- Save preset zapisuje zmiany lub tworzy kopię pod nową nazwą.
+- Rename preset zachowuje niezapisane zmiany; migruje powiązania
+  (inherits, zgodność z drukarkami/procesami, domyślne profile) i
+  preferencję formatu eksportu drukarki.
+- Delete preset pyta o potwierdzenie. Błędy zapisu są pokazywane w GUI.
+- Kartę Dependencies ustawia zgodność profilu: All, Selected profiles,
+  Condition (wyrażenie), None.
+- Window → Compare Presets porównuje profile.
+- Profile drukarek FFF są pomijane przy wczytywaniu; domyślny profil to SLA.
+- Delete preset (drukarka, żywica, proces) usuwa profil razem z zależnościami:
+  okno potwierdzenia wymienia profile, które się do niego odwołują. Po
+  usunięciu profile potomne dziedziczą dalej po rodzicu usuniętego profilu,
+  nazwa znika z list zgodności (compatible_printers / compatible_prints), a
+  pusta lista zgodności staje się jawnym "None" (nie "wszystkie"); domyślne
+  profile, które wskazywały usunięty, są czyszczone. Zmiana jest jedną
+  transakcją wielu plików INI (staging, publikacja, wycofanie z kopii):
+  błąd zapisu zostawia dysk i pamięć bez zmian.
+- Eksport/import pojedynczego profilu: przyciski w pasku karty ("Export this
+  preset to an .ini file", "Import a preset from an .ini file").
+  Eksportowany jest zapisany stan (przy niezapisanych zmianach program
+  pyta). Import sprawdza geometrię drukarki; gdy nazwa już istnieje, profil
+  jest zapisany pod nową nazwą (komunikat) i wybierany zwykłą ścieżką.
+  Eksport całego zestawu (File → Export Config Bundle) pomija sekcje FFF.
+  [GUI nieprzetestowane]; logika: [sla_profile_transaction],
+  [sla_profile_delete], [sla_profile_import_export].
+
+Format eksportu jest zapamiętywany osobno dla każdej drukarki (patrz 7).
+
+
+Zapas żywicy i „I printed this file”
+  Cel: prowadzić ewidencję butelek żywicy i księgować zużycie po wydruku
+  (odpowiednik operacji UVtools „I printed this file”). Zapas to plik
+  resin_stock.json w katalogu danych programu (obok presetów); zapis jest
+  atomowy, więc przerwany zapis nie psuje poprzedniej wersji.
+  File → Resin stock...: lista żywic (nazwa, butelka w ml, koszt, liczba
+  butelek, ml w otwartej butelce, zużyte ml, liczba wydruków, czas druku).
+  Add resin... dodaje żywicę (domyślna nazwa = aktywny preset materiału),
+  Edit resin... zmienia dane butelki (historia zużycia zostaje), Remove resin
+  usuwa po potwierdzeniu. Każda zmiana zapisuje plik od razu.
+  File → I printed this file...: wybierz żywicę (domyślnie aktywny preset),
+  liczbę wydrukowanych kopii oraz zużycie i czas jednej kopii — pola są
+  wypełnione z wyniku slicingu, gdy istnieje, i można je poprawić. Okno
+  pokazuje łączną ilość żywicy, koszt i stan butelek przed i po. „Update
+  stock” zapisuje zużycie liczone jak w UVtools (całe butelki plus reszta
+  z otwartej; gdy reszta nie wystarcza, otwierana jest nowa butelka);
+  Cancel nie zmienia niczego. Uszkodzony plik zapasu nigdy nie jest po
+  cichu zastępowany pustym: program pokazuje błąd z nazwą pliku i go nie
+  zmienia — popraw plik albo odsuń go na bok.
+
+4. Model 3D: import, transformacje, podpory, drążenie
+=====================================================
+
+Import: File → Import → Import STL/3MF/STEP/OBJ/AMF (Ctrl+I); Import STL
+(Imperial Units); Import SLA Archive (okno z jakością importu; odtwarza
+przybliżony model z archiwum warstw — to nie jest edycja pikseli, ta jest w
+widoku Sliced) i Import ZIP Archive (wczytuje modele z archiwum ZIP).
+Projekt otwiera Ctrl+O. Obiekt możesz też dodać z Window → Shape Gallery lub prawym
+przyciskiem na stole: Add Shape (w tym SVG jako obiekt 3D; Esc zamyka
+narzędzie SVG). Import Config (Ctrl+L), Import Config from Project
+(Ctrl+Shift+P) i Import Config Bundle wczytują profile.
+
+Transformacje (klawisze w scenie): M przesuwanie, R obrót, S skala,
+F połóż ścianą na stole, C cięcie, A rozmieść (Arrange), +/- instancje,
+Ctrl+Z / Ctrl+Y cofanie i ponawianie, 0-6 widoki kamery, B przybliż do
+stołu, Z przybliż do obiektu. Pełną listę pokazuje Help → Keyboard
+Shortcuts (?). Narzędzie Measure służy do pomiarów.
+
+Podpory: ustawienia w Print Settings → Supports (włączenie, typ drzewa,
+gęstość punktów) oraz Pad (podstawa). Edytor punktów podpór: klawisz L
+(A automatyczne generowanie, M edycja ręczna, Enter zatwierdza, Esc
+odrzuca, Del usuwa zaznaczone, R reset płaszczyzny cięcia).
+
+Drążenie (Hollowing): Print Settings → Hollowing (włączenie, minimalna
+grubość ścianki, jakość, closing distance) oraz narzędzie H do ręcznego
+dodawania otworów drenażowych.
+
+Zapis projektu: File → Save Project (Ctrl+S) zapisuje 3MF z modelem,
+ustawieniami i (po Apply) edycjami warstw — patrz 6.
+
+File → Repair STL file naprawia plik siatki.
+
+
+5. Slicing i podgląd
+====================
+
+Slice now (przycisk w panelu bocznym) lub File → (Re)Slice Now (Ctrl+R).
+Trwający slicing można przerwać przyciskiem Cancel slicing.
+
+Widoki: nad sceną są przyciski 3D, Preview i Sliced (Ctrl+5 / Ctrl+6 dla
+3D i Preview; Tab przełącza widoki).
+- Preview pokazuje geometrię warstw z suwakiem warstw i panelem Layer
+  statistics (klawisz L lub View → Show Legend ukrywa/pokazuje panel).
+  Statystyki uwzględniają aktualne maski. Rzeczywiste piksele
+  naświetlania ogląda się w widoku Sliced.
+- Sliced pokazuje maski warstw do edycji (rozdział 6).
+
+Po zakończeniu slicingu panel boczny pokazuje szacunki (czas, zużycie
+żywicy) i przyciski Export oraz Edit layers.
+
+Eksport: File → Export → Export sliced layers (Ctrl+G) lub przycisk Export.
+Ctrl+U (Export sliced result to removable drive) zapisuje wynik na wskazany
+dysk wymienny.
+W oknie zapisu wybierz format; rozszerzenie nazwy zmienia się wraz z filtrem
+(part.v2.sl1 → part.v2.cxdlpv4). Zatwierdzony wybór zapamiętuje się dla
+tej drukarki; Anuluj niczego nie zmienia. Jeśli docelowy plik istnieje,
+potwierdzenie nadpisania pokazuje właśnie tę ścieżkę.
+
+Gdy format wymaga innej palety szarości, przejść ekspozycji albo precyzji
+czasów, program opisuje konwersję i prosi o potwierdzenie. Nie = brak
+eksportu, gotowe warstwy zostają. Tak = zapis kopii; maski źródłowe
+pozostają. Cancel przerywa eksport; anulowany lub nieudany eksport nie
+zastępuje poprzedniego pliku (zapis idzie do pliku tymczasowego, który
+dopiero po sukcesie zmienia nazwę).
+
+Zmiana ekspozycji i ruchów zachowuje edycje warstw. Zmiana modelu, geometrii
+ekranu, orientacji lub gamma wymaga nowych masek i usuwa poprzednie edycje.
+
+Dla drukarki zapisanej jako SL1/SL1S nowe pliki zawierają w config.ini
+znacznik slaSlicerProfileGeometry=raster-v1, który przywraca poprawne wymiary
+profilu po eksporcie portretowym. Nie usuwaj go przy ręcznej edycji.
+
+
+6. Widok Sliced: edycja warstw, pędzel, zakresy, Undo/Redo, problemy
+====================================================================
+
+Wejście:
+- po slicingu: przycisk Sliced, Edit layers w panelu bocznym lub
+  Window → Edit sliced layers (Ctrl+Alt+L). Przycisk Load current slices
+  przechwytuje aktualny wynik slicingu (bez ponownego cięcia);
+- bez modelu: Window → Open layer archive (Ctrl+Shift+L) albo przycisk
+  Open layer file w Sliced; File → Recent layer documents (do 9 wpisów).
+  Otwierane są archiwa drukarek (tabela w rozdz. 7), projekty .sla-project
+  oraz pojedyncze obrazy masek (PNG, JPEG, TIFF, BMP, PBM/PGM i inne).
+  Obraz kolorowy jest liczony na luminancję, przezroczystość na czarne tło.
+Back to 3D wraca do sceny bez utraty masek, narzędzia i historii.
+
+Narzędzia (nad podglądem):
+- Layer — numer warstwy; Mask plane — Main mask / SUBIMGS mask (tylko
+  pliki z drugą płaszczyzną, np. Anycubic);
+- Drawing tool: Brush (maluje wybraną jasność) lub Eraser (maluje 0);
+  Radius (pixels) — promień pędzla w pikselach obrazu (niezależnie od
+  zoomu); Brush shape — Round (okrągły) lub Square (kwadratowy);
+  Grayscale / threshold 0-255 — jasność pędzla i wartość dla
+  progowania/wypełnienia;
+- kształt pociągnięcia: Freehand (odręcznie), Line, Rectangle, Ellipse,
+  Flood fill oraz (trzeci rząd) Text, Supports i Drain hole: klik wpisuje
+  tekst (czcionka, skala, grubość, kąt, wyrównanie, odbicie) albo rysuje
+  kolumnę podpory / wierci otwór w dół od klikniętej warstwy (średnice w polach
+  opcji; klik na warstwie 1 jest odrzucany). Każde użycie to jeden Undo. Linia, prostokąt, elipsa i wypełnienie działają na całym
+  zakresie warstw wybranym w edytorze i każde jest jednym krokiem Undo;
+  ostatni narysowany prostokąt można użyć jako ROI w oknie Operations;
+- Brush grayscale mapping: komunikat pokazuje, jaką jasność naprawdę
+  namaluje pędzel, gdy źródło ma ograniczoną paletę (np. 127 w źródle
+  16-poziomowym maluje 119). Pole zachowuje wpisaną wartość;
+- Zoom: Fit, 25%, 50%, 100%, 200%, 400%; Ctrl + kółko myszy przybliża
+  względem kursora; klawisze +, - zmieniają zoom względem środka
+  widoku, 0 dopasowuje obraz do okna; kółko przewija w pionie, Shift + kółko w poziomie; obraz
+  przesuwasz środkowym przyciskiem myszy albo Spacja + przeciąganie.
+  Zbyt duży podgląd zgłasza limit pamięci.
+- Pixel inspector (pod obrazem): współrzędne piksela, położenie w mm i
+  jasność (szarość) pod kursorem. [GUI nieprzetestowane]
+Rysuj przeciągając po obrazie. Jedno pociągnięcie = jeden krok Undo.
+Pod paskiem narzędzi napis "Painting scope" opisuje, które maski zmieni
+pędzel: "Shared mask" = główna i SUBIMGS są połączone i zmieniają się razem,
+"Independent masks" = zmiana dotyczy tylko wybranej płaszczyzny; dla zakresu
+podawana jest liczba warstw wspólnych i niezależnych.
+Przyciski Layer parameters (jedna warstwa) i Range parameters (zakres, tylko
+dla dokumentów wygenerowanych przez program) edytują parametry warstw, jeśli
+format na to pozwala (Z, ekspozycja, a w częściach formatów także ruch);
+pola oznaczone jako tylko do odczytu nie dają się zmienić. Zmiany przechodzą przez Undo/Redo.
+
+Zakresy warstw:
+- First layer / Last layer (oba końce należą do zakresu), suwak zakresu
+  oraz Single layer;
+- Overlay and paint selected range — podgląd nakłada warstwy zakresu,
+  a pociągnięcie maluje wszystkie warstwy zakresu jednocześnie;
+- Range operation + Apply to range (jeden krok Undo, w tle, Cancel nie
+  zmienia masek): Threshold, Invert, Mirror horizontal / vertical,
+  Rotate 180 degrees, Fill with grayscale, Erode, Dilate, Morphological
+  open / close, Gradient, White top hat, Black top hat, Box blur, Median
+  blur. Operacje morfologiczne i rozmycia używają kwadratowego jądra o
+  promieniu z pola Radius (0 = bez zmiany, 1 = okno 3x3); brzegi są
+  odbijane. Pozostałe operacje UVtools są w oknie Operations (niżej).
+- Threshold layer i Invert layer działają na jednej warstwie.
+
+Undo / Redo: przyciski oraz Ctrl+Z, Ctrl+Y, Ctrl+Shift+Z.
+- Esc podczas rysowania anuluje tylko bieżące pociągnięcie; bez
+  pociągnięcia Esc wraca z edytora.
+- Ctrl+Z / Ctrl+Y podczas rysowania najpierw odrzucają niedokończone
+  pociągnięcie.
+- Historia dotyczy bieżącej sesji i nie jest zapisywana w pliku. Pamięta do
+  32 ostatnich kroków i do 128 MiB danych; starsze kroki są usuwane bez
+  ostrzeżenia. Pojedyncza zmiana większa niż 128 MiB (bardzo duży zakres) jest
+  odrzucana z komunikatem — podziel ją na mniejsze zakresy.
+
+Zapis i eksport z edytora:
+- Apply to sliced result włącza edycje do wyniku modelu (dotyczy też
+  eksportu z głównego okna); File → Save Project (3MF) utrwala je na dysku.
+  Po zmianie geometrii modelu Apply bywa wyłączone dla starszej sesji —
+  wybierz Load current slices.
+- Save layer project zapisuje maski, ustawienia i kontekst do .sla-project
+  (dla generatorów i otwartych archiwów). Przy otwartym archiwum
+  Ctrl+S / Save Project zapisuje projekt warstw; dla wyniku modelu
+  zapisuje 3MF.
+- Export edited layers / Export generated layers / Save edited archive
+  zapisuje wybrany dostępny format bez ponownej rasteryzacji modelu;
+  rozszerzenie musi odpowiadać otwartemu kontenerowi.
+- Convert layer archive przekłada otwarty plik na format innej drukarki
+  (okno pokazuje docelową drukarkę; jeśli format nie zachowa parametrów,
+  konwersja jest odrzucana z opisem).
+- Export selected mask / Export range to a new mask folder zapisuje
+  maski jako pliki graficzne.
+- Calibration recipe pokazuje opis pierwotnej generacji kalibracji.
+- Pole Layer export format wybiera format dla eksportu z edytora (SL1SVG
+  jest pominięty; dla tabel z wieloma ekspozycjami na jednej wysokości Z tylko
+  UVJ i CXDLPv4).
+- W otwartych archiwach Anycubic pole wyboru "Use selected printer and
+  material for resin estimates" włącza przeliczenie objętości, masy i kosztu
+  według wybranej drukarki i żywicy (rozdzielczość musi się zgadzać);
+  domyślnie zachowywane są wartości z oryginalnego pliku.
+- Dokument niezapisany jest oznaczony w pasku stanu; przed zastąpieniem
+  go nowym wynikiem program pyta (Yes/No).
+
+Panel Issues (wykrywanie problemów):
+- Detection settings: próg wysp (Island required area, Island support %),
+  nawisów (Overhang erode), pułapek żywicy (Resin trap required area),
+  przyssawek (Suction cup height, mm), marginesu krawędzi (Touching bound
+  margin) — domyślne wartości są takie jak w UVtools; można wyłączyć
+  poszczególne rodzaje (Islands, Overhangs, Resin traps, Suction cups,
+  Touching bounds, Empty layers).
+- Detect issues uruchamia wykrywanie w tle (postęp, Cancel).
+- Lista (Type, Layers, Pixels): Island, Overhang, Resin trap, Suction cup,
+  Touching bound, Print height, Empty layer. Wybranie wpisu przeskakuje do
+  warstwy i rysuje nakładkę obszaru.
+- Po edycji masek wyniki są oznaczane jako nieaktualne — uruchom
+  wykrywanie ponownie.
+- To samo z linii poleceń: rozdział 10.
+Zgodność wykrywania z UVtools sprawdzono lokalnym skryptem QA (nie w repozytorium) na
+11 przypadkach testowych (wyspy, nawisy, pułapki żywicy — zamknięta komora,
+kubek, otwór odpływowy, wydrążony sześcian — i przyssawki): 11/11 zgodnych
+(liczba, bbox ±2 px, piksele). To nie jest dowód dla dowolnego modelu.
+Panel nie był jeszcze uruchamiany ręcznie w działającym GUI. [GUI nieprzetestowane]
+
+Okno Operations (operacje UVtools na maskach):
+Przycisk "Operations..." w widoku Sliced otwiera niemodalne okno. Po lewej
+drzewo operacji w grupach Transform, Pixels, Layers, Parameters i Export...;
+po prawej opis, formularz parametrów (wartości domyślne jak w UVtools,
+walidacja z komunikatem), zakres warstw (numeracja od 1; domyślnie zaznaczony
+zakres edytora), opcjonalny ROI w pikselach (x, y, szerokość, wysokość;
+przycisk "Use last rectangle" bierze ostatni prostokąt narysowany narzędziem
+Rectangle) oraz przyciski Preview, Apply, Close i Calculator....
+- Preview pokazuje wynik na bieżącej warstwie bez zatwierdzania.
+- Apply działa w tle z postępem i Cancel (Cancel nie zmienia masek);
+  cała operacja to jeden krok Undo.
+Operacje (nazwy jak w oknie):
+- Transform: Move, Resize, Rotate, Flip, Pattern, Change resolution.
+- Pixels: Threshold, Solidify, Pixel dimming, Infill (8 wzorów), Pixel
+  arithmetic, Raft relief (także Linked lines), Light bleed compensation, Blur
+  (Stack, Box, Pyramid, Median, Gaussian, Filter 2D), Mask by image, Redraw model
+  (drugi plik z samym modelem).
+- Layers: Clone layers, Remove layers, Change layer height, Layer
+  arithmetic, Double exposure, Layer import (PNG i pliki drukarek; Insert,
+  dopisywanie i odrzucanie warstw tylko tam, gdzie lista warstw może się
+  zmienić), Repair layers (wyspy, pułapki żywicy,
+  przyssawki, szczeliny, szum), Lithophane (obraz wybrany z dysku; zastępuje
+  wszystkie warstwy — gdy bieżący dokument nie przyjmie innej liczby
+  warstw, wynik otwiera się jako nowy dokument generowany).
+- Parameters (zapisują tylko parametry warstw): Dynamic lifts, Fade exposure
+  time, Phased exposure, Raise on print finish, Edit parameters, Timelapse,
+  Dynamic layer height. Zmiana trafia do tabeli parametrów jako jeden krok
+  Undo. Pole, którego format nie potrafi zapisać, jest odrzucane z nazwą pola
+  (puste pole w Edit parameters = zachowaj zapisaną wartość).
+  Stir resin (warstwy mieszania żywicy w Z = 0,001 mm na początku wydruku; tylko
+  dokumenty wygenerowane; eksport takiego dokumentu tylko do uvj i cxdlpv4, inne
+  formaty odmawiają przed zapisem).
+- Export...: Layer images (PNG lub PGM do folderu), Animated GIF, Heat map,
+  Skeleton, HTML report (jeden plik bez zasobów zewnętrznych), STL mesh.
+  Eksport działa w tle z Cancel i zapisuje przez plik tymczasowy + zmianę
+  nazwy; przycisk Apply zmienia się wtedy na "Export...". Eksporty nie
+  zmieniają dokumentu.
+- Calculator...: rozmiar piksela, opóźnienie światła, optymalne pochylenie
+  modelu i szacunek czasu wydruku dla wpisanych parametrów.
+Ograniczenia (okno odmawia z komunikatem, nie zapisuje po cichu):
+- operacje zmieniające liczbę warstw, ich wysokość lub rozdzielczość (Clone,
+  Remove, Change layer height, Double exposure, Change resolution, Phased
+  exposure, Raise on print finish, Timelapse w trybie Virtual layer, Dynamic
+  layer height, Repair layers z usuwaniem pustych warstw) są dostępne tylko
+  dla wyniku slicingu i dokumentów generowanych; archiwum otwarte z pliku
+  trzyma te dane w natywnym nagłówku, więc takie operacje są odrzucane;
+  Change resolution jest odrzucane także dla wyniku modelu (piksel wynika z
+  ekranu drukarki — zmień profil i potnij ponownie);
+- Raft relief dotyczy całego dokumentu; ROI tylko go ogranicza;
+- dokument z drugą płaszczyzną (SUBIMGS) lub tabelą parametrów warstw
+  ma "nieobsługiwany układ" dla operacji na liście warstw;
+- eksport PNG/PGM: tylko te dwa formaty obrazów; GIF: bez nakładki
+  licznika warstw.
+Stan: logika ma testy ([sla_layerops], [sla_layerops2], [sla_layerexport],
+[sla_layer_ops_document], [sla_layer_ops_document2]); okno jako całość
+[GUI nieprzetestowane] (brak ekranu testowego z AT-SPI na maszynie
+deweloperskiej). Wymagane sprawdzenie ręczne: każda grupa, Preview, Cancel,
+Undo po Apply, odmowy dla archiwum z pliku.
+
+
+
+7. Formaty i wersje eksportu
+============================
+
+Format wybierasz w Printer Settings → General → Output (lista pokazuje opis
+i rozszerzenie; przy identyfikatorze bez kodeka dopisek "Export unavailable" —
+obecnie każdy z 80 identyfikatorów rejestru ma writer, więc dopisek pojawia
+się tylko dla nieznanego identyfikatora zaimportowanego z cudzego profilu)
+albo w oknie eksportu. Wersja Anycubic: pole Anycubic version (auto, 1, 515, 516,
+517, 518; wersje 1/515 mają ograniczony ruch, 516-518 tablicę maszyny).
+Niezgodna wartość zaimportowana z pliku pozostaje widoczna i trzeba ją
+poprawić przed eksportem.
+
+Wszystkie 80 identyfikatorów można zapisać z modelu (eksport), a eksport
+każdego z nich ma niezależny odczyt (bramka z 12.11.2026, ostatni przebieg
+build/oracle-sweep/w8: 402 PASS, 42 ORACLE_DEFECT, 116 BLOCKED, 0 prawdziwych
+defektów). Kolumny:
+ Eksport      — niezależny odczyt eksportu. "UVtools n/7": UVtools 7.0.0
+                (lokalny skrypt QA) odczytał plik
+                zgodnie z modelem w n z 7 geometrii LCD (landscape, portrait,
+                mirror X, mirror Y, mirror XY + portrait, piksel
+                anizotropowy x2): nagłówek, liczba warstw, Z, ekspozycje,
+                ruchy i piksele. Brakujące do 7 przypadki to BLOCKED: writer
+                celowo odmawia geometrii/ruchów, których format nie zapisze
+                (to ochrona, nie błąd pliku). "dekoder n/n": UVtools nie
+                potrafi zweryfikować formatu (błąd lub brak czytnika), więc
+                sprawdza go własny niezależny dekoder
+                (lokalne dekodery QA, 42/42 PASS).
+ Maski        — otwarcie w widoku Sliced, edycja masek i zapis z powrotem
+                (zmieniane są tylko edytowane warstwy; bez zmian plik jest
+                bajtowo identyczny). "tylko podgląd" = otwarcie bez zapisu
+                edycji.
+ Parametry    — edycja parametrów warstw (Layer parameters / Range
+                parameters, operacje z grupy Parameters). Tylko rodziny
+                wymienione w tej tabeli; reszta edytuje same maski.
+ To wynik dekodera, nie test na drukarce: żaden format nie jest
+ potwierdzony na urządzeniu.
+
+Rodzina: identyfikatory (rozszerzenie)       Eksport              Maski          Parametry
+------------------------------------------------------------------------------------------------
+SL1 (.sl1), SL1S (.sl1s)                     UVtools 7/7          tak            nie
+UVJ (.uvj, wymiana, nie dla drukarek)        UVtools 7/7          tak            nie
+Chitubox ZIP (.zip), VDA (.zip)              UVtools 7/7 (oba)    tak            nie
+Generic ZIP (.zip, obrazy bez ruchu)         UVtools 7/7          tak (1)        nie
+CBDDLP v2 (.cbddlp), v1 (.v1.cbddlp),
+  Photon v2 (.photon), v1 (.v1.photon)       UVtools 7/7 (każdy)  tak            nie
+CTB v2 (.ctb), CTB v1 (.v1.ctb)              UVtools 7/7          tak            nie
+CTB v3/v4/v5 (.v3.ctb .v4.ctb .v5.ctb),
+  GKtwo (.gktwo.ctb), szyfrowane v4/v5
+  (.v4.encrypted.ctb, .encrypted.ctb)        UVtools 5/7, 2 BLOCKED
+                                             (brak odbicia Y)     tak            tak
+Anycubic binarne, pełne 7/7: pwc, pm3n,
+  pm5, pm5s, m5sp, px6s, dl2p                UVtools 7/7          tak            tak (2)
+Anycubic binarne, 4/7: pws, pw0, pwx, dlp,
+  pwmx, pwmb, pwmo, pwms, pwma, pm3, pm3m,
+  pm3r, pm4n, pmsq, pmx2                     UVtools 4/7, 3 BLOCKED
+                                             (portret: format nie
+                                             zapisze własnych wymiarów
+                                             maszyny / równych prędkości)
+                                                                  tak            tak (2)
+Anycubic ZIP: pm4u, pm7, pm7m, pwsz          UVtools 7/7          tak (3)        nie
+Photon S (.photons)                          UVtools 2/7 (ekran
+                                             1440x2560, odbicie
+                                             poziome, Z 165 mm)   nie (4)        nie
+CXDLP v2 (.v2.cxdlp), v3 (.cxdlp),
+  v4 (.cxdlpv4)                              UVtools 7/7          tak            nie
+CXDLP v1 (.v1.cxdlp)                         dekoder 7/7 (czytnik
+                                             wyłączony w UVtools) tak            nie
+CWS: cws, cwsnovamaker (.cws), cwsxml
+  (.xml.cws), cwsrgb (.rgb.cws)              dekoder 28/28 (błąd
+                                             czytnika UVtools:
+                                             LayerHeight 0)       tak            nie
+GOO (.goo), PRZ (.prz)                       UVtools 7/7          tak            nie
+PHZ (.phz)                                   UVtools 7/7          tak (5)        nie
+FDG (.fdg)                                   UVtools 5/7          tak (5)        nie
+LGS, LGS30, LGS120, LGS4K (.lgs ...)         UVtools 5/7 (każdy)  tak            nie
+NanoDLP mono/RGB v1/v2 (.nanodlp,
+  .v1.nanodlp, .rgb.nanodlp, ...)            UVtools 5/7 (każdy)  tak            nie
+Klipper mono (.zip), RGB (.rgb.zip)          UVtools 7/7 (oba)    tak (3)        nie
+OSF (.osf)                                   UVtools 5/7          tak            nie
+SVGX (.svgx)                                 UVtools 5/7          tylko podgląd  nie
+OSLA (.osla), VDT (.vdt)                     UVtools 7/7 (oba)    tak (5)        nie
+MDLP (.mdlp), GR1 (.gr1)                     UVtools 4/7 (oba)    tak            nie
+QDT (.qdt), ZCode (.zcode)                   UVtools 3/7 (oba)    tak            nie
+Anet N4 (.n4), N7 (.n7)                      UVtools 3/7 (oba)    tak (5)        nie
+JXS (.jxs), ZCodex (.zcodex)                 UVtools 2/7 (oba)    tak            nie
+SL1SVG (.sl1_svg)                            dekoder 7/7 (UVtools
+                                             nie ma czytnika)     nie            nie
+
+(1) Kod odczytu istnieje (LayerDocument.cpp), ale nie ma dla niego osobnego
+    testu; traktuj jako niepotwierdzony.
+(2) Zakres edytowalnych pól zależy od wersji formatu; pola tylko do odczytu
+    są w oknie zablokowane (Z i ekspozycja; ruch w zakresie wersji).
+(3) Odczyt+edycja masek z fali 7; odmowa z komunikatem dla warstw wektorowych
+    PWSZ i spakowanego RGB z antyaliasingiem.
+(4) Brak czytnika Photon S w LayerDocument.cpp
+    (rozpoznawane są sygnatury LGS, OSF, Anet, OSLA, SVGX, QDT, MDLP/GR1,
+    GOO/PRZ i rodziny z fal 3-7); plik .photons można tylko wyeksportować.
+(5) Dla PHZ, FDG, OSLA i Anet statystyki w nagłówku są przeliczane po edycji;
+    dla pozostałych rodzin z fal 7-8 metadane statystyk są kopiowane bez
+    przeliczenia.
+Zasady odczytu stanu: dla każdej rodziny z fal 7-8 piksele po odczycie i po
+zapisie edycji zgodne z UVtoolsCmd extract (14 identyfikatorów fali 8);
+fala 7 ma testy [sla_more_readers] (pliki z własnego eksportera, uszkodzone
+wejścia, anulowanie), fala 8 [sla_more_readers2].
+Dotyczy to dekodera, nie drukarki. Wynik sweepu: build/oracle-sweep/w8/results/
+results.md i results.json.
+
+Uwagi:
+- Edycja parametrów warstw działa też na dokumentach generowanych przez
+  program (kalibracje, PCB): przyciski Layer parameters / Range parameters
+  (rozdz. 6). Konwersja lub zapis edytowanych parametrów jest odrzucana, gdy
+  format docelowy nie przechowa pola.
+- W nagłówkach ok. 107 razy rozjeżdża się tylko flaga DisplayMirror przy
+  poprawnych pikselach (CXDLPv4, Chitubox ZIP, OSF, OSLA, CWS, a w CTB/CBDDLP
+  sam mirror Y jest zapisywany jako poziomy). Domyślnie (Automatic) nic się
+  nie zmienia; flagę można ustawić per drukarka w Printer Settings → General
+  → Display → Mirror flag in file header (Expert).
+- Odczyt GOO i PRZ używa tych samych zasad co UVtools (PRZ bez kodowania
+  różnicowego).
+- Anycubic: edytor obsługuje główną maskę i SUBIMGS oraz zmianę parametrów
+  warstw (Z, ekspozycja, ruch w zakresie obsługiwanym przez wersję).
+- CWS: kolejność masek z manifest.xml; RGB.CWS wymaga szerokości LCD
+  podzielnej przez 3 (inaczej błąd, bez zmiany rozdzielczości).
+- OSF (7-bitowa szarość) wymaga kwadratowego piksela i jednakowej wysokości
+  warstw; prędkości całkowite w mm/min.
+- Anet N4: 1440x2560 px, 68,04x120,96 mm, Z 135 mm; N7: 2560x1600 px,
+  192x120 mm, Z 300 mm (wymiary po zastosowaniu orientacji); format
+  progowo zamienia szarość na czerń/biel.
+- NanoDLP, FDG, ZCode i inne mają własne wymagania geometrii; niezgodny
+  profil kończy się komunikatem przed zapisem.
+- UVJ przechowuje maski PNG bez kwantyzacji i parametry poziomów. Nie
+  zmieniaj samego rozszerzenia UVJ na format urządzenia.
+- Rozszerzenie w ustawieniach nie potwierdza obsługi drukarki; nie zmieniaj
+  rozszerzenia, aby obejść brak kodeka.
+- Zapis edytowanego pliku wymaga rozszerzenia zgodnego z otwartym kontenerem.
+- W kodzie (LayerDocument.cpp) trwa dodawanie edycji parametrów warstw dla
+  PHZ/FDG, OSLA, VDT, Anycubic ZIP i Klipper; do czasu ukończenia
+  tabela ich nie liczy jako obsługiwanych.
+
+Dla formatu, który ma być użyty na drukarce, sprawdź wynik niezależnym
+dekoderem (UVtools): liczba i obrazy warstw, wymiary, orientacja, ekspozycja,
+ruch Z.
+
+
+8. PCB
+======
+
+Window → PCB exposure generuje warstwy naświetlania z plików produkcyjnych.
+- Copper Gerber: jeden lub wiele plików (1-1000; przycisk Browse albo jedna
+  ścieżka na wiersz). Rozszerzenia: .gbr .ger .gko .gtl .gto .gts .gbl .gbo
+  .gbs .gml.
+- Drill file (opcjonalnie): Excellon (.drl, .xln) — wiercenia, szczeliny G85
+  oraz frezowanie G00/G01-G03.
+- Exposure recipe: Custom albo gotowa receptura wypełniająca czas i polaryzację
+  (oba pola zostają edytowalne): "Dry film resist (negative)" 45 s,
+  "UV solder mask (negative)" 60 s z odwróconą polaryzacją, "Positive
+  photoresist board" 120 s z odwróconą polaryzacją. Pod listą pojawia się
+  opis procesu. To punkty wyjścia, nie gwarancje: naświetl pasek próbny
+  na własnej folii i dostosuj czas.
+- Exposure (s), LCD margin (mm), X offset / Y offset (mm), Size scale (%).
+  Skala 100 = fizyczne 1:1 (także przy niekwadratowym pikselu LCD); zmieniaj
+  tylko, by skompensować zmierzony skurcz lub błąd optyki.
+- Merge Gerber files into one exposure: zaznaczone = jedna maska;
+  odznaczone = osobna warstwa na plik, w kolejności listy, ze wspólnym
+  układem współrzędnych.
+- Anti-aliasing (gray edge pixels): domyślnie włączony; wyłącz dla folii,
+  która reaguje na każdą szarość (twarde krawędzie czarno-białe).
+- Mirror artwork in X / Y oraz Invert exposure polarity (negatyw).
+- PCB preview: przycisk "Update preview" renderuje w tle pomniejszoną
+  kompozycję prawdziwej maski (biel = naświetlane); przy niescalonych plikach
+  pole "Preview file" wybiera plik. Zmiana opcji oznacza podgląd jako
+  nieaktualny ("Preview is out of date").
+- Ostatnio użyte ścieżki i opcje są zapamiętywane między sesjami.
+- "Expose PCB (generate layers)" generuje warstwy i otwiera wynik w widoku
+  Sliced w jednym kroku. Sprawdź polaryzację i lustro w edytorze przed
+  eksportem; po generowaniu Undo/Redo są puste, dopiero późniejsza edycja
+  tworzy krok historii.
+Artwork zachowuje fizyczny rozmiar; geometrię LCD ustawia wybrana drukarka.
+Limity: wejście do 64 MiB, ok. 12 mln wierzchołków miedzi.
+Parser Gerbera (RS-274X): FS, MO, AD, makra AM (w tym moiré i thermal),
+G01-G03, G74/G75, regiony, LP/LM/LR/LS, SR, AB (zagnieżdżone); współrzędne
+względne są jawnie odrzucane. Excellon: wiercenia, G85, frezowanie
+G00/G01-G03/M15/M16.
+Stan: logika ma testy ([sla_pcb], 478 asercji); okno [GUI nieprzetestowane].
+Projekt PCB zapisz jako .sla-project; po otwarciu nie potrzebuje już
+plików Gerber ani Excellon. Wynik wyeksportuj przez Export generated layers.
+Operacje z okna Operations (rozdz. 6) działają też na warstwach PCB.
+
+
+9. Kalibracje
+=============
+
+Window → Printer calibration (wzory: XYZ blocks, Grayscale patches, Lift
+area, Elephant foot, Blooming effect, Stress tower, XYZ accuracy, Tolerance,
+Lift height, External tests) i Window → ExposureFinder calibration. Oba
+generują warstwy w widoku Sliced; ekspozycje, wysokość warstwy i ruchy
+pochodzą z aktywnych profili materiału i procesu, a geometrię LCD daje
+drukarka. Eksport: Export generated layers. Przed zamianą otwartego
+dokumentu program pyta o zgodę.
+
+XYZ blocks
+  Cel: sprawdzenie dokładności wymiarów w X, Y i Z.
+  Parametry: Pattern X/Y (mm), Test height (mm), Spacing/margin (mm).
+  Wynik: dziewięć pełnych bloków; zmierz suwmiarką wydrukowane bloki i
+  porównaj z zadanymi, aby wyznaczyć korekty (Printer Settings → Corrections).
+
+Grayscale patches
+  Cel: sprawdzenie, jak drukarka/żywica reagują na poziomy szarości.
+  Parametry: Grayscale steps, First/Last grayscale (0-255).
+  Wynik: tabela "Requested -> generated" pokazuje poziomy faktycznie
+  zapisane w masce dla bieżącego formatu (np. 0-255 w 16 krokach daje 16
+  różnych poziomów PWC). Jeśli poziomy się powtarzają, zmniejsz liczbę
+  kroków lub poszerz zakres; Generate jest wtedy wyłączony. Zmianę
+  poziomów trzeba potwierdzić. Przy ocenie wydruku używaj wartości
+  "generated".
+
+Lift area
+  Cel: test siły odrywania (nawisu pola) przy rosnącej powierzchni.
+  Parametry: wymiary pola, Lift size step (%), Minimum lift size (%).
+  Wynik: prostokątny obszar, opcjonalnie zmniejszający się pod koniec;
+  dialog podaje końcowe rozmiary X i Y w % oryginału. Obserwuj, przy jakim
+  polu wydruk zaczyna odpadać lub deformować się.
+
+Elephant foot
+  Cel: dobór kompensacji "słoniowej stopy" (rozszerzonych dolnych warstw).
+  Parametry: Bottom / Normal layers, Part scale, Part margin (px), Erode
+  bottom layers (Erode start/end/step), Dim bottom wall (Wall thickness,
+  Wall brightness start/end/step), Output original (ORI) part, Extrude
+  text.
+  Jak czytać: wybierz wydrukowaną część, której spód jest równy z
+  warstwami powyżej (bez poszerzonej stopy). Etykieta pokazuje ustawienia:
+  E: liczba iteracji erozji, W/B szerokość ścianki (px) i jasność dolnych
+  warstw, ORI = część bez kompensacji. Powtórz po zmianie drukarki,
+  żywicy lub ekspozycji. Części, które nie mieszczą się na ekranie, są
+  pomijane (dialog to zgłasza).
+
+Blooming effect
+  Cel: dobór czasu oczekiwania przed naświetleniem (rozlewanie światła).
+  Parametry: Bottom layers, marginesy, Wait before cure start / increment,
+  Object count (n + 1 kwadratów), Object size/margin (px), Object height.
+  Jak czytać: każdy kwadrat jest utwardzany na tej samej wysokości z innym
+  czasem oczekiwania (etykieta W:). Zmierz kwadraty; najlepszy jest ten
+  najbliższy zadanym wymiarom. Wymaga eksportu UVJ lub CXDLPv4
+  (wiele naświetleń na jednej wysokości Z).
+
+Stress tower
+  Cel: wykrycie granic ruchu i naświetlania drukarki.
+  Parametry: Base diameter, Base / Body / Ceiling height, Chamfer layers,
+  Anti-aliasing, Spirals (Spiral diameter, Spiral angle per layer,
+  Spiral direction: Clockwise / Alternate / Both).
+  Jak czytać: obejrzyj wieżę wzdłuż wysokości; przesunięcia warstw,
+  zerwane spirale i artefakty powierzchni pokazują, gdzie drukarka
+  osiąga granicę.
+
+ExposureFinder
+  Cel: znalezienie najlepszej ekspozycji i wysokości warstwy w jednym
+  wydruku (tabela prób z wzorcem testowym).
+  Formularz: karta Table (Layer height, Bottom/Normal exposure, Brightness,
+  tryb tabeli Generated / Manual / Iterative, normalizacja wierszy),
+  wzór (otwory, belki, bullseye, tekst, kwadratowe/okrągłe) oraz układ
+  komórek na LCD (kolumny, wiersze, marginesy, odbicia). Wpisane wartości
+  są walidowane; przycisk podglądu planu pokazuje, co powstanie, zanim
+  wygenerujesz warstwy. Ręczne wiersze zachowują kolejność i duplikaty;
+  zaokrąglenia zatwierdzasz przyciskiem Normalize rows.
+  Tabela wierszy ma pod sobą tylko do odczytu listę tych samych wierszy
+  („Table rows as a list”): czytniki ekranu odczytują z niej każdą komórkę
+  (wysokość, ekspozycje, jasność, poprawność), bo siatka edycji sama nie
+  udostępnia komórek technologiom asystującym.
+  Jak czytać: oceń wydrukowane komórki; wybierz wiersz tabeli (ekspozycję)
+  z najlepiej odwzorowanymi otworami, belkami i bullseye bez zalania i
+  niedoświetlenia, po czym wpisz tę ekspozycję w profilu materiału.
+  Wielowysokościowe tabele wymagają formatu UVJ lub CXDLPv4.
+
+XYZ accuracy
+  Cel: pełny port testu dokładności UVtools: puste lub wydrążone,
+  podpisane bloki (Block X/Y/Z, Center hole relief, Hollow blocks, Wall
+  thickness, Drain slot) z podanym układem pozycji. Zmierz bloki i porównaj.
+
+Tolerance
+  Cel: test tolerancji wymiarowej (port testu UVtools). Parametry: Shape
+  (Circle / Square), Female diameter, Female hole diameter, Thinner models i
+  Thicker models (każdy z Offset i Step), Output same-size part, Fuse parts.
+  Oceń, który wariant pasuje; zasady odczytu jak w opisie UVtools.
+
+Lift height
+  Cel: wyznaczenie najniższej wysokości podniesienia, przy której wydruk
+  odrywa się od folii. Parametry: warstwy dolne i zwykłe, ekspozycje,
+  wysokości i prędkości podnoszenia/cofania, Decrease image size at the end.
+  Wynik: podsumowanie planu w polu pod formularzem; ocena po wydruku jak
+  w opisie "Apply result to profile" niżej.
+
+External tests (reference)
+  Tylko opis zewnętrznych testów (praca offline, bez pobierania plików).
+
+Apply result to profile (Printer calibration → "Apply result to profile..."):
+  Po wydruku wybierz źródło wyniku ("Result of": Exposure finder — najlepszy
+  czas ekspozycji, Grayscale patches — najlepszy poziom, Elephant foot —
+  najlepsza komórka erozji, Lift height — najniższe podniesienie, które
+  odrywa), wpisz najlepszą komórkę/wartość i ewentualny margines
+  bezpieczeństwa; proponowana wartość jest edytowalna. "Write to" wybiera
+  pole: Normal exposure time, Bottom exposure time, Lift height, Bottom
+  lift height (materiał) albo Elephant foot compensation (drukarka). Po
+  potwierdzeniu starej i nowej wartości zmiana trafia do edytowanego
+  profilu przez otwartą kartę Material/Printer (tak jak ręczne wpisanie):
+  profil jest zmodyfikowany, ale niezapisany — wycofasz zmianę strzałką
+  revert w ustawieniach. Gdy ustawienia nie ma w bieżących profilach albo
+  nowa wartość równa się starej, program zgłasza to i niczego nie zmienia.
+  Dostępne tylko w oknie Printer calibration (nie w ExposureFinder).
+
+Uwagi: dialogi kalibracji i PCB mają testy logiki ([sla_calibration] 236
+asercji, [sla_pcb]), ale nie były jeszcze testowane w działającym GUI
+(rozdz. 12) [GUI nieprzetestowane].
+Receptura generowania jest zapisywana w projekcie warstw (Calibration
+recipe); ręczne edycje masek zostają.
+
+
+10. Wiersz poleceń
+==================
+
+Wywołanie: build/src/sla-slicer [opcje] [pliki modeli]. CLI jest SLA;
+konfiguracja FFF jest odrzucana komunikatem "This application requires an SLA
+printer configuration", opcji G-code nie ma. Nieudane cięcie,
+brak modeli i błędy zapisu dają niezerowy kod wyjścia. Eksport nie zmienia
+nazwy pliku, którego nie zapisał.
+
+Działania: --slice / -s (eksport w formacie z profilu lub
+--sla-archive-format), --export-sla / --sla (PNG warstw), --export-3mf,
+--export-obj, --export-stl, --info, --query-printer-models,
+--query-print-material-profiles (z --printer-profile), --help, --help-sla
+(pełna lista opcji SLA), --save, --load.
+
+Wejście: --load plik.ini, --printer-profile, --material-profile,
+--print-profile, --datadir, --output / -o, --threads N, --loglevel N.
+Transformacje: --scale, --scale-to-fit, --rotate, --rotate-x/-y, --align-xy,
+--center, --duplicate, --duplicate-grid, --merge, --split, --cut,
+--dont-arrange, --ensure-on-bed.
+Opcje ekranu i eksportu można podać wprost, np. --display-pixels-x,
+--display-orientation, --display-mirror-x, --exposure-time,
+--sla-archive-format, --sla-anycubic-version, --sla-lift-height itd.
+
+Przykład:
+
+    build/src/sla-slicer --load drukarka.ini --sla-archive-format uvj \
+        --slice --output wynik.uvj model.stl
+
+Rozszerzenie domyślnej nazwy wynika z formatu; zmiana formatu zmienia suffix.
+
+Zatwierdzanie zmian przy eksporcie (jak okna GUI "Convert export palette" i
+"Adjust values for export"). Domyślnie CLI jest ścisłe: gdy format docelowy
+nie zapisze wartości dokładnie albo wymaga konwersji palety, eksport kończy się
+błędem z pełną listą wszystkich problemów i nie zostawia pliku. Dwie flagi
+zatwierdzają zmiany z góry:
+
+    --sla-accept-adjustments   zapisz najbliższe wartości zapisywalne (np. pełne
+                               sekundy, pełne mm/s, stały skok formatu, model
+                               Creality dobrany po rozdzielczości) zamiast odmowy;
+    --sla-accept-conversion    wyeksportuj kopię ze skonwertowaną paletą szarości
+                               (Anycubic, CBDDLP/Photon, CTB) zamiast odmowy.
+
+Każda zmiana jest wypisana na standardowe wyjście w postaci
+"Adjusted for export: <pole> <było> -> <jest> (powód)" albo
+"Converted for export: palette conversion: ... pixels change ...". Profile i
+ustawienia nie są zmieniane (tylko zapisany plik). Rzeczy, których żadne
+dopasowanie nie naprawi (drugi stopień ruchu, przejścia, geometria), nadal
+są odmową, razem z resztą na jednej liście. Przykład:
+
+    build/src/sla-slicer --load drukarka.ini --sla-archive-format SL1 \
+        --sla-accept-adjustments --sla-accept-conversion \
+        --slice --output wynik.v4.ctb model.stl
+
+W przepisach (--sla-run-recipe) krok convert przyjmuje pole
+"accept_adjustments" (domyślnie false) a --sla-run-recipe flagę
+--sla-accept-adjustments (dla wszystkich kroków convert).
+
+Wykrywanie problemów w gotowym pliku:
+
+    build/src/sla-slicer --sla-detect-issues plik.sl1 --output problemy.json
+
+Wejście: archiwum warstw (format z rozdz. 7, który program potrafi
+odczytać) albo projekt .sla-project. Nie wymaga profili. Bez --output
+wypisuje JSON na standardowe wyjście. Kod wyjścia 0 = analiza wykonana
+(także gdy znaleziono problemy), 1 = błąd (nieznana opcja, brak pliku,
+nieczytelne wejście).
+Opcje: --disable rodzaje (lista po przecinku z: island, overhang,
+resin_trap, suction_cup, touching_bound, print_height, empty_layer),
+--island-required-area PX, --island-support-percent P, --overhang-erode PX,
+--resin-trap-required-area PX, --suction-cup-height MM,
+--touching-margin PX, --machine-height MM. Domyślne progi = UVtools.
+Format JSON: file, layer_count, issue_count oraz issues[] z polami type,
+first_layer, last_layer, pixel_count, bbox {x,y,width,height} (piksele,
+warstwy liczone od 0) i parts[] (warstwa po warstwie).
+Uwaga: --sla-detect-issues nie jest wymienione w --help; ta lista pochodzi
+z komunikatu programu wywołanego bez argumentu (komunikat: "--sla-detect-issues
+needs a layer archive or .sla-project file").
+
+Sugestie parametrów (odpowiednik UVtools Suggestions):
+
+    build/src/sla-slicer --sla-suggestions plik.sl1 --output sugestie.json
+
+Wejście jak wyżej (archiwum warstw lub .sla-project, bez profili). Wyłącznie
+ocena: nic nie jest stosowane ani zapisywane z powrotem do pliku. Opcje:
+--output / -o PLIK (bez niej JSON idzie na standardowe wyjście),
+--only ID,... i --disable ID,... Identyfikatory: bottom_layer_count,
+layer_height, transition_layer_count, wait_time_before_cure,
+wait_time_after_cure, model_position. Wartości, których kontener nie
+przechowuje, zostają nieobecne (status "unavailable" z powodem), nie są
+zgadywane. JSON: file, layer_count oraz suggestions[] z polami id, title,
+status (applied | not_applied | unavailable), informational_only, message,
+description, confirmation, information_url (tylko tekst, bez połączeń),
+unavailable_reason, bottom_layer_count / transition_layer_count
+{before, after}, model_move {dx_px, dy_px, anchor, before, after} i
+layer_changes[] {layer, field, before, after} (warstwy od 0; jednostki:
+s, mm, piksele). Na stderr podsumowanie "N suggestion(s), M not applied".
+Kod wyjścia 0 = ocena wykonana, 1 = błąd (nieznana opcja, brak pliku,
+nieczytelne wejście). Brak automatyzacji sekwencji operacji z CLI: operacje
+z okna Operations są dostępne tylko w GUI.
+
+
+11. Rozwiązywanie problemów
+===========================
+
+Eksport odrzucony z komunikatem o geometrii, ruchu lub palecie
+  Wybrany format nie zapisze któregoś ustawienia (np. odbicia Y w CTB,
+  różne prędkości cofania w Anycubic, nie-kwadratowy piksel w OSF).
+  Popraw ustawienie wskazane w komunikacie lub wybierz inny format.
+  Sekcja Material → LCD exposure and motion → Output compatibility
+  podpowiada, co zmienić.
+
+Format w profilu ma dopisek "Export unavailable"
+  Identyfikator formatu jest nieznany (np. z profilu innej wersji programu).
+  Wybierz format z listy; warstwy można mimo to ciąć i edytować.
+
+Plik nie otwiera się w Sliced
+  Odczyt jest dostępny dla większości rodzin (rozdz. 7; bez czytnika: Photon
+  S, SL1SVG; SVGX tylko do podglądu). Ucięty lub
+  uszkodzony plik jest zgłaszany jako błąd odczytu; poprzedni dokument
+  zostaje nienaruszony.
+
+Obraz w pliku jest obrócony lub odbity
+  Sprawdź display orientation i display mirror X/Y w profilu drukarki;
+  odbicia dotyczą obrazu, nie sceny 3D. Plik SL1 z poprzednich wersji
+  forka, zapisany w orientacji portretowej, może wymagać ponownego eksportu
+  z projektu.
+
+Po zmianie ustawień zniknęły edycje warstw
+  Zmiana modelu, geometrii ekranu, orientacji lub gamma wymaga nowych
+  masek. Zmiana samej ekspozycji lub ruchów zachowuje edycje. Zapisz
+  projekt (3MF po Apply) lub projekt warstw przed taką zmianą.
+
+Przycisk Apply jest wyłączony
+  Sesja Sliced pochodzi ze starszej sceny lub z pliku. Zakończ slicing i
+  użyj Load current slices.
+
+Okno zamykane z niezapisanymi zmianami
+  Program zadaje osobne pytania o scenę, profile i dokument warstwowy;
+  odrzucenie jednego nie oznacza zgody na porzucenie pozostałych.
+
+Kalibracja "Generate" jest nieaktywne
+  Zakres lub liczba kroków dają powtarzające się poziomy szarości albo
+  część wzoru nie mieści się na ekranie; popraw parametry według
+  komunikatu w oknie.
+
+Błąd przy tworzeniu pliku z zapisanym profilem
+  Nie zmieniaj ręcznie znacznika slaSlicerProfileGeometry w config.ini.
+
+Zgłaszając błąd, zapisz: wersję systemu i aplikacji, drukarkę i
+firmware, format i wersję eksportu, kroki odtworzenia oraz (jeśli to
+możliwe) plik wyjściowy. Uruchom program z --loglevel 4, aby uzyskać
+dziennik. Testy: doc/TESTING.md.
+
+
+12. Ograniczenia znane
+======================
+
+Uczciwy stan wersji 1.0.0 (patrz też CHANGELOG.md, "Znane ograniczenia").
+
+Formaty
+- Wszystkie 80 identyfikatorów ma zweryfikowany eksport (UVtools albo
+  niezależny dekoder), a każda rodzina poza SVGX (tylko podgląd) — otwieranie
+  i edycję masek. Wyjątki bez czytnika w tabeli rozdz. 7: Photon S, SL1SVG;
+  Generic ZIP — odczyt niepotwierdzony osobnym testem.
+- Edycja parametrów warstw (Z, ekspozycja, ruch) działa tylko dla Anycubic
+  binarnych, CTB v3-v5/GKtwo/szyfrowanych i dokumentów generowanych; pozostałe
+  rodziny z fal 7-8 edytują maski, a statystyki w manifestach są przeliczane
+  tylko dla PHZ, FDG, OSLA i Anet.
+- Żaden format nie został sprawdzony na urządzeniu. Bramka UVtools jest
+  lokalnym skryptem QA (wymaga zewnętrznego UVtoolsCmd), nie testem CTest z repozytorium.
+- Flagi odbicia w nagłówkach (CXDLPv4, Chitubox ZIP, OSF, OSLA, CWS, CTB/CBDDLP)
+  są niespójne z już odbitymi pikselami; decyzja po teście na drukarce.
+
+Geometria i profile
+- Orientacja/odbicia są obsługiwane w wielu miejscach kodu; część opcji
+  SLA nie ma jeszcze osobnego edytora w GUI.
+- Stare nazwy profili w 3MF i app_config mogą pozostać po zmianie nazwy.
+  Rename i Delete profili są transakcjami wielu plików INI z wycofaniem.
+
+Widok Sliced
+- Historia Undo: 32 kroki / 128 MiB, najstarsze kroki znikają bez ostrzeżenia.
+- Brak podglądu efektu operacji zakresu (Range filters) przed zastosowaniem;
+  okno Operations ma własny Preview na bieżącej warstwie.
+- Operacje UVtools: zaimplementowano większość operacji z okna Operations
+  (rozdz. 6); operacje zmieniające liczbę warstw/wysokości/rozdzielczość
+  odmawiają dla archiwów otwartych z pliku. Brak wsadowego uruchamiania
+  sekwencji operacji (poza CLI --sla-detect-issues i --sla-suggestions).
+- Okna Issues i Operations, narzędzia płótna (kółko, przesuwanie, inspektor,
+  linia/prostokąt/elipsa/wypełnienie) mają testy logiki, ale nie były
+  uruchomione w działającym GUI.
+
+PCB i kalibracje
+- PCB: receptury, podgląd, antyaliasing, skala i zapamiętane ustawienia
+  istnieją; okno nie było testowane w GUI.
+- Kalibracje: dostępne są wszystkie wzory z rozdz. 9 oraz "Apply result to
+  profile"; dialogi nie były testowane w GUI. External tests to tylko opis.
+
+GUI
+- Zmiany z fal 1-8 (menu, listy rozwijane, kreator bez wielokąta stołu,
+  panel Issues, Operations, eksport/import profili, dialogi) przeszły
+  kompilację i testy logiki, ale nie były sprawdzone ręcznie w uruchomionej
+  aplikacji; może się zdarzyć błąd kliknięcia lub układu.
+- Sliced jest dostępny z menu Window (Edit sliced layers, Open layer
+  archive) i z przycisków w panelu, nie jako pozycja paska głównego.
+- Zmienione klucze tekstów interfejsu tracą tłumaczenia.
+
+Wydajność i pamięć
+- Wszystkie warstwy są trzymane w pamięci (limit dokumentu rzędu 1 GiB);
+  wyjątkowo duże zadania (8K/12K) używają mniej wątków; dekodowanie i
+  ponowne kodowanie przy konwersji podnosi zużycie CPU/RAM. Pomiary
+  (lokalny benchmark) dotyczą wybranych modeli, nie gwarantują
+  czasu slicingu.
+
+Offline i bezpieczeństwo
+- Brak fsync przy publikacji pliku (zapis tymczasowy + zmiana nazwy,
+  bez wymuszania zapisu na dysk).
+- Kod uruchamiania zewnętrznych procesów jest nadal skompilowany.
+- Rdzeń FFF jest wycięty z buildu SLA (test sla_fff_purge_guard); w nagłówkach
+  zostały deklaracje FFF i nieosiągalne gałęzie w GUI.
+
+Instalacja i licencje
+- Instalacja do katalogu i uruchomienie poza drzewem źródeł zostały
+  sprawdzone (CLI, slicing do GOO); GUI z instalacji, inna dystrybucja i
+  paczka relokowalna nie były sprawdzone (zależności systemowe: GTK3, GL).
+- Spis licencji: doc/THIRD_PARTY_LICENSES.md i doc/SBOM.json (generowany
+  przez tools/generate_sbom.py). Brakuje jeszcze pliku z pełnymi tekstami
+  licencji w paczce oraz rozstrzygnięcia licencji kształtów galerii
+  (3DBenchy) i profili producentów.

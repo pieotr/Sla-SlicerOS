@@ -19,7 +19,6 @@
 #include "Geometry/ConvexHull.hpp"
 #include "MTUtils.hpp"
 #include "TriangleMeshSlicer.hpp"
-#include "TriangleSelector.hpp"
 #include "MultipleBeds.hpp"
 
 #include <float.h>
@@ -34,7 +33,6 @@
 
 #include "SVG.hpp"
 #include <Eigen/Dense>
-#include "libslic3r/GCode/GCodeWriter.hpp"
 
 namespace Slic3r {
 
@@ -59,9 +57,7 @@ Model& Model::assign_copy(const Model &rhs)
 		this->objects.emplace_back(mo);
     }
 
-    // copy custom code per height
-    this->custom_gcode_per_print_z_vector = rhs.custom_gcode_per_print_z_vector;
-    this->wipe_tower_vector = rhs.wipe_tower_vector;
+    this->loaded_from_fff_project = rhs.loaded_from_fff_project;
 
     return *this;
 }
@@ -82,9 +78,7 @@ Model& Model::assign_copy(Model &&rhs)
         model_object->set_model(this);
     rhs.objects.clear();
 
-    // copy custom code per height
-    this->custom_gcode_per_print_z_vector = std::move(rhs.custom_gcode_per_print_z_vector);
-    this->wipe_tower_vector = rhs.wipe_tower_vector;
+    this->loaded_from_fff_project = rhs.loaded_from_fff_project;
 
     return *this;
 }
@@ -111,35 +105,6 @@ void Model::update_links_bottom_up_recursive()
 	}
 }
 
-ModelWipeTower& Model::wipe_tower()
-{
-    return const_cast<ModelWipeTower&>(const_cast<const Model*>(this)->wipe_tower());
-}
-
-const ModelWipeTower& Model::wipe_tower() const
-{
-    return wipe_tower_vector[s_multiple_beds.get_active_bed()];
-}
-
-const ModelWipeTower& Model::wipe_tower(const int bed_index) const
-{
-    return wipe_tower_vector[bed_index];
-}
-
-ModelWipeTower& Model::wipe_tower(const int bed_index)
-{
-    return wipe_tower_vector[bed_index];
-}
-
-CustomGCode::Info& Model::custom_gcode_per_print_z()
-{
-    return const_cast<CustomGCode::Info&>(const_cast<const Model*>(this)->custom_gcode_per_print_z());
-}
-
-const CustomGCode::Info& Model::custom_gcode_per_print_z() const
-{
-    return custom_gcode_per_print_z_vector[s_multiple_beds.get_active_bed()];
-}
 ModelObject* Model::add_object()
 {
     this->objects.emplace_back(new ModelObject(this));
@@ -404,26 +369,6 @@ std::string Model::propose_export_file_name_and_path(const std::string &new_exte
     return boost::filesystem::path(this->propose_export_file_name_and_path()).replace_extension(new_extension).string();
 }
 
-bool Model::is_fdm_support_painted() const
-{
-    return std::any_of(this->objects.cbegin(), this->objects.cend(), [](const ModelObject *mo) { return mo->is_fdm_support_painted(); });
-}
-
-bool Model::is_seam_painted() const
-{
-    return std::any_of(this->objects.cbegin(), this->objects.cend(), [](const ModelObject *mo) { return mo->is_seam_painted(); });
-}
-
-bool Model::is_mm_painted() const
-{
-    return std::any_of(this->objects.cbegin(), this->objects.cend(), [](const ModelObject *mo) { return mo->is_mm_painted(); });
-}
-
-bool Model::is_fuzzy_skin_painted() const
-{
-    return std::any_of(this->objects.cbegin(), this->objects.cend(), [](const ModelObject *mo) { return mo->is_fuzzy_skin_painted(); });
-}
-
 ModelObject::~ModelObject()
 {
     this->clear_volumes();
@@ -445,8 +390,6 @@ ModelObject& ModelObject::assign_copy(const ModelObject &rhs)
     this->sla_support_points          = rhs.sla_support_points;
     this->sla_points_status           = rhs.sla_points_status;
     this->sla_drain_holes             = rhs.sla_drain_holes;
-    this->layer_config_ranges         = rhs.layer_config_ranges;
-    this->layer_height_profile        = rhs.layer_height_profile;
     this->printable                   = rhs.printable;
     this->origin_translation          = rhs.origin_translation;
     this->cut_id                      = rhs.cut_id;
@@ -482,8 +425,6 @@ ModelObject& ModelObject::assign_copy(ModelObject &&rhs)
     this->sla_support_points          = std::move(rhs.sla_support_points);
     this->sla_points_status           = std::move(rhs.sla_points_status);
     this->sla_drain_holes             = std::move(rhs.sla_drain_holes);
-    this->layer_config_ranges         = std::move(rhs.layer_config_ranges);
-    this->layer_height_profile        = std::move(rhs.layer_height_profile);
     this->printable                   = std::move(rhs.printable);
     this->origin_translation          = std::move(rhs.origin_translation);
     this->copy_transformation_caches(rhs);
@@ -509,7 +450,6 @@ void ModelObject::assign_new_unique_ids_recursive()
         model_volume->assign_new_unique_ids_recursive();
     for (ModelInstance *model_instance : this->instances)
         model_instance->assign_new_unique_ids_recursive();
-    this->layer_height_profile.set_new_unique_id();
 }
 
 // Clone this ModelObject including its volumes and instances, keep the IDs of the copies equal to the original.
@@ -597,26 +537,6 @@ void ModelObject::clear_volumes()
         delete v;
     this->volumes.clear();
     this->invalidate_bounding_box();
-}
-
-bool ModelObject::is_fdm_support_painted() const
-{
-    return std::any_of(this->volumes.cbegin(), this->volumes.cend(), [](const ModelVolume *mv) { return mv->is_fdm_support_painted(); });
-}
-
-bool ModelObject::is_seam_painted() const
-{
-    return std::any_of(this->volumes.cbegin(), this->volumes.cend(), [](const ModelVolume *mv) { return mv->is_seam_painted(); });
-}
-
-bool ModelObject::is_mm_painted() const
-{
-    return std::any_of(this->volumes.cbegin(), this->volumes.cend(), [](const ModelVolume *mv) { return mv->is_mm_painted(); });
-}
-
-bool ModelObject::is_fuzzy_skin_painted() const
-{
-    return std::any_of(this->volumes.cbegin(), this->volumes.cend(), [](const ModelVolume *mv) { return mv->is_fuzzy_skin_painted(); });
 }
 
 bool ModelObject::is_text() const
@@ -1078,16 +998,6 @@ bool ModelVolume::is_the_only_one_part() const
     return true;
 }
 
-void ModelVolume::reset_extra_facets()
-{
-    this->supported_facets.reset();
-    this->seam_facets.reset();
-    this->mm_segmentation_facets.reset();
-    this->fuzzy_skin_facets.reset();
-}
-
-
-
 // Support for non-uniform scaling of instances. If an instance is rotated by angles, which are not multiples of ninety degrees,
 // then the scaling in world coordinate system is not representable by the Geometry::Transformation structure.
 // This situation is solved by baking in the instance transformation into the mesh vertices.
@@ -1331,19 +1241,6 @@ void ModelVolume::set_material(t_model_material_id material_id, const ModelMater
         this->object->get_model()->add_material(material_id, material);
 }
 
-// Extract the current extruder ID based on this ModelVolume's config and the parent ModelObject's config.
-int ModelVolume::extruder_id() const
-{
-    int extruder_id = -1;
-    if (this->is_model_part()) {
-        const ConfigOption *opt = this->config.option("extruder");
-        if ((opt == nullptr) || (opt->getInt() == 0))
-            opt = this->object->config.option("extruder");
-        extruder_id = (opt == nullptr) ? 0 : opt->getInt();
-    }
-    return extruder_id;
-}
-
 bool ModelVolume::is_splittable() const
 {
     // the call mesh.is_splittable() is expensive, so cache the value to calculate it only once
@@ -1442,10 +1339,6 @@ void ModelVolume::assign_new_unique_ids_recursive()
 {
     ObjectBase::set_new_unique_id();
     config.set_new_unique_id();
-    supported_facets.set_new_unique_id();
-    seam_facets.set_new_unique_id();
-    mm_segmentation_facets.set_new_unique_id();
-    fuzzy_skin_facets.set_new_unique_id();
 }
 
 void ModelVolume::rotate(double angle, Axis axis)
@@ -1508,22 +1401,6 @@ void ModelVolume::transform_this_mesh(const Matrix3d &matrix, bool fix_left_hand
     this->set_new_unique_id();
 }
 
-std::vector<size_t> ModelVolume::get_extruders_from_multi_material_painting() const {
-    if (!this->is_mm_painted())
-        return {};
-
-    assert(static_cast<size_t>(TriangleStateType::Extruder1) - 1 == 0);
-    const TriangleSelector::TriangleSplittingData &data = this->mm_segmentation_facets.get_data();
-
-    std::vector<size_t> extruders;
-    for (size_t state_idx = static_cast<size_t>(TriangleStateType::Extruder1); state_idx < data.used_states.size(); ++state_idx) {
-        if (data.used_states[state_idx])
-            extruders.emplace_back(state_idx - 1);
-    }
-
-    return extruders;
-}
-
 void ModelInstance::transform_mesh(TriangleMesh* mesh, bool dont_translate) const
 {
     mesh->transform(dont_translate ? get_matrix_no_offset() : get_matrix());
@@ -1545,116 +1422,6 @@ void ModelInstance::transform_polygon(Polygon* polygon) const
     polygon->rotate(get_rotation(Z)); // rotate around polygon origin
     // CHECK_ME -> Is the following correct ?
     polygon->scale(get_scaling_factor(X), get_scaling_factor(Y)); // scale around polygon origin
-}
-
-indexed_triangle_set FacetsAnnotation::get_facets(const ModelVolume &mv, TriangleStateType type) const {
-    TriangleSelector selector(mv.mesh());
-    // Reset of TriangleSelector is done inside TriangleSelector's constructor, so we don't need it to perform it again in deserialize().
-    selector.deserialize(m_data, false);
-    return selector.get_facets(type);
-}
-
-indexed_triangle_set FacetsAnnotation::get_facets_strict(const ModelVolume &mv, TriangleStateType type) const {
-    TriangleSelector selector(mv.mesh());
-    // Reset of TriangleSelector is done inside TriangleSelector's constructor, so we don't need it to perform it again in deserialize().
-    selector.deserialize(m_data, false);
-    return selector.get_facets_strict(type);
-}
-
-indexed_triangle_set_with_color FacetsAnnotation::get_all_facets_with_colors(const ModelVolume &mv) const {
-    TriangleSelector selector(mv.mesh());
-    // Reset of TriangleSelector is done inside TriangleSelector's constructor, so we don't need it to perform it again in deserialize().
-    selector.deserialize(m_data, false);
-    return selector.get_all_facets_with_colors();
-}
-
-indexed_triangle_set_with_color FacetsAnnotation::get_all_facets_strict_with_colors(const ModelVolume &mv) const {
-    TriangleSelector selector(mv.mesh());
-    // Reset of TriangleSelector is done inside TriangleSelector's constructor, so we don't need it to perform it again in deserialize().
-    selector.deserialize(m_data, false);
-    return selector.get_all_facets_strict_with_colors();
-}
-
-bool FacetsAnnotation::has_facets(const ModelVolume &mv, TriangleStateType type) const {
-    return TriangleSelector::has_facets(m_data, type);
-}
-
-bool FacetsAnnotation::set(const TriangleSelector &selector) {
-    TriangleSelector::TriangleSplittingData sel_map = selector.serialize();
-    if (sel_map != m_data) {
-        m_data = std::move(sel_map);
-        this->touch();
-        return true;
-    }
-
-    return false;
-}
-
-void FacetsAnnotation::reset()
-{
-    m_data.triangles_to_split.clear();
-    m_data.bitstream.clear();
-    this->touch();
-}
-
-// Following function takes data from a triangle and encodes it as string
-// of hexadecimal numbers (one digit per triangle). Used for 3MF export,
-// changing it may break backwards compatibility !!!!!
-std::string FacetsAnnotation::get_triangle_as_string(int triangle_idx) const
-{
-    std::string out;
-
-    auto triangle_it = std::lower_bound(m_data.triangles_to_split.begin(), m_data.triangles_to_split.end(), triangle_idx, [](const TriangleSelector::TriangleBitStreamMapping &l, const int r) { return l.triangle_idx < r; });
-    if (triangle_it != m_data.triangles_to_split.end() && triangle_it->triangle_idx == triangle_idx) {
-        int offset = triangle_it->bitstream_start_idx;
-        int end    = ++ triangle_it == m_data.triangles_to_split.end() ? int(m_data.bitstream.size()) : triangle_it->bitstream_start_idx;
-        while (offset < end) {
-            int next_code = 0;
-            for (int i=3; i>=0; --i) {
-                next_code = next_code << 1;
-                next_code |= int(m_data.bitstream[offset + i]);
-            }
-            offset += 4;
-
-            assert(next_code >=0 && next_code <= 15);
-            char digit = next_code < 10 ? next_code + '0' : (next_code-10)+'A';
-            out.insert(out.begin(), digit);
-        }
-    }
-    return out;
-}
-
-// Recover triangle splitting & state from string of hexadecimal values previously
-// generated by get_triangle_as_string. Used to load from 3MF.
-void FacetsAnnotation::set_triangle_from_string(int triangle_id, const std::string &str)
-{
-    if (str.empty()) {
-        // The triangle isn't painted, so it means that it will use the default extruder.
-        m_data.used_states[static_cast<int>(TriangleStateType::NONE)] = true;
-        return;
-    }
-
-    assert(!str.empty());
-    assert(m_data.triangles_to_split.empty() || m_data.triangles_to_split.back().triangle_idx < triangle_id);
-    m_data.triangles_to_split.emplace_back(triangle_id, int(m_data.bitstream.size()));
-
-    const size_t bitstream_start_idx = m_data.bitstream.size();
-    for (auto it = str.crbegin(); it != str.crend(); ++it) {
-        const char ch = *it;
-        int dec = 0;
-        if (ch >= '0' && ch<='9')
-            dec = int(ch - '0');
-        else if (ch >='A' && ch <= 'F')
-            dec = 10 + int(ch - 'A');
-        else
-            assert(false);
-
-        // Convert to binary and append into code.
-        for (int i = 0; i < 4; ++i)
-            m_data.bitstream.insert(m_data.bitstream.end(), bool(dec & (1 << i)));
-    }
-
-    m_data.update_used_states(bitstream_start_idx);
 }
 
 // Test whether the two models contain the same number of ModelObjects with the same set of IDs
@@ -1756,34 +1523,6 @@ bool model_property_changed(const ModelObject &model_object_old, const ModelObje
     return false;
 }
 
-bool model_custom_supports_data_changed(const ModelObject& mo, const ModelObject& mo_new)
-{
-    return model_property_changed(mo, mo_new, 
-        [](const ModelVolumeType t) { return t == ModelVolumeType::MODEL_PART; }, 
-        [](const ModelVolume &mv_old, const ModelVolume &mv_new){ return mv_old.supported_facets.timestamp_matches(mv_new.supported_facets); });
-}
-
-bool model_custom_seam_data_changed(const ModelObject& mo, const ModelObject& mo_new)
-{
-    return model_property_changed(mo, mo_new, 
-        [](const ModelVolumeType t) { return t == ModelVolumeType::MODEL_PART; }, 
-        [](const ModelVolume &mv_old, const ModelVolume &mv_new){ return mv_old.seam_facets.timestamp_matches(mv_new.seam_facets); });
-}
-
-bool model_mmu_segmentation_data_changed(const ModelObject& mo, const ModelObject& mo_new)
-{
-    return model_property_changed(mo, mo_new, 
-        [](const ModelVolumeType t) { return t == ModelVolumeType::MODEL_PART; }, 
-        [](const ModelVolume &mv_old, const ModelVolume &mv_new){ return mv_old.mm_segmentation_facets.timestamp_matches(mv_new.mm_segmentation_facets); });
-}
-
-bool model_fuzzy_skin_data_changed(const ModelObject &mo, const ModelObject &mo_new)
-{
-    return model_property_changed(mo, mo_new,
-        [](const ModelVolumeType t) { return t == ModelVolumeType::MODEL_PART; },
-        [](const ModelVolume &mv_old, const ModelVolume &mv_new){ return mv_old.fuzzy_skin_facets.timestamp_matches(mv_new.fuzzy_skin_facets); });
-}
-
 bool model_has_parameter_modifiers_in_objects(const Model &model)
 {
     for (const auto& model_object : model.objects)
@@ -1796,7 +1535,7 @@ bool model_has_parameter_modifiers_in_objects(const Model &model)
 bool model_has_advanced_features(const Model &model)
 {
 	auto config_is_advanced = [](const ModelConfig &config) {
-        return ! (config.empty() || (config.size() == 1 && config.cbegin()->first == "extruder"));
+        return ! config.empty();
 	};
     for (const ModelObject *model_object : model.objects) {
         // Is there more than one instance or advanced config data?

@@ -69,13 +69,13 @@ std::pair<bool, std::string> GLShadersManager::init()
     valid &= append_shader("toolpaths_cog", { prefix + "toolpaths_cog.vs", prefix + "toolpaths_cog.fs" });
     // used to render tool marker
     valid &= append_shader("tool_marker", { prefix + "tool_marker.vs", prefix + "tool_marker.fs" });
-    // used to render bed axes and model, selection hints, gcode sequential view marker model, preview shells, options in gcode preview
+    // used to render bed axes and model, selection hints, output sequential view marker model, preview shells, options in output preview
     valid &= append_shader("gouraud_light", { prefix + "gouraud_light.vs", prefix + "gouraud_light.fs" });
     // extend "gouraud_light" by adding clipping, used in sla gizmos
     valid &= append_shader("gouraud_light_clip", { prefix + "gouraud_light_clip.vs", prefix + "gouraud_light_clip.fs" });
     // used to render printbed
     valid &= append_shader("printbed", { prefix + "printbed.vs", prefix + "printbed.fs" });
-    // used to render options in gcode preview
+    // used to render options in output preview
     if (GUI::wxGetApp().is_gl_version_greater_or_equal_to(3, 3)) {
         valid &= append_shader("gouraud_light_instanced", { prefix + "gouraud_light_instanced.vs", prefix + "gouraud_light_instanced.fs" });
     }
@@ -87,11 +87,11 @@ std::pair<bool, std::string> GLShadersManager::init()
         );
     // used to render variable layers heights in 3d editor
     valid &= append_shader("variable_layer_height", { prefix + "variable_layer_height.vs", prefix + "variable_layer_height.fs" });
-    // used to render highlight contour around selected triangles inside the multi-material gizmo
+    // used to render highlight contour around selected triangles inside the painting gizmo
     valid &= append_shader("mm_contour", { prefix + "mm_contour.vs", prefix + "mm_contour.fs" });
-    // Used to render painted triangles inside the multi-material gizmo. Triangle normals are computed inside fragment shader.
+    // Used to render painted triangles inside the painting gizmo. Triangle normals are computed inside fragment shader.
     // For Apple's on Arm CPU computed triangle normals inside fragment shader using dFdx and dFdy has the opposite direction.
-    // Because of this, objects had darker colors inside the multi-material gizmo.
+    // Because of this, objects had darker colors inside the painting gizmo.
     // Based on https://stackoverflow.com/a/66206648, the similar behavior was also spotted on some other devices with Arm CPU.
     // Since macOS 12 (Monterey), this issue with the opposite direction on Apple's Arm CPU seems to be fixed, and computed
     // triangle normals inside fragment shader have the right direction.

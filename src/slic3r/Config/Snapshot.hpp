@@ -26,12 +26,9 @@ namespace Config {
 // A snapshot contains:
 // 		Slic3r.ini
 // 		vendor/
-// 		print/
 // 		sla_print/
-// 		filament/
 //		sla_material
 //		printer/
-// 		physical_printer/
 class Snapshot
 {
 public:
@@ -49,12 +46,12 @@ public:
 	void 		load_ini(const std::string &path);
 	void 		save_ini(const std::string &path);
 
-	// Export the print / sla_print / filament / sla_material / printer selections to be activated into the AppConfig.
+	// Export the sla_print / sla_material / printer selections to be activated into the AppConfig.
 	void 		export_selections(AppConfig &config) const;
 	void 		export_vendor_configs(AppConfig &config) const;
 
-	// Perform a deep compare of the active print / sla_print / filament / sla_material / printer / physical_printer / vendor directories.
-	// Return true if the content of the current print / sla_print / filament / sla_material / printer / physical_printer / vendor directories
+	// Perform a deep compare of the active sla_print / sla_material / printer / vendor directories.
+	// Return true if the content of the current sla_print / sla_material / printer / vendor directories
 	// matches the state stored in this snapshot.
 	bool 		equal_to_active(const AppConfig &app_config) const;
 
@@ -71,12 +68,9 @@ public:
 	std::string 				format_reason() const;
 
 	// Active presets at the time of the snapshot.
-	std::string 				print;
 	std::string 				sla_print;
-	std::vector<std::string>	filaments;
 	std::string 				sla_material;
 	std::string					printer;
-	std::string 				physical_printer;
 
 	// Annotation of the vendor configuration stored in the snapshot.
 	// This information is displayed to the user and used to decide compatibility
@@ -107,7 +101,7 @@ public:
 	size_t 							load_db();
 	void 							update_slic3r_versions(std::vector<Index> &index_db);
 
-	// Create a snapshot directory, copy the vendor config bundles, user print / sla_print / filament / sla_material / printer / physical_printer profiles,
+	// Create a snapshot directory, copy the vendor config bundles, user sla_print / sla_material / printer profiles,
 	// create an index.
 	const Snapshot&					take_snapshot(const AppConfig &app_config, Snapshot::Reason reason, const std::string &comment = "");
 	const Snapshot&					restore_snapshot(const std::string &id, AppConfig &app_config);

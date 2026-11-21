@@ -34,11 +34,8 @@ class ConfigOptionsGroup;
 
 class FreqChangedParams
 {
-    double		    m_brim_width = 0.0;
-    wxButton*       m_wiping_dialog_button{ nullptr };
     wxSizer*        m_sizer {nullptr};
 
-    std::shared_ptr<ConfigOptionsGroup> m_og_fff;
     std::shared_ptr<ConfigOptionsGroup> m_og_sla;
 
     std::vector<ScalableButton*>        m_empty_buttons;
@@ -48,11 +45,10 @@ public:
     FreqChangedParams(wxWindow* parent);
     ~FreqChangedParams() = default;
 
-    wxButton*       get_wiping_dialog_button() noexcept { return m_wiping_dialog_button; }
     wxSizer*        get_sizer() noexcept                { return m_sizer; }
-    void            Show(bool is_fff) const;
+    void            Show() const;
 
-    ConfigOptionsGroup* get_og(bool is_fff);
+    ConfigOptionsGroup* get_og();
 
     void            msw_rescale();
     void            sys_color_changed();

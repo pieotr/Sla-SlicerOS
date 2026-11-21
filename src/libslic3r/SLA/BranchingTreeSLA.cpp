@@ -56,8 +56,27 @@ class BranchingTreeBuilder: public branchingtree::Builder {
 
     std::vector<size_t>  m_unroutable_pinheads;
 
+    TreeSkeleton *m_skel = nullptr; // if set, branches are only recorded
+
+    void record_edge(const branchingtree::Node &from, const branchingtree::Node &to)
+    {
+        int ci = m_skel->node_for(from.id, from.pos.cast<double>(), get_radius(from));
+        int pi = m_skel->node_for(to.id, to.pos.cast<double>(), get_radius(to));
+        m_skel->connect(ci, pi);
+    }
+
     void build_subtree(size_t root)
     {
+        if (m_skel) {
+            traverse(m_cloud, root, [this](const branchingtree::Node &node) {
+                if (node.left >= 0)
+                    record_edge(m_cloud.get(node.left), m_cloud.get(node.id));
+                if (node.right >= 0)
+                    record_edge(m_cloud.get(node.right), m_cloud.get(node.id));
+            });
+            return;
+        }
+
         traverse(m_cloud, root, [this](const branchingtree::Node &node) {
             if (node.left >= 0 && node.right >= 0) {
                 auto nparent = m_cloud.get(node.id);
@@ -147,6 +166,8 @@ public:
                      const branchingtree::PointCloud &cloud)
         : m_builder{builder}, m_sm{sm}, m_cloud{cloud}
     {}
+
+    void set_skeleton(TreeSkeleton *skel) { m_skel = skel; }
 
     bool add_bridge(const branchingtree::Node &from,
                     const branchingtree::Node &to) override;
@@ -294,7 +315,12 @@ bool BranchingTreeBuilder::add_mesh_bridge(const branchingtree::Node &from,
                                  Beam{{fromj.pos, fromj.r}, {toj.pos, toj.r}}, 0.);
 
         if (hit.distance() > distance(fromj.pos, toj.pos)) {
-            m_builder.add_diffbridge(fromj.pos, toj.pos, fromj.r, toj.r);
+            if (m_skel) {
+                int fi = m_skel->node_for(from.id, fromj.pos, fromj.r);
+                int ai = m_skel->add_anchor_node(toj.pos, toj.r);
+                m_skel->connect(fi, ai);
+            } else
+                m_builder.add_diffbridge(fromj.pos, toj.pos, fromj.r, toj.r);
             m_builder.add_anchor(*anchor);
 
             build_subtree(from.id);
@@ -370,7 +396,48 @@ inline void build_pillars(SupportTreeBuilder &builder,
     }
 }
 
-void create_branching_tree(SupportTreeBuilder &builder, const SupportableMesh &sm)
+int TreeSkeleton::node_for(int key, const Vec3d &pos, double r)
+{
+    auto it = key_to_idx.find(key);
+    if (it != key_to_idx.end())
+        return it->second;
+
+    Node n;
+    n.pos = pos;
+    n.r   = r;
+    nodes.emplace_back(n);
+    key_to_idx[key] = int(nodes.size() - 1);
+    return int(nodes.size() - 1);
+}
+
+int TreeSkeleton::add_anchor_node(const Vec3d &pos, double r)
+{
+    Node n;
+    n.pos    = pos;
+    n.r      = r;
+    n.anchor = true;
+    nodes.emplace_back(n);
+    return int(nodes.size() - 1);
+}
+
+bool TreeSkeleton::connect(int child, int parent)
+{
+    if (child < 0 || parent < 0 || child == parent || nodes[child].parent >= 0)
+        return false;
+
+    Node &p = nodes[parent];
+    int slot = p.child[0] < 0 ? 0 : (p.child[1] < 0 ? 1 : -1);
+    if (slot < 0)
+        return false;
+
+    p.child[slot]        = child;
+    nodes[child].parent  = parent;
+    return true;
+}
+
+static void create_tree_impl(SupportTreeBuilder &builder,
+                             const SupportableMesh &sm,
+                             TreeSkeleton *skel)
 {
     auto coordfn = [&sm](size_t id, size_t dim) { return sm.pts[id].pos(dim); };
     KDTreeIndirect<3, float, decltype (coordfn)> tree{coordfn, sm.pts.size()};
@@ -423,6 +490,7 @@ void create_branching_tree(SupportTreeBuilder &builder, const SupportableMesh &s
                                     std::move(leafs), props};
 
     BranchingTreeBuilder vbuilder{builder, sm, nodes};
+    vbuilder.set_skeleton(skel);
 
     execution::for_each(ex_tbb,
                         size_t(0),
@@ -439,6 +507,18 @@ void create_branching_tree(SupportTreeBuilder &builder, const SupportableMesh &s
     for (size_t id : vbuilder.unroutable_pinheads())
         builder.head(id).invalidate();
 
+}
+
+void create_branching_tree(SupportTreeBuilder &builder, const SupportableMesh &sm)
+{
+    create_tree_impl(builder, sm, nullptr);
+}
+
+void create_branching_skeleton(SupportTreeBuilder &builder,
+                               const SupportableMesh &sm,
+                               TreeSkeleton &skel)
+{
+    create_tree_impl(builder, sm, &skel);
 }
 
 }} // namespace Slic3r::sla

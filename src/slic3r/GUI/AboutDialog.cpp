@@ -27,7 +27,7 @@ AboutDialogLogo::AboutDialogLogo(wxWindow* parent)
     : wxPanel(parent, wxID_ANY, wxDefaultPosition, wxDefaultSize)
 {
     this->SetBackgroundColour(*wxWHITE);
-    this->logo = wxBitmap(from_u8(Slic3r::var("PrusaSlicer_192px.png")), wxBITMAP_TYPE_PNG);
+    this->logo = wxBitmap(from_u8(Slic3r::var("SLA-Slicer_192px.png")), wxBITMAP_TYPE_PNG);
     this->SetMinSize(this->logo.GetSize());
     
     this->Bind(wxEVT_PAINT, &AboutDialogLogo::onRepaint, this);
@@ -52,7 +52,7 @@ void AboutDialogLogo::onRepaint(wxEvent &event)
 // -----------------------------------------
 CopyrightsDialog::CopyrightsDialog()
     : DPIDialog(static_cast<wxWindow*>(wxGetApp().mainframe), wxID_ANY, format_wxstr("%1% - %2%"
-        , wxGetApp().is_editor() ? SLIC3R_APP_NAME : GCODEVIEWER_APP_NAME
+        , SLIC3R_APP_NAME
         , _L("Portions copyright")),
         wxDefaultPosition, wxDefaultSize, wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER)
 {
@@ -80,7 +80,6 @@ CopyrightsDialog::CopyrightsDialog()
     m_html->SetPage(get_html_text());
 
     sizer->Add(m_html, 1, wxEXPAND | wxALL, 15);
-    m_html->Bind(wxEVT_HTML_LINK_CLICKED, &CopyrightsDialog::onLinkClicked, this);
 
     wxStdDialogButtonSizer* buttons = this->CreateStdDialogButtonSizer(wxCLOSE);
     wxGetApp().SetWindowVariantForButton(buttons->GetCancelButton());
@@ -124,11 +123,10 @@ void CopyrightsDialog::fill_entries()
                                                                             , "https://github.com/richgel999/miniz" },
         { "Expat"           , "1998-2000 Thai Open Source Software Center Ltd and Clark Cooper"
                               "2001-2016 Expat maintainers"                 , "http://www.libexpat.org/" },
-        { "AVRDUDE"         , "2018  Free Software Foundation, Inc."        , "http://savannah.nongnu.org/projects/avrdude" },
-        { "Real-Time DXT1/DXT5 C compression library"   
-                                    , "Based on original by fabian \"ryg\" giesen v1.04. "
-                              "Custom version, modified by Yann Collet"     , "https://github.com/Cyan4973/RygsDXTc" },
-        { "Icons for STL and GCODE files."
+        { "stb_dxt (DXT1/DXT5 texture compression)"
+                                    , "Based on the original by fabian \"ryg\" giesen; "
+                              "2017 Sean Barrett (public domain / MIT)"     , "https://github.com/nothings/stb" },
+        { "Model file icons."
                             , "Akira Yasuda"                                , "http://3dp0.com/icons-for-stl-and-gcode/" },
         { "AppImage packaging for Linux using AppImageKit"
                             , "2004-2019 Simon Peter and contributors"      , "https://appimage.org/" },
@@ -136,8 +134,8 @@ void CopyrightsDialog::fill_entries()
                             , "Forrest Smith"                               , "https://www.forrestthewoods.com/" },
         { "fast_float"
                             , "Daniel Lemire, João Paulo Magalhaes and contributors", "https://github.com/fastfloat/fast_float" },
-        { "CuraEngine (Arachne, etc.)"
-                            , "Ultimaker", "https://github.com/Ultimaker/CuraEngine" },
+        { "CuraEngine (polygon index utilities)"
+                            , "2018 Ultimaker B.V. (AGPLv3 or higher)", "https://github.com/Ultimaker/CuraEngine" },
         { "Open CASCADE Technology"
                             , "Open Cascade SAS", "https://github.com/Open-Cascade-SAS/OCCT" }
     };
@@ -167,8 +165,8 @@ wxString CopyrightsDialog::get_html_text()
 
     for (const auto& entry : m_entries) {
         text += wxString::Format(
-                    "<a href=\"%s\">%s</a><br/>"
-                    , entry.link, entry.lib_name);
+                    "%s &ndash; %s<br/>"
+                    , entry.lib_name, entry.link);
 
         if (!entry.copyright.empty())
             text += format_wxstr(
@@ -209,19 +207,13 @@ void CopyrightsDialog::on_dpi_changed(const wxRect &suggested_rect)
     Refresh();
 }
 
-void CopyrightsDialog::onLinkClicked(wxHtmlLinkEvent &event)
-{
-    wxGetApp().open_browser_with_warning_dialog(event.GetLinkInfo().GetHref());
-    event.Skip(false);
-}
-
 void CopyrightsDialog::onCloseDialog(wxEvent &)
 {
      this->EndModal(wxID_CLOSE);
 }
 
 AboutDialog::AboutDialog()
-    : DPIDialog(static_cast<wxWindow*>(wxGetApp().mainframe), wxID_ANY, format_wxstr(_L("About %s"), wxGetApp().is_editor() ? SLIC3R_APP_NAME : GCODEVIEWER_APP_NAME), wxDefaultPosition,
+    : DPIDialog(static_cast<wxWindow*>(wxGetApp().mainframe), wxID_ANY, format_wxstr(_L("About %s"), SLIC3R_APP_NAME), wxDefaultPosition,
         wxDefaultSize, /*wxCAPTION*/wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER)
 {
     SetFont(wxGetApp().normal_font());
@@ -242,7 +234,7 @@ AboutDialog::AboutDialog()
 
     // title
     {
-        wxStaticText* title = new wxStaticText(this, wxID_ANY, wxGetApp().is_editor() ? SLIC3R_APP_NAME : GCODEVIEWER_APP_NAME, wxDefaultPosition, wxDefaultSize);
+        wxStaticText* title = new wxStaticText(this, wxID_ANY, SLIC3R_APP_NAME, wxDefaultPosition, wxDefaultSize);
         wxFont title_font = GUI::wxGetApp().bold_font();
         title_font.SetFamily(wxFONTFAMILY_ROMAN);
         title_font.SetPointSize(int(2.5 * title_font.GetPointSize()));//title_font.SetPointSize(24);
@@ -252,7 +244,9 @@ AboutDialog::AboutDialog()
     
     // version
     {
-        auto version_string = _L("Version") + " " + std::string(SLIC3R_VERSION);
+        // "SLA-Slicer 1.0.0, based on PrusaSlicer 2.9.4" + the build id (SLIC3R_VERSION is only the base-code version).
+        auto version_string = format_wxstr(_L("%1% %2%, based on PrusaSlicer %3%"), SLIC3R_APP_NAME, SLA_SLICER_VERSION, SLIC3R_VERSION) + "\n" +
+                              format_wxstr(_L("Build: %1%"), SLIC3R_BUILD_ID);
         wxStaticText* version = new wxStaticText(this, wxID_ANY, version_string.c_str(), wxDefaultPosition, wxDefaultSize);
         wxFont version_font = GetFont();
         #ifdef __WXMSW__
@@ -281,7 +275,9 @@ AboutDialog::AboutDialog()
         // TRN AboutDialog: "Slic3r %1% GNU Affero General Public License"
         const wxString is_lecensed_str  = _L("is licensed under the");
         const wxString license_str      = _L("GNU Affero General Public License, version 3");
-        const wxString based_on_str     = _L("PrusaSlicer is based on Slic3r by Alessandro Ranellucci and the RepRap community.");
+        // Attribution must stay: this application is a derivative of PrusaSlicer.
+        const wxString based_on_str     = format_wxstr(_L("%1% is based on PrusaSlicer by Prusa Research."), SLIC3R_APP_NAME) + " " +
+                                          _L("PrusaSlicer is based on Slic3r by Alessandro Ranellucci and the RepRap community.");
         const wxString contributors_str = _L("Contributions by Henrik Brix Andersen, Nicolas Dandrimont, Mark Hindess, Petr Ledvina, Joseph Lenox, Y. Sapir, Mike Sheldrake, Vojtech Bubnik and numerous others.");
         const auto text = format_wxstr(
             "<html>"
@@ -289,8 +285,8 @@ AboutDialog::AboutDialog()
             "<font color=%3%>"
             "%4% &copy; 2016-2025 Prusa Research. <br />"
             "%5% &copy; 2011-2018 Alessandro Ranellucci. <br />"
-            "<a href=\"http://slic3r.org/\">Slic3r</a> %6% "
-            "<a href=\"http://www.gnu.org/licenses/agpl-3.0.html\">%7%</a>."
+            "Slic3r (http://slic3r.org/) %6% "
+            "%7% (http://www.gnu.org/licenses/agpl-3.0.html)."
             "<br /><br />"
             "%8%"
             "<br /><br />"
@@ -305,7 +301,6 @@ AboutDialog::AboutDialog()
             , contributors_str);
         m_html->SetPage(text);
         vsizer->Add(m_html, 1, wxEXPAND | wxBOTTOM, 10);
-        m_html->Bind(wxEVT_HTML_LINK_CLICKED, &AboutDialog::onLinkClicked, this);
     }
 
 
@@ -359,12 +354,6 @@ void AboutDialog::on_dpi_changed(const wxRect &suggested_rect)
     Refresh();
 }
 
-void AboutDialog::onLinkClicked(wxHtmlLinkEvent &event)
-{
-    wxGetApp().open_browser_with_warning_dialog(event.GetLinkInfo().GetHref());
-    event.Skip(false);
-}
-
 void AboutDialog::onCloseDialog(wxEvent &)
 {
     this->EndModal(wxID_CLOSE);
@@ -379,7 +368,7 @@ void AboutDialog::onCopyrightBtn(wxEvent &)
 void AboutDialog::onCopyToClipboard(wxEvent&)
 {
     wxTheClipboard->Open();
-    wxTheClipboard->SetData(new wxTextDataObject(_L("Version") + " " + std::string(SLIC3R_VERSION)));
+    wxTheClipboard->SetData(new wxTextDataObject(format_wxstr("%1% %2% (%3%), based on PrusaSlicer %4%", SLIC3R_APP_NAME, SLA_SLICER_VERSION, SLIC3R_BUILD_ID, SLIC3R_VERSION)));
     wxTheClipboard->Close();
 }
 

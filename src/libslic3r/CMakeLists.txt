@@ -18,36 +18,22 @@ endif ()
 
 set(OpenVDBUtils_SOURCES "")
 if (TARGET OpenVDB::openvdb)
-    set(OpenVDBUtils_SOURCES OpenVDBUtils.cpp OpenVDBUtils.hpp OpenVDBUtilsLegacy.hpp)
+    set(OpenVDBUtils_SOURCES OpenVDBUtils.cpp OpenVDBUtils.hpp)
 endif()
 
-find_package(LibBGCode REQUIRED COMPONENTS Convert)
-slic3r_remap_configs(LibBGCode::bgcode_core RelWithDebInfo Release)
-slic3r_remap_configs(LibBGCode::bgcode_binarize RelWithDebInfo Release)
-slic3r_remap_configs(LibBGCode::bgcode_convert RelWithDebInfo Release)
 
 set(SLIC3R_SOURCES
     pchheader.cpp
     pchheader.hpp
-    AStar.hpp
     AABBTreeIndirect.hpp
     AABBTreeLines.hpp
     AABBMesh.hpp
     AABBMesh.cpp
-    ArrangeHelper.cpp
-    ArrangeHelper.hpp
-    Algorithm/LineSegmentation/LineSegmentation.cpp
-    Algorithm/LineSegmentation/LineSegmentation.hpp
-    Algorithm/PathSorting.hpp
     Algorithm/RegionExpansion.hpp
     Algorithm/RegionExpansion.cpp
     AnyPtr.hpp
     BoundingBox.cpp
     BoundingBox.hpp
-    BridgeDetector.cpp
-    BridgeDetector.hpp
-    Brim.cpp
-    Brim.hpp
     BuildVolume.cpp
     BuildVolume.hpp
     BoostAdapter.hpp
@@ -80,56 +66,7 @@ set(SLIC3R_SOURCES
     ExPolygonSerialize.hpp
     ExPolygonsIndex.cpp
     ExPolygonsIndex.hpp
-    Extruder.cpp
-    Extruder.hpp
-    ExtrusionEntity.cpp
-    ExtrusionEntity.hpp
-    ExtrusionEntityCollection.cpp
-    ExtrusionEntityCollection.hpp
-    ExtrusionRole.cpp
-    ExtrusionRole.hpp
-    ExtrusionSimulator.cpp
-    ExtrusionSimulator.hpp
-    Feature/Interlocking/InterlockingGenerator.cpp
-    Feature/Interlocking/InterlockingGenerator.hpp
-    Feature/Interlocking/VoxelUtils.cpp
-    Feature/Interlocking/VoxelUtils.hpp
     FileParserError.hpp
-    Feature/FuzzySkin/FuzzySkin.cpp
-    Feature/FuzzySkin/FuzzySkin.hpp
-    Fill/Fill.cpp
-    Fill/Fill3DHoneycomb.cpp
-    Fill/Fill3DHoneycomb.hpp
-    Fill/FillAdaptive.cpp
-    Fill/FillAdaptive.hpp
-    Fill/FillBase.cpp
-    Fill/FillBase.hpp
-    Fill/FillConcentric.cpp
-    Fill/FillConcentric.hpp
-    Fill/FillEnsuring.cpp
-    Fill/FillEnsuring.hpp
-    Fill/FillHoneycomb.cpp
-    Fill/FillHoneycomb.hpp
-    Fill/FillGyroid.cpp
-    Fill/FillGyroid.hpp
-    Fill/FillPlanePath.cpp
-    Fill/FillPlanePath.hpp
-    Fill/FillLine.cpp
-    Fill/FillLine.hpp
-    Fill/FillLightning.cpp
-    Fill/FillLightning.hpp
-    Fill/Lightning/DistanceField.cpp
-    Fill/Lightning/DistanceField.hpp
-    Fill/Lightning/Generator.cpp
-    Fill/Lightning/Generator.hpp
-    Fill/Lightning/Layer.cpp
-    Fill/Lightning/Layer.hpp
-    Fill/Lightning/TreeNode.cpp
-    Fill/Lightning/TreeNode.hpp
-    Fill/FillRectilinear.cpp
-    Fill/FillRectilinear.hpp
-    Flow.cpp
-    Flow.hpp
     format.hpp
     Format/3mf.cpp
     Format/3mf.hpp
@@ -149,16 +86,23 @@ set(SLIC3R_SOURCES
     Format/ZipperArchiveImport.cpp
     Format/SL1.hpp
     Format/SL1.cpp
+    Format/KlipperArchive.hpp
+    Format/KlipperArchive.cpp
     Format/SL1_SVG.hpp
     Format/SL1_SVG.cpp
+    Format/AnycubicLayerLayout.hpp
     Format/AnycubicSLA.hpp
     Format/AnycubicSLA.cpp
+    Format/AnycubicZipArchive.hpp
+    Format/AnycubicZipArchive.cpp
     Format/CrealityCXDLPv4.hpp
     Format/CrealityCXDLPv4.cpp
     Format/AnetArchive.hpp
     Format/AnetArchive.cpp
+    Format/ChituboxLayerLayout.hpp
     Format/ChituboxArchive.hpp
     Format/ChituboxArchive.cpp
+    Format/PhotonSArchive.cpp
     Format/CrealityCXDLPv1Archive.hpp
     Format/CrealityCXDLPv1Archive.cpp
     Format/Emake3DArchive.hpp
@@ -173,10 +117,9 @@ set(SLIC3R_SOURCES
     Format/NanoDLPArchive.cpp
     Format/OpenStandardsArchive.hpp
     Format/OpenStandardsArchive.cpp
+    Format/OSFArchive.cpp
     Format/PhrozenArchive.hpp
     Format/PhrozenArchive.cpp
-    Format/StructoVlareArchive.hpp
-    Format/StructoVlareArchive.cpp
     Format/UniformationArchive.hpp
     Format/UniformationArchive.cpp
     Format/VoxeldanceArchive.hpp
@@ -185,8 +128,7 @@ set(SLIC3R_SOURCES
     Format/ZCodeArchive.cpp
     Format/UVToolsCompatArchive.hpp
     Format/UVToolsCompatArchive.cpp
-    Format/SLAArchiveWriterFactory.hpp
-    Format/SLAArchiveWriterFactory.cpp
+    Format/VDTArchive.cpp
     Format/ZipArchiveBase.hpp
     Format/ZipArchiveBase.cpp
     Format/BinaryRLEEncoderBase.hpp
@@ -199,88 +141,16 @@ set(SLIC3R_SOURCES
     Format/SLAArchiveFormatRegistry.cpp
     Format/PrintRequest.hpp
     Format/PrintRequest.cpp
-    GCode/ThumbnailData.cpp
-    GCode/ThumbnailData.hpp
-    GCode/Thumbnails.cpp
-    GCode/Thumbnails.hpp
-    GCode/ConflictChecker.cpp
-    GCode/ConflictChecker.hpp
-    GCode/CoolingBuffer.cpp
-    GCode/CoolingBuffer.hpp
-    GCode/ExtrusionProcessor.cpp
-    GCode/ExtrusionProcessor.hpp
-    GCode/FindReplace.cpp
-    GCode/FindReplace.hpp
-    GCode/LabelObjects.cpp
-    GCode/LabelObjects.hpp
-    GCode/GCodeWriter.cpp
-    GCode/GCodeWriter.hpp
-    GCode/PostProcessor.cpp
-    GCode/PostProcessor.hpp
-    GCode/PressureEqualizer.cpp
-    GCode/PressureEqualizer.hpp
-    GCode/PrintExtents.cpp
-    GCode/PrintExtents.hpp
-    GCode/RetractWhenCrossingPerimeters.cpp
-    GCode/RetractWhenCrossingPerimeters.hpp
-    GCode/SpiralVase.cpp
-    GCode/SpiralVase.hpp
-    GCode/SeamPlacer.cpp
-    GCode/SeamPlacer.hpp
-    GCode/SeamChoice.cpp
-    GCode/SeamChoice.hpp
-    GCode/SeamPerimeters.cpp
-    GCode/SeamPerimeters.hpp
-    GCode/SeamShells.cpp
-    GCode/SeamShells.hpp
-    GCode/SeamGeometry.cpp
-    GCode/SeamGeometry.hpp
-    GCode/SeamAligned.cpp
-    GCode/SeamAligned.hpp
-    GCode/SeamRear.cpp
-    GCode/SeamRear.hpp
-    GCode/SeamRandom.cpp
-    GCode/SeamRandom.hpp
-    GCode/SeamPainting.cpp
-    GCode/SeamPainting.hpp
-    GCode/SeamScarf.cpp
-    GCode/SeamScarf.hpp
-    GCode/ModelVisibility.cpp
-    GCode/ModelVisibility.hpp
-    GCode/SmoothPath.cpp
-    GCode/SmoothPath.hpp
-    GCode/ToolOrdering.cpp
-    GCode/ToolOrdering.hpp
-    GCode/Wipe.cpp
-    GCode/Wipe.hpp
-    GCode/WipeTower.cpp
-    GCode/WipeTower.hpp
-    GCode/WipeTowerIntegration.cpp
-    GCode/WipeTowerIntegration.hpp
-    GCode/GCodeProcessor.cpp
-    GCode/GCodeProcessor.hpp
-    GCode/AvoidCrossingPerimeters.cpp
-    GCode/AvoidCrossingPerimeters.hpp
-    GCode/Travels.cpp
-    GCode/Travels.hpp
-    GCode/ExtrusionOrder.cpp
-    GCode/ExtrusionOrder.hpp
-    GCode.cpp
-    GCode.hpp
-    GCodeReader.cpp
-    GCodeReader.hpp
-    # GCodeSender.cpp
-    # GCodeSender.hpp
+    Thumbnails/ThumbnailData.cpp
+    Thumbnails/ThumbnailData.hpp
+    Thumbnails/Thumbnails.cpp
+    Thumbnails/Thumbnails.hpp
     Geometry.cpp
     Geometry.hpp
-    Geometry/ArcWelder.cpp
-    Geometry/ArcWelder.hpp
-    Geometry/Bicubic.hpp
     Geometry/Circle.cpp
     Geometry/Circle.hpp
     Geometry/ConvexHull.cpp
     Geometry/ConvexHull.hpp
-    Geometry/Curves.hpp
     Geometry/MedialAxis.cpp
     Geometry/MedialAxis.hpp
     Geometry/Voronoi.hpp
@@ -289,15 +159,7 @@ set(SLIC3R_SOURCES
     Geometry/VoronoiUtils.hpp
     Geometry/VoronoiUtils.cpp
     Geometry/VoronoiVisualUtils.hpp
-    InfillAboveBridges.hpp
-    InfillAboveBridges.cpp
-    JumpPointSearch.cpp
-    JumpPointSearch.hpp
     KDTreeIndirect.hpp
-    Layer.cpp
-    Layer.hpp
-    LayerRegion.hpp
-    LayerRegion.cpp
     libslic3r.h
     "${CMAKE_CURRENT_BINARY_DIR}/libslic3r_version.h"
     Line.cpp
@@ -312,15 +174,11 @@ set(SLIC3R_SOURCES
     ModelProcessing.hpp
     FileReader.cpp
     FileReader.hpp
-    MultiMaterialSegmentation.cpp
-    MultiMaterialSegmentation.hpp
     MeshNormals.hpp
     MeshNormals.cpp
     Measure.hpp
     Measure.cpp
     MeasureUtils.hpp
-    CustomGCode.cpp
-    CustomGCode.hpp
     CustomParametersHandling.cpp
     CustomParametersHandling.hpp
     MultiPoint.cpp
@@ -332,8 +190,6 @@ set(SLIC3R_SOURCES
     NSVGUtils.hpp
     ObjectID.cpp
     ObjectID.hpp
-    PerimeterGenerator.cpp
-    PerimeterGenerator.hpp
     PlaceholderParser.cpp
     PlaceholderParser.hpp
     Platform.cpp
@@ -355,17 +211,13 @@ set(SLIC3R_SOURCES
     PrincipalComponents2D.hpp
     PrincipalComponents2D.cpp
     AppConfig.cpp
+    LegacyDataMigration.cpp
+    LegacyDataMigration.hpp
     AppConfig.hpp
-    Print.cpp
-    Print.hpp
-    PrintApply.cpp
     PrintBase.cpp
     PrintBase.hpp
     PrintConfig.cpp
     PrintConfig.hpp
-    PrintObject.cpp
-    PrintObjectSlice.cpp
-    PrintRegion.cpp
     PointGrid.hpp
     PNGReadWrite.hpp
     PNGReadWrite.cpp
@@ -380,37 +232,11 @@ set(SLIC3R_SOURCES
     SLAPrintSteps.cpp
     SLAPrintSteps.hpp
     SLAPrint.hpp
-    Slicing.cpp
-    Slicing.hpp
     SlicesToTriangleMesh.hpp
     SlicesToTriangleMesh.cpp
-    SlicingAdaptive.cpp
-    SlicingAdaptive.hpp
     Subdivide.cpp
     Subdivide.hpp
-    Support/SupportCommon.cpp
-    Support/SupportCommon.hpp
-    Support/SupportDebug.cpp
-    Support/SupportDebug.hpp
-    Support/SupportLayer.hpp
-    Support/SupportMaterial.cpp
-    Support/SupportMaterial.hpp
-    Support/SupportParameters.cpp
-    Support/SupportParameters.hpp
-    Support/OrganicSupport.cpp
-    Support/OrganicSupport.hpp
-    Support/TreeSupport.cpp
-    Support/TreeSupport.hpp
-    Support/TreeSupportCommon.cpp
-    Support/TreeSupportCommon.hpp
-    Support/TreeModelVolumes.cpp
-    Support/TreeModelVolumes.hpp
-    SupportSpotsGenerator.cpp
-    SupportSpotsGenerator.hpp
-    Surface.cpp
     Surface.hpp
-    SurfaceCollection.cpp
-    SurfaceCollection.hpp
     SurfaceMesh.hpp
     SVG.cpp
     SVG.hpp
@@ -432,12 +258,8 @@ set(SLIC3R_SOURCES
     Timer.hpp
     Thread.cpp
     Thread.hpp
-    TriangleSelector.cpp
-    TriangleSelector.hpp
     TriangleSetSampling.cpp
     TriangleSetSampling.hpp
-    TriangleSelectorWrapper.cpp
-    TriangleSelectorWrapper.hpp
     MTUtils.hpp
     Zipper.hpp
     Zipper.cpp
@@ -471,9 +293,78 @@ set(SLIC3R_SOURCES
     SLA/Rotfinder.cpp
     SLA/SpatIndex.hpp
     SLA/SpatIndex.cpp
+    SLA/PCBExposure.cpp
+    SLA/PCBExposure.hpp
+    SLA/ExposureFinderPattern.cpp
+    SLA/ExposureFinderPatternParameters.hpp
+    SLA/ExposureFinderPattern.hpp
+    SLA/ExposureFinderDraft.cpp
+    SLA/ExposureFinderDraft.hpp
+    SLA/ExposureFinderCell.cpp
+    SLA/ExposureFinderCell.hpp
+    SLA/ExposureFinderRaster.cpp
+    SLA/ExposureFinderRaster.hpp
+    SLA/CancellablePNGEncoder.hpp
+    SLA/ExposureFinderTable.cpp
+    SLA/ExposureFinderTable.hpp
+    SLA/CalibrationRaster.cpp
+    SLA/CalibrationRaster.hpp
+    SLA/FreshLayerJob.cpp
+    SLA/FreshLayerJob.hpp
+    SLA/LayerJobParameters.cpp
+    SLA/ChituboxJobOverlay.cpp
+    SLA/LayerDocument.cpp
+    SLA/LayerMemoryBudget.cpp
+    SLA/LayerMemoryBudget.hpp
+    SLA/LayerImageFile.hpp
+    SLA/LayerImageFile.cpp
+    SLA/ColorMask.cpp
+    SLA/LayerProgress.hpp
+    SLA/LayerDocument.hpp
+    SLA/LayerIssues.hpp
+    SLA/LayerIssues.cpp
+    SLA/LayerOperations.hpp
+    SLA/LayerOperations.cpp
+    SLA/HersheyText.hpp
+    SLA/HersheyText.cpp
+    SLA/PixelDrawing.hpp
+    SLA/PixelDrawing.cpp
+    SLA/LayerRedrawModel.hpp
+    SLA/LayerRedrawModel.cpp
+    SLA/LayerBlur.hpp
+    SLA/LayerBlur.cpp
+    SLA/LayerLinkedLines.hpp
+    SLA/LayerLinkedLines.cpp
+    SLA/LayerListStream.hpp
+    SLA/LayerListStream.cpp
+    SLA/LayerSuggestions.hpp
+    SLA/LayerSuggestions.cpp
+    SLA/LayerExports.hpp
+    SLA/LayerExports.cpp
+    SLA/LayerRecipe.hpp
+    SLA/LayerRecipe.cpp
+    SLA/CrealityCXDLPv4MaskReader.hpp
+    SLA/CrealityCXDLPv4FreshExportPlan.cpp
+    SLA/CrealityCXDLPv4FreshExportPlan.hpp
+    SLA/LayerExportProfile.hpp
+    SLA/ProjectArchive.cpp
+    SLA/ResinStock.cpp
+    SLA/ResinStock.hpp
+    SLA/ProjectArchive.hpp
+    SLA/ProjectSettings.cpp
+    SLA/ProjectSettings.hpp
     SLA/RasterBase.hpp
     SLA/RasterBase.cpp
     SLA/AGGRaster.hpp
+    SLA/RasterRounding.hpp
+    SLA/LayerPolygonComposition.hpp
+    SLA/ExportSnapshot.hpp
+    SLA/ExportRequest.hpp
+    SLA/ExportRequest.cpp
+    SLA/RepresentationAdjustment.hpp
+    SLA/RepresentationAdjustment.cpp
+    SLA/SlicedResultSession.hpp
+    SLA/SlicedResultSession.cpp
     SLA/RasterToPolygons.hpp
     SLA/RasterToPolygons.cpp
     SLA/ConcaveHull.hpp
@@ -491,6 +382,12 @@ set(SLIC3R_SOURCES
     SLA/DefaultSupportTree.cpp
     SLA/BranchingTreeSLA.hpp
     SLA/BranchingTreeSLA.cpp
+    SLA/OrganicTreeSLA.hpp
+    SLA/OrganicTreeSLA.cpp
+    SLA/OrganicGrowthSLA.hpp
+    SLA/OrganicGrowthSLA.cpp
+    SLA/OrganicAvoidance.hpp
+    SLA/OrganicAvoidance.cpp
     SLA/ZCorrection.hpp
     SLA/ZCorrection.cpp    
     SLA/SupportIslands/EvaluateNeighbor.cpp
@@ -527,48 +424,11 @@ set(SLIC3R_SOURCES
     BranchingTree/BranchingTree.hpp
     BranchingTree/PointCloud.cpp
     BranchingTree/PointCloud.hpp
-    Arachne/BeadingStrategy/BeadingStrategy.hpp
-    Arachne/BeadingStrategy/BeadingStrategy.cpp
-    Arachne/BeadingStrategy/BeadingStrategyFactory.hpp
-    Arachne/BeadingStrategy/BeadingStrategyFactory.cpp
-    Arachne/BeadingStrategy/DistributedBeadingStrategy.hpp
-    Arachne/BeadingStrategy/DistributedBeadingStrategy.cpp
-    Arachne/BeadingStrategy/LimitedBeadingStrategy.hpp
-    Arachne/BeadingStrategy/LimitedBeadingStrategy.cpp
-    Arachne/BeadingStrategy/OuterWallInsetBeadingStrategy.hpp
-    Arachne/BeadingStrategy/OuterWallInsetBeadingStrategy.cpp
-    Arachne/BeadingStrategy/RedistributeBeadingStrategy.hpp
-    Arachne/BeadingStrategy/RedistributeBeadingStrategy.cpp
-    Arachne/BeadingStrategy/WideningBeadingStrategy.hpp
-    Arachne/BeadingStrategy/WideningBeadingStrategy.cpp
-    Arachne/utils/ExtrusionJunction.hpp
-    Arachne/utils/ExtrusionLine.hpp
-    Arachne/utils/ExtrusionLine.cpp
-    Arachne/utils/HalfEdge.hpp
-    Arachne/utils/HalfEdgeGraph.hpp
-    Arachne/utils/HalfEdgeNode.hpp
-    Arachne/utils/SparseGrid.hpp
-    Arachne/utils/SparsePointGrid.hpp
-    Arachne/utils/SparseLineGrid.hpp
-    Arachne/utils/SquareGrid.hpp
-    Arachne/utils/SquareGrid.cpp
     Arachne/utils/PolygonsPointIndex.hpp
     Arachne/utils/PolygonsSegmentIndex.hpp
-    Arachne/utils/PolylineStitcher.hpp
-    Arachne/utils/PolylineStitcher.cpp
     Geometry/Voronoi.cpp
     Geometry/VoronoiUtils.hpp
     Geometry/VoronoiUtils.cpp
-    Arachne/PerimeterOrder.hpp
-    Arachne/PerimeterOrder.cpp
-    Arachne/SkeletalTrapezoidation.hpp
-    Arachne/SkeletalTrapezoidation.cpp
-    Arachne/SkeletalTrapezoidationEdge.hpp
-    Arachne/SkeletalTrapezoidationGraph.hpp
-    Arachne/SkeletalTrapezoidationGraph.cpp
-    Arachne/SkeletalTrapezoidationJoint.hpp
-    Arachne/WallToolPaths.hpp
-    Arachne/WallToolPaths.cpp
     StaticMap.hpp
     Utils/DirectoriesUtils.hpp
     Utils/DirectoriesUtils.cpp
@@ -583,6 +443,14 @@ if (APPLE)
 endif ()
 
 add_library(libslic3r STATIC ${SLIC3R_SOURCES})
+
+if (CMAKE_SYSTEM_NAME STREQUAL "Linux" AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    # System OpenCV may load its own shared TBB. Keep the bundled static TBB
+    # and allocator implementations out of executable dynamic exports so they
+    # cannot interpose on that DSO's ABI or its shutdown callbacks.
+    target_link_options(libslic3r INTERFACE
+        "LINKER:--exclude-libs,libtbb.a:libtbbmalloc.a")
+endif ()
 
 if (WIN32)
     target_compile_definitions(libslic3r PUBLIC NOMINMAX)
@@ -649,9 +517,53 @@ target_include_directories(libslic3r PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/.. ${CMA
 target_include_directories(libslic3r PUBLIC ${EXPAT_INCLUDE_DIRS})
 
 find_package(JPEG REQUIRED)
+find_package(TIFF REQUIRED MODULE)
+find_package(OpenJPEG REQUIRED)
+# Some distributions' OpenJPEG config (e.g. Ubuntu 22.04) does not attach the versioned include dir
+# (/usr/include/openjpeg-2.x) to the `openjp2` target; add it explicitly.
+target_include_directories(libslic3r PRIVATE ${OPENJPEG_INCLUDE_DIRS})
+# A dependency prefix can contain wxWidgets' bundled JPEG headers while JPEG
+# itself was found in another installation. Keep the header ABI paired with
+# the chosen library, including its companion jconfig/jmorecfg files.
+get_filename_component(_sla_jpeg_libdir "${JPEG_LIBRARY_RELEASE}" DIRECTORY)
+get_filename_component(_sla_jpeg_prefix "${_sla_jpeg_libdir}" DIRECTORY)
+set(_sla_jpeg_headers "${JPEG_INCLUDE_DIR}")
+if(EXISTS "${_sla_jpeg_prefix}/include/jpeglib.h")
+    set(_sla_jpeg_headers "${_sla_jpeg_prefix}/include")
+endif()
+file(COPY "${_sla_jpeg_headers}/jpeglib.h" "${_sla_jpeg_headers}/jconfig.h"
+          "${_sla_jpeg_headers}/jmorecfg.h" DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/sla_jpeg")
 find_package(nlohmann_json REQUIRED)
+# Native calibration drawing only. No UVtools/Emgu runtime or network services.
+# cv::stackBlur (SLA/LayerBlur.cpp) exists since OpenCV 4.7; UVtools itself uses 4.12 (Emgu.CV). Fail at configure time.
+find_package(OpenCV REQUIRED COMPONENTS core imgproc)   # no version here: OpenCV's config files only accept the same major
+if(OpenCV_VERSION VERSION_LESS 4.7)
+    message(FATAL_ERROR "OpenCV >= 4.7 is required (cv::stackBlur), found ${OpenCV_VERSION} in ${OpenCV_DIR}. "
+                        "Set OpenCV_DIR to a newer installation (the portable docker build uses 4.12.0).")
+endif()
+set_source_files_properties(SLA/ExposureFinderPattern.cpp SLA/CalibrationRaster.cpp SLA/LayerBlur.cpp SLA/LayerLinkedLines.cpp SLA/HersheyText.cpp SLA/PixelDrawing.cpp SLA/LayerRedrawModel.cpp PROPERTIES
+    INCLUDE_DIRECTORIES "${OpenCV_INCLUDE_DIRS}" SKIP_PRECOMPILE_HEADERS ON)
+# Release library of the (system or deps-prefix) OpenCV; fall back to other configurations of the same build
+# (a deps build made with another single configuration installs only that one).
+foreach(_sla_cv_tgt IN ITEMS core imgproc)
+    set(_sla_cv_${_sla_cv_tgt} "")
+    foreach(_sla_cv_cfg IN ITEMS RELEASE RELWITHDEBINFO MINSIZEREL NOCONFIG)
+        if(NOT _sla_cv_${_sla_cv_tgt})
+            get_target_property(_sla_cv_loc opencv_${_sla_cv_tgt} IMPORTED_LOCATION_${_sla_cv_cfg})
+            if(_sla_cv_loc)
+                set(_sla_cv_${_sla_cv_tgt} "${_sla_cv_loc}")
+            endif()
+        endif()
+    endforeach()
+endforeach()
+if(NOT _sla_cv_core OR NOT _sla_cv_imgproc)
+    message(FATAL_ERROR "OpenCV core/imgproc must provide release libraries")
+endif()
 
+# imgproc before core: required when OpenCV comes from the deps prefix as static archives (single-pass link order).
 target_link_libraries(libslic3r PRIVATE
+    "${_sla_cv_imgproc}" "${_sla_cv_core}"
+    ${CMAKE_DL_LIBS}
     libnest2d
     boost_libs
     clipper
@@ -664,6 +576,8 @@ target_link_libraries(libslic3r PRIVATE
     PNG::PNG
     ZLIB::ZLIB
 	JPEG::JPEG
+    TIFF::TIFF
+    openjp2
     qoi
     fastfloat
     int128
@@ -673,13 +587,11 @@ target_link_libraries(libslic3r PUBLIC
     semver
     admesh
     localesutils
-    LibBGCode::bgcode_convert
     tcbspan
     miniz
     libigl
     agg
     ankerl
-    libseqarrange
 )
 
 if (APPLE)

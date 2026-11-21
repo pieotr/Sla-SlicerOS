@@ -15,8 +15,8 @@ namespace Slic3r {
 
 class SLAPrint;
 
-// Phrozen Sonic Mini 8K S PRZ format
-class PhrozenSonicMiniArchive : public SLAArchiveWriter {
+// Native UVtools PHZ v2 container, with per-layer exposure/Z and optional XOR.
+class PhrozenPHZArchive : public SLAArchiveWriter {
     SLAPrinterConfig m_cfg;
 
 protected:
@@ -24,8 +24,13 @@ protected:
     sla::RasterEncoder get_encoder() const override;
 
 public:
-    explicit PhrozenSonicMiniArchive(const SLAPrinterConfig &cfg) : m_cfg(cfg) {}
-    explicit PhrozenSonicMiniArchive(SLAPrinterConfig &&cfg) : m_cfg(std::move(cfg)) {}
+    static sla::EncodedRaster encode_mask(const void *pixels, size_t width, size_t height, size_t components);
+    static void crypt_mask(std::vector<uint8_t> &bytes, uint32_t seed, uint32_t layer_index);
+    static uint32_t parse_encryption_key(const std::string &text);
+    static void validate_configuration(const SLAPrint &print);
+
+    explicit PhrozenPHZArchive(const SLAPrinterConfig &cfg) : m_cfg(cfg) {}
+    explicit PhrozenPHZArchive(SLAPrinterConfig &&cfg) : m_cfg(std::move(cfg)) {}
 
     void export_print(const std::string     fname,
                       const SLAPrint       &print,

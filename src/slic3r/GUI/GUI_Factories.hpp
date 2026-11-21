@@ -81,25 +81,21 @@ public:
     static void sys_color_changed(wxMenuBar* menu_bar);
 
     wxMenu* default_menu();
-    wxMenu* object_menu();
     wxMenu* sla_object_menu();
     wxMenu* part_menu();
     wxMenu* text_part_menu();
     wxMenu* svg_part_menu();
     wxMenu* instance_menu();
-    wxMenu* layer_menu();
     wxMenu* multi_selection_menu();
 
 private:
     enum MenuType {
-        mtObjectFFF = 0,
-        mtObjectSLA,
+        mtObjectSLA = 0,
         mtCount
     };
 
     wxWindow* m_parent {nullptr};
 
-    MenuWithSeparators m_object_menu;
     MenuWithSeparators m_part_menu;
     MenuWithSeparators m_text_part_menu;
     MenuWithSeparators m_svg_part_menu;
@@ -125,7 +121,6 @@ private:
     void        append_menu_item_add_text(wxMenu* menu, ModelVolumeType type, bool is_submenu_item = true);
     void        append_menu_item_add_svg(wxMenu *menu, ModelVolumeType type, bool is_submenu_item = true);    
     void        append_menu_items_add_volume(MenuType type);
-    wxMenuItem* append_menu_item_layers_editing(wxMenu* menu);
     wxMenuItem* append_menu_item_settings(wxMenu* menu);
     wxMenuItem* append_menu_item_change_type(wxMenu* menu);
     wxMenuItem* append_menu_item_instance_to_object(wxMenu* menu);
@@ -137,7 +132,6 @@ private:
     void        append_menu_item_export_stl(wxMenu* menu);
     void        append_menu_item_reload_from_disk(wxMenu* menu);
     void        append_menu_item_replace_with_stl(wxMenu* menu);
-    void        append_menu_item_change_extruder(wxMenu* menu);
     void        append_menu_item_delete(wxMenu* menu);
     void        append_menu_item_scale_selection_to_fit_print_volume(wxMenu* menu);
     void        append_menu_items_convert_unit(wxMenu* menu, int insert_pos = 1); // Add "Conver/Revert..." menu items (from/to inches/meters) after "Reload From Disk"

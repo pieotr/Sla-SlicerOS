@@ -118,7 +118,7 @@ AppUpdateAvailableDialog::AppUpdateAvailableDialog(const Semver& ver_current, co
 	
     if (browser_on_next)
     {
-        content_sizer->Add(new wxStaticText(this, wxID_ANY, _L("Clicking \'Next\' will open a browser window where you can select which variant of PrusaSlicer you want to download.")));
+        content_sizer->Add(new wxStaticText(this, wxID_ANY, format_wxstr(_L("Clicking \'Next\' will open a browser window where you can select which variant of %1% you want to download."), SLIC3R_APP_NAME)));
         content_sizer->AddSpacer(VERT_SPACING);
     }
 
@@ -279,8 +279,8 @@ boost::filesystem::path AppUpdateDownloadDialog::get_download_path() const
 
 MsgUpdateConfig::MsgUpdateConfig(const std::vector<Update> &updates, PresetUpdater::UpdateParams update_params) :
 	MsgDialog(nullptr, update_params == PresetUpdater::UpdateParams::FORCED_BEFORE_WIZARD  ? _L("Opening Configuration Wizard") : _L("Configuration update"), 
-					   update_params == PresetUpdater::UpdateParams::FORCED_BEFORE_WIZARD ? _L("PrusaSlicer is not using the newest configuration available.\n"
-												"Configuration Wizard may not offer the latest printers, filaments and SLA materials to be installed.") : 
+					   update_params == PresetUpdater::UpdateParams::FORCED_BEFORE_WIZARD ? format_wxstr(_L("%1% is not using the newest configuration available.\n"
+												"Configuration Wizard may not offer the latest printers and SLA materials to be installed."), SLIC3R_APP_NAME) : 
 											 _L("Configuration update is available"), wxICON_ERROR)
 {
 	auto *text = new wxStaticText(this, wxID_ANY, _(L(

@@ -19,16 +19,7 @@
 
 namespace Slic3r::ModelProcessing {
 
-// Generate next extruder ID string, in the range of (1, max_extruders).
-static inline int auto_extruder_id(unsigned int max_extruders, unsigned int& cntr)
-{
-    int out = ++cntr;
-    if (cntr == max_extruders)
-        cntr = 0;
-    return out;
-}
-
-void convert_to_multipart_object(Model& model, unsigned int max_extruders)
+void convert_to_multipart_object(Model& model)
 {
     assert(model.objects.size() >= 2);
     if (model.objects.size() < 2)
@@ -42,7 +33,6 @@ void convert_to_multipart_object(Model& model, unsigned int max_extruders)
     object->name = boost::filesystem::path(model.objects.front()->input_file).stem().string();
     //FIXME copy the config etc?
 
-    unsigned int extruder_counter = 0;
     for (const ModelObject* o : model.objects)
         for (const ModelVolume* v : o->volumes) {
             // If there are more than one object, put all volumes together 
@@ -52,10 +42,9 @@ void convert_to_multipart_object(Model& model, unsigned int max_extruders)
             // Revert the centering operation.
             trafo_volume.set_offset(trafo_volume.get_offset() - o->origin_translation);
             int counter = 1;
-            auto copy_volume = [o, max_extruders, &counter, &extruder_counter](ModelVolume* new_v) {
+            auto copy_volume = [o, &counter](ModelVolume* new_v) {
                 assert(new_v != nullptr);
                 new_v->name = (counter > 1) ? o->name + "_" + std::to_string(counter++) : o->name;
-                new_v->config.set("extruder", auto_extruder_id(max_extruders, extruder_counter));
                 return new_v;
                 };
             if (o->instances.empty()) {
@@ -152,9 +141,6 @@ void convert_units(Model& model_to, ModelObject* object_from, ConversionType con
             vol->source.is_converted_from_meters = volume->source.is_converted_from_meters;
             vol->source.is_from_builtin_objects = volume->source.is_from_builtin_objects;
 
-            vol->supported_facets.assign(volume->supported_facets);
-            vol->seam_facets.assign(volume->seam_facets);
-            vol->mm_segmentation_facets.assign(volume->mm_segmentation_facets);
 
             // Perform conversion only if the target "imperial" state is different from the current one.
             // This check supports conversion of "mixed" set of volumes, each with different "imperial" state.
@@ -260,7 +246,7 @@ static bool is_front_up_left(const TriangleMesh &trinagle_mesh1, const TriangleM
 // Split this volume, append the result to the object owning this volume.
 // Return the number of volumes created from this one.
 // This is useful to assign different materials to different volumes of an object.
-size_t split(ModelVolume* volume, unsigned int max_extruders)
+size_t split(ModelVolume* volume)
 {
     std::vector<TriangleMesh> meshes = volume->mesh().split();
     if (meshes.size() <= 1)
@@ -278,7 +264,6 @@ size_t split(ModelVolume* volume, unsigned int max_extruders)
     size_t ivolume = std::find(object->volumes.begin(), object->volumes.end(), volume) - object->volumes.begin();
     const std::string& name = volume->name;
 
-    unsigned int extruder_counter = 0;
     const Vec3d offset = volume->get_offset();
 
     for (TriangleMesh &mesh : meshes) {
@@ -301,7 +286,6 @@ size_t split(ModelVolume* volume, unsigned int max_extruders)
         object->volumes[ivolume]->center_geometry_after_creation();
         object->volumes[ivolume]->translate(offset);
         object->volumes[ivolume]->name = name + "_" + std::to_string(idx + 1);
-        object->volumes[ivolume]->config.set("extruder", auto_extruder_id(max_extruders, extruder_counter));
         object->volumes[ivolume]->discard_splittable();
         ++ idx;
     }
@@ -358,12 +342,6 @@ void split(ModelObject* object, ModelObjectPtrs* new_objects)
             for (const ModelInstance* model_instance : object->instances)
                 new_object->add_instance(*model_instance);
             ModelVolume* new_vol = new_object->add_volume(*volume, std::move(mesh));
-
-            // Invalidate extruder value in volume's config,
-            // otherwise there will no way to change extruder for object after splitting,
-            // because volume's extruder value overrides object's extruder value.
-            if (new_vol->config.has("extruder"))
-                new_vol->config.set_key_value("extruder", new ConfigOptionInt(0));
 
             for (ModelInstance* model_instance : new_object->instances) {
                 const Vec3d shift = model_instance->get_transformation().get_matrix_no_offset() * new_vol->get_offset();

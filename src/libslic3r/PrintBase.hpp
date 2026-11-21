@@ -85,7 +85,7 @@ public:
 
     struct Warning
     {
-    	// Critical warnings will be displayed on G-code export in a modal dialog, so that the user cannot miss them.
+    	// Critical warnings will be displayed on export in a modal dialog, so that the user cannot miss them.
         WarningLevel    level;
         // If the warning is not current, then it is in an unknown state. It may or may not be valid.
         // A current warning will become non-current if its milestone gets invalidated.

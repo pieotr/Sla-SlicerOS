@@ -81,7 +81,7 @@ public:
     // boundaries instead of the envelope. This concept can be used to
     // implement arranging objects with support structures that can overlap,
     // but never touch the actual object. In this case, full envelope would
-    // return the silhouette of the object with supports (pad, brim, etc...) and
+    // return the silhouette of the object with supports (pad, etc...) and
     // outline would be the actual object boundary.
     virtual ExPolygons full_envelope() const { return {}; }
     virtual Polygon    convex_envelope() const { return {}; }
@@ -106,7 +106,7 @@ public:
     // Any implementation specific properties can be passed to the arrangement
     // core by overriding this method. This implies that the specific Arranger
     // will be able to interpret these properties. An example usage is to mark
-    // special objects (like a wipe tower)
+    // special objects
     virtual void imbue_data(AnyWritable &datastore) const {}
 
     // for convinience to pass an AnyWritable created in the same expression
@@ -221,9 +221,6 @@ protected:
     AnyPtr<const ArrangeSettingsView> m_settings;
 
     ExtendedBed m_bed = arr2::InfiniteBed{};
-
-    coord_t m_brims_offs = 0;
-    coord_t m_skirt_offs = 0;
 
 public:
 
@@ -341,8 +338,7 @@ void SceneBuilderBase<Subclass>::build_scene(Scene &sc) &&
 
     // Apply the bed minimum distance by making the original bed smaller
     // and arranging on this smaller bed.
-    coord_t inset = std::max(scaled(m_settings->get_distance_from_bed()),
-                             m_skirt_offs + m_brims_offs);
+    coord_t inset = scaled(m_settings->get_distance_from_bed());
 
     // Objects have also a minimum distance from each other implemented
     // as inflation applied to object outlines. This object distance

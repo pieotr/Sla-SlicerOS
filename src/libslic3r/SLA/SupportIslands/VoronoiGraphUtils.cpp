@@ -226,9 +226,12 @@ Slic3r::Polygon VoronoiGraphUtils::to_polygon(const Lines &lines,
         points.push_back(p2);
     }
     Polygon polygon(points);
+#ifndef NDEBUG
+    // Debug-only diagnostic: writes Bad_polygon.svg into the process cwd, must never happen in Release.
     if (!polygon.contains(center)) { 
         draw(polygon, lines, center); 
     }
+#endif
     assert(polygon.is_valid());
     assert(polygon.contains(center));
     assert(PolygonUtils::is_not_self_intersect(polygon, center));

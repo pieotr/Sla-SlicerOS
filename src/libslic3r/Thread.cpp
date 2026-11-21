@@ -226,7 +226,7 @@ ThreadData& thread_data()
 }
 
 // Spawn (n - 1) worker threads on Intel TBB thread pool and name them by an index and a system thread ID.
-// Also it sets locale of the worker threads to "C" for the G-code generator to produce "." as a decimal separator.
+// Also it sets locale of the worker threads to "C" for the exporters to produce "." as a decimal separator.
 void name_tbb_thread_pool_threads_set_locale()
 {
 	static bool initialized = false;

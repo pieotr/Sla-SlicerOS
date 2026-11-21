@@ -28,6 +28,7 @@
 #include "slic3r/GUI/3DScene.hpp" // IWYU pragma: keep
 #include "libslic3r/BoundingBox.hpp"
 #include "libslic3r/Exception.hpp"
+#include "libslic3r/Model.hpp"
 #if 0
 	// Stop at a fraction of the normal Undo / Redo stack size.
 	#define UNDO_REDO_DEBUG_LOW_MEM_FACTOR 10000

@@ -5,7 +5,8 @@
 #ifndef slic3r_SavePresetDialog_hpp_
 #define slic3r_SavePresetDialog_hpp_
 
-//#include <wx/gdicmn.h>
+//#include <functional>
+#include <wx/gdicmn.h>
 
 #include "libslic3r/Preset.hpp"
 #include "wxExtensions.hpp"
@@ -13,7 +14,7 @@
 
 class wxString;
 class wxStaticText;
-class wxComboBox;
+class ComboBox;
 class wxTextCtrl;
 class wxStaticBitmap;
 
@@ -23,13 +24,6 @@ namespace GUI {
 
 class SavePresetDialog : public DPIDialog
 {
-    enum ActionType
-    {
-        ChangePreset,
-        AddPreset,
-        Switch, 
-        UndefAction
-    };
 public:
     struct Item
     {
@@ -44,13 +38,20 @@ public:
         Item(Preset::Type type, const std::string& suffix, wxBoxSizer* sizer, SavePresetDialog* parent, bool is_for_multiple_save);
 
         // Item as a separate control(f.e. as a part of ConfigWizard to check name of the new custom priter)
-        Item(wxWindow* parent, wxBoxSizer* sizer, const std::string& def_name, PresetBundle* preset_bundle, PrinterTechnology pt = ptFFF);
+        Item(wxWindow* parent, wxBoxSizer* sizer, const std::string& def_name, PresetBundle* preset_bundle);
 
         void            update_valid_bmp();
         void            accept();
         void            Enable(bool enable = true);
+        // Accessible (AT-SPI) name of the name input control.
+        void            set_accessible_label(const wxString &name);
 
         bool            is_valid()      const { return m_valid_type != ValidationType::NoValid; }
+        // Replace the typed name (re-validates).
+        void            set_name(const std::string &name);
+        void            revalidate() { update(); }
+        // Optional extra rule: names for which it returns true are refused ("already used in this wizard run").
+        std::function<bool(const std::string&)> is_taken;
         Preset::Type    type()          const { return m_type; }
         std::string     preset_name()   const;
 
@@ -66,11 +67,10 @@ public:
         std::string		m_preset_name;
         bool            m_use_text_ctrl {true};
 
-        PrinterTechnology   m_printer_technology {ptAny};
         ValidationType      m_valid_type    {ValidationType::NoValid};
         wxWindow*           m_parent        {nullptr};
         wxStaticBitmap*     m_valid_bmp     {nullptr};
-        wxComboBox*         m_combo         {nullptr};
+        ComboBox*            m_combo         {nullptr};
         wxTextCtrl*         m_text_ctrl     {nullptr};
         wxStaticText*       m_valid_label   {nullptr};
 
@@ -90,13 +90,6 @@ private:
     std::vector<Item*>   m_items;
 
     wxBoxSizer*         m_presets_sizer     {nullptr};
-    wxStaticText*       m_label             {nullptr};
-    wxBoxSizer*         m_radio_sizer       {nullptr};  
-    ActionType          m_action            {UndefAction};
-    wxCheckBox*         m_template_filament_checkbox {nullptr};
-
-    std::string         m_ph_printer_name;
-    std::string         m_old_preset_name;
     bool                m_use_for_rename{false};
     wxString            m_info_line_extention{wxEmptyString};
 
@@ -106,7 +99,7 @@ public:
 
     const wxString& get_info_line_extention() { return m_info_line_extention; }
 
-    SavePresetDialog(wxWindow* parent, std::vector<Preset::Type> types, std::string suffix = "", bool template_filament = false, PresetBundle* preset_bundle = nullptr);
+    SavePresetDialog(wxWindow* parent, std::vector<Preset::Type> types, std::string suffix = "", PresetBundle* preset_bundle = nullptr);
     SavePresetDialog(wxWindow* parent, Preset::Type type, const wxString& info_line_extention);
     ~SavePresetDialog() override;
 
@@ -117,19 +110,15 @@ public:
     std::string     get_name(Preset::Type type);
 
     bool enable_ok_btn() const;
-    void add_info_for_edit_ph_printer(wxBoxSizer *sizer);
-    void update_info_for_edit_ph_printer(const std::string &preset_name);
     bool Layout() override;
     bool is_for_rename() { return m_use_for_rename; }
 
-    bool get_template_filament_checkbox();
 protected:
     void on_dpi_changed(const wxRect& suggested_rect) override;
     void on_sys_color_changed() override {}
 
 private:
-    void build(std::vector<Preset::Type> types, std::string suffix = "", bool template_filament = false);
-    void update_physical_printers(const std::string& preset_name);
+    void build(std::vector<Preset::Type> types, std::string suffix = "");
     void accept();
 };
 

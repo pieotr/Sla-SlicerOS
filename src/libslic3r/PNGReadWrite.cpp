@@ -62,12 +62,12 @@ static void png_read_callback(png_struct *png_ptr,
     // Retrieve our input buffer through the png_ptr
     auto reader = static_cast<IStream *>(png_get_io_ptr(png_ptr));
 
-    if (!reader || !reader->is_ok()) return;
-
-    reader->read(static_cast<std::uint8_t *>(outBytes), byteCountToRead);
+    if (!reader || !reader->is_ok() ||
+        reader->read(static_cast<std::uint8_t *>(outBytes), byteCountToRead) != byteCountToRead)
+        png_error(png_ptr, "Truncated PNG input");
 }
 
-bool decode_png(IStream &in_buf, ImageGreyscale &out_img)
+static bool decode_png_impl(IStream &in_buf, ImageGreyscale &out_img, bool convert_color)
 {
     static const constexpr int PNG_SIG_BYTES = 8;
 
@@ -85,7 +85,16 @@ bool decode_png(IStream &in_buf, ImageGreyscale &out_img)
     dsc.info = png_create_info_struct(dsc.png);
     if(!dsc.info) return false;
 
+    // libpng reports corrupt chunks and compressed data through longjmp.
+    // Catch that here so an invalid imported mask cannot terminate the app.
+    if (setjmp(png_jmpbuf(dsc.png))) {
+        out_img.buf.clear();
+        return false;
+    }
+
     png_set_read_fn(dsc.png, static_cast<void *>(&in_buf), png_read_callback);
+    // Layer masks must never silently accept damaged ancillary/IEND chunks.
+    png_set_crc_action(dsc.png, PNG_CRC_ERROR_QUIT, PNG_CRC_ERROR_QUIT);
 
     // Tell that we have already read the first bytes to check the signature
     png_set_sig_bytes(dsc.png, PNG_SIG_BYTES);
@@ -97,16 +106,51 @@ bool decode_png(IStream &in_buf, ImageGreyscale &out_img)
     size_t color_type = png_get_color_type(dsc.png, dsc.info);
     size_t bit_depth  = png_get_bit_depth(dsc.png, dsc.info);
 
-    if (color_type != PNG_COLOR_TYPE_GRAY || bit_depth != 8)
+    if (bit_depth != 8 || !out_img.cols || !out_img.rows ||
+        out_img.cols>32768 || out_img.rows>32768 || out_img.cols*out_img.rows>128ULL*1024*1024)
         return false;
+    if (color_type != PNG_COLOR_TYPE_GRAY) {
+        if (!convert_color || (color_type != PNG_COLOR_TYPE_RGB &&
+            color_type != PNG_COLOR_TYPE_RGB_ALPHA && color_type != PNG_COLOR_TYPE_GRAY_ALPHA))
+            return false;
+        if (color_type==PNG_COLOR_TYPE_RGB || color_type==PNG_COLOR_TYPE_RGB_ALPHA)
+            png_set_rgb_to_gray_fixed(dsc.png,PNG_ERROR_ACTION_NONE,29900,58700);
+        png_color_16 background{};
+        // Mask alpha represents exposure coverage, with no display gamma.
+        png_set_background(dsc.png,&background,PNG_BACKGROUND_GAMMA_SCREEN,0,1.0);
+    }
 
     out_img.buf.resize(out_img.rows * out_img.cols);
 
+    const int passes = png_set_interlace_handling(dsc.png);
+    png_read_update_info(dsc.png, dsc.info);
+    if (png_get_channels(dsc.png,dsc.info)!=1 || png_get_rowbytes(dsc.png,dsc.info)!=out_img.cols)
+        return false;
     auto readbuf = static_cast<png_bytep>(out_img.buf.data());
-    for (size_t r = 0; r < out_img.rows; ++r)
-        png_read_row(dsc.png, readbuf + r * out_img.cols, nullptr);
+    for (int pass = 0; pass < passes; ++pass)
+        for (size_t r = 0; r < out_img.rows; ++r)
+            png_read_row(dsc.png, readbuf + r * out_img.cols, nullptr);
+
+    png_read_end(dsc.png, dsc.info);
 
     return true;
+}
+
+bool decode_png(IStream &in_buf, ImageGreyscale &out_img) {
+    return decode_png_impl(in_buf,out_img,false);
+}
+bool decode_color_png(const ReadBuf &pngbuf, ImageGreyscale &out_img) {
+    struct Reader final : IStream {
+        const ReadBuf &input;size_t position=0;
+        explicit Reader(const ReadBuf &source):input(source){}
+        size_t read(uint8_t *output,size_t amount) override {
+            if(amount>input.sz-position)return 0;
+            std::copy_n(static_cast<const uint8_t *>(input.buf)+position,amount,output);
+            position+=amount;return amount;
+        }
+        bool is_ok() const override{return position<input.sz;}
+    } reader(pngbuf);
+    return decode_png_impl(reader,out_img,true);
 }
 
 // Down to earth function to store a packed RGB image to file. Mostly useful for debugging purposes.

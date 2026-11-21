@@ -1,0 +1,228 @@
+.\" Manual page for SLA-Slicer. Check with: groff -man -Tutf8 -ww sla-slicer.1 >/dev/null
+.TH SLA-SLICER 1 "2026-11-21" "SLA-Slicer 1.0.0" "User Commands"
+.SH NAME
+sla-slicer \- offline slicer for SLA/MSLA resin 3D printers
+.SH SYNOPSIS
+.B sla-slicer
+.RI [ file ...]
+.br
+.B sla-slicer
+.RB [ \-\-slice | \-\-export\-sla | \-\-export\-stl | \-\-export\-obj | \-\-export\-3mf ]
+.RI [ OPTIONS ]
+.RI [ TRANSFORM ]
+.I file
+.RB [ \-o
+.IR output ]
+.br
+.B sla-slicer \-\-sla\-run\-recipe
+.I recipe.json
+.RB [ \-\-input
+.IR file ]
+.RB [ \-\-output
+.IR file ]
+.RB [ \-\-dry\-run ]
+.RB [ \-\-report
+.IR report.json ]
+.SH DESCRIPTION
+.B SLA-Slicer
+is a fork of PrusaSlicer 2.9.4 dedicated to resin (SLA/MSLA) printers.
+It works fully offline: it never contacts the Internet, it does not check for updates and
+it does not download profiles.
+It slices 3D models (STL, OBJ, STEP, AMF, 3MF) into layer images and exports them in many
+printer archive formats (for example SL1, CTB, CBDDLP/Photon, PWMX, GOO, CXDLP, UVJ, NanoDLP and Klipper MSLA).
+.PP
+Without an action the graphical application starts and opens the given model files.
+When an action such as
+.B \-\-slice
+is given, the program works from the command line, without a window.
+.SH OPTIONS
+The list below covers the main options.
+.B sla-slicer \-\-help
+prints the complete list and
+.B sla-slicer \-\-help\-sla
+prints every SLA print configuration key, which can also be given as
+.BI \-\-layer\-height= 0.05
+(highest priority, above
+.B \-\-load
+files and values stored in 3MF files).
+.SS Input
+.TP
+.BI \-\-load " file"
+Load a configuration file; may be repeated.
+.TP
+.BI \-\-printer\-profile " name"
+.TQ
+.BI \-\-print\-profile " name"
+.TQ
+.BI \-\-material\-profile " name"
+Name of the printer, print and resin material preset used for slicing.
+.SS Actions
+.TP
+.BR \-s ", " \-\-slice
+Slice the model and export the selected SLA archive format.
+.TP
+.BR \-\-export\-sla ", " \-\-sla
+Slice the model and export the SLA printing layers as PNG.
+.TP
+.B \-\-export\-stl
+.TQ
+.B \-\-export\-obj
+.TQ
+.B \-\-export\-3mf
+Export the model(s) in that format.
+.TP
+.B \-\-info
+Write information about the model to the console.
+.TP
+.BI \-\-save " file"
+Save the resulting configuration to a file.
+.TP
+.B \-\-query\-printer\-models
+.TQ
+.B \-\-query\-print\-material\-profiles
+Print the installed printer models, or the print and material presets of the selected
+.BR \-\-printer\-profile ,
+as JSON.
+.TP
+.BI \-\-sla\-run\-recipe " recipe.json"
+Run a layer recipe: a JSON file chaining the layer operations, issue detection, exports and a conversion.
+See
+.B \-\-dry\-run
+to check a recipe without writing anything.
+.TP
+.BR \-h ", " \-\-help
+Show the help.
+.TP
+.B \-\-help\-sla
+Show the full list of SLA print configuration options.
+.TP
+.B \-\-version
+Show the product version, the build id and the PrusaSlicer version this application is based on.
+.SS Transform options
+.TP
+.BI \-\-scale " N"
+Scaling factor or percentage.
+.TP
+.BI \-\-scale\-to\-fit " X,Y,Z"
+Scale to fit the given volume.
+.TP
+.BI \-\-rotate " N"
+.TQ
+.BI \-\-rotate\-x " N"
+.TQ
+.BI \-\-rotate\-y " N"
+Rotation angle in degrees around the Z, X or Y axis.
+.TP
+.BI \-\-center " X,Y"
+.TQ
+.BI \-\-align\-xy " X,Y"
+Center the print around, or align the model to, the given point.
+.TP
+.BI \-\-cut " N"
+Cut the model at the given Z.
+.TP
+.BI \-\-duplicate " N"
+.TQ
+.BI \-\-duplicate\-grid " X,Y"
+Multiply copies by a factor, or into a grid.
+.TP
+.BR \-m ", " \-\-merge
+Arrange the supplied models on one plate and merge them into a single model.
+.TP
+.B \-\-dont\-arrange
+Keep the original XY coordinates of the models.
+.TP
+.B \-\-split
+Split unconnected parts into separate objects.
+.TP
+.B \-\-ensure\-on\-bed
+Lift the object above the bed when it is partially below (default; use
+.B \-\-no\-ensure\-on\-bed
+to disable).
+.SS Other options
+.TP
+.BI \-\-datadir " dir"
+Load and store settings in the given directory instead of
+.IR ~/.config/SLA\-Slicer .
+.TP
+.BR \-o ", " \-\-output " \fIfile\fR"
+The file where the output is written (by default derived from the input file).
+.TP
+.BI \-\-sla\-archive\-format " id"
+Output archive format for
+.BR \-\-slice .
+.TP
+.B \-\-sla\-accept\-adjustments
+When the output format cannot store a setting exactly, write the nearest storable value instead of refusing.
+Every adjusted value is printed.
+.TP
+.B \-\-sla\-accept\-conversion
+When the output format uses fewer grayscale levels than the sliced layers, export a converted copy instead of refusing.
+.TP
+.B \-\-dry\-run
+With
+.BR \-\-sla\-run\-recipe :
+check every step and write nothing.
+.TP
+.BI \-\-input " file"
+.TQ
+.BI \-\-report " file"
+With
+.BR \-\-sla\-run\-recipe :
+replace the
+.B open
+path of the recipe; write the JSON report to a file instead of standard output.
+.TP
+.BI \-\-loglevel " N"
+Logging sensitivity, 0 (fatal) to 5 (trace).
+.TP
+.BI \-\-threads " N"
+Maximum number of threads used for slicing.
+.TP
+.B \-\-single\-instance
+Send the command line to an already running window instead of starting a second one.
+.TP
+.B \-\-opengl\-compatibility
+.TQ
+.BI \-\-opengl\-version " ABCD"
+.TQ
+.B \-\-opengl\-aa
+.TQ
+.B \-\-opengl\-debug
+OpenGL selection and debugging options of the graphical application.
+.SH EXIT STATUS
+.TP
+.B 0
+Success.
+.TP
+.B 1
+An error (for a recipe: a recipe or step error; nothing was written).
+.TP
+.B 130
+A recipe run was cancelled.
+.SH FILES
+.TP
+.I ~/.config/SLA\-Slicer/
+Settings, printer, print and material presets (the
+.I SLA\-Slicer.ini
+file and one directory per preset kind).
+On first start the SLA part of an existing
+.I ~/.config/PrusaSlicer
+directory is copied here; the old directory is never changed.
+.TP
+.I $XDG_CONFIG_HOME/SLA\-Slicer/
+Used instead of
+.I ~/.config/SLA\-Slicer
+when
+.B XDG_CONFIG_HOME
+is set.
+.SH ENVIRONMENT
+.TP
+.B LANG, LC_ALL
+The user interface is available in English and Polish; any other locale falls back to English.
+.SH SEE ALSO
+Project home page and documentation:
+.UR https://github.com/pieotr/Sla-SlicerOS
+.UE
+.PP
+Layer recipes (JSON automation): doc/AUTOMATION.md in the source tree.

@@ -33,6 +33,7 @@ SupportTreeBuilder::SupportTreeBuilder(SupportTreeBuilder &&o)
     , m_pillars{std::move(o.m_pillars)}
     , m_bridges{std::move(o.m_bridges)}
     , m_crossbridges{std::move(o.m_crossbridges)}
+    , m_support_meshes{std::move(o.m_support_meshes)}
     , m_meshcache{std::move(o.m_meshcache)}
     , m_meshcache_valid{o.m_meshcache_valid}
     , m_model_height{o.m_model_height}
@@ -44,6 +45,7 @@ SupportTreeBuilder::SupportTreeBuilder(const SupportTreeBuilder &o)
     , m_pillars{o.m_pillars}
     , m_bridges{o.m_bridges}
     , m_crossbridges{o.m_crossbridges}
+    , m_support_meshes{o.m_support_meshes}
     , m_meshcache{o.m_meshcache}
     , m_meshcache_valid{o.m_meshcache_valid}
     , m_model_height{o.m_model_height}
@@ -56,6 +58,7 @@ SupportTreeBuilder &SupportTreeBuilder::operator=(SupportTreeBuilder &&o)
     m_pillars = std::move(o.m_pillars);
     m_bridges = std::move(o.m_bridges);
     m_crossbridges = std::move(o.m_crossbridges);
+    m_support_meshes = std::move(o.m_support_meshes);
     m_meshcache = std::move(o.m_meshcache);
     m_meshcache_valid = o.m_meshcache_valid;
     m_model_height = o.m_model_height;
@@ -69,6 +72,7 @@ SupportTreeBuilder &SupportTreeBuilder::operator=(const SupportTreeBuilder &o)
     m_pillars = o.m_pillars;
     m_bridges = o.m_bridges;
     m_crossbridges = o.m_crossbridges;
+    m_support_meshes = o.m_support_meshes;
     m_meshcache = o.m_meshcache;
     m_meshcache_valid = o.m_meshcache_valid;
     m_model_height = o.m_model_height;
@@ -133,6 +137,11 @@ const indexed_triangle_set &SupportTreeBuilder::merged_mesh(size_t steps) const
         its_merge(merged, get_mesh(anch, steps));
     }
 
+    for (auto &sm : m_support_meshes) {
+        if (ctl().stopcondition()) break;
+        its_merge(merged, sm);
+    }
+
     if (ctl().stopcondition()) {
         // In case of failure we have to return an empty mesh
         m_meshcache = {};
@@ -163,6 +172,7 @@ const indexed_triangle_set &SupportTreeBuilder::merge_and_cleanup()
     clear_and_shrink(m_pillars);
     clear_and_shrink(m_junctions);
     clear_and_shrink(m_bridges);
+    clear_and_shrink(m_support_meshes);
 
     return ret;
 }

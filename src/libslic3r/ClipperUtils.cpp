@@ -10,6 +10,9 @@
 ///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
 ///|/
 #include "ClipperUtils.hpp"
+#include "SLA/SupportOverhangSafetyOffset.hpp"
+#include "ClipperOffsetProfile.hpp"
+#include <chrono>
 
 #include <cmath>
 
@@ -337,6 +340,13 @@ static ClipperLib::Paths raw_offset(PathsProvider &&paths, float offset, Clipper
     return out;
 }
 
+// Reuse exactly the un-unioned raw safety paths used by clipping.
+Slic3r::Polygons prepare_support_safety_offset(const Slic3r::ExPolygons &shapes)
+{
+    return to_polygons(raw_offset(ClipperUtils::ExPolygonsProvider(shapes),
+        ClipperSafetyOffset, DefaultJoinType, DefaultMiterLimit));
+}
+
 // Offset outside by 10um, one by one.
 template<typename PathsProvider>
 static ClipperLib::Paths safety_offset(PathsProvider &&paths)
@@ -467,14 +477,33 @@ Polygons contour_to_polygons(const Polygons &polygons, const float line_width, C
     assert(line_width > 1.f); return to_polygons(clipper_union<ClipperLib::Paths>(
         raw_offset(ClipperUtils::PolygonsProvider(polygons), line_width/2, join_type, miter_limit, ClipperLib::etClosedLine)));}
 
+// Compile the diagnostics out of all ordinary offset instantiations. No
+// process-wide observer or thread-local mutable state is used.
+template<bool Enabled> struct OffsetStageTimer {
+    OffsetStageTimer(ClipperOffsetProfile *, ClipperOffsetProfile::Stage) {}
+};
+template<> struct OffsetStageTimer<true> {
+    using Clock = std::chrono::steady_clock;
+    ClipperOffsetProfile &profile;
+    ClipperOffsetProfile::Stage stage;
+    Clock::time_point started;
+    OffsetStageTimer(ClipperOffsetProfile *output, ClipperOffsetProfile::Stage measured)
+        : profile(*output), stage(measured), started(Clock::now()) { ++profile.calls[stage]; }
+    ~OffsetStageTimer() {
+        profile.elapsed_ns[stage] += std::chrono::duration_cast<std::chrono::nanoseconds>(Clock::now() - started).count();
+    }
+};
+
 // returns number of expolygons collected (0 or 1).
-static int offset_expolygon_inner(const Slic3r::ExPolygon &expoly, const float delta, ClipperLib::JoinType joinType, double miterLimit, ClipperLib::Paths &out)
+template<bool Profiled = false>
+static int offset_expolygon_inner(const Slic3r::ExPolygon &expoly, const float delta, ClipperLib::JoinType joinType, double miterLimit, ClipperLib::Paths &out, ClipperOffsetProfile *profile = nullptr)
 {
     CLIPPER_UTILS_TIME_LIMIT_MILLIS(CLIPPER_UTILS_TIME_LIMIT_DEFAULT);
 
     // 1) Offset the outer contour.
     ClipperLib::Paths contours;
     {
+        OffsetStageTimer<Profiled> measured(profile, ClipperOffsetProfile::Outer);
         ClipperLib::ClipperOffset co;
         if (joinType == jtRound)
             co.ArcTolerance = miterLimit;
@@ -489,12 +518,14 @@ static int offset_expolygon_inner(const Slic3r::ExPolygon &expoly, const float d
         return 0;
 
     if (expoly.holes.empty()) {
+        OffsetStageTimer<Profiled> measured(profile, ClipperOffsetProfile::Combine);
         // No need to subtract holes from the offsetted expolygon, we are done.
         append(out, std::move(contours));
     } else {
         // 2) Offset the holes one by one, collect the offsetted holes.
         ClipperLib::Paths holes;
         {
+            OffsetStageTimer<Profiled> measured(profile, ClipperOffsetProfile::Holes);
             for (const Polygon &hole : expoly.holes) {
                 ClipperLib::ClipperOffset co;
                 if (joinType == jtRound)
@@ -507,44 +538,50 @@ static int offset_expolygon_inner(const Slic3r::ExPolygon &expoly, const float d
                 // Execute reorients the contours so that the outer most contour has a positive area. Thus the output
                 // contours will be CCW oriented even though the input paths are CW oriented.
                 // Offset is applied after contour reorientation, thus the signum of the offset value is reversed.
+                if constexpr (Profiled) ++profile->hole_offsets;
                 co.Execute(out2, - delta);
                 append(holes, std::move(out2));
             }
         }
 
-        // 3) Subtract holes from the contours.
-        if (holes.empty()) {
-            // No hole remaining after an offset. Just copy the outer contour.
-            append(out, std::move(contours));
-        } else if (delta < 0) {
-            // Negative offset. There is a chance, that the offsetted hole intersects the outer contour. 
-            // Subtract the offsetted holes from the offsetted contours.            
-            if (auto output = clipper_do<ClipperLib::Paths>(ClipperLib::ctDifference, contours, holes, ClipperLib::pftNonZero); ! output.empty()) {
-                append(out, std::move(output));
+        {
+            OffsetStageTimer<Profiled> measured(profile, ClipperOffsetProfile::Combine);
+            // 3) Subtract holes from the contours.
+            if (holes.empty()) {
+                // No hole remaining after an offset. Just copy the outer contour.
+                append(out, std::move(contours));
+            } else if (delta < 0) {
+                // Negative offset. There is a chance, that the offsetted hole intersects the outer contour.
+                // Subtract the offsetted holes from the offsetted contours.
+                if (auto output = clipper_do<ClipperLib::Paths>(ClipperLib::ctDifference, contours, holes, ClipperLib::pftNonZero); ! output.empty()) {
+                    append(out, std::move(output));
+                } else {
+                    // The offsetted holes have eaten up the offsetted outer contour.
+                    return 0;
+                }
             } else {
-                // The offsetted holes have eaten up the offsetted outer contour.
-                return 0;
+                // Positive offset. As long as the Clipper offset does what one expects it to do, the offsetted hole will have a smaller
+                // area than the original hole or even disappear, therefore there will be no new intersections.
+                // Just collect the reversed holes.
+                out.reserve(contours.size() + holes.size());
+                append(out, std::move(contours));
+                // Reverse the holes in place.
+                for (size_t i = 0; i < holes.size(); ++ i)
+                    std::reverse(holes[i].begin(), holes[i].end());
+                append(out, std::move(holes));
             }
-        } else {
-            // Positive offset. As long as the Clipper offset does what one expects it to do, the offsetted hole will have a smaller
-            // area than the original hole or even disappear, therefore there will be no new intersections.
-            // Just collect the reversed holes.
-            out.reserve(contours.size() + holes.size());
-            append(out, std::move(contours));
-            // Reverse the holes in place.
-            for (size_t i = 0; i < holes.size(); ++ i)
-                std::reverse(holes[i].begin(), holes[i].end());
-            append(out, std::move(holes));
         }
     }
 
     return 1;
 }
 
-static int offset_expolygon_inner(const Slic3r::Surface &surface, const float delta, ClipperLib::JoinType joinType, double miterLimit, ClipperLib::Paths &out)
-    { return offset_expolygon_inner(surface.expolygon, delta, joinType, miterLimit, out); }
-static int offset_expolygon_inner(const Slic3r::Surface *surface, const float delta, ClipperLib::JoinType joinType, double miterLimit, ClipperLib::Paths &out)
-    { return offset_expolygon_inner(surface->expolygon, delta, joinType, miterLimit, out); }
+template<bool Profiled = false>
+static int offset_expolygon_inner(const Slic3r::Surface &surface, const float delta, ClipperLib::JoinType joinType, double miterLimit, ClipperLib::Paths &out, ClipperOffsetProfile *profile = nullptr)
+    { return offset_expolygon_inner<Profiled>(surface.expolygon, delta, joinType, miterLimit, out, profile); }
+template<bool Profiled = false>
+static int offset_expolygon_inner(const Slic3r::Surface *surface, const float delta, ClipperLib::JoinType joinType, double miterLimit, ClipperLib::Paths &out, ClipperOffsetProfile *profile = nullptr)
+    { return offset_expolygon_inner<Profiled>(surface->expolygon, delta, joinType, miterLimit, out, profile); }
 
 ClipperLib::Paths expolygon_offset(const Slic3r::ExPolygon &expolygon, const float delta, ClipperLib::JoinType joinType, double miterLimit)
 {
@@ -556,8 +593,8 @@ ClipperLib::Paths expolygon_offset(const Slic3r::ExPolygon &expolygon, const flo
 // This is a safe variant of the polygons offset, tailored for multiple ExPolygons.
 // It is required, that the input expolygons do not overlap and that the holes of each ExPolygon don't intersect with their respective outer contours.
 // Each ExPolygon is offsetted separately. For outer offset, the the offsetted ExPolygons shall be united outside of this function.
-template<typename ExPolygonVector>
-static std::pair<ClipperLib::Paths, size_t> expolygons_offset_raw(const ExPolygonVector &expolygons, const float delta, ClipperLib::JoinType joinType, double miterLimit)
+template<bool Profiled = false, typename ExPolygonVector>
+static std::pair<ClipperLib::Paths, size_t> expolygons_offset_raw(const ExPolygonVector &expolygons, const float delta, ClipperLib::JoinType joinType, double miterLimit, ClipperOffsetProfile *profile = nullptr)
 {
     // Offsetted ExPolygons before they are united.
     ClipperLib::Paths output;
@@ -566,7 +603,7 @@ static std::pair<ClipperLib::Paths, size_t> expolygons_offset_raw(const ExPolygo
     // If only one, then there is no need to do a final union.
     size_t expolygons_collected = 0;
     for (const auto &expoly : expolygons)
-        expolygons_collected += offset_expolygon_inner(expoly, delta, joinType, miterLimit, output);
+        expolygons_collected += offset_expolygon_inner<Profiled>(expoly, delta, joinType, miterLimit, output, profile);
     return std::make_pair(std::move(output), expolygons_collected);
 }
 
@@ -584,11 +621,12 @@ static ClipperLib::Paths expolygons_offset(const ExPolygonVector &expolygons, co
 }
 
 // See comment on expolygons_offset_raw. In addition, the polygons are always united to conver to polytree.
-template<typename ExPolygonVector>
-static ClipperLib::PolyTree expolygons_offset_pt(const ExPolygonVector &expolygons, const float delta, ClipperLib::JoinType joinType, double miterLimit)
+template<bool Profiled = false, typename ExPolygonVector>
+static ClipperLib::PolyTree expolygons_offset_pt(const ExPolygonVector &expolygons, const float delta, ClipperLib::JoinType joinType, double miterLimit, ClipperOffsetProfile *profile = nullptr)
 {
-    auto [output, expolygons_collected] = expolygons_offset_raw(expolygons, delta, joinType, miterLimit);
+    auto [output, expolygons_collected] = expolygons_offset_raw<Profiled>(expolygons, delta, joinType, miterLimit, profile);
     // Unite the offsetted expolygons for both the 
+    OffsetStageTimer<Profiled> measured(profile, ClipperOffsetProfile::Union);
     return clipper_union<ClipperLib::PolyTree>(output);
 }
 
@@ -609,6 +647,14 @@ Slic3r::ExPolygons offset_ex(const Slic3r::Surfaces &surfaces, const float delta
     { return PolyTreeToExPolygons(expolygons_offset_pt(surfaces, delta, joinType, miterLimit)); }
 Slic3r::ExPolygons offset_ex(const Slic3r::SurfacesPtr &surfaces, const float delta, ClipperLib::JoinType joinType, double miterLimit)
     { return PolyTreeToExPolygons(expolygons_offset_pt(surfaces, delta, joinType, miterLimit)); }
+
+ExPolygons offset_ex_profiled(const ExPolygons &polygons, float delta,
+    ClipperOffsetProfile &profile, ClipperLib::JoinType join_type, double miter_limit)
+{
+    auto tree = expolygons_offset_pt<true>(polygons, delta, join_type, miter_limit, &profile);
+    OffsetStageTimer<true> measured(&profile, ClipperOffsetProfile::Tree);
+    return PolyTreeToExPolygons(std::move(tree));
+}
 
 Polygons offset2(const ExPolygons &expolygons, const float delta1, const float delta2, ClipperLib::JoinType joinType, double miterLimit)
 {

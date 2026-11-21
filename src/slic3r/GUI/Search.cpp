@@ -38,18 +38,15 @@ using GUI::into_u8;
 
 namespace Search {
 
-static char marker_by_type(Preset::Type type, PrinterTechnology pt)
+static char marker_by_type(Preset::Type type, PrinterTechnology /*pt*/)
 {
     switch(type) {
-    case Preset::TYPE_PRINT:
     case Preset::TYPE_SLA_PRINT:
         return ImGui::PrintIconMarker;
-    case Preset::TYPE_FILAMENT:
-        return ImGui::FilamentIconMarker;
     case Preset::TYPE_SLA_MATERIAL:
         return ImGui::MaterialIconMarker;
     case Preset::TYPE_PRINTER:
-        return pt == ptSLA ? ImGui::PrinterSlaIconMarker : ImGui::PrinterIconMarker;
+        return ImGui::PrinterSlaIconMarker;
     case Preset::TYPE_PREFERENCES:
         return ImGui::PreferencesButton;
     default:
@@ -99,17 +96,10 @@ void OptionsSearcher::append_options(DynamicPrintConfig* config, Preset::Type ty
 
         wxString suffix;
         wxString suffix_local;
-        if (gc.category == "Machine limits" || gc.category == "Material printing profile") {
-            if (gc.category == "Machine limits")
-                suffix = id == 1 ? L("Stealth") : L("Normal");
-            else 
-                suffix = id == 1 ? L("Above") : L("Below");
+        if (gc.category == "Material printing profile") {
+            suffix = id == 1 ? L("Above") : L("Below");
             suffix_local = " " + _(suffix);
             suffix = " " + suffix;
-        }
-        else if (gc.group == "Dynamic overhang speed" && id >= 0) {
-            suffix = " " + std::to_string(id+1);
-            suffix_local = suffix;
         }
 
         if (!label.IsEmpty())
@@ -127,7 +117,7 @@ void OptionsSearcher::append_options(DynamicPrintConfig* config, Preset::Type ty
 
         int cnt = 0;
 
-        if ( type != Preset::TYPE_FILAMENT && !PresetCollection::is_independent_from_extruder_number_option(opt_key))
+        if (!PresetCollection::is_single_input_vector_option(opt_key))
             switch (config->option(opt_key)->type())
             {
             case coInts:	change_opt_key<ConfigOptionInts		>(opt_key, config, cnt);	break;
@@ -392,17 +382,8 @@ static Option create_option(const std::string& opt_key, const wxString& label, P
 {
     wxString suffix;
     wxString suffix_local;
-    if (gc.category == "Machine limits") {
-        suffix = opt_key.back() == '1' ? L("Stealth") : L("Normal");
-        suffix_local = " " + _(suffix);
-        suffix = " " + suffix;
-    }
 
     wxString category = gc.category;
-    if (type == Preset::TYPE_PRINTER && category.Contains("Extruder ")) {
-        std::string opt_idx = opt_key.substr(opt_key.find("#") + 1);
-        category = wxString::Format("%s %d", "Extruder", atoi(opt_idx.c_str()) + 1);
-    }
 
     return Option{ boost::nowide::widen(get_key(opt_key, type)), type,
                 (label + suffix).ToStdWstring(), (_(label) + suffix_local).ToStdWstring(),
@@ -562,11 +543,9 @@ void OptionsSearcher::add_key(const std::string& opt_key, Preset::Type type, con
 
 static const std::map<const char, int> icon_idxs = {
     {ImGui::PrintIconMarker     , 0},
-    {ImGui::PrinterIconMarker   , 1},
-    {ImGui::PrinterSlaIconMarker, 2},
-    {ImGui::FilamentIconMarker  , 3},
-    {ImGui::MaterialIconMarker  , 4},
-    {ImGui::PreferencesButton   , 5},
+    {ImGui::PrinterSlaIconMarker, 1},
+    {ImGui::MaterialIconMarker  , 2},
+    {ImGui::PreferencesButton   , 3},
 };
 
 SearchDialog::SearchDialog(OptionsSearcher* searcher, wxWindow* parent)
@@ -847,7 +826,7 @@ void SearchDialog::on_sys_color_changed()
 SearchListModel::SearchListModel(wxWindow* parent) : wxDataViewVirtualListModel(0)
 {
     int icon_id = 0;
-    for (const std::string& icon : { "cog", "printer", "sla_printer", "spool", "resin", "notification_preferences" })
+    for (const std::string& icon : { "cog", "sla_printer", "resin", "notification_preferences" })
         m_icon[icon_id++] = ScalableBitmap(parent, icon);    
 }
 

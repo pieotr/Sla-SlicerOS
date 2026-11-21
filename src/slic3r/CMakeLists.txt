@@ -19,23 +19,6 @@ set(SLIC3R_GUI_SOURCES
     GUI/AboutDialog.hpp
     GUI/ArrangeSettingsDialogImgui.hpp
     GUI/ArrangeSettingsDialogImgui.cpp
-    GUI/UserAccountCommunication.cpp
-    GUI/UserAccountCommunication.hpp
-    GUI/UserAccountSession.cpp
-    GUI/UserAccountSession.hpp
-    GUI/UserAccountUtils.cpp
-    GUI/UserAccountUtils.hpp
-    GUI/UserAccount.cpp
-    GUI/UserAccount.hpp
-    GUI/WebViewDialog.cpp
-    GUI/WebViewDialog.hpp
-    GUI/WebViewPanel.cpp
-    GUI/WebViewPanel.hpp
-    GUI/ConnectRequestHandler.cpp
-    GUI/ConnectRequestHandler.hpp
-    GUI/WebView.cpp
-    GUI/WebView.hpp
-    GUI/WebViewPlatformUtils.hpp
     GUI/SysInfoDialog.cpp
     GUI/SysInfoDialog.hpp
     GUI/KBShortcutsDialog.cpp
@@ -85,18 +68,12 @@ set(SLIC3R_GUI_SOURCES
     GUI/Gizmos/GLGizmoCut.hpp
     GUI/Gizmos/GLGizmoHollow.cpp
     GUI/Gizmos/GLGizmoHollow.hpp
-    GUI/Gizmos/GLGizmoPainterBase.cpp
-    GUI/Gizmos/GLGizmoPainterBase.hpp
     GUI/Gizmos/GLGizmoSimplify.cpp
     GUI/Gizmos/GLGizmoSimplify.hpp
     GUI/Gizmos/GLGizmoSVG.cpp
     GUI/Gizmos/GLGizmoSVG.hpp
-    GUI/Gizmos/GLGizmoMmuSegmentation.cpp
-    GUI/Gizmos/GLGizmoMmuSegmentation.hpp
     GUI/Gizmos/GLGizmoMeasure.cpp
     GUI/Gizmos/GLGizmoMeasure.hpp
-    GUI/LibVGCode/LibVGCodeWrapper.hpp
-    GUI/LibVGCode/LibVGCodeWrapper.cpp
     GUI/GLSelectionRectangle.cpp
     GUI/GLSelectionRectangle.hpp
     GUI/GLModel.hpp
@@ -105,12 +82,8 @@ set(SLIC3R_GUI_SOURCES
     GUI/GLTexture.cpp
     GUI/GLToolbar.hpp
     GUI/GLToolbar.cpp
-    GUI/GCodeViewer.hpp
-    GUI/GCodeViewer.cpp    
     GUI/Preferences.cpp
     GUI/Preferences.hpp
-    GUI/PresetHints.cpp
-    GUI/PresetHints.hpp
     GUI/GUI.cpp
     GUI/GUI.hpp
     GUI/GUI_Init.cpp
@@ -127,6 +100,30 @@ set(SLIC3R_GUI_SOURCES
     GUI/I18N.hpp
     GUI/IconManager.cpp
     GUI/IconManager.hpp
+    GUI/SlaRasterToolsDialog.cpp
+    GUI/SlaRasterToolsDialog.hpp
+    GUI/RasterGeneratorTask.hpp
+    GUI/ExposureFinderDialog.cpp
+    GUI/ExposureFinderDialog.hpp
+    GUI/ResinStockDialog.cpp
+    GUI/ResinStockDialog.hpp
+    GUI/LayerEditorDialog.cpp
+    GUI/LayerEditorDialog.hpp
+    GUI/LayerEditorInternal.hpp
+    GUI/LayerEditorContent.hpp
+    GUI/LayerEditorCommon.cpp
+    GUI/LayerEditorContent.cpp
+    GUI/LayerEditorContent_Canvas.cpp
+    GUI/LayerEditorContent_Dialogs.cpp
+    GUI/LayerEditorContent_Events.cpp
+    GUI/LayerEditorContent_Export.cpp
+    GUI/LayerEditorContent_Operations.cpp
+    GUI/LayerEditorContent_Issues.cpp
+    GUI/LayerOperationCatalog.cpp
+    GUI/LayerOperationCatalog_Batch2.cpp
+    GUI/LayerOperationCatalog_Batch3.cpp
+    GUI/LayerCalculatorDialog.cpp
+    GUI/LayerOperationsDialog.cpp
     GUI/MainFrame.cpp
     GUI/MainFrame.hpp
     GUI/UpdatesUIManager.cpp
@@ -143,14 +140,10 @@ set(SLIC3R_GUI_SOURCES
     GUI/PresetComboBoxes.cpp
     GUI/BitmapComboBox.hpp
     GUI/BitmapComboBox.cpp
-    GUI/EditGCodeDialog.hpp
-    GUI/EditGCodeDialog.cpp
     GUI/SavePresetDialog.hpp
     GUI/SavePresetDialog.cpp
     GUI/BulkExportDialog.hpp
     GUI/BulkExportDialog.cpp
-    GUI/PhysicalPrinterDialog.hpp
-    GUI/PhysicalPrinterDialog.cpp
     GUI/GUI_Factories.cpp
     GUI/GUI_Factories.hpp
     GUI/GUI_ObjectList.cpp
@@ -161,8 +154,6 @@ set(SLIC3R_GUI_SOURCES
     GUI/GUI_ObjectManipulation.hpp
     GUI/GUI_ObjectSettings.cpp
     GUI/GUI_ObjectSettings.hpp
-    GUI/GUI_ObjectLayers.cpp
-    GUI/GUI_ObjectLayers.hpp
     GUI/MeshUtils.cpp
     GUI/MeshUtils.hpp
     GUI/Tab.cpp
@@ -197,8 +188,6 @@ set(SLIC3R_GUI_SOURCES
     GUI/SurfaceDrag.hpp
     GUI/TextLines.cpp
     GUI/TextLines.hpp
-    GUI/BonjourDialog.cpp
-    GUI/BonjourDialog.hpp
     GUI/ButtonsDescription.cpp
     GUI/ButtonsDescription.hpp
     GUI/ImGuiWrapper.hpp
@@ -214,14 +203,10 @@ set(SLIC3R_GUI_SOURCES
     GUI/ConfigWizard.cpp
     GUI/ConfigWizard.hpp
     GUI/ConfigWizard_private.hpp
-    GUI/ConfigWizardWebViewPage.cpp
-    GUI/ConfigWizardWebViewPage.hpp
     GUI/MsgDialog.cpp
     GUI/MsgDialog.hpp
     GUI/UpdateDialogs.cpp
     GUI/UpdateDialogs.hpp
-    GUI/PrintHostDialogs.cpp
-    GUI/PrintHostDialogs.hpp
     GUI/WifiConfigDialog.cpp
     GUI/WifiConfigDialog.hpp
     GUI/Jobs/Job.hpp
@@ -234,8 +219,6 @@ set(SLIC3R_GUI_SOURCES
     GUI/Jobs/PlaterWorker.hpp
     GUI/Jobs/ArrangeJob2.hpp
     GUI/Jobs/ArrangeJob2.cpp
-    GUI/Jobs/SeqArrangeJob.hpp
-    GUI/Jobs/SeqArrangeJob.cpp
     GUI/Jobs/CreateFontNameImageJob.cpp
     GUI/Jobs/CreateFontNameImageJob.hpp
     GUI/Jobs/CreateFontStyleImagesJob.cpp
@@ -257,12 +240,8 @@ set(SLIC3R_GUI_SOURCES
     GUI/Mouse3DController.hpp
     GUI/ImGuiDoubleSlider.cpp
     GUI/ImGuiDoubleSlider.hpp
-    GUI/TickCodesManager.cpp
-    GUI/TickCodesManager.hpp
     GUI/DoubleSliderForLayers.cpp
     GUI/DoubleSliderForLayers.hpp
-    GUI/DoubleSliderForGcode.cpp
-    GUI/DoubleSliderForGcode.hpp
     GUI/RulerForDoubleSlider.cpp
     GUI/RulerForDoubleSlider.hpp
     GUI/Notebook.cpp
@@ -314,42 +293,17 @@ set(SLIC3R_GUI_SOURCES
     GUI/Widgets/UIColors.hpp
     GUI/FileArchiveDialog.cpp
     GUI/FileArchiveDialog.hpp
-    GUI/Downloader.cpp
-    GUI/Downloader.hpp
-    GUI/DownloaderFileGet.cpp
-    GUI/DownloaderFileGet.hpp
-    GUI/LoginDialog.cpp
-    GUI/LoginDialog.hpp
     GUI/PresetArchiveDatabase.cpp
     GUI/PresetArchiveDatabase.hpp
     Utils/AppUpdater.cpp
     Utils/AppUpdater.hpp
-    Utils/Http.cpp
     Utils/Http.hpp
     Utils/FixModelByWin10.cpp
     Utils/FixModelByWin10.hpp
-    Utils/Jwt.cpp
-    Utils/Jwt.hpp
-    Utils/Moonraker.cpp
-    Utils/Moonraker.hpp
-    Utils/OctoPrint.cpp
-    Utils/OctoPrint.hpp
-    Utils/Duet.cpp
-    Utils/Duet.hpp
     Utils/EmbossStyleManager.cpp
     Utils/EmbossStyleManager.hpp
-    Utils/FlashAir.cpp
-    Utils/FlashAir.hpp
     Utils/FontConfigHelp.cpp
     Utils/FontConfigHelp.hpp
-    Utils/AstroBox.cpp
-    Utils/AstroBox.hpp
-    Utils/Repetier.cpp
-    Utils/Repetier.hpp
-    Utils/PrintHost.cpp
-    Utils/PrintHost.hpp
-    Utils/Bonjour.cpp
-    Utils/Bonjour.hpp
     Utils/PresetUpdater.cpp
     Utils/PresetUpdater.hpp
     Utils/PresetUpdaterWrapper.cpp
@@ -360,38 +314,21 @@ set(SLIC3R_GUI_SOURCES
     Utils/RaycastManager.hpp
     Utils/UndoRedo.cpp
     Utils/UndoRedo.hpp
-    Utils/HexFile.cpp
-    Utils/HexFile.hpp
-    Utils/TCPConsole.cpp
-    Utils/TCPConsole.hpp
-    Utils/MKS.cpp
-    Utils/MKS.hpp
     Utils/WinRegistry.cpp
     Utils/WinRegistry.hpp
     Utils/WxFontUtils.cpp
     Utils/WxFontUtils.hpp
     Utils/WifiScanner.hpp
     Utils/WifiScanner.cpp
-    Utils/Secrets.hpp
-    Utils/Secrets.cpp
-    Utils/PrusaConnect.hpp
-    Utils/PrusaConnect.cpp
     Utils/ServiceConfig.hpp
     Utils/ServiceConfig.cpp
 )
 
+# No transport implementation or printer upload backend is compiled: the
+# offline application uses the stub Utils/HttpOffline.cpp.
+list(APPEND SLIC3R_GUI_SOURCES Utils/HttpOffline.cpp)
+
 find_package(NanoSVG REQUIRED)
-if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
-    find_package(OpenSSL REQUIRED)
-endif()
-
-list(APPEND SLIC3R_GUI_SOURCES
-    GUI/WebViewPlatformUtilsLinux.cpp
-)
-
-if (NOT SLIC3R_SLA_ONLY)
-    message(FATAL_ERROR "This branch is SLA-only. Build with SLIC3R_SLA_ONLY=ON.")
-endif ()
 
 add_library(libslic3r_gui STATIC ${SLIC3R_GUI_SOURCES})
 
@@ -409,11 +346,9 @@ target_link_libraries(
     libslic3r
     slic3r-arrange-wrapper
     imgui
-    libvgcode
     GLEW::GLEW
     OpenGL::GL
     hidapi
-    libcurl
     ${wxWidgets_LIBRARIES}
     NanoSVG::nanosvg
     NanoSVG::nanosvgrast
@@ -426,8 +361,6 @@ if (MSVC)
 elseif (CMAKE_SYSTEM_NAME STREQUAL "Linux")
     target_link_libraries(libslic3r_gui PUBLIC
         ${DBus1_LIBRARIES}
-        OpenSSL::SSL
-        OpenSSL::Crypto
     )
 elseif (APPLE)
     target_link_libraries(libslic3r_gui PUBLIC ${DISKARBITRATION_LIBRARY} ${COREWLAN_LIBRARY})
@@ -450,10 +383,10 @@ if (UNIX AND NOT APPLE)
     find_package(GTK${SLIC3R_GTK} REQUIRED)
     find_package(PkgConfig REQUIRED)
 
-    # Use a dedicated pkg-config module name to avoid stale cache entries from
-    # previous configure runs that could pin WEBKIT2GTK to 4.0.
-    pkg_search_module(WEBKIT2GTK_LINUX REQUIRED IMPORTED_TARGET webkit2gtk-4.1 webkit2gtk-4.0)
-    target_link_libraries(libslic3r_gui PUBLIC ${GTK${SLIC3R_GTK}_LIBRARIES} fontconfig PkgConfig::WEBKIT2GTK_LINUX)
+    target_link_libraries(libslic3r_gui PUBLIC ${GTK${SLIC3R_GTK}_LIBRARIES} fontconfig)
+    # GTK headers used directly by the GUI (e.g. Widgets/DropDown.cpp); previously they only
+    # arrived transitively through the WebKitGTK target.
+    target_include_directories(libslic3r_gui PUBLIC ${GTK${SLIC3R_GTK}_INCLUDE_DIRS})
 endif ()
 
 # Add a definition so that we can tell we are compiling slic3r.

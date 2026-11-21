@@ -114,10 +114,6 @@ static Model read_all_from_file(const std::string& input_file,
     if (options & LoadAttribute::AddDefaultInstances)
         model.add_default_instances();
 
-    for (CustomGCode::Info& info : model.get_custom_gcode_per_print_z_vector()) {
-        CustomGCode::update_custom_gcode_per_print_z_from_config(info, config);
-        CustomGCode::check_mode_for_custom_gcode_per_print_z(info);
-    }
     sort_remove_duplicates(config_substitutions->substitutions);
     return model;
 }

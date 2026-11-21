@@ -1,4 +1,8 @@
+#include <algorithm>
+#include "libslic3r/Utils.hpp"
 #include <cstdio>
+#include <optional>
+#include <sstream>
 #include <string>
 #include <cstring>
 #include <iostream>
@@ -20,12 +24,12 @@
 #endif // !SLIC3R_OPENGL_ES
 #include "libslic3r/Config.hpp"
 #include "libslic3r/Geometry.hpp"
-#include "libslic3r/GCode/PostProcessor.hpp"
 #include "libslic3r/Model.hpp"
 #include "libslic3r/Preset.hpp"
 #include <arrange-wrapper/ModelArrange.hpp>
-#include "libslic3r/Print.hpp"
 #include "libslic3r/SLAPrint.hpp"
+#include "libslic3r/SLA/LayerConversionPlan.hpp"
+#include "libslic3r/SLA/RepresentationAdjustment.hpp"
 #include "libslic3r/Format/AMF.hpp"
 #include "libslic3r/Format/3mf.hpp"
 #include "libslic3r/Format/STL.hpp"
@@ -33,20 +37,27 @@
 #include "libslic3r/Format/SL1.hpp"
 #include "libslic3r/miniz_extension.hpp"
 #include "libslic3r/PNGReadWrite.hpp"
+#include "libslic3r/SLA/LayerDocument.hpp"
+#include "libslic3r/SLA/LayerSuggestions.hpp"
+#include "libslic3r/SLA/LayerIssues.hpp"
+#include "libslic3r/SLA/ProjectArchive.hpp"
+#include "libslic3r/SLA/LayerRecipe.hpp"
+#include <atomic>
+#include <csignal>
+#include <set>
+#include <cmath>
 #include "libslic3r/MultipleBeds.hpp"
 #include "libslic3r/BuildVolume.hpp"
 
 #include "CLI/CLI.hpp"
 #include "CLI/ProfilesSharingUtils.hpp"
 
-#define STB_IMAGE_RESIZE_IMPLEMENTATION
-#include "stb_image_resize2.h"
 
 namespace Slic3r::CLI {
 
 static bool has_profile_sharing_action(const Data& cli)
 {
-    return cli.actions_config.has("query-printer-models") || cli.actions_config.has("query-print-filament-profiles");
+    return cli.actions_config.has("query-printer-models") || cli.actions_config.has("query-print-material-profiles");
 }
 
 bool has_full_config_from_profiles(const Data& cli)
@@ -58,36 +69,36 @@ bool has_full_config_from_profiles(const Data& cli)
             (input.has("printer-profile") && !input.opt_string("printer-profile").empty()));
 }
 
-bool process_profiles_sharing(const Data& cli)
+std::optional<int> process_profiles_sharing(const Data& cli)
 {
     if (!has_profile_sharing_action(cli))
-        return false;
+        return std::nullopt;
 
     std::string ret;
 
     if (cli.actions_config.has("query-printer-models")) {
-        ret = Slic3r::get_json_printer_models(get_printer_technology(cli.overrides_config));
+        ret = Slic3r::get_json_printer_models(ptSLA);
     }
-    else if (cli.actions_config.has("query-print-filament-profiles")) {
+    else if (cli.actions_config.has("query-print-material-profiles")) {
         if (cli.input_config.has("printer-profile") && !cli.input_config.opt_string("printer-profile").empty()) {
             const std::string printer_profile = cli.input_config.opt_string("printer-profile");
-            ret = Slic3r::get_json_print_filament_profiles(printer_profile);
+            ret = Slic3r::get_json_print_material_profiles(printer_profile);
             if (ret.empty()) {
-                boost::nowide::cerr << "query-print-filament-profiles error: Printer profile '" << printer_profile <<
+                boost::nowide::cerr << "query-print-material-profiles error: Printer profile '" << printer_profile <<
                                         "' wasn't found among installed printers." << std::endl <<
                                         "Or the request can be wrong." << std::endl;
-                return true;
+                return 1;
             }
         }
         else {
-            boost::nowide::cerr << "query-print-filament-profiles error: This action requires set 'printer-profile' option" << std::endl;
-            return true;
+            boost::nowide::cerr << "query-print-material-profiles error: This action requires set 'printer-profile' option" << std::endl;
+            return 1;
         }
     }
 
     if (ret.empty()) {
         boost::nowide::cerr << "Wrong request" << std::endl;
-        return true;
+        return 1;
     }
 
     // use --output when available
@@ -109,13 +120,17 @@ bool process_profiles_sharing(const Data& cli)
         c.open(file, std::ios::out | std::ios::trunc);
         c << ret << std::endl;
         c.close();
+        if (!c) {
+            boost::nowide::cerr << "Cannot write profile query output: " << file << std::endl;
+            return 1;
+        }
 
         boost::nowide::cout << "Output for your request is written into " << file << std::endl;
     }
     else 
         printf("%s", ret.c_str());
 
-    return true;
+    return 0;
 }
 
 namespace IO {
@@ -123,8 +138,7 @@ namespace IO {
         OBJ,
         STL,
         // SVG, 
-        TMF,
-        Gcode
+        TMF
     };
 }
 
@@ -172,84 +186,6 @@ static bool export_models(std::vector<Model>& models, IO::ExportFormat format, c
 }
 
 
-static ThumbnailData resize_and_crop(const std::vector<unsigned char>& data, int width, int height, int width_new, int height_new) {
-    ThumbnailData th;
-
-    float scale_x = float(width_new) / width;
-    float scale_y = float(height_new) / height;
-    float scale = std::max(scale_x, scale_y);  // Choose the larger scale to fill the box
-    int resized_width = int(width * scale);
-    int resized_height = int(height * scale);
-
-    std::vector<unsigned char> resized_rgba(resized_width * resized_height * 4);
-    stbir_resize_uint8_linear(data.data(), width, height, 4 * width,
-                              resized_rgba.data(), resized_width, resized_height, 4 * resized_width,
-                              STBIR_RGBA);
-
-    th.set(width_new, height_new);
-    int crop_x = (resized_width - width_new) / 2;
-    int crop_y = (resized_height - height_new) / 2;
-
-    for (int y = 0; y < height_new; ++y) {
-        std::memcpy(th.pixels.data() + y * width_new * 4, 
-                    resized_rgba.data() + ((y + crop_y) * resized_width + crop_x) * 4, 
-                    width_new * 4);
-    }
-    return th;
-}
-
-
-static std::function<ThumbnailsList(const ThumbnailsParams&)> get_thumbnail_generator_cli(const std::string& filename)
-{
-    if (boost::iends_with(filename, ".3mf")) {
-        return [filename](const ThumbnailsParams& params) {
-            ThumbnailsList list_out;
-
-            mz_zip_archive archive;
-            mz_zip_zero_struct(&archive);
-
-            if (!open_zip_reader(&archive, filename))
-                return list_out;
-            mz_zip_archive_file_stat stat;
-
-            int index = mz_zip_reader_locate_file(&archive, "Metadata/thumbnail.png", nullptr, 0);
-            if (index < 0 || !mz_zip_reader_file_stat(&archive, index, &stat))
-                return list_out;
-            std::string buffer;
-            buffer.resize(int(stat.m_uncomp_size));
-            mz_bool res = mz_zip_reader_extract_file_to_mem(&archive, stat.m_filename, buffer.data(), (size_t)stat.m_uncomp_size, 0);
-            if (res == 0)
-                return list_out;
-            close_zip_reader(&archive);
-
-            std::vector<unsigned char> data;
-            unsigned width = 0;
-            unsigned height = 0;
-            png::decode_png(buffer, data, width, height);
-
-            {
-                // Flip the image vertically so it matches the convention in Thumbnails generator.
-                const int row_size = width * 4; // Each pixel is 4 bytes (RGBA)
-                std::vector<unsigned char> temp_row(row_size);
-                for (unsigned i = 0; i < height / 2; ++i) {
-                    unsigned char* top_row = &data[static_cast<size_t>(i) * static_cast<size_t>(row_size)];
-                    unsigned char* bottom_row = &data[(static_cast<size_t>(height - i - 1) * static_cast<size_t>(row_size))];
-                    std::copy(bottom_row, bottom_row + row_size, temp_row.begin());
-                    std::copy(top_row, top_row + row_size, bottom_row);
-                    std::copy(temp_row.begin(), temp_row.end(), top_row);
-                }
-            }
-
-            for (const Vec2d& size : params.sizes) {
-                Point isize(size);
-                list_out.push_back(resize_and_crop(data, width, height, isize.x(), isize.y()));
-            }
-            return list_out;
-        };
-    }
-
-    return [](const ThumbnailsParams&) ->ThumbnailsList { return {}; };
-}
 
 static void update_instances_outside_state(Model& model, const DynamicPrintConfig& config)
 {
@@ -269,11 +205,9 @@ bool process_actions(Data& cli, const DynamicPrintConfig& print_config, std::vec
     if (actions.has("help")) {
         print_help();
     }
-#ifndef SLIC3R_SLA_ONLY
-    if (actions.has("help_fff")) {
-        print_help(true, ptFFF);
+    if (actions.has("version")) {
+        print_version();
     }
-#endif
     if (actions.has("help_sla")) {
         print_help(true, ptSLA);
     }
@@ -281,7 +215,7 @@ bool process_actions(Data& cli, const DynamicPrintConfig& print_config, std::vec
     if (actions.has("info")) {
         if (models.empty()) {
             boost::nowide::cerr << "error: cannot show info for empty models." << std::endl;
-            return 1;
+            return false;
         }
         // --info works on unrepaired model
         for (Model& model : models) {
@@ -291,14 +225,12 @@ bool process_actions(Data& cli, const DynamicPrintConfig& print_config, std::vec
     }
 
     if (actions.has("save")) {
-        //FIXME check for mixing the FFF / SLA parameters.
-        // or better save fff_print_config vs. sla_print_config
-        print_config.save(actions.opt_string("save"));
+            print_config.save(actions.opt_string("save"));
     }
 
     if (models.empty() && (actions.has("export_stl") || actions.has("export_obj") || actions.has("export_3mf"))) {
         boost::nowide::cerr << "error: cannot export empty models." << std::endl;
-        return 1;
+        return false;
     }
 
     const std::string output = cli.misc_config.has("output") ? cli.misc_config.opt_string("output") : "";
@@ -307,41 +239,25 @@ bool process_actions(Data& cli, const DynamicPrintConfig& print_config, std::vec
         for (auto& model : models)
             model.add_default_instances();
         if (!export_models(models, IO::STL, output))
-            return 1;
+            return false;
     }
     if (actions.has("export_obj")) {
         for (auto& model : models)
             model.add_default_instances();
         if (!export_models(models, IO::OBJ, output))
-            return 1;
+            return false;
     }
     if (actions.has("export_3mf")) {
         if (!export_models(models, IO::TMF, output))
-            return 1;
+            return false;
     }
 
-    if (actions.has("slice") || actions.has("export_gcode") || actions.has("export_sla")) {
-#ifdef SLIC3R_SLA_ONLY
-        if (actions.has("export_gcode")) {
-            boost::nowide::cerr << "error: G-code export is disabled in SLA-only builds" << std::endl;
-            return 1;
+    if (actions.has("slice") || actions.has("export_sla")) {
+        if (models.empty()) {
+            boost::nowide::cerr << "error: cannot slice empty models" << std::endl;
+            return false;
         }
-        if (actions.has("export_sla") == false && actions.has("slice") == false) {
-            boost::nowide::cerr << "error: only SLA slicing is available in SLA-only builds" << std::endl;
-            return 1;
-        }
-        PrinterTechnology printer_technology = ptSLA;
-#else
-        PrinterTechnology       printer_technology = Preset::printer_technology(print_config);
-        if (actions.has("export_gcode") && printer_technology == ptSLA) {
-            boost::nowide::cerr << "error: cannot export G-code for an FFF configuration" << std::endl;
-            return 1;
-        }
-        else if (actions.has("export_sla") && printer_technology == ptFFF) {
-            boost::nowide::cerr << "error: cannot export SLA slices for a SLA configuration" << std::endl;
-            return 1;
-        }
-#endif
+        // The SLA-only path uses sla_print directly.
 
         const Vec2crd           gap{ s_multiple_beds.get_bed_gap() };
         arr2::ArrangeBed        bed = arr2::to_arrange_bed(get_bed_shape(print_config), gap);
@@ -370,60 +286,47 @@ bool process_actions(Data& cli, const DynamicPrintConfig& print_config, std::vec
                 }
             });
 
-            Print       fff_print;
-#ifdef SLIC3R_SLA_ONLY
             PrintBase* print = static_cast<PrintBase*>(&sla_print);
-#else
-            PrintBase* print = (printer_technology == ptFFF) ? static_cast<PrintBase*>(&fff_print) : static_cast<PrintBase*>(&sla_print);
-            if (printer_technology == ptFFF) {
-                for (auto* mo : model.objects)
-                    fff_print.auto_assign_extruders(mo);
-            }
-#endif
 
-            update_instances_outside_state(model, print_config);
-            MultipleBedsUtils::with_single_bed_model_fff(model, 0, [&print, &model, &print_config]()
+            // Approvals given on the command line (the GUI asks the same questions in dialogs). Default: strict.
+            sla::ExportApprovalOptions approvals;
+            approvals.accept_adjustments = cli.misc_config.has("sla_accept_adjustments") && cli.misc_config.opt_bool("sla_accept_adjustments");
+            approvals.accept_conversion  = cli.misc_config.has("sla_accept_conversion")  && cli.misc_config.opt_bool("sla_accept_conversion");
+            approvals.log = [](const std::string &line) { boost::nowide::cout << line << std::endl; };
+            // Adjustments are planned for the format the job is actually written in (output extension), not for
+            // the printer's own format: export_print_approved does that after slicing.
+            const DynamicPrintConfig &job_config = print_config;
+
+            update_instances_outside_state(model, job_config);
+            MultipleBedsUtils::with_single_bed_model_sla(model, 0, [&print, &model, &job_config]()
             {
-                print->apply(model, print_config);
+                print->apply(model, job_config);
             });
 
             std::string err = print->validate();
             if (!err.empty()) {
                 boost::nowide::cerr << err << std::endl;
-                return 1;
+                return false;
             }
 
             std::string outfile = output;
 
-            if (print->empty())
-                boost::nowide::cout << "Nothing to print for " << outfile << " . Either the print is empty or no object is fully inside the print volume." << std::endl;
+            if (print->empty()) {
+                boost::nowide::cerr << "Nothing to print for " << outfile << " . Either the print is empty or no object is fully inside the print volume." << std::endl;
+                return false;
+            }
             else
                 try {
                 std::string outfile_final;
                 print->process();
-                if (printer_technology == ptFFF) {
-                    // The outfile is processed by a PlaceholderParser.
-                    const std::string input_file = fff_print.model().objects.empty() ? "" : fff_print.model().objects.front()->input_file;
-                    outfile = fff_print.export_gcode(outfile, nullptr, get_thumbnail_generator_cli(input_file));
-                    outfile_final = fff_print.print_statistics().finalize_output_path(outfile);
-                }
-                else {
+                {
                     outfile = sla_print.output_filepath(outfile);
                     // We need to finalize the filename beforehand because the export function sets the filename inside the zip metadata
                     outfile_final = sla_print.print_statistics().finalize_output_path(outfile);
-                    sla_print.export_print(outfile_final);
+                    // export_print() publishes outfile_final itself (temp file + rename): no further rename here.
+                    sla_print.export_print_approved(outfile_final, approvals);
                 }
-                if (outfile != outfile_final) {
-                    if (Slic3r::rename_file(outfile, outfile_final)) {
-                        boost::nowide::cerr << "Renaming file " << outfile << " to " << outfile_final << " failed" << std::endl;
-                        return false;
-                    }
-                    outfile = outfile_final;
-                }
-                // Run post-processing scripts for FFF output only.
-#ifndef SLIC3R_SLA_ONLY
-                run_post_process_scripts(outfile, fff_print.full_print_config());
-#endif
+                outfile = outfile_final;
                 boost::nowide::cout << "Slicing result exported to " << outfile << std::endl;
             }
             catch (const std::exception& ex) {
@@ -435,6 +338,594 @@ bool process_actions(Data& cli, const DynamicPrintConfig& print_config, std::vec
     }
 
     return true;
+}
+
+// ---------------------------------------------------------------------------
+// --sla-detect-issues <layer archive|.sla-project> [--output issues.json] [...]
+//
+// Standalone action: it needs no printer/material profile, so it is handled
+// before regular option parsing (see Run.cpp) and does not need a definition in
+// PrintConfig.cpp. Output is JSON, units: pixels (inclusive bbox, 0-based layer
+// indices) and millimetres.
+// ---------------------------------------------------------------------------
+namespace {
+
+const char *issue_type_name(sla::LayerIssue::Type type)
+{
+    switch (type) {
+    case sla::LayerIssue::Type::Island:        return "island";
+    case sla::LayerIssue::Type::Overhang:      return "overhang";
+    case sla::LayerIssue::Type::ResinTrap:     return "resin_trap";
+    case sla::LayerIssue::Type::SuctionCup:    return "suction_cup";
+    case sla::LayerIssue::Type::TouchingBound: return "touching_bound";
+    case sla::LayerIssue::Type::PrintHeight:   return "print_height";
+    case sla::LayerIssue::Type::EmptyLayer:    return "empty_layer";
+    }
+    return "unknown";
+}
+
+std::string json_escape(const std::string &text)
+{
+    std::string out;
+    for (const unsigned char c : text) {
+        if (c == '"' || c == '\\') { out += '\\'; out += char(c); }
+        else if (c < 0x20) { char buf[8]; std::snprintf(buf, sizeof buf, "\\u%04x", c); out += buf; }
+        else out += char(c);
+    }
+    return out;
+}
+
+// bbox is inclusive in pixels; print-height / empty-layer issues have none.
+std::string json_bbox(const BoundingBox &box)
+{
+    if (!box.defined) return "null";
+    return "{\"x\":" + std::to_string(box.min.x()) + ",\"y\":" + std::to_string(box.min.y()) +
+           ",\"width\":" + std::to_string(box.max.x() - box.min.x() + 1) +
+           ",\"height\":" + std::to_string(box.max.y() - box.min.y() + 1) + "}";
+}
+
+// Z of the top of every layer, mm. Falls back to a constant pitch for formats
+// that carry no per-layer Z (plain image stacks), which only affects the
+// suction-cup height rule and the print-height check.
+std::vector<double> layer_positions_z(const sla::LayerDocument &document, const std::vector<double> &project_z,
+                                      double archive_layer_height_mm = 0.)
+{
+    const size_t count = document.layer_count();
+    if (project_z.size() == count) return project_z;
+    std::vector<double> z(count);
+    // Archives without per-layer Z (SL1, image stacks) are a constant pitch; reading the pitch from
+    // the archive matters: a wrong one scales every height rule (suction cup height, print height).
+    double pitch = 0.05;
+    if (const auto job = document.job_parameters(); job && job->layer_height > 0) pitch = job->layer_height;
+    else if (archive_layer_height_mm > 0) pitch = archive_layer_height_mm;
+    for (size_t i = 0; i < count; ++i) {
+        const auto parameters = document.layer_parameters(i);
+        const auto it = parameters.find(sla::LayerParameter::PositionZ);
+        z[i] = it != parameters.end() ? it->second : pitch * double(i + 1);
+    }
+    return z;
+}
+
+// Text of one entry of a ZIP based archive; empty when the file is no ZIP or the entry is missing.
+std::string read_zip_text(const std::string &path, const char *entry)
+{
+    mz_zip_archive zip;
+    mz_zip_zero_struct(&zip);
+    if (!open_zip_reader(&zip, path)) return {};
+    std::string text;
+    size_t size = 0;
+    if (void *data = mz_zip_reader_extract_file_to_heap(&zip, entry, &size, 0)) {
+        text.assign(static_cast<const char *>(data), size);
+        mz_free(data);
+    }
+    close_zip_reader(&zip);
+    return text;
+}
+
+// "key = value" lookup in an INI-like text (SL1 config.ini / prusaslicer.ini).
+std::optional<double> ini_number(const std::string &text, const std::string &key)
+{
+    std::istringstream lines(text);
+    for (std::string line; std::getline(lines, line);) {
+        const size_t eq = line.find('=');
+        if (eq == std::string::npos) continue;
+        std::string name = line.substr(0, eq);
+        name.erase(std::remove_if(name.begin(), name.end(), [](unsigned char c) { return std::isspace(c); }), name.end());
+        if (name != key) continue;
+        char *end = nullptr;
+        const double value = std::strtod(line.c_str() + eq + 1, &end);
+        if (end != line.c_str() + eq + 1 && std::isfinite(value)) return value;
+    }
+    return std::nullopt;
+}
+
+// SL1 (PrusaSlicer) stores only globals: no per-layer Z, waits or lifts. Zero values = absent.
+struct Sl1Globals
+{
+    double layer_height_mm = 0, exposure_s = 0, bottom_exposure_s = 0, pixel_width_mm = 0, pixel_height_mm = 0;
+    size_t bottom_layers = 0;
+    bool   present = false;
+};
+
+Sl1Globals read_sl1_globals(const std::string &path)
+{
+    Sl1Globals g;
+    const std::string config = read_zip_text(path, "config.ini");
+    if (config.empty()) return g;
+    g.present = true;
+    g.layer_height_mm   = ini_number(config, "layerHeight").value_or(0.);
+    g.exposure_s        = ini_number(config, "expTime").value_or(0.);
+    g.bottom_exposure_s = ini_number(config, "expTimeFirst").value_or(0.);
+    // UVtools SL1File maps BottomLayerCount to numFade.
+    g.bottom_layers     = size_t(std::max(0., ini_number(config, "numFade").value_or(0.)));
+    const std::string profile = read_zip_text(path, "prusaslicer.ini");
+    const double width = ini_number(profile, "display_width").value_or(0.), height = ini_number(profile, "display_height").value_or(0.);
+    const double px = ini_number(profile, "display_pixels_x").value_or(0.), py = ini_number(profile, "display_pixels_y").value_or(0.);
+    if (width > 0 && height > 0 && px > 0 && py > 0) { g.pixel_width_mm = width / px; g.pixel_height_mm = height / py; }
+    return g;
+}
+
+bool parse_double_arg(const std::string &name, const char *text, double &out)
+{
+    char *end = nullptr;
+    out = std::strtod(text, &end);
+    if (end == text || *end != 0 || !std::isfinite(out)) {
+        boost::nowide::cerr << "error: " << name << " expects a number, got '" << text << "'" << std::endl;
+        return false;
+    }
+    return true;
+}
+
+} // namespace
+
+std::optional<int> process_sla_detect_issues(int argc, char **argv)
+{
+    std::string input, output;
+    bool        requested = false;
+    std::set<std::string> disabled;
+    sla::IssueDetectionConfig config;
+    double machine_height_mm = 0.;
+
+    for (int i = 1; i < argc; ++i) {
+        const std::string arg = argv[i];
+        if (arg == "--sla-detect-issues") { requested = true; if (i + 1 < argc && argv[i + 1][0] != '-') input = argv[++i]; }
+        else if (arg.rfind("--sla-detect-issues=", 0) == 0) { requested = true; input = arg.substr(20); }
+    }
+    if (!requested) return std::nullopt;
+
+    // Remaining options; values are UVtools defaults unless overridden here.
+    for (int i = 1; i < argc; ++i) {
+        const std::string arg = argv[i];
+        if (arg == "--sla-detect-issues") { if (i + 1 < argc && argv[i + 1][0] != '-') ++i; continue; }
+        if (arg.rfind("--sla-detect-issues=", 0) == 0) continue;
+        auto value = [&](double &out) {
+            return i + 1 < argc && parse_double_arg(arg, argv[++i], out);
+        };
+        double v = 0.;
+        if (arg == "--output" || arg == "-o") { if (i + 1 >= argc) { boost::nowide::cerr << "error: --output needs a file" << std::endl; return 1; } output = argv[++i]; }
+        else if (arg == "--disable") {
+            if (i + 1 >= argc) { boost::nowide::cerr << "error: --disable needs a list" << std::endl; return 1; }
+            std::string list = argv[++i];
+            size_t pos = 0;
+            while (pos <= list.size()) {
+                const size_t comma = std::min(list.find(',', pos), list.size());
+                disabled.insert(list.substr(pos, comma - pos)); pos = comma + 1;
+            }
+        }
+        else if (arg == "--island-required-area") { if (!value(v)) return 1; config.island.required_area_to_process_check_px = uint16_t(std::clamp(v, 0., 65535.)); }
+        else if (arg == "--island-support-percent") { if (!value(v)) return 1; config.island.required_pixels_to_support_multiplier = v / 100.; }
+        else if (arg == "--overhang-erode") { if (!value(v)) return 1; config.overhang.erode_iterations = uint8_t(std::clamp(v, 0., 255.)); }
+        else if (arg == "--resin-trap-required-area") { if (!value(v)) return 1; config.resin_trap.required_area_to_process_check_px = uint8_t(std::clamp(v, 0., 255.)); }
+        else if (arg == "--suction-cup-height") { if (!value(v)) return 1; config.resin_trap.required_height_to_consider_suction_cup_mm = v; }
+        else if (arg == "--touching-margin") { if (!value(v)) return 1; const auto m = uint8_t(std::clamp(v, 0., 255.)); config.touching_bound.margin_left_px = config.touching_bound.margin_top_px = config.touching_bound.margin_right_px = config.touching_bound.margin_bottom_px = m; }
+        else if (arg == "--machine-height") { if (!value(machine_height_mm)) return 1; }
+        else { boost::nowide::cerr << "error: unknown option for --sla-detect-issues: " << arg << std::endl; return 1; }
+    }
+    if (input.empty()) {
+        boost::nowide::cerr << "error: --sla-detect-issues needs a layer archive or .sla-project file\n"
+                               "options: --output FILE, --disable island,overhang,resin_trap,suction_cup,touching_bound,print_height,empty_layer,\n"
+                               "  --island-required-area PX, --island-support-percent P, --overhang-erode PX,\n"
+                               "  --resin-trap-required-area PX, --suction-cup-height MM, --touching-margin PX, --machine-height MM" << std::endl;
+        return 1;
+    }
+    config.island.enabled         = !disabled.count("island");
+    config.overhang.enabled       = !disabled.count("overhang");
+    config.resin_trap.enabled     = !disabled.count("resin_trap");
+    config.resin_trap.detect_suction_cups = !disabled.count("suction_cup");
+    config.touching_bound.enabled = !disabled.count("touching_bound");
+    config.print_height.enabled   = !disabled.count("print_height");
+    config.print_height.machine_height_mm = machine_height_mm;
+    config.empty_layer.enabled    = !disabled.count("empty_layer");
+
+    try {
+        sla::LayerDocument document;
+        std::vector<double> project_z;
+        const sla::LayerProgress load_progress = [](size_t, size_t) { return true; };
+        if (boost::algorithm::iends_with(input, ".sla-project")) {
+            auto project = sla::read_project_layers(input, load_progress);
+            if (!project) throw RuntimeError("Not a readable layer project: " + input);
+            document  = std::move(project->document);
+            project_z = std::move(project->positions_z);
+        } else
+            document = sla::LayerDocument::load_archive(input, load_progress);
+
+        const std::vector<double> z = layer_positions_z(document, project_z, read_sl1_globals(input).layer_height_mm);
+        // Each mask is decoded on demand by the detector's worker threads.
+        const sla::LayerMaskProvider provider = [&document](size_t index) {
+            auto image = document.image(index);
+            sla::LayerMask mask;
+            mask.width = image.cols; mask.height = image.rows; mask.data = std::move(image.buf);
+            return mask;
+        };
+        const auto issues = sla::detect_layer_issues(provider, z, config);
+
+        std::string json = "{\n  \"file\": \"" + json_escape(input) + "\",\n  \"layer_count\": " +
+                           std::to_string(document.layer_count()) + ",\n  \"issue_count\": " +
+                           std::to_string(issues.size()) + ",\n  \"issues\": [";
+        for (size_t n = 0; n < issues.size(); ++n) {
+            const auto &issue = issues[n];
+            json += std::string(n ? "," : "") + "\n    {\"type\": \"" + issue_type_name(issue.type) +
+                    "\", \"first_layer\": " + std::to_string(issue.first_layer) +
+                    ", \"last_layer\": " + std::to_string(issue.last_layer) +
+                    ", \"pixel_count\": " + std::to_string(issue.pixel_count) +
+                    ", \"bbox\": " + json_bbox(issue.bbox) + ", \"parts\": [";
+            for (size_t k = 0; k < issue.parts.size(); ++k) {
+                const auto &part = issue.parts[k];
+                json += std::string(k ? ", " : "") + "{\"layer\": " + std::to_string(part.layer) +
+                        ", \"pixel_count\": " + std::to_string(part.pixel_count) + ", \"bbox\": " + json_bbox(part.bbox) + "}";
+            }
+            json += "]}";
+        }
+        json += issues.empty() ? "]\n}\n" : "\n  ]\n}\n";
+
+        if (output.empty())
+            boost::nowide::cout << json;
+        else {
+            boost::nowide::ofstream file(output, std::ios::binary);
+            file << json;
+            if (!file.good()) throw RuntimeError("Cannot write " + output);
+        }
+        boost::nowide::cerr << issues.size() << " issue(s) in " << document.layer_count() << " layers" << std::endl;
+        return 0;
+    } catch (const std::exception &error) {
+        boost::nowide::cerr << "error: " << error.what() << std::endl;
+        return 1;
+    }
+}
+
+
+// ---------------------------------------------------------------------------
+// --sla-suggestions <layer archive|.sla-project> [--output suggestions.json]
+//                   [--only a,b] [--disable a,b]
+//
+// UVtools "Suggestions" (print parameter advice). Evaluation only: nothing is
+// applied or written back. Ids: bottom_layer_count, layer_height,
+// transition_layer_count, wait_time_before_cure, wait_time_after_cure,
+// model_position. Units: seconds, mm, pixels (0-based layers, inclusive bbox).
+// ---------------------------------------------------------------------------
+namespace {
+
+const char *layer_parameter_name(sla::LayerParameter field)
+{
+    switch (field) {
+    case sla::LayerParameter::Exposure:   return "exposure_s";
+    case sla::LayerParameter::WaitBefore: return "wait_before_s";
+    case sla::LayerParameter::WaitAfter:  return "wait_after_s";
+    default:                              return "other";
+    }
+}
+
+// "bottom_layer_count" etc. for --only / --disable.
+std::string suggestion_cli_name(const std::string &id)
+{
+    std::string out;
+    for (const char c : id) {
+        if (std::isupper(static_cast<unsigned char>(c)) && !out.empty()) out += '_';
+        out += char(std::tolower(static_cast<unsigned char>(c)));
+    }
+    return out;
+}
+
+std::string json_number(double value)
+{
+    char buffer[40];
+    std::snprintf(buffer, sizeof buffer, "%.6g", std::fabs(value) < 1e-12 ? 0. : value);
+    return buffer;
+}
+
+std::string json_pair(const std::optional<std::pair<size_t, size_t>> &value)
+{
+    return value ? "{\"before\": " + std::to_string(value->first) + ", \"after\": " + std::to_string(value->second) + "}" : "null";
+}
+
+// Builds the value-type job description from whatever the archive stores. A value the container
+// does not hold stays absent (empty array / capability false) instead of being invented.
+sla::SuggestionJob build_suggestion_job(const sla::LayerDocument &document, const std::vector<double> &project_z,
+                                        const std::string &path)
+{
+    sla::SuggestionJob job;
+    const size_t count = document.layer_count();
+    const Sl1Globals sl1 = read_sl1_globals(path);
+    job.z_mm = layer_positions_z(document, project_z, sl1.layer_height_mm);
+
+    const auto job_parameters = document.job_parameters();
+    const auto geometry       = document.raster_geometry();
+    job.layer_height_mm = job_parameters && job_parameters->layer_height > 0 ? job_parameters->layer_height : sl1.layer_height_mm;
+    if (job.layer_height_mm <= 0 && count > 0) job.layer_height_mm = job.z_mm.front();
+    job.bottom_layer_count = job_parameters ? job_parameters->bottom_layers : sl1.bottom_layers;
+    job.transition_layer_count = job_parameters ? job_parameters->transition_layers : 0;
+    job.can_set_bottom_layer_count = job_parameters.has_value() || sl1.present;
+
+    // Per-layer values exist only when every row carries the field.
+    const auto capabilities = document.parameter_capabilities();
+    auto editable = [&](sla::LayerParameter field) {
+        return std::any_of(capabilities.begin(), capabilities.end(), [&](const auto &c) { return c.field == field && c.editable; });
+    };
+    std::vector<sla::LayerParameters> rows(count);
+    bool has_exposure = count > 0, has_before = count > 0, has_after = count > 0;
+    for (size_t i = 0; i < count; ++i) {
+        rows[i] = document.layer_parameters(i);
+        has_exposure &= rows[i].count(sla::LayerParameter::Exposure) > 0;
+        has_before   &= rows[i].count(sla::LayerParameter::WaitBefore) > 0;
+        has_after    &= rows[i].count(sla::LayerParameter::WaitAfter) > 0;
+    }
+    auto column = [&](sla::LayerParameter field) {
+        std::vector<double> values(count);
+        for (size_t i = 0; i < count; ++i) values[i] = rows[i].at(field);
+        return values;
+    };
+    if (has_exposure) {
+        job.exposure_s = column(sla::LayerParameter::Exposure);
+        job.can_set_exposure = editable(sla::LayerParameter::Exposure);
+    } else if (sl1.present && sl1.exposure_s > 0) {
+        // SL1 holds two exposures; the layers derive from them, so they are not individually editable.
+        job.exposure_s.resize(count);
+        for (size_t i = 0; i < count; ++i) job.exposure_s[i] = i < sl1.bottom_layers ? sl1.bottom_exposure_s : sl1.exposure_s;
+        job.can_set_exposure = false;
+    } else
+        job.can_set_exposure = false;
+    if (has_before && editable(sla::LayerParameter::WaitBefore)) job.wait_before_s = column(sla::LayerParameter::WaitBefore);
+    if (has_after && editable(sla::LayerParameter::WaitAfter))   job.wait_after_s  = column(sla::LayerParameter::WaitAfter);
+
+    // Global exposures: the format's defaults, else the first bottom / last normal layer.
+    auto exposure_of = [](const std::map<sla::LayerParameter, double> &m) { const auto it = m.find(sla::LayerParameter::Exposure); return it == m.end() ? 0. : it->second; };
+    job.bottom_exposure_s = job_parameters ? exposure_of(job_parameters->bottom) : sl1.bottom_exposure_s;
+    job.normal_exposure_s = job_parameters ? exposure_of(job_parameters->normal) : sl1.exposure_s;
+    if (!job.exposure_s.empty()) {
+        if (job.bottom_exposure_s <= 0) job.bottom_exposure_s = job.exposure_s.front();
+        if (job.normal_exposure_s <= 0) job.normal_exposure_s = job.exposure_s.back();
+    }
+
+    if (count > 0) {
+        const auto first = document.image(0);
+        job.resolution_x = size_t(first.cols);
+        job.resolution_y = size_t(first.rows);
+    }
+    if (geometry && geometry->columns && geometry->rows) {
+        job.pixel_width_mm  = geometry->width_mm / double(geometry->columns);
+        job.pixel_height_mm = geometry->height_mm / double(geometry->rows);
+    } else {
+        job.pixel_width_mm = sl1.pixel_width_mm;
+        job.pixel_height_mm = sl1.pixel_height_mm;
+    }
+
+    // Each mask is decoded on demand by the evaluators' worker threads.
+    job.stats = sla::layer_stats_from_masks([&document](size_t index) {
+        auto image = document.image(index);
+        sla::LayerMask mask;
+        mask.width = size_t(image.cols); mask.height = size_t(image.rows); mask.data = std::move(image.buf);
+        return mask;
+    });
+    return job;
+}
+
+std::string suggestions_to_json(const std::string &input, size_t layer_count, const std::vector<sla::SuggestionResult> &results)
+{
+    auto status_name = [](sla::SuggestionStatus s) {
+        return s == sla::SuggestionStatus::Applied ? "applied" : s == sla::SuggestionStatus::NotApplied ? "not_applied" : "unavailable";
+    };
+    std::string json = "{\n  \"file\": \"" + json_escape(input) + "\",\n  \"layer_count\": " + std::to_string(layer_count) +
+                       ",\n  \"suggestions\": [";
+    for (size_t n = 0; n < results.size(); ++n) {
+        const auto &r = results[n];
+        json += std::string(n ? "," : "") + "\n    {\"id\": \"" + suggestion_cli_name(r.id) + "\", \"title\": \"" + json_escape(r.title) +
+                "\", \"status\": \"" + status_name(r.status) + "\", \"informational_only\": " + (r.informational_only ? "true" : "false") +
+                ",\n     \"message\": \"" + json_escape(r.message) + "\", \"description\": \"" + json_escape(r.description) +
+                "\",\n     \"confirmation\": \"" + json_escape(r.confirmation) + "\", \"information_url\": \"" + json_escape(r.information_url) +
+                "\", \"unavailable_reason\": \"" + json_escape(r.unavailable_reason) +
+                "\",\n     \"bottom_layer_count\": " + json_pair(r.bottom_layer_count) +
+                ", \"transition_layer_count\": " + json_pair(r.transition_layer_count) +
+                ", \"prepend_blank_first_layer\": " + (r.prepend_blank_first_layer ? "true" : "false") + ", \"model_move\": ";
+        if (r.model_move)
+            json += "{\"dx_px\": " + std::to_string(r.model_move->dx_px) + ", \"dy_px\": " + std::to_string(r.model_move->dy_px) +
+                    ", \"anchor\": \"" + r.model_move->anchor + "\", \"before\": " + json_bbox(r.model_move->before) +
+                    ", \"after\": " + json_bbox(r.model_move->after) + "}";
+        else
+            json += "null";
+        json += ", \"layer_changes\": [";
+        for (size_t k = 0; k < r.layer_changes.size(); ++k) {
+            const auto &c = r.layer_changes[k];
+            json += std::string(k ? ", " : "") + "{\"layer\": " + std::to_string(c.layer) + ", \"field\": \"" + layer_parameter_name(c.field) +
+                    "\", \"before\": " + json_number(c.before) + ", \"after\": " + json_number(c.after) + "}";
+        }
+        json += "]}";
+    }
+    json += results.empty() ? "]\n}\n" : "\n  ]\n}\n";
+    return json;
+}
+
+} // namespace
+
+std::optional<int> process_sla_suggestions(int argc, char **argv)
+{
+    std::string input, output;
+    bool        requested = false;
+    std::set<std::string> only, disabled;
+    auto split_list = [](const std::string &list, std::set<std::string> &target) {
+        size_t pos = 0;
+        while (pos <= list.size()) {
+            const size_t comma = std::min(list.find(',', pos), list.size());
+            target.insert(list.substr(pos, comma - pos)); pos = comma + 1;
+        }
+    };
+
+    for (int i = 1; i < argc; ++i) {
+        const std::string arg = argv[i];
+        if (arg == "--sla-suggestions") { requested = true; if (i + 1 < argc && argv[i + 1][0] != '-') input = argv[++i]; }
+        else if (arg.rfind("--sla-suggestions=", 0) == 0) { requested = true; input = arg.substr(18); }
+    }
+    if (!requested) return std::nullopt;
+
+    for (int i = 1; i < argc; ++i) {
+        const std::string arg = argv[i];
+        if (arg == "--sla-suggestions") { if (i + 1 < argc && argv[i + 1][0] != '-') ++i; continue; }
+        if (arg.rfind("--sla-suggestions=", 0) == 0) continue;
+        if ((arg == "--output" || arg == "-o") && i + 1 < argc) output = argv[++i];
+        else if (arg == "--only" && i + 1 < argc) split_list(argv[++i], only);
+        else if (arg == "--disable" && i + 1 < argc) split_list(argv[++i], disabled);
+        else { boost::nowide::cerr << "error: unknown option for --sla-suggestions: " << arg << std::endl; return 1; }
+    }
+    if (input.empty()) {
+        boost::nowide::cerr << "error: --sla-suggestions needs a layer archive or .sla-project file\n"
+                               "options: --output FILE, --only ID,..., --disable ID,...\n"
+                               "ids: bottom_layer_count, layer_height, transition_layer_count, wait_time_before_cure,\n"
+                               "     wait_time_after_cure, model_position (evaluation only, nothing is applied)" << std::endl;
+        return 1;
+    }
+
+    try {
+        sla::LayerDocument document;
+        std::vector<double> project_z;
+        const sla::LayerProgress load_progress = [](size_t, size_t) { return true; };
+        if (boost::algorithm::iends_with(input, ".sla-project")) {
+            auto project = sla::read_project_layers(input, load_progress);
+            if (!project) throw RuntimeError("Not a readable layer project: " + input);
+            document  = std::move(project->document);
+            project_z = std::move(project->positions_z);
+        } else
+            document = sla::LayerDocument::load_archive(input, load_progress);
+
+        const sla::SuggestionJob job = build_suggestion_job(document, project_z, input);
+        sla::SuggestionConfig config;
+        auto wanted = [&](const char *id) { return (only.empty() || only.count(id)) && !disabled.count(id); };
+        config.bottom_layer_count.enabled     = wanted("bottom_layer_count");
+        config.layer_height.enabled           = wanted("layer_height");
+        config.transition_layer_count.enabled = wanted("transition_layer_count");
+        config.wait_time_before_cure.enabled  = wanted("wait_time_before_cure");
+        config.wait_time_after_cure.enabled   = wanted("wait_time_after_cure");
+        config.model_position.enabled         = wanted("model_position");
+
+        const auto results = sla::evaluate_suggestions(job, config);
+        const std::string json = suggestions_to_json(input, document.layer_count(), results);
+        if (output.empty())
+            boost::nowide::cout << json;
+        else {
+            boost::nowide::ofstream file(output, std::ios::binary);
+            file << json;
+            if (!file.good()) throw RuntimeError("Cannot write " + output);
+        }
+        const size_t pending = size_t(std::count_if(results.begin(), results.end(),
+            [](const auto &r) { return r.status == sla::SuggestionStatus::NotApplied; }));
+        boost::nowide::cerr << results.size() << " suggestion(s), " << pending << " not applied" << std::endl;
+        return 0;
+    } catch (const std::exception &error) {
+        boost::nowide::cerr << "error: " << error.what() << std::endl;
+        return 1;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// --sla-run-recipe recipe.json [--input FILE] [--output FILE] [--dry-run] [--report FILE] [--sla-accept-adjustments]
+//
+// Local automation without the GUI: runs a declarative layer recipe (see doc/AUTOMATION.md and
+// libslic3r/SLA/LayerRecipe.hpp). Standalone like the actions above: no profiles or models are loaded.
+// Exit code: 0 success, 1 recipe or step error, 130 cancelled (Ctrl+C). Outputs are published only
+// after every step succeeded, so a failure or Ctrl+C leaves all output files untouched.
+// A JSON report (per step status) goes to --report FILE or stdout; a summary goes to stderr.
+// ---------------------------------------------------------------------------
+namespace {
+std::atomic<bool> g_recipe_cancel{false};
+extern "C" void recipe_sigint_handler(int) { g_recipe_cancel = true; }
+} // namespace
+
+std::optional<int> process_sla_run_recipe(int argc, char **argv)
+{
+    std::string recipe_path, input, output, report;
+    bool        requested = false, dry_run = false, accept_adjustments = false;
+
+    for (int i = 1; i < argc; ++i) {
+        const std::string arg = argv[i];
+        auto value = [&](std::string &out) {
+            if (i + 1 >= argc) { boost::nowide::cerr << "error: " << arg << " needs a value" << std::endl; return false; }
+            out = argv[++i];
+            return true;
+        };
+        if (arg == "--sla-run-recipe") { requested = true; if (i + 1 < argc && argv[i + 1][0] != '-') recipe_path = argv[++i]; }
+        else if (arg.rfind("--sla-run-recipe=", 0) == 0) { requested = true; recipe_path = arg.substr(17); }
+        else if (arg == "--input" || arg == "-i") { if (!value(input)) return 1; }
+        else if (arg == "--output" || arg == "-o") { if (!value(output)) return 1; }
+        else if (arg == "--report") { if (!value(report)) return 1; }
+        else if (arg == "--dry-run") dry_run = true;
+        else if (arg == "--sla-accept-adjustments") accept_adjustments = true;
+    }
+    if (!requested) return std::nullopt;
+
+    // Only options of this action are accepted next to it; anything else is most likely a typo.
+    for (int i = 1; i < argc; ++i) {
+        const std::string arg = argv[i];
+        if (arg == "--sla-run-recipe") { if (i + 1 < argc && argv[i + 1][0] != '-') ++i; continue; }
+        if (arg.rfind("--sla-run-recipe=", 0) == 0 || arg == "--dry-run" || arg == "--sla-accept-adjustments") continue;
+        if (arg == "--input" || arg == "-i" || arg == "--output" || arg == "-o" || arg == "--report") { ++i; continue; }
+        boost::nowide::cerr << "error: unknown option for --sla-run-recipe: " << arg << std::endl;
+        return 1;
+    }
+    if (recipe_path.empty()) {
+        boost::nowide::cerr << "error: --sla-run-recipe needs a recipe file (JSON)\n"
+                               "options: --input FILE (replaces the recipe's open path), --output FILE (replaces the path of the last\n"
+                               "  save/convert step), --dry-run (check everything, write nothing), --report FILE (JSON report, default stdout),\n"
+                               "  --sla-accept-adjustments (convert steps write the nearest storable values instead of refusing)\n"
+                               "operations:";
+        for (const auto &op : sla::recipe::operation_catalogue()) boost::nowide::cerr << "\n  " << op.name << " - " << op.summary;
+        boost::nowide::cerr << std::endl;
+        return 1;
+    }
+
+    try {
+        const sla::recipe::Recipe recipe = sla::recipe::load_recipe(recipe_path);
+        sla::recipe::RunOptions   options;
+        // --input / --output are relative to the current folder (not to the recipe's folder).
+        if (!input.empty())  options.input  = boost::filesystem::absolute(input).string();
+        if (!output.empty()) options.output = boost::filesystem::absolute(output).string();
+        options.dry_run = dry_run;
+        options.accept_adjustments = accept_adjustments;
+        g_recipe_cancel = false;
+        std::signal(SIGINT, recipe_sigint_handler);
+        options.progress = [](size_t, size_t) { return !g_recipe_cancel.load(); };
+
+        const sla::recipe::RunResult result = sla::recipe::run_recipe(recipe, std::move(options));
+        std::signal(SIGINT, SIG_DFL);
+
+        const std::string json = sla::recipe::run_result_to_json(result);
+        if (report.empty())
+            boost::nowide::cout << json;
+        else {
+            boost::nowide::ofstream file(report, std::ios::binary);
+            file << json;
+            if (!file.good()) boost::nowide::cerr << "error: cannot write " << report << std::endl;
+        }
+        const char *names[] = {"done", "planned", "FAILED", "cancelled", "not run"};
+        for (const auto &step : result.steps)
+            boost::nowide::cerr << "[" << step.index + 1 << "/" << result.steps.size() << "] " << step.op
+                                << (step.label.empty() ? "" : " (" + step.label + ")") << ": " << names[int(step.status)]
+                                << (step.message.empty() ? "" : " - " + step.message) << std::endl;
+        if (result.cancelled) { boost::nowide::cerr << "cancelled; no output was written" << std::endl; return 130; }
+        if (!result.ok) { boost::nowide::cerr << "error: " << result.error << "; no output was written" << std::endl; return 1; }
+        boost::nowide::cerr << (result.dry_run ? "dry run OK: nothing was written" : "recipe finished") << std::endl;
+        return 0;
+    } catch (const std::exception &error) {
+        boost::nowide::cerr << "error: " << error.what() << std::endl;
+        return 1;
+    }
 }
 
 }

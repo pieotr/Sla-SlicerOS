@@ -43,19 +43,13 @@ std::string proccess_failed_archives(const std::vector<std::string>& failed_arch
     }
     return failed_vendors;
 }
-void display_failed_vendors_dialog(wxWindow *parent, const std::string& failed_vendors, bool logged)
+void display_failed_vendors_dialog(wxWindow *parent, const std::string& failed_vendors)
 {
-    std::string dialog_text; 
-    if (logged) {
-         // TRN Dialog text, %1% is list of vendors.
-        dialog_text = format(_u8L("Update check failed for the following vendors:\n\n%1%\n"
-            "This may be because you are no longer subscribed to some configuration sources.\n"
-            "Please manage your configuration sources in Configuration Wizard"), failed_vendors);
-    } else {
-         // TRN Dialog text, %1% is list of vendors.
-        dialog_text = format(_u8L("Update check failed for the following vendors:\n\n%1%\n"
-            "Please log in to restore access to all your subscribed configuration sources."), failed_vendors);
-    } 
+    // There are no user accounts in this application: the only remedy is the Configuration Wizard.
+    // TRN Dialog text, %1% is list of vendors.
+    const std::string dialog_text = format(_u8L("Update check failed for the following vendors:\n\n%1%\n"
+        "This may be because you are no longer subscribed to some configuration sources.\n"
+        "Please manage your configuration sources in Configuration Wizard"), failed_vendors);
     GUI::WarningDialog dialog(parent, dialog_text, _L("Warning"), wxOK);
     dialog.ShowModal();
 }
@@ -132,7 +126,7 @@ bool PresetUpdaterWrapper::wizard_sync(const PresetBundle* preset_bundle, const 
     const SharedArchiveRepositoryVector &repos = m_preset_archive_database->get_selected_archive_repositories();
     std::string failed_vendors = proccess_failed_archives(m_ui_status->get_failed_archives(), vendors_copy, repos);
     if (!failed_vendors.empty()) {
-        display_failed_vendors_dialog(parent, failed_vendors, GUI::wxGetApp().is_account_logged_in());
+        display_failed_vendors_dialog(parent, failed_vendors);
     }
 
     // Offer update installation.  
@@ -215,7 +209,7 @@ PresetUpdater::UpdateResult PresetUpdaterWrapper::check_updates_on_user_request(
     const SharedArchiveRepositoryVector &repos = m_preset_archive_database->get_selected_archive_repositories();
     std::string failed_vendors = proccess_failed_archives(m_ui_status->get_failed_archives(), vendors_copy, repos);
     if (!failed_vendors.empty()) {
-        display_failed_vendors_dialog(parent, failed_vendors, GUI::wxGetApp().is_account_logged_in());
+        display_failed_vendors_dialog(parent, failed_vendors);
     }
 
     // preset_updater::config_update does show wxDialog

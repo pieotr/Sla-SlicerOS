@@ -243,6 +243,7 @@ class SupportTreeBuilder {
     std::vector<DiffBridge> m_diffbridges;
     std::vector<Pedestal>   m_pedestals;
     std::vector<Anchor>     m_anchors;
+    std::vector<indexed_triangle_set> m_support_meshes; // ready-made parts
 
     JobController m_ctl;
     
@@ -395,6 +396,20 @@ public:
         return _add_bridge(m_diffbridges, std::forward<Args>(args)...);
     }
     
+    // Add a ready-made, closed mesh as part of the support structure (used by
+    // the organic tree whose branches are swept surfaces).
+    void add_support_mesh(indexed_triangle_set &&mesh)
+    {
+        std::lock_guard<Mutex> lk(m_mutex);
+        m_support_meshes.emplace_back(std::move(mesh));
+        m_meshcache_valid = false;
+    }
+
+    const std::vector<indexed_triangle_set> &support_meshes() const
+    {
+        return m_support_meshes;
+    }
+
     Head &head(unsigned id)
     {
         std::lock_guard<Mutex> lk(m_mutex);

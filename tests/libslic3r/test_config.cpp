@@ -13,6 +13,7 @@
 
 using namespace Slic3r;
 
+
 TEST_CASE("Dynamic config serialization - tests ConfigBase", "[Config]"){
     DynamicPrintConfig config;
     INFO("Serialize float");
@@ -20,181 +21,135 @@ TEST_CASE("Dynamic config serialization - tests ConfigBase", "[Config]"){
     CHECK(config.opt_serialize("layer_height") == "0.3");
 
     INFO("Serialize int");
-    config.set_key_value("perimeters", new ConfigOptionInt(2));
-    CHECK(config.opt_serialize("perimeters") == "2");
+    config.set_key_value("faded_layers", new ConfigOptionInt(12));
+    CHECK(config.opt_serialize("faded_layers") == "12");
 
-    INFO("Serialize float or percent");
-    config.set_key_value("first_layer_height", new ConfigOptionFloatOrPercent(30, true));
-    CHECK(config.opt_serialize("first_layer_height") == "30%");
+    INFO("Serialize percent");
+    config.set_key_value("support_small_pillar_diameter_percent", new ConfigOptionPercent(30));
+    CHECK(config.opt_serialize("support_small_pillar_diameter_percent") == "30%");
 
     INFO("Serialize bool");
-    config.set_key_value("use_relative_e_distances", new ConfigOptionBool(true));
-    CHECK(config.opt_serialize("use_relative_e_distances") == "1");
+    config.set_key_value("supports_enable", new ConfigOptionBool(true));
+    CHECK(config.opt_serialize("supports_enable") == "1");
 
     INFO("Serialize enum");
-    config.set_key_value("gcode_flavor", new ConfigOptionEnum<GCodeFlavor>(gcfTeacup));
-    CHECK(config.opt_serialize("gcode_flavor") == "teacup");
+    config.set_key_value("display_orientation", new ConfigOptionEnum<SLADisplayOrientation>(sladoLandscape));
+    CHECK(config.opt_serialize("display_orientation") == "landscape");
+    config.set_deserialize_strict("display_orientation", "portrait");
+    CHECK(config.option<ConfigOptionEnum<SLADisplayOrientation>>("display_orientation")->value == sladoPortrait);
 
     INFO("Serialize string");
-    config.set_key_value("extrusion_axis", new ConfigOptionString("A"));
-    CHECK(config.opt_serialize("extrusion_axis") == "A");
+    config.set_key_value("sla_archive_format", new ConfigOptionString("A"));
+    CHECK(config.opt_serialize("sla_archive_format") == "A");
 
     INFO("Serialize string with newline");
-    config.set_key_value("notes", new ConfigOptionString("foo\nbar"));
-    CHECK(config.opt_serialize("notes") == "foo\\nbar");
-    config.set_deserialize_strict("notes", "bar\\nbaz");
+    config.set_key_value("sla_archive_format", new ConfigOptionString("foo\nbar"));
+    CHECK(config.opt_serialize("sla_archive_format") == "foo\\nbar");
+    config.set_deserialize_strict("sla_archive_format", "bar\\nbaz");
     INFO("Deserialize string with newline");
-    CHECK(config.opt_string("notes") == "bar\nbaz");
+    CHECK(config.opt_string("sla_archive_format") == "bar\nbaz");
 
     INFO("Serialize points");
-    config.set_key_value("extruder_offset", new ConfigOptionPoints({{10, 20}, {30, 45}}));
-    CHECK(config.opt_serialize("extruder_offset") == "10x20,30x45");
+    config.set_key_value("bed_shape", new ConfigOptionPoints({{10, 20}, {30, 45}}));
+    CHECK(config.opt_serialize("bed_shape") == "10x20,30x45");
     INFO("Deserialize points");
-    config.set_deserialize_strict("extruder_offset", "20x10");
-    CHECK(config.option<ConfigOptionPoints>("extruder_offset")->values == std::vector{Vec2d{20, 10}});
+    config.set_deserialize_strict("bed_shape", "20x10");
+    CHECK(config.option<ConfigOptionPoints>("bed_shape")->values == std::vector{Vec2d{20, 10}});
 
     INFO("Serialize floats");
-    config.set_key_value("nozzle_diameter", new ConfigOptionFloats({0.2, 3}));
-    CHECK(config.opt_serialize("nozzle_diameter") == "0.2,3");
+    config.set_key_value("delay_before_exposure", new ConfigOptionFloats({0.2, 3}));
+    CHECK(config.opt_serialize("delay_before_exposure") == "0.2,3");
     INFO("Deserialize floats");
-    config.set_deserialize_strict("nozzle_diameter", "0.1,0.4");
-    CHECK_THAT(config.option<ConfigOptionFloats>("nozzle_diameter")->values, Catch::Matchers::Approx(std::vector{0.1, 0.4}));
+    config.set_deserialize_strict("delay_before_exposure", "0.1,0.4");
+    CHECK_THAT(config.option<ConfigOptionFloats>("delay_before_exposure")->values, Catch::Matchers::Approx(std::vector{0.1, 0.4}));
     INFO("Deserialize floats from one value");
-    config.set_deserialize_strict("nozzle_diameter", "3");
-    CHECK_THAT(config.option<ConfigOptionFloats>("nozzle_diameter")->values, Catch::Matchers::Approx(std::vector{3.0}));
+    config.set_deserialize_strict("delay_before_exposure", "3");
+    CHECK_THAT(config.option<ConfigOptionFloats>("delay_before_exposure")->values, Catch::Matchers::Approx(std::vector{3.0}));
 
     INFO("Serialize ints");
-    config.set_key_value("temperature", new ConfigOptionInts({180, 210}));
-    CHECK(config.opt_serialize("temperature") == "180,210");
+    config.set_key_value("tilt_down_cycles", new ConfigOptionInts({180, 210}));
+    CHECK(config.opt_serialize("tilt_down_cycles") == "180,210");
     INFO("Deserialize ints");
-    config.set_deserialize_strict("temperature", "195,220");
-    CHECK(config.option<ConfigOptionInts>("temperature")->values == std::vector{195,220});
+    config.set_deserialize_strict("tilt_down_cycles", "195,220");
+    CHECK(config.option<ConfigOptionInts>("tilt_down_cycles")->values == std::vector{195,220});
 
     INFO("Serialize bools");
-    config.set_key_value("wipe", new ConfigOptionBools({true, false}));
-    CHECK(config.opt_serialize("wipe") == "1,0");
+    config.set_key_value("use_tilt", new ConfigOptionBools({true, false}));
+    CHECK(config.opt_serialize("use_tilt") == "1,0");
     INFO("Deserialize bools");
-    config.set_deserialize_strict("wipe", "0,1,1");
-    CHECK(config.option<ConfigOptionBools>("wipe")->values == std::vector<unsigned char>{false, true, true});
+    config.set_deserialize_strict("use_tilt", "0,1,1");
+    CHECK(config.option<ConfigOptionBools>("use_tilt")->values == std::vector<unsigned char>{false, true, true});
 
     INFO("Deserialize bools from empty stirng");
-    config.set_deserialize_strict("wipe", "");
-    CHECK(config.option<ConfigOptionBools>("wipe")->values == std::vector<unsigned char>{});
+    config.set_deserialize_strict("use_tilt", "");
+    CHECK(config.option<ConfigOptionBools>("use_tilt")->values == std::vector<unsigned char>{});
 
     INFO("Deserialize bools from value");
-    config.set_deserialize_strict({{"wipe", 1}});
-    CHECK(config.option<ConfigOptionBools>("wipe")->values == std::vector<unsigned char>{true});
+    config.set_deserialize_strict({{"use_tilt", 1}});
+    CHECK(config.option<ConfigOptionBools>("use_tilt")->values == std::vector<unsigned char>{true});
 
     INFO("Serialize strings");
-    config.set_key_value("post_process", new ConfigOptionStrings({"foo", "bar"}));
-    CHECK(config.opt_serialize("post_process") == "foo;bar");
+    config.set_key_value("compatible_printers", new ConfigOptionStrings({"foo", "bar"}));
+    CHECK(config.opt_serialize("compatible_printers") == "foo;bar");
     INFO("Deserialize strings");
-    config.set_deserialize_strict("post_process", "bar;baz");
-    CHECK(config.option<ConfigOptionStrings>("post_process")->values == std::vector<std::string>{"bar", "baz"});
+    config.set_deserialize_strict("compatible_printers", "bar;baz");
+    CHECK(config.option<ConfigOptionStrings>("compatible_printers")->values == std::vector<std::string>{"bar", "baz"});
 }
 
 TEST_CASE("Get keys", "[Config]"){
     DynamicPrintConfig config = DynamicPrintConfig::full_print_config();
     CHECK(!config.keys().empty());
+    CHECK(config.has("layer_height"));
+    CHECK(config.has("bed_shape"));
 }
 
 TEST_CASE("Set not already set option", "[Config]") {
     DynamicPrintConfig config;
-    config.set_deserialize_strict("filament_diameter", "3");
+    config.set_deserialize_strict("faded_layers", "3");
+    CHECK(config.opt_int("faded_layers") == 3);
 }
 
 TEST_CASE("Config apply dynamic to static", "[Config]") {
     DynamicPrintConfig config;
-    config.set_deserialize_strict("perimeters", "2");
+    config.set_deserialize_strict("faded_layers", "7");
 
-    // This trick is taken directly from perl.
-    StaticPrintConfig* config2 = static_cast<GCodeConfig*>(new FullPrintConfig());
-    config2->apply(config, true);
+    SLAFullPrintConfig config2;
+    config2.apply(config, true);
 
-    CHECK(config2->opt_int("perimeters") == 2);
-    delete config2;
+    CHECK(config2.opt_int("faded_layers") == 7);
 }
 
 TEST_CASE("Config apply static to dynamic", "[Config]") {
-    // This trick is taken directly from perl.
-    StaticPrintConfig* config = static_cast<GCodeConfig*>(new FullPrintConfig());
+    SLAFullPrintConfig config;
 
     DynamicPrintConfig config2;
-    config2.apply(*config, true);
-    delete config;
+    config2.apply(config, true);
 
     CHECK(
-        config2.opt_int("perimeters") ==
-        DynamicPrintConfig::full_print_config().opt_int("perimeters")
+        config2.opt_int("faded_layers") ==
+        DynamicPrintConfig::full_print_config().opt_int("faded_layers")
     );
-
 }
 
 TEST_CASE("Config apply dynamic to dynamic", "[Config]") {
 
     DynamicPrintConfig config;
-    config.set_key_value("extruder_offset", new ConfigOptionPoints({{0, 0}, {20, 0}, {0, 20}}));
+    config.set_key_value("bed_shape", new ConfigOptionPoints({{0, 0}, {20, 0}, {0, 20}}));
     DynamicPrintConfig config2;
     config2.apply(config, true);
 
     CHECK(
-        config2.option<ConfigOptionPoints>("extruder_offset")->values ==
+        config2.option<ConfigOptionPoints>("bed_shape")->values ==
         std::vector<Vec2d>{{0, 0}, {20, 0}, {0, 20}}
     );
 }
 
-TEST_CASE("Get abs value on percent", "[Config]") {
-    StaticPrintConfig* config = static_cast<GCodeConfig*>(new FullPrintConfig());
-
-    config->set_deserialize_strict("solid_infill_speed", "60");
-    config->set_deserialize_strict("top_solid_infill_speed", "10%");
-    CHECK(config->get_abs_value("top_solid_infill_speed") == 6);
-    delete config;
-}
-
 TEST_CASE("No interference between DynamicConfig objects", "[Config]") {
     DynamicPrintConfig config;
-    config.set_key_value("fill_pattern", new ConfigOptionString("line"));
+    config.set_key_value("sla_archive_format", new ConfigOptionString("line"));
     DynamicPrintConfig config2;
-    config2.set_key_value("fill_pattern", new ConfigOptionString("hilbertcurve"));
-    CHECK(config.opt_string("fill_pattern") == "line");
-}
-
-TEST_CASE("Normalize fdm extruder", "[Config]") {
-    DynamicPrintConfig config;
-    config.set("extruder", 2, true);
-    config.set("perimeter_extruder", 3, true);
-    config.normalize_fdm();
-    INFO("Extruder option is removed after normalize().");
-    CHECK(!config.has("extruder"));
-    INFO("Undefined extruder is populated with default extruder.");
-    CHECK(config.opt_int("infill_extruder") == 2);
-    INFO("Defined extruder is not overwritten by default extruder.");
-    CHECK(config.opt_int("perimeter_extruder") == 3);
-}
-
-TEST_CASE("Normalize fdm infill extruder", "[Config]") {
-    DynamicPrintConfig config;
-    config.set("infill_extruder", 2, true);
-    config.normalize_fdm();
-    INFO("Undefined solid infill extruder is populated with infill extruder.");
-    CHECK(config.opt_int("solid_infill_extruder") == 2);
-}
-
-TEST_CASE("Normalize fdm retract layer change", "[Config]") {
-    DynamicPrintConfig config;
-    config.set("spiral_vase", true, true);
-    config.set_key_value("retract_layer_change", new ConfigOptionBools({true, false}));
-    config.normalize_fdm();
-    CHECK(config.option<ConfigOptionBools>("retract_layer_change")->values == std::vector<unsigned char>{0, 0});
-}
-
-TEST_CASE("Can read ini with invalid items", "[Config]") {
-    std::string path = std::string(TEST_DATA_DIR) + "/test_config/bad_config_options.ini";
-
-    DynamicPrintConfig config;
-    config.load(path, ForwardCompatibilitySubstitutionRule::Disable);
-    //Did not crash.
+    config2.set_key_value("sla_archive_format", new ConfigOptionString("hilbertcurve"));
+    CHECK(config.opt_string("sla_archive_format") == "line");
 }
 
 struct SerializationTestData {
@@ -239,161 +194,101 @@ TEST_CASE("Config serialization of multiple values", "[Config]"){
     };
 
     for (const SerializationTestData& data : test_data) {
-        config.set_key_value("filament_notes", new ConfigOptionStrings(data.values));
-        CHECK(config.opt_serialize("filament_notes") == data.serialized);
+        config.set_key_value("compatible_printers", new ConfigOptionStrings(data.values));
+        CHECK(config.opt_serialize("compatible_printers") == data.serialized);
 
-        config.set_deserialize_strict("filament_notes", "");
-        CHECK(config.option<ConfigOptionStrings>("filament_notes")->values == std::vector<std::string>{});
+        config.set_deserialize_strict("compatible_printers", "");
+        CHECK(config.option<ConfigOptionStrings>("compatible_printers")->values == std::vector<std::string>{});
 
-        config.set_deserialize_strict("filament_notes", data.serialized);
-        CHECK(config.option<ConfigOptionStrings>("filament_notes")->values == data.values);
-    }
-}
-
-SCENARIO("Generic config validation performs as expected.", "[Config]") {
-    GIVEN("A config generated from default options") {
-        Slic3r::DynamicPrintConfig config = Slic3r::DynamicPrintConfig::full_print_config();
-        WHEN("perimeter_extrusion_width is set to 250%, a valid value") {
-            config.set_deserialize_strict("perimeter_extrusion_width", "250%");
-            THEN( "The config is read as valid.") {
-                REQUIRE(config.validate().empty());
-            }
-        }
-        WHEN("perimeter_extrusion_width is set to -10, an invalid value") {
-            config.set("perimeter_extrusion_width", -10);
-            THEN( "Validate returns error") {
-                REQUIRE(! config.validate().empty());
-            }
-        }
-
-        WHEN("perimeters is set to -10, an invalid value") {
-            config.set("perimeters", -10);
-            THEN( "Validate returns error") {
-                REQUIRE(! config.validate().empty());
-            }
-        }
+        config.set_deserialize_strict("compatible_printers", data.serialized);
+        CHECK(config.option<ConfigOptionStrings>("compatible_printers")->values == data.values);
     }
 }
 
 SCENARIO("Config accessor functions perform as expected.", "[Config]") {
     auto test = [](ConfigBase &config) {
         WHEN("A boolean option is set to a boolean value") {
-            REQUIRE_NOTHROW(config.set("gcode_comments", true));
+            REQUIRE_NOTHROW(config.set("supports_enable", false));
             THEN("The underlying value is set correctly.") {
-                REQUIRE(config.opt<ConfigOptionBool>("gcode_comments")->getBool() == true);
+                REQUIRE(config.opt<ConfigOptionBool>("supports_enable")->getBool() == false);
             }
         }
         WHEN("A boolean option is set to a string value representing a 0 or 1") {
-            CHECK_NOTHROW(config.set_deserialize_strict("gcode_comments", "1"));
+            CHECK_NOTHROW(config.set_deserialize_strict("supports_enable", "0"));
             THEN("The underlying value is set correctly.") {
-                REQUIRE(config.opt<ConfigOptionBool>("gcode_comments")->getBool() == true);
+                REQUIRE(config.opt<ConfigOptionBool>("supports_enable")->getBool() == false);
             }
         }
         WHEN("A boolean option is set to a string value representing something other than 0 or 1") {
             THEN("A BadOptionTypeException exception is thrown.") {
-                REQUIRE_THROWS_AS(config.set("gcode_comments", "Z"), BadOptionTypeException);
+                REQUIRE_THROWS_AS(config.set("supports_enable", "Z"), BadOptionTypeException);
             }
             AND_THEN("Value is unchanged.") {
-                REQUIRE(config.opt<ConfigOptionBool>("gcode_comments")->getBool() == false);
+                REQUIRE(config.opt<ConfigOptionBool>("supports_enable")->getBool() == true);
             }
         }
         WHEN("A boolean option is set to an int value") {
             THEN("A BadOptionTypeException exception is thrown.") {
-                REQUIRE_THROWS_AS(config.set("gcode_comments", 1), BadOptionTypeException);
+                REQUIRE_THROWS_AS(config.set("supports_enable", 1), BadOptionTypeException);
             }
         }
         WHEN("A numeric option is set from serialized string") {
-            config.set_deserialize_strict("bed_temperature", "100");
+            config.set_deserialize_strict("tilt_down_cycles", "100");
             THEN("The underlying value is set correctly.") {
-                REQUIRE(config.opt<ConfigOptionInts>("bed_temperature")->get_at(0) == 100);
+                REQUIRE(config.opt<ConfigOptionInts>("tilt_down_cycles")->get_at(0) == 100);
             }
         }
-#if 0
-        //FIXME better design accessors for vector elements.
-        WHEN("An integer-based option is set through the integer interface") {
-            config.set("bed_temperature", 100);
-            THEN("The underlying value is set correctly.") {
-                REQUIRE(config.opt<ConfigOptionInts>("bed_temperature")->get_at(0) == 100);
-            }
-        }
-#endif
         WHEN("An floating-point option is set through the integer interface") {
-            config.set("perimeter_speed", 10);
+            config.set("layer_height", 1);
             THEN("The underlying value is set correctly.") {
-                REQUIRE(config.opt<ConfigOptionFloat>("perimeter_speed")->getFloat() == 10.0);
+                REQUIRE(config.opt<ConfigOptionFloat>("layer_height")->getFloat() == 1.0);
             }
         }
         WHEN("A floating-point option is set through the double interface") {
-            config.set("perimeter_speed", 5.5);
+            config.set("layer_height", 0.5);
             THEN("The underlying value is set correctly.") {
-                REQUIRE(config.opt<ConfigOptionFloat>("perimeter_speed")->getFloat() == 5.5);
+                REQUIRE(config.opt<ConfigOptionFloat>("layer_height")->getFloat() == 0.5);
             }
         }
         WHEN("An integer-based option is set through the double interface") {
             THEN("A BadOptionTypeException exception is thrown.") {
-                REQUIRE_THROWS_AS(config.set("bed_temperature", 5.5), BadOptionTypeException);
+                REQUIRE_THROWS_AS(config.set("faded_layers", 5.5), BadOptionTypeException);
             }
         }
         WHEN("A numeric option is set to a non-numeric value.") {
-            THEN("A BadOptionTypeException exception is thown.") {
-                REQUIRE_THROWS_AS(config.set_deserialize_strict("perimeter_speed", "zzzz"), BadOptionValueException);
+            THEN("A BadOptionValueException exception is thown.") {
+                REQUIRE_THROWS_AS(config.set_deserialize_strict("layer_height", "zzzz"), BadOptionValueException);
             }
             THEN("The value does not change.") {
-                REQUIRE(config.opt<ConfigOptionFloat>("perimeter_speed")->getFloat() == 60.0);
+                REQUIRE(config.opt<ConfigOptionFloat>("layer_height")->getFloat() == 0.05);
             }
         }
         WHEN("A string option is set through the string interface") {
-            config.set("end_gcode", "100");
+            config.set("sla_archive_format", "100");
             THEN("The underlying value is set correctly.") {
-                REQUIRE(config.opt<ConfigOptionString>("end_gcode")->value == "100");
+                REQUIRE(config.opt<ConfigOptionString>("sla_archive_format")->value == "100");
             }
         }
         WHEN("A string option is set through the integer interface") {
-            config.set("end_gcode", 100);
+            config.set("sla_archive_format", 100);
             THEN("The underlying value is set correctly.") {
-                REQUIRE(config.opt<ConfigOptionString>("end_gcode")->value == "100");
+                REQUIRE(config.opt<ConfigOptionString>("sla_archive_format")->value == "100");
             }
         }
         WHEN("A string option is set through the double interface") {
-            config.set("end_gcode", 100.5);
+            config.set("sla_archive_format", 100.5);
             THEN("The underlying value is set correctly.") {
-                REQUIRE(config.opt<ConfigOptionString>("end_gcode")->value == float_to_string_decimal_point(100.5));
+                REQUIRE(config.opt<ConfigOptionString>("sla_archive_format")->value == float_to_string_decimal_point(100.5));
             }
         }
-        WHEN("A float or percent is set as a percent through the string interface.") {
-            config.set_deserialize_strict("first_layer_extrusion_width", "100%");
-            THEN("Value and percent flag are 100/true") {
-                auto tmp = config.opt<ConfigOptionFloatOrPercent>("first_layer_extrusion_width");
-                REQUIRE(tmp->percent == true);
-                REQUIRE(tmp->value == 100);
-            }
-        }
-        WHEN("A float or percent is set as a float through the string interface.") {
-            config.set_deserialize_strict("first_layer_extrusion_width", "100");
-            THEN("Value and percent flag are 100/false") {
-                auto tmp = config.opt<ConfigOptionFloatOrPercent>("first_layer_extrusion_width");
-                REQUIRE(tmp->percent == false);
-                REQUIRE(tmp->value == 100);
-            }
-        }
-        WHEN("A float or percent is set as a float through the int interface.") {
-            config.set("first_layer_extrusion_width", 100);
-            THEN("Value and percent flag are 100/false") {
-                auto tmp = config.opt<ConfigOptionFloatOrPercent>("first_layer_extrusion_width");
-                REQUIRE(tmp->percent == false);
-                REQUIRE(tmp->value == 100);
-            }
-        }
-        WHEN("A float or percent is set as a float through the double interface.") {
-            config.set("first_layer_extrusion_width", 100.5);
-            THEN("Value and percent flag are 100.5/false") {
-                auto tmp = config.opt<ConfigOptionFloatOrPercent>("first_layer_extrusion_width");
-                REQUIRE(tmp->percent == false);
-                REQUIRE(tmp->value == 100.5);
+        WHEN("A percent option is set through the string interface.") {
+            config.set_deserialize_strict("support_small_pillar_diameter_percent", "50%");
+            THEN("The value is 50") {
+                REQUIRE(config.opt<ConfigOptionPercent>("support_small_pillar_diameter_percent")->value == 50);
             }
         }
         WHEN("An invalid option is requested during set.") {
-            THEN("A BadOptionTypeException exception is thrown.") {
+            THEN("A UnknownOptionException exception is thrown.") {
                 REQUIRE_THROWS_AS(config.set("deadbeef_invalid_option", 1), UnknownOptionException);
                 REQUIRE_THROWS_AS(config.set("deadbeef_invalid_option", 1.0), UnknownOptionException);
                 REQUIRE_THROWS_AS(config.set("deadbeef_invalid_option", "1"), UnknownOptionException);
@@ -409,20 +304,12 @@ SCENARIO("Config accessor functions perform as expected.", "[Config]") {
                 REQUIRE_THROWS_AS(config.option_throw<ConfigOptionBool>("deadbeef_invalid_option", false), UnknownOptionException);
             }
         }
-        WHEN("An invalid option is requested during opt.") {
-            THEN("A UnknownOptionException exception is thrown.") {
-                REQUIRE_THROWS_AS(config.option_throw<ConfigOptionString>("deadbeef_invalid_option", false), UnknownOptionException);
-                REQUIRE_THROWS_AS(config.option_throw<ConfigOptionFloat>("deadbeef_invalid_option", false), UnknownOptionException);
-                REQUIRE_THROWS_AS(config.option_throw<ConfigOptionInt>("deadbeef_invalid_option", false), UnknownOptionException);
-                REQUIRE_THROWS_AS(config.option_throw<ConfigOptionBool>("deadbeef_invalid_option", false), UnknownOptionException);
-            }
-        }
 
         WHEN("getX called on an unset option.") {
             THEN("The default is returned.") {
-                REQUIRE(config.opt_float("layer_height") == 0.3);
-                REQUIRE(config.opt_int("raft_layers") == 0);
-                REQUIRE(config.opt_bool("support_material") == false);
+                REQUIRE(config.opt_float("layer_height") == 0.05);
+                REQUIRE(config.opt_int("faded_layers") == 10);
+                REQUIRE(config.opt_bool("supports_enable") == true);
             }
         }
 
@@ -437,8 +324,8 @@ SCENARIO("Config accessor functions perform as expected.", "[Config]") {
         auto config = Slic3r::DynamicPrintConfig::full_print_config();
         test(config);
     }
-    GIVEN("FullPrintConfig generated from default options") {
-        Slic3r::FullPrintConfig config;
+    GIVEN("SLAFullPrintConfig generated from default options") {
+        Slic3r::SLAFullPrintConfig config;
         test(config);
     }
 }
@@ -449,18 +336,16 @@ SCENARIO("Config ini load/save interface", "[Config]") {
 		std::string path = std::string(TEST_DATA_DIR) + "/test_config/new_from_ini.ini";
 		config.load_from_ini(path, ForwardCompatibilitySubstitutionRule::Disable);
         THEN("Config object contains ini file options.") {
-			REQUIRE(config.option_throw<ConfigOptionStrings>("filament_colour", false)->values.size() == 1);
-			REQUIRE(config.option_throw<ConfigOptionStrings>("filament_colour", false)->values.front() == "#ABCD");
+			REQUIRE(config.option_throw<ConfigOptionString>("sla_archive_format", false)->value == "pwmx");
         }
     }
 }
 
 SCENARIO("DynamicPrintConfig serialization", "[Config]") {
     WHEN("DynamicPrintConfig is serialized and deserialized") {
-        FullPrintConfig full_print_config;
+        SLAFullPrintConfig full_print_config;
         DynamicPrintConfig cfg;
         cfg.apply(full_print_config, false);
-
         std::string serialized;
         try {
             std::ostringstream ss;

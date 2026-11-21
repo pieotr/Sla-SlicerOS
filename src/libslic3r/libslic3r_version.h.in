@@ -3,6 +3,9 @@
 
 #define SLIC3R_APP_NAME "@SLIC3R_APP_NAME@"
 #define SLIC3R_APP_KEY "@SLIC3R_APP_KEY@"
+// Product version (what users see) vs. the PrusaSlicer compatibility version below.
+#define SLA_SLICER_VERSION "@SLA_SLICER_VERSION@"
+// Version of the PrusaSlicer code base; used for compatibility checks, not for display.
 #define SLIC3R_VERSION "@SLIC3R_VERSION@"
 #define SLIC3R_BUILD_ID "@SLIC3R_BUILD_ID@"
 

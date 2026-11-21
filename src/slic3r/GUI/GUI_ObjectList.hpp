@@ -35,9 +35,6 @@ enum class ModelVolumeType : int;
 // FIXME: broken build on mac os because of this is missing:
 typedef std::vector<std::string>                    t_config_option_keys;
 typedef std::vector<ModelVolume*>                   ModelVolumePtrs;
-typedef double                                      coordf_t;
-typedef std::pair<coordf_t, coordf_t>               t_layer_height_range;
-typedef std::map<t_layer_height_range, ModelConfig> t_layer_config_ranges;
 
 // Manifold mesh may contain self-intersections, so we want to always allow fixing the mesh.
 #define FIX_THROUGH_WINSDK_ALWAYS 1
@@ -45,7 +42,6 @@ typedef std::map<t_layer_height_range, ModelConfig> t_layer_config_ranges;
 namespace GUI {
 
 wxDECLARE_EVENT(EVT_OBJ_LIST_OBJECT_SELECT, SimpleEvent);
-class BitmapComboBox;
 
 struct ItemForDelete
 {
@@ -84,34 +80,28 @@ public:
         smUndef     = 0,
         smVolume    = 1,
         smInstance  = 2,
-        smLayer     = 4,
         smSettings  = 8,  // used for undo/redo
-        smLayerRoot = 16, // used for undo/redo
     };
 
     struct Clipboard
     {
         void reset() {
             m_type = itUndef; 
-            m_layer_config_ranges_cache .clear();
             m_config_cache.clear();
         }
         bool        empty()    const { return m_type == itUndef; }
         ItemType    get_type() const { return m_type; }
         void        set_type(ItemType type) { m_type = type; }
 
-        t_layer_config_ranges&  get_ranges_cache() { return m_layer_config_ranges_cache; }
         DynamicPrintConfig&     get_config_cache() { return m_config_cache; }
 
     private:
         ItemType                m_type {itUndef};
-        t_layer_config_ranges   m_layer_config_ranges_cache;
         DynamicPrintConfig      m_config_cache;
     };
 
 private:
     SELECTION_MODE  m_selection_mode {smUndef};
-    int             m_selected_layers_range_idx {-1};
 
     Clipboard       m_clipboard;
 #ifdef __WXMSW__
@@ -160,17 +150,12 @@ private:
     ModelConfig                 *m_config {nullptr};
     std::vector<ModelObject*>   *m_objects{ nullptr };
 
-    BitmapComboBox              *m_extruder_editor { nullptr };
-
     std::vector<wxBitmap*>      m_bmp_vector;
 
     int			m_selected_object_id = -1;
     bool		m_prevent_list_events = false;		// We use this flag to avoid circular event handling Select() 
                                                     // happens to fire a wxEVT_LIST_ITEM_SELECTED on OSX, whose event handler 
                                                     // calls this method again and again and again
-
-    bool        m_prevent_update_extruder_in_config = false; // We use this flag to avoid updating of the extruder value in config 
-                                                             // during updating of the extruder count.
 
     bool        m_prevent_canvas_selection_update = false; // This flag prevents changing selection on the canvas. See function
                                                            // update_settings_items - updating canvas selection is undesirable,
@@ -210,16 +195,9 @@ public:
     ModelObject*                object(const int obj_idx) const ;
 
     void                create_objects_ctrl();
-    void                update_objects_list_extruder_column(size_t extruders_count);
-    void                update_extruder_colors();
-    // show/hide "Extruder" column for Objects List
-    void                set_extruder_column_hidden(const bool hide) const;
-    // update extruder in current config
-    void                update_extruder_in_config(const wxDataViewItem& item);
     // update changed name in the object model
     void                update_name_in_model(const wxDataViewItem& item) const;
     void                update_name_in_list(int obj_idx, int vol_idx) const;
-    void                update_extruder_values_for_items(const size_t max_extruder);
 
     // Get obj_idx and vol_idx values for the selected (by default) or an adjusted item
     void                get_selected_item_indexes(int& obj_idx, int& vol_idx, const wxDataViewItem& item = wxDataViewItem(0));
@@ -236,7 +214,6 @@ public:
 
     void                selection_changed();
     void                show_context_menu(const bool evt_context_menu);
-    void                extruder_editing();
 #ifndef __WXOSX__
     void                key_event(wxKeyEvent& event);
 #endif /* __WXOSX__ */
@@ -266,19 +243,14 @@ public:
     bool                del_subobject_item(wxDataViewItem& item);
     void                del_settings_from_config(const wxDataViewItem& parent_item);
     void                del_instances_from_object(const int obj_idx);
-    void                del_layer_from_object(const int obj_idx, const t_layer_height_range& layer_range);
-    void                del_layers_from_object(const int obj_idx);
     bool                del_from_cut_object(bool is_connector, bool is_model_part = false, bool is_negative_volume = false);
     bool                del_subobject_from_object(const int obj_idx, const int idx, const int type);
     void                del_info_item(const int obj_idx, InfoItemType type);
     void                split();
     void                merge(bool to_multipart_object);
-    void                layers_editing();
 
-    wxDataViewItem      add_layer_root_item(const wxDataViewItem obj_item);
     wxDataViewItem      add_settings_item(wxDataViewItem parent_item, const DynamicPrintConfig* config);
 
-    DynamicPrintConfig  get_default_layer_config(const int obj_idx);
     bool                get_volume_by_item(const wxDataViewItem& item, ModelVolume*& volume);
     bool                is_splittable(bool to_objects);
     bool                selected_instances_of_same_object();
@@ -328,36 +300,11 @@ public:
 
     // Remove objects/sub-object from the list
     void remove();
-    void del_layer_range(const t_layer_height_range& range);
-    // Add a new layer height after the current range if possible.
-    // The current range is shortened and the new range is entered after the shortened current range if it fits.
-    // If no range fits after the current range, then no range is inserted.
-    // The layer range panel is updated even if this function does not change the layer ranges, as the panel update
-    // may have been postponed from the "kill focus" event of a text field, if the focus was lost for the "add layer" button.
-    // Rather providing the range by a value than by a reference, so that the memory referenced cannot be invalidated.
-    void add_layer_range_after_current(const t_layer_height_range current_range);
-    wxString can_add_new_range_after_current( t_layer_height_range current_range);
-    void add_layer_item (const t_layer_height_range& range, 
-                         const wxDataViewItem layers_item, 
-                         const int layer_idx = -1);
-    bool edit_layer_range(const t_layer_height_range& range, coordf_t layer_height);
-    // This function may be called when a text field loses focus for a "add layer" or "remove layer" button.
-    // In that case we don't want to destroy the panel with that "add layer" or "remove layer" buttons, as some messages
-    // are already planned for them and destroying these widgets leads to crashes at least on OSX.
-    // In that case the "add layer" or "remove layer" button handlers are responsible for always rebuilding the panel
-    // even if the "add layer" or "remove layer" buttons did not update the layer spans or layer heights.
-    bool edit_layer_range(const t_layer_height_range& range, 
-                          const t_layer_height_range& new_range,
-                          // Don't destroy the panel with the "add layer" or "remove layer" buttons.
-                          bool suppress_ui_update = false);
-
     void init_objects();
     bool multiple_selection() const ;
     bool is_selected(const ItemType type) const;
     bool is_connectors_item_selected() const;
     bool is_connectors_item_selected(const wxDataViewItemArray& sels) const;
-    int  get_selected_layers_range_idx() const;
-    void set_selected_layers_range_idx(const int range_idx) { m_selected_layers_range_idx = range_idx; }
     void set_selection_mode(SELECTION_MODE mode) { m_selection_mode = mode; }
     void update_selections();
     void update_selections_on_canvas();
@@ -391,8 +338,6 @@ public:
     void simplify();
     void update_item_error_icon(const int obj_idx, int vol_idx) const ;
 
-    void copy_layers_to_clipboard();
-    void paste_layers_into_list();
     void copy_settings_to_clipboard();
     void paste_settings_into_list();
     bool clipboard_is_empty() const { return m_clipboard.empty(); } 
@@ -407,7 +352,6 @@ public:
     void update_printable_state(int obj_idx, int instance_idx);
     void toggle_printable_state();
 
-    void set_extruder_for_selected_items(const int extruder) const ;
     wxDataViewItemArray reorder_volumes_and_get_selection(size_t obj_idx, std::function<bool(const ModelVolume*)> add_to_selection = nullptr);
     void apply_volumes_order();
 

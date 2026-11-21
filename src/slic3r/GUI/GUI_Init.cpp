@@ -6,6 +6,8 @@
 #include "GUI_Init.hpp"
 
 #include "libslic3r/AppConfig.hpp"
+#include "libslic3r/LegacyDataMigration.hpp"
+#include "libslic3r/Utils.hpp"
 #include "libslic3r/Utils/DirectoriesUtils.hpp"
 
 #include "slic3r/GUI/GUI.hpp"
@@ -56,14 +58,15 @@ int GUI_Run(GUI_InitParams &params)
     boost::log::add_console_log();
 #endif // SLIC3R_LOG_TO_FILE
     try {
-        GUI::GUI_App* gui = new GUI::GUI_App(params.start_as_gcodeviewer ? GUI::GUI_App::EAppMode::GCodeViewer : GUI::GUI_App::EAppMode::Editor);
-        if (gui->get_app_mode() != GUI::GUI_App::EAppMode::GCodeViewer) {
-            // G-code viewer is currently not performing instance check, a new G-code viewer is started every time.
-            bool gui_single_instance_setting = gui->app_config->get_bool("single_instance");
-            if (Slic3r::instance_check(params.argc, params.argv, gui_single_instance_setting)) {
-                //TODO: do we have delete gui and other stuff?
-                return -1;
-            }
+        // First start of SLA-Slicer with its own data directory: copy the SLA part of an existing PrusaSlicer
+        // data directory (read-only on the legacy side). Must run before the application config is loaded.
+        migrate_legacy_data_dir_if_needed(legacy_prusaslicer_data_dir(get_default_datadir()), data_dir(),
+                                          data_dir_explicit() || data_dir() != get_default_datadir());
+        GUI::GUI_App* gui = new GUI::GUI_App(GUI::GUI_App::EAppMode::Editor);
+        bool gui_single_instance_setting = gui->app_config->get_bool("single_instance");
+        if (Slic3r::instance_check(params.argc, params.argv, gui_single_instance_setting)) {
+            //TODO: do we have delete gui and other stuff?
+            return -1;
         }
 
         GUI::GUI_App::SetInstance(gui);
@@ -71,10 +74,10 @@ int GUI_Run(GUI_InitParams &params)
         return wxEntry(params.argc, params.argv);
     } catch (const Slic3r::Exception &ex) {
         boost::nowide::cerr << ex.what() << std::endl;
-        wxMessageBox(boost::nowide::widen(ex.what()), _L("PrusaSlicer GUI initialization failed"), wxICON_STOP);
+        wxMessageBox(boost::nowide::widen(ex.what()), format_wxstr(_L("%1% GUI initialization failed"), SLIC3R_APP_NAME), wxICON_STOP);
     } catch (const std::exception &ex) {
-        boost::nowide::cerr << "PrusaSlicer GUI initialization failed: " << ex.what() << std::endl;
-        wxMessageBox(format_wxstr(_L("Fatal error, exception catched: %1%"), ex.what()), _L("PrusaSlicer GUI initialization failed"), wxICON_STOP);
+        boost::nowide::cerr << SLIC3R_APP_NAME " GUI initialization failed: " << ex.what() << std::endl;
+        wxMessageBox(format_wxstr(_L("Fatal error, exception catched: %1%"), ex.what()), format_wxstr(_L("%1% GUI initialization failed"), SLIC3R_APP_NAME), wxICON_STOP);
     }
 
     // error

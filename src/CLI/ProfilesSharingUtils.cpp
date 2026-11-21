@@ -166,12 +166,7 @@ static void add_profile_node(pt::ptree& printer_profiles_node, const Preset& pri
 
     const DynamicPrintConfig& config = printer_preset.config;
 
-    int extruders_cnt = printer_preset.printer_technology() == ptSLA ? 0 :
-                        config.option<ConfigOptionFloats>("nozzle_diameter")->values.size();
-
     profile_node.put("name", printer_preset.name);
-    if (extruders_cnt > 0)
-        profile_node.put("extruders_cnt", extruders_cnt);
 
     const double max_print_height = config.opt_float("max_print_height");
     const ConfigOptionPoints& bed_shape = *config.option<ConfigOptionPoints>("bed_shape");
@@ -229,54 +224,26 @@ static void add_printer_models(pt::ptree& vendor_node,
                                const PrinterPresetCollection& printer_presets)
 {
     for (const auto& printer_model : vendor_profile->models) {
-        if (printer_technology != ptUnknown && printer_model.technology != printer_technology)
+        if (printer_model.technology != ptSLA ||
+            (printer_technology != ptUnknown && printer_model.technology != printer_technology))
             continue;
 
-        pt::ptree variants_node;
         pt::ptree printer_profiles_node;
         pt::ptree user_printer_profiles_node;
 
-        if (printer_model.technology == ptSLA) {
-            PrinterAttr attr({ vendor_profile->id, printer_model.id, "default" });
+        PrinterAttr attr({ vendor_profile->id, printer_model.id, "default" });
 
-            get_printer_profiles_node(printer_profiles_node, user_printer_profiles_node, printer_presets, attr);
-            if (printer_profiles_node.empty() && user_printer_profiles_node.empty())
-                continue;
-        }
-        else {
-            for (const auto& variant : printer_model.variants) {
-
-                PrinterAttr attr({ vendor_profile->id, printer_model.id, variant.name });
-
-                get_printer_profiles_node(printer_profiles_node, user_printer_profiles_node, printer_presets, attr);
-                if (printer_profiles_node.empty() && user_printer_profiles_node.empty())
-                    continue;
-
-                pt::ptree variant_node;
-                variant_node.put("name", variant.name);
-                variant_node.add_child("printer_profiles", printer_profiles_node);
-                if (!user_printer_profiles_node.empty())
-                    variant_node.add_child("user_printer_profiles", user_printer_profiles_node);
-
-                variants_node.push_back(std::make_pair("", variant_node));
-            }
-
-            if (variants_node.empty())
-                continue;
-        }
+        get_printer_profiles_node(printer_profiles_node, user_printer_profiles_node, printer_presets, attr);
+        if (printer_profiles_node.empty() && user_printer_profiles_node.empty())
+            continue;
 
         pt::ptree data_node;
         data_node.put("id", printer_model.id);
         data_node.put("name", printer_model.name);
-        data_node.put("technology", printer_model.technology == ptFFF ? "FFF" : "SLA");
-
-        if (!variants_node.empty())
-            data_node.add_child("variants", variants_node);
-        else {
-            data_node.add_child("printer_profiles", printer_profiles_node);
-            if (!user_printer_profiles_node.empty())
-                data_node.add_child("user_printer_profiles", user_printer_profiles_node);
-        }
+        data_node.put("technology", "SLA");
+        data_node.add_child("printer_profiles", printer_profiles_node);
+        if (!user_printer_profiles_node.empty())
+            data_node.add_child("user_printer_profiles", user_printer_profiles_node);
 
         data_node.put("vendor_name", vendor_profile->name);
         data_node.put("vendor_id", vendor_profile->id);
@@ -289,7 +256,7 @@ static void add_undef_printer_models(pt::ptree& vendor_node,
                                      PrinterTechnology printer_technology,
                                      const PrinterPresetCollection& printer_presets)
 {
-    for (auto pt : { ptFFF, ptSLA }) {
+    for (auto pt : { ptSLA }) {
         if (printer_technology != ptUnknown && printer_technology != pt)
             continue;
 
@@ -305,7 +272,7 @@ static void add_undef_printer_models(pt::ptree& vendor_node,
         if (!printer_profiles_node.empty()) {
             pt::ptree data_node;
             data_node.put("id", "");
-            data_node.put("technology", pt == ptFFF ? "FFF" : "SLA");
+            data_node.put("technology", "SLA");
             data_node.add_child("printer_profiles", printer_profiles_node);
             data_node.put("vendor_name", "");
             data_node.put("vendor_id", "");
@@ -337,18 +304,20 @@ std::string get_json_printer_models(PrinterTechnology printer_technology)
     return write_json_with_post_process(root);
 }
 
-static std::string get_installed_print_and_filament_profiles(const PresetBundle* preset_bundle, const Preset* printer_preset)
+static std::string get_installed_print_and_material_profiles(const PresetBundle* preset_bundle, const Preset* printer_preset)
 {
     PrinterTechnology printer_technology = printer_preset->printer_technology();
+    if (printer_technology != ptSLA)
+        return {};
 
     pt::ptree print_profiles;
     pt::ptree user_print_profiles;
 
     const PresetWithVendorProfile printer_preset_with_vendor_profile = preset_bundle->printers.get_preset_with_vendor_profile(*printer_preset);
 
-    const PresetCollection& print_presets       = printer_technology == ptFFF ? preset_bundle->prints    : preset_bundle->sla_prints;
-    const PresetCollection& material_presets    = printer_technology == ptFFF ? preset_bundle->filaments : preset_bundle->sla_materials;
-    const std::string       material_node_name  = printer_technology == ptFFF ? "filament_profiles"      : "sla_material_profiles";
+    const PresetCollection& print_presets       = preset_bundle->sla_prints;
+    const PresetCollection& material_presets    = preset_bundle->sla_materials;
+    const std::string       material_node_name  = "sla_material_profiles";
 
     for (auto print_preset : print_presets) {
 
@@ -362,7 +331,7 @@ static std::string get_installed_print_and_filament_profiles(const PresetBundle*
             for (auto material_preset : material_presets) {
 
                 // ?! check visible and no-template presets only
-                if (!material_preset.is_visible || (material_preset.vendor && material_preset.vendor->templates_profile))
+                if (!material_preset.is_visible)
                     continue;
 
                 const PresetWithVendorProfile material_preset_with_vendor_profile = material_presets.get_preset_with_vendor_profile(material_preset);
@@ -404,54 +373,16 @@ static std::string get_installed_print_and_filament_profiles(const PresetBundle*
     return write_json_with_post_process(tree);
 }
 
-std::string get_json_print_filament_profiles(const std::string& printer_profile)
+std::string get_json_print_material_profiles(const std::string& printer_profile)
 {
     PresetBundle preset_bundle;
     if (load_preset_bundle_from_datadir(preset_bundle)) {
         const Preset* preset = preset_bundle.printers.find_preset(printer_profile, false, false);
         if (preset)
-            return get_installed_print_and_filament_profiles(&preset_bundle, preset);
+            return get_installed_print_and_material_profiles(&preset_bundle, preset);
     }
 
     return "";
-}
-
-// Helper function for FS
-bool load_full_print_config(const std::string& print_preset_name, const std::string& filament_preset_name, const std::string& printer_preset_name, DynamicPrintConfig& config)
-{
-    PresetBundle preset_bundle;
-    if (!load_preset_bundle_from_datadir(preset_bundle)){
-        BOOST_LOG_TRIVIAL(error) << Slic3r::format("Failed to load data from the datadir '%1%'.", data_dir());
-        return false;
-    }
-
-    config = {};
-    config.apply(FullPrintConfig::defaults());
-
-    bool is_failed{ false };
-
-    if (const Preset* print_preset = preset_bundle.prints.find_preset(print_preset_name))
-        config.apply_only(print_preset->config, print_preset->config.keys());
-    else {
-        BOOST_LOG_TRIVIAL(warning) << Slic3r::format("Print profile '%1%' wasn't found.", print_preset_name);
-        is_failed |= true;
-    }
-
-    if (const Preset* filament_preset = preset_bundle.filaments.find_preset(filament_preset_name))
-        config.apply_only(filament_preset->config, filament_preset->config.keys());
-    else {
-        BOOST_LOG_TRIVIAL(warning) << Slic3r::format("Filament profile '%1%' wasn't found.", filament_preset_name);
-        is_failed |= true;
-    }
-
-    if (const Preset* printer_preset = preset_bundle.printers.find_preset(printer_preset_name))
-        config.apply_only(printer_preset->config, printer_preset->config.keys());
-    else {
-        BOOST_LOG_TRIVIAL(warning) << Slic3r::format("Printer profile '%1%' wasn't found.", printer_preset_name);
-        is_failed |= true;
-    }
-
-    return !is_failed;
 }
 
 // Helper function for load full config from installed presets by profile names
@@ -486,13 +417,13 @@ std::string load_full_print_config(const std::string& print_preset_name,
     else if (printer_technology != printer_preset->printer_technology())
         errors += "\n" + std::string("Printer technology of the selected printer preset is differs with required printer technology");
 
-    PresetCollection& print_presets = printer_technology == ptFFF ? preset_bundle.prints    : preset_bundle.sla_prints;
+    PresetCollection& print_presets = preset_bundle.sla_prints;
 
     const Preset* print_preset = print_presets.find_preset(print_preset_name);
     if (!print_preset)
         errors += "\n" + Slic3r::format("Print profile '%1%' wasn't found.", print_preset_name);
 
-    PresetCollection& material_presets = printer_technology == ptFFF ? preset_bundle.filaments : preset_bundle.sla_materials;
+    PresetCollection& material_presets = preset_bundle.sla_materials;
 
     auto check_material = [&material_presets] (const std::string& name, std::string& errors) -> void {
         const Preset* material_preset = material_presets.find_preset(name);
@@ -518,20 +449,6 @@ std::string load_full_print_config(const std::string& print_preset_name,
     if (printer_technology == ptSLA && material_preset_names.size() > 1) {
         BOOST_LOG_TRIVIAL(warning) << "Note: More than one sla material profiles were entered. Extras material profiles will be ignored.";
         material_preset_names.resize(1);
-    }
-
-    if (printer_technology == ptFFF) {
-        const int extruders_count = int(static_cast<const ConfigOptionFloats*>(printer_preset->config.option("nozzle_diameter"))->values.size());
-        if (extruders_count > int(material_preset_names.size())) {
-            BOOST_LOG_TRIVIAL(warning) << "Note: Less than needed filament profiles were entered. Missed filament profiles will be filled with first material.";
-            material_preset_names.reserve(extruders_count);
-            for (int i = extruders_count - material_preset_names.size(); i > 0; i--)
-                material_preset_names.push_back(material_preset_names.front());
-        }
-        else if (extruders_count < int(material_preset_names.size())) {
-            BOOST_LOG_TRIVIAL(warning) << "Note: More than needed filament profiles were entered. Extras filament profiles will be ignored.";
-            material_preset_names.resize(extruders_count);
-        }
     }
 
     // check profiles compatibility
@@ -569,16 +486,7 @@ std::string load_full_print_config(const std::string& print_preset_name,
 
     preset_bundle.printers.select_preset_by_name(printer_preset_name, true);
     print_presets.select_preset_by_name(print_preset_name, true);
-    if (printer_technology == ptSLA)
-        material_presets.select_preset_by_name(material_preset_names.front(), true);
-    else if (printer_technology == ptFFF) {
-        auto& extruders_filaments = preset_bundle.extruders_filaments;
-        extruders_filaments.clear();
-        for (size_t i = 0; i < material_preset_names.size(); ++i)
-            extruders_filaments.emplace_back(ExtruderFilaments(&preset_bundle.filaments, i, material_preset_names[i]));
-        if (extruders_filaments.size() == 1)
-            preset_bundle.filaments.select_preset_by_name(material_preset_names[0], false);
-    }
+    material_presets.select_preset_by_name(material_preset_names.front(), true);
 
     config = preset_bundle.full_config();
 

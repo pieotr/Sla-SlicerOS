@@ -526,16 +526,12 @@ bool GLGizmoRotate3D::on_mouse(const wxMouseEvent &mouse_event)
     if (mouse_event.Dragging() && m_dragging) {
         // Apply new temporary rotations
         TransformationType transformation_type;
-        if (m_parent.get_selection().is_wipe_tower())
-            transformation_type = TransformationType::World_Relative_Joint;
-        else {
-            switch (wxGetApp().obj_manipul()->get_coordinates_type())
-            {
-            default:
-            case ECoordinatesType::World:    { transformation_type = TransformationType::World_Relative_Joint; break; }
-            case ECoordinatesType::Instance: { transformation_type = TransformationType::Instance_Relative_Joint; break; }
-            case ECoordinatesType::Local:    { transformation_type = TransformationType::Local_Relative_Joint; break; }
-            }
+        switch (wxGetApp().obj_manipul()->get_coordinates_type())
+        {
+        default:
+        case ECoordinatesType::World:    { transformation_type = TransformationType::World_Relative_Joint; break; }
+        case ECoordinatesType::Instance: { transformation_type = TransformationType::Instance_Relative_Joint; break; }
+        case ECoordinatesType::Local:    { transformation_type = TransformationType::Local_Relative_Joint; break; }
         }
         if (mouse_event.AltDown())
             transformation_type.set_independent();
@@ -545,14 +541,8 @@ bool GLGizmoRotate3D::on_mouse(const wxMouseEvent &mouse_event)
 }
 
 void GLGizmoRotate3D::data_changed(bool is_serializing) {
-    if (m_parent.get_selection().is_wipe_tower()) {
-        m_gizmos[0].disable_grabber();
-        m_gizmos[1].disable_grabber();
-    }
-    else {
-        m_gizmos[0].enable_grabber();
-        m_gizmos[1].enable_grabber();
-    }
+    m_gizmos[0].enable_grabber();
+    m_gizmos[1].enable_grabber();
     set_rotation(Vec3d::Zero());
 }
 

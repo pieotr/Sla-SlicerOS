@@ -39,7 +39,7 @@ bool GLGizmoMove3D::on_mouse(const wxMouseEvent &mouse_event) {
 }
 
 void GLGizmoMove3D::data_changed(bool is_serializing) {
-    m_grabbers[2].enabled = !m_parent.get_selection().is_wipe_tower();
+    m_grabbers[2].enabled = true;
 }
 
 bool GLGizmoMove3D::on_init()

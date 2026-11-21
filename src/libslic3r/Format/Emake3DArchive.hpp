@@ -19,18 +19,19 @@ class SLAPrint;
 class Emake3DGalaxyArchive : public SLAArchiveWriter {
     SLAPrinterConfig m_cfg;
 
-protected:
+  protected:
     std::unique_ptr<sla::RasterBase> create_raster() const override;
     sla::RasterEncoder get_encoder() const override;
 
-public:
+  public:
     explicit Emake3DGalaxyArchive(const SLAPrinterConfig &cfg) : m_cfg(cfg) {}
     explicit Emake3DGalaxyArchive(SLAPrinterConfig &&cfg) : m_cfg(std::move(cfg)) {}
 
-    void export_print(const std::string     fname,
-                      const SLAPrint       &print,
-                      const ThumbnailsList &thumbnails,
-                      const std::string    &projectname = "") override;
+    static sla::EncodedRaster encode_mask(const void *, size_t, size_t, size_t);
+    static void validate_configuration(const SLAPrint &);
+
+    void export_print(const std::string fname, const SLAPrint &print, const ThumbnailsList &thumbnails,
+                      const std::string &projectname = "") override;
 };
 
 } // namespace Slic3r

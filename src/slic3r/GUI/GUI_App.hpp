@@ -36,7 +36,6 @@ class AppConfig;
 class PresetBundle;
 class PresetUpdaterWrapper;
 class ModelObject;
-class PrintHostJobQueue;
 class Model;
 class AppUpdater;
 
@@ -53,10 +52,8 @@ class Sidebar;
 class ObjectManipulation;
 class ObjectSettings;
 class ObjectList;
-class ObjectLayers;
 class Plater;
 class NotificationManager;
-class Downloader;
 struct GUI_InitParams;
 class GalleryDialog;
 class PresetArchiveDatabase;
@@ -69,7 +66,6 @@ enum FileType
     FT_STEP,
     FT_AMF,
     FT_3MF,
-    FT_GCODE,
     FT_MODEL,
     FT_PROJECT,
     FT_FONTS,
@@ -89,7 +85,8 @@ enum FileType
 
 extern wxString file_wildcards(FileType file_type, const std::string &custom_extension = {});
 
-wxString sla_wildcards(const char *formatid, const std::string& custom_extension);
+wxString sla_wildcards(const char *formatid, const std::string& custom_extension, bool export_only = false,
+                      std::vector<std::string> *format_ids = nullptr);
 
 enum ConfigMenuIDs {
     ConfigMenuWizard,
@@ -138,8 +135,7 @@ class GUI_App : public wxApp
 public:
     enum class EAppMode : unsigned char
     {
-        Editor,
-        GCodeViewer
+        Editor
     };
 
 private:
@@ -185,11 +181,9 @@ private:
 
     std::unique_ptr<RemovableDriveManager>          m_removable_drive_manager;
     std::unique_ptr<ImGuiWrapper>                   m_imgui;
-    std::unique_ptr<PrintHostJobQueue>              m_printhost_job_queue;
 	std::unique_ptr<OtherInstanceMessageHandler>    m_other_instance_message_handler;
     std::unique_ptr<AppUpdater>                     m_app_updater;
     std::unique_ptr<wxSingleInstanceChecker>        m_single_instance_checker;
-    std::unique_ptr<Downloader>                     m_downloader;
     
     std::string m_instance_hash_string;
 	size_t m_instance_hash_int;
@@ -206,9 +200,8 @@ public:
 
     EAppMode get_app_mode() const { return m_app_mode; }
     bool is_editor() const { return m_app_mode == EAppMode::Editor; }
-    bool is_gcode_viewer() const { return m_app_mode == EAppMode::GCodeViewer; }
     bool is_recreating_gui() const { return m_is_recreating_gui; }
-    std::string logo_name() const { return is_editor() ? "PrusaSlicer" : "PrusaSlicer-gcodeviewer"; }
+    std::string logo_name() const { return "SLA-Slicer"; }
 
     Search::OptionsSearcher& searcher() noexcept { return *m_searcher; }
     void                     set_searcher(Search::OptionsSearcher* searcher) { m_searcher = searcher; }
@@ -285,7 +278,6 @@ public:
     int             get_max_font_pt_size();
     float           toolbar_icon_scale(bool& is_custom) const;
     void            set_auto_toolbar_icon_scale(float scale) const;
-    void            check_printer_presets();
 
     void            recreate_GUI(const wxString& message);
     void            system_info();
@@ -293,7 +285,6 @@ public:
     void            load_project(wxWindow *parent, wxString& input_file) const;
     void            import_model(wxWindow *parent, wxArrayString& input_files) const;
     void            import_zip(wxWindow* parent, wxString& input_file) const;
-    void            load_gcode(wxWindow* parent, wxString& input_file) const;
 
     static bool     catch_error(std::function<void()> cb, const std::string& err);
 
@@ -317,9 +308,8 @@ public:
     void            apply_keeped_preset_modifications();
     bool            check_and_keep_current_preset_changes(const wxString& caption, const wxString& header, int action_buttons, bool* postponed_apply_of_keeped_changes = nullptr);
     bool            can_load_project();
-    bool            check_print_host_queue();
     bool            checked_tab(Tab* tab);
-    void            load_current_presets(bool check_printer_presets = true);
+    void            load_current_presets();
 
     wxString        current_language_code() const { return m_wxLocale->GetCanonicalName(); }
 	// Translate the language code to a code, for which Prusa Research maintains translations. Defaults to "en_US".
@@ -334,7 +324,6 @@ public:
     bool            open_browser_with_warning_dialog(const wxString& url, wxWindow* parent = nullptr, bool force_remember_choice = true, int flags = 0);
     bool            open_login_browser_with_dialog(const wxString& url, wxWindow* parent = nullptr, int flags = 0);
 #ifdef __APPLE__
-    void            OSXStoreOpenFiles(const wxArrayString &files) override;
     // wxWidgets override to get an event on open files.
     void            MacOpenFiles(const wxArrayString &fileNames) override;
     void            MacOpenURL(const wxString& url) override;
@@ -344,13 +333,11 @@ public:
     ObjectManipulation*  obj_manipul();
     ObjectSettings*      obj_settings();
     ObjectList*          obj_list();
-    ObjectLayers*        obj_layers();
     Plater*              plater();
     const Plater*        plater() const;
     Model&      		 model();
     NotificationManager* notification_manager();
     GalleryDialog *      gallery_dialog();
-    Downloader*          downloader();
 
     // Parameters extracted from the command line to be passed to GUI after initialization.
     GUI_InitParams* init_params { nullptr };
@@ -362,8 +349,6 @@ public:
 	PresetUpdaterWrapper*  get_preset_updater_wrapper() { return m_preset_updater_wrapper.get(); }
 
     wxBookCtrlBase* tab_panel() const ;
-    int             extruders_cnt() const;
-    int             extruders_edited_cnt() const;
 
     std::vector<Tab *>      tabs_list;
 
@@ -378,19 +363,11 @@ public:
 
     ImGuiWrapper* imgui() { return m_imgui.get(); }
 
-    PrintHostJobQueue& printhost_job_queue() { return *m_printhost_job_queue.get(); }
 
     void            open_web_page_localized(const std::string &http_address);
-    bool            may_switch_to_SLA_preset(const wxString& caption);
     bool            run_wizard(ConfigWizard::RunReason reason, ConfigWizard::StartPage start_page = ConfigWizard::SP_WELCOME);
     void            update_wizard_login_page();
     void            show_desktop_integration_dialog();
-    void            show_downloader_registration_dialog();
-
-#if ENABLE_THUMBNAIL_GENERATOR_DEBUG
-    // temporary and debug only -> extract thumbnails from selected gcode and save them as png files
-    void            gcode_thumbnails_debug();
-#endif // ENABLE_THUMBNAIL_GENERATOR_DEBUG
 
     GLShaderProgram* get_shader(const std::string& shader_name) { return m_opengl_mgr.get_shader(shader_name); }
     GLShaderProgram* get_current_shader() { return m_opengl_mgr.get_current_shader(); }
@@ -402,37 +379,12 @@ public:
 #ifdef __WXMSW__
     void            associate_3mf_files();
     void            associate_stl_files();
-    void            associate_gcode_files();
-    void            associate_bgcode_files();
 #endif // __WXMSW__
 
 
-    // URL download - PrusaSlicer gets system call to open prusaslicer:// URL which should contain address of download
-    void            start_download(std::string url);
 
-    void            open_wifi_config_dialog(bool forced, const wxString& drive_path = {});
-    bool            get_wifi_config_dialog_shown() const { return m_wifi_config_dialog_shown; }
-    
-    bool            select_printer_from_connect(const std::string& cmd);
-    void            select_filament_from_connect(const std::string& cmd);
-    void            handle_connect_request_printer_select(const std::string& cmd);
-    void            handle_connect_request_printer_select_inner(const std::string& cmd);
-    void            show_printer_webview_tab();
     // return true if preset vas invisible and we have to installed it to make it selectable
     bool            select_printer_preset(const Preset* printer_preset);
-    bool            select_filament_preset(const Preset* filament_preset, size_t extruder_index);
-    void            search_and_select_filaments(const std::string& material, bool avoid_abrasive, size_t extruder_index, std::string& out_message);
-    void            handle_script_message(std::string msg) {}
-    void            request_model_download(std::string import_json) {}
-    void            download_project(std::string project_id) {}
-    void            request_project_download(std::string project_id) {}
-    void            request_open_project(std::string project_id) {}
-    void            request_remove_project(std::string project_id) {}
-    void            printables_download_request(const std::string& download_url, const std::string& model_url);
-    void            printables_slice_request(const std::string& download_url, const std::string& model_url);
-    void            printables_login_request();
-    void            open_link_in_printables(const std::string& url);
-    bool            is_account_logged_in() const;
 private:
     bool            on_init_inner();
 	void            init_app_config();
@@ -458,8 +410,6 @@ private:
     void            remove_desktop_files_dialog();
 #endif //(__linux__) && !defined(SLIC3R_DESKTOP_INTEGRATION)
 
-    bool                    m_wifi_config_dialog_shown { false };
-    bool                    m_wifi_config_dialog_was_declined { false };
     // change to vector of items when adding more items that require update
     //wxMenuItem*    m_login_config_menu_item { nullptr };
     std::map< ConfigMenuIDs, wxMenuItem*> m_config_menu_updatable_items;

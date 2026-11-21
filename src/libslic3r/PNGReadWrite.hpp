@@ -36,6 +36,9 @@ using ImageGreyscale = Image<uint8_t>;
 // Only decodes true 8 bit grayscale png images. Returns false for other formats
 // TODO (if needed): implement transformation of rgb images into grayscale...
 bool decode_png(IStream &stream, ImageGreyscale &out_img);
+// Opt-in conversion for true color XML.CWS masks. Composite alpha over black
+// and return one grayscale channel without allocating a full RGBA image.
+
 
 // TODO (if needed)
 // struct RGB { uint8_t r, g, b; };
@@ -47,6 +50,7 @@ bool decode_png(IStream &stream, ImageGreyscale &out_img);
 struct ReadBuf { const void *buf = nullptr; const size_t sz = 0; };
 
 bool is_png(const ReadBuf &pngbuf);
+bool decode_color_png(const ReadBuf &pngbuf, ImageGreyscale &out_img);
 
 template<class Img> bool decode_png(const ReadBuf &in_buf, Img &out_img)
 {

@@ -8,7 +8,7 @@
 #include <boost/algorithm/string/predicate.hpp>
 #include <boost/filesystem.hpp>
 
-bool write_to_pot(boost::filesystem::path path, const std::vector<std::pair<std::string, std::string>>& data)
+bool write_to_pot(boost::filesystem::path path, const std::vector<std::pair<std::string, std::string>>& data, const char *source = "resources/data/hints.ini")
 {
 	boost::nowide::ofstream file(path.string(), std::ios_base::app);
 	for (const auto& element : data)
@@ -18,7 +18,7 @@ bool write_to_pot(boost::filesystem::path path, const std::vector<std::pair<std:
 		//msgctxt "Mode"
 		//msgid "Advanced"
 		//msgstr ""
-		file << "\n#: resources/data/hints.ini: ["<< element.first << "]\nmsgid \"" << element.second << "\"\nmsgstr \"\"\n";
+		file << "\n#: " << source << ": ["<< element.first << "]\nmsgid \"" << element.second << "\"\nmsgstr \"\"\n";
 	}
 	file.close();
 	return true;
@@ -61,7 +61,7 @@ int main(int argc, char* argv[])
 	}
 	try {
 		path_to_ini = boost::filesystem::canonical(boost::filesystem::path(argv[1])).parent_path() / "resources" / "data" / "hints.ini";
-		path_to_pot = boost::filesystem::canonical(boost::filesystem::path(argv[2])).parent_path() / "localization" /"PrusaSlicer.pot";
+		path_to_pot = boost::filesystem::canonical(boost::filesystem::path(argv[2])).parent_path() / "localization" /"SLA-Slicer.pot";
 	} catch (std::exception&) {
 		std::cout << "HINTS_TO_POT FAILED: BOOST CANNONICAL" << std::endl;
 		return -1;
@@ -72,13 +72,21 @@ int main(int argc, char* argv[])
 		std::cout << path_to_ini.string() << std::endl;
 		return -1;
 	}
-	if (!read_hints_ini(std::move(path_to_ini), data)) {
+	if (!read_hints_ini(path_to_ini, data)) {
 		std::cout << "HINTS_TO_POT FAILED TO READ HINTS INI" << std::endl;
 		return -1;
 	}
-	if (!write_to_pot(std::move(path_to_pot), data)) {
+	if (!write_to_pot(path_to_pot, data)) {
 		std::cout << "HINTS_TO_POT FAILED TO WRITE POT FILE" << std::endl;
 		return -1;
+	}
+	// Keep app-owned offline hint text in the existing gettext extraction flow.
+	const auto offline_path = path_to_ini.parent_path() / "sla_hints.ini";
+	if (boost::filesystem::exists(offline_path)) {
+		std::vector<std::pair<std::string, std::string>> offline_data;
+		if (!read_hints_ini(offline_path, offline_data) ||
+			!write_to_pot(path_to_pot, offline_data, "resources/data/sla_hints.ini"))
+			return -1;
 	}
 	std::cout << "HINTS_TO_POT SUCCESS" << std::endl;
     return 0;

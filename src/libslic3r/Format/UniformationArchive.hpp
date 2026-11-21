@@ -27,6 +27,8 @@ public:
     explicit UniformationGKoneArchive(const SLAPrinterConfig &cfg) : m_cfg(cfg) {}
     explicit UniformationGKoneArchive(SLAPrinterConfig &&cfg) : m_cfg(std::move(cfg)) {}
 
+    static void validate_configuration(const SLAPrint &print);
+
     void export_print(const std::string     fname,
                       const SLAPrint       &print,
                       const ThumbnailsList &thumbnails,

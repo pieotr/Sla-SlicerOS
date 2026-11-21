@@ -332,8 +332,8 @@ ConfigSubstitutions SL1_SVGReader::read(std::vector<ExPolygons> &slices,
 
 ConfigSubstitutions SL1_SVGReader::read(DynamicPrintConfig &out)
 {
-    ZipperArchive arch = read_zipper_archive(m_fname, {"prusaslicer.ini"}, {});
-    return out.load(arch.profile, ForwardCompatibilitySubstitutionRule::Enable);
+    ZipperArchive arch = read_zipper_archive(m_fname, {"prusaslicer.ini", "config.ini"}, {});
+    return extract_profile(arch, out).second;
 }
 
 } // namespace Slic3r

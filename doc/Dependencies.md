@@ -1,34 +1,32 @@
-# Dependency report for PrusaSlicer
-## Possible dynamic linking on Linux
-* zlib: Strict dependency required from the system, linked dynamically. Many other libs depend on zlib.
-* wxWidgets >= 3.2
-* libcurl
-* tbb
-* boost
-* eigen
-* glew
-* expat
-* openssl
-* nlopt
-* openvdb: This library depends on other libs, namely boost, zlib, openexr, blosc (not strictly), etc... 
-* CGAL: Needs additional dependencies
-    * MPFR 
-    * GMP
+# Zależności SLA-Slicer
 
-## External libraries in source tree
-* ad-mesh: Lots of customization, have to be bundled in the source tree.
-* avrdude: Like ad-mesh, many customization, need to be in the source tree.
-* clipper: An important library we have to have full control over it. We also have some slicer specific modifications.
-* glu-libtess: This is an extract of the mesa/glu library not officially available as a package.
-* imgui: no packages for debian, author suggests using in the source tree
-* miniz: No packages, author suggests using in the source tree
-* qhull: libqhull-dev does not contain libqhullcpp => link errors. Until it is fixed, we will use the builtin version. https://bugs.debian.org/cgi-bin/bugreport.cgi?bug=925540
-* semver: One module C library, author expects to use clib for installation. No packages.
+Aktualny graf celów: `CMakeLists.txt`, `src/CMakeLists.txt`, `src/libslic3r/CMakeLists.txt`
+i `deps/CMakeLists.txt`. Licencje składników: [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md),
+spis maszynowy: [SBOM.json](SBOM.json). Aplikacja jest tylko offline: CURL i OpenSSL są wyłączone z
+budowy zależności i nie są linkowane; biblioteki WebView nie są używane.
 
-## Header only
-* igl
-* nanosvg
-* agg
-* catch2: Only Arch has packages for catch2, other distros at most catch (v1.x). Being strictly header only, we bundle this in the source tree. Used for the unit-test suites.
+## Budowane przez `deps/` (statycznie, katalog `deps/build/destdir/usr/local`)
 
+Blosc, Boost, Catch2, Cereal, CGAL, Eigen, EXPAT, GLEW, GMP, JPEG, MPFR, NanoSVG, NLopt, OCCT (STEP),
+OpenEXR, OpenVDB, PNG (Windows/macOS), Qhull, TBB, ZLIB (Windows), json (nlohmann), wxWidgets
+(GTK3 na Linuksie; opcja `-DDEP_WX_GTK3=ON`), z3.
 
+**OpenCV 4.12.0** (core, imgproc; statycznie): receptura `deps/+OpenCV/OpenCV.cmake`. Budowana
+domyślnie na Windows i macOS; na Linuksie tylko na żądanie (`-DDEP_OpenCV=ON`,
+`build_linux.sh --bundled-opencv`) — domyślnie używany jest OpenCV z systemu (>= 4.7). Ta sama wersja
+i suma SHA256 co w `tools/docker/Dockerfile.build`.
+
+## Z systemu (Linux)
+
+GTK3, OpenGL/GLU, dbus, X11, libtiff, libpng, libjpeg, OpenJPEG, zlib, OpenCV >= 4.7 (jeśli nie
+użyto `--bundled-opencv`). Pełna lista z nazwami pakietów dla Debiana/Ubuntu, Fedory i Archa:
+[../install.md](../install.md).
+
+## W drzewie źródeł (`bundled_deps/`, `src/`)
+
+admesh, agg, ankerl, fast_float, glu-libtess, hidapi (mysz 3D), imgui, int128, libigl, libnest2d,
+localesutils, miniz, qoi, semver, stb_dxt, stb_image, tcbspan, clipper (z modyfikacjami),
+slic3r-arrange, occt_wrapper. Dane wskazówek: `bundled_deps/hints`.
+
+Dla pakietów przenośnych biblioteki natywne, których nie dostarcza system (OpenCV z kontenera, TIFF,
+OpenJPEG, libjpeg, ...), zbiera `tools/bundle_native_libraries.py` wraz z licencjami i sumami SHA256.

@@ -1,0 +1,4238 @@
+{
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.5",
+  "version": 1,
+  "serialNumber": "urn:uuid:5243110c-0df4-5763-9e31-6e8bab58282e",
+  "metadata": {
+    "timestamp": "2026-11-12T17:25:33Z",
+    "tools": {
+      "components": [
+        {
+          "type": "application",
+          "name": "tools/generate_sbom.py"
+        }
+      ]
+    },
+    "component": {
+      "type": "application",
+      "name": "SLA-Slicer",
+      "version": "1.0.0",
+      "licenses": [
+        {
+          "expression": "AGPL-3.0-only"
+        }
+      ],
+      "description": "SLA/MSLA slicer derived from PrusaSlicer 2.9.4 (AGPL-3.0)"
+    }
+  },
+  "components": [
+    {
+      "type": "library",
+      "bom-ref": "Boost@1.83.0",
+      "name": "Boost",
+      "version": "1.83.0",
+      "licenses": [
+        {
+          "expression": "BSL-1.0"
+        }
+      ],
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:source",
+          "value": "deps/+Boost"
+        },
+        {
+          "name": "slasl:linkage",
+          "value": "static"
+        },
+        {
+          "name": "slasl:linked-in-binary",
+          "value": "yes"
+        },
+        {
+          "name": "slasl:notice",
+          "value": "deps/build/dep_Boost-prefix/src/dep_Boost/LICENSE_1_0.txt"
+        },
+        {
+          "name": "slasl:source-built",
+          "value": "True"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://github.com/boostorg/boost/releases/download/boost-1.83.0/boost-1.83.0.zip"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "oneTBB@2021.5.0",
+      "name": "oneTBB",
+      "version": "2021.5.0",
+      "licenses": [
+        {
+          "expression": "Apache-2.0"
+        }
+      ],
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:source",
+          "value": "deps/+TBB"
+        },
+        {
+          "name": "slasl:linkage",
+          "value": "static"
+        },
+        {
+          "name": "slasl:linked-in-binary",
+          "value": "yes"
+        },
+        {
+          "name": "slasl:notice",
+          "value": "deps/build/dep_TBB-prefix/src/dep_TBB/LICENSE.txt"
+        },
+        {
+          "name": "slasl:source-built",
+          "value": "True"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://github.com/oneapi-src/oneTBB/archive/refs/tags/v2021.5.0.zip"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "Eigen@3.3.7",
+      "name": "Eigen",
+      "version": "3.3.7",
+      "licenses": [
+        {
+          "expression": "MPL-2.0"
+        }
+      ],
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:source",
+          "value": "deps/+Eigen"
+        },
+        {
+          "name": "slasl:linkage",
+          "value": "header-only"
+        },
+        {
+          "name": "slasl:linked-in-binary",
+          "value": "n/a"
+        },
+        {
+          "name": "slasl:notice",
+          "value": "deps/build/dep_Eigen-prefix/src/dep_Eigen/COPYING.MPL2"
+        },
+        {
+          "name": "slasl:note",
+          "value": "Only MPL-2.0 code paths are used; Eigen also ships BSD/LGPL/GPL files that are not included."
+        },
+        {
+          "name": "slasl:source-built",
+          "value": "True"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://gitlab.com/libeigen/eigen/-/archive/3.3.7/eigen-3.3.7.zip"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "cereal@1.3.0",
+      "name": "cereal",
+      "version": "1.3.0",
+      "licenses": [
+        {
+          "expression": "BSD-3-Clause"
+        }
+      ],
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:source",
+          "value": "deps/+Cereal"
+        },
+        {
+          "name": "slasl:linkage",
+          "value": "header-only"
+        },
+        {
+          "name": "slasl:linked-in-binary",
+          "value": "n/a"
+        },
+        {
+          "name": "slasl:notice",
+          "value": "deps/build/dep_Cereal-prefix/src/dep_Cereal/LICENSE"
+        },
+        {
+          "name": "slasl:source-built",
+          "value": "True"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://github.com/USCiLab/cereal/archive/refs/tags/v1.3.0.zip"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "CGAL@5.6.2",
+      "name": "CGAL",
+      "version": "5.6.2",
+      "licenses": [
+        {
+          "expression": "GPL-3.0-or-later"
+        }
+      ],
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:source",
+          "value": "deps/+CGAL"
+        },
+        {
+          "name": "slasl:linkage",
+          "value": "header-only"
+        },
+        {
+          "name": "slasl:linked-in-binary",
+          "value": "yes"
+        },
+        {
+          "name": "slasl:notice",
+          "value": "deps/build/dep_CGAL-prefix/src/dep_CGAL/LICENSE.md"
+        },
+        {
+          "name": "slasl:note",
+          "value": "Header-only GPL-3.0+ packages are compiled into libslic3r_cgal; GPL-3.0 is combinable with AGPL-3.0."
+        },
+        {
+          "name": "slasl:source-built",
+          "value": "True"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://github.com/CGAL/cgal/archive/refs/tags/v5.6.2.zip"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "OpenVDB_(Prusa_fork)@git-339ee88230da",
+      "name": "OpenVDB (Prusa fork)",
+      "version": "git-339ee88230da",
+      "licenses": [
+        {
+          "expression": "MPL-2.0"
+        }
+      ],
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:source",
+          "value": "deps/+OpenVDB"
+        },
+        {
+          "name": "slasl:linkage",
+          "value": "static"
+        },
+        {
+          "name": "slasl:linked-in-binary",
+          "value": "yes"
+        },
+        {
+          "name": "slasl:notice",
+          "value": "deps/build/dep_OpenVDB-prefix/src/dep_OpenVDB/LICENSE"
+        },
+        {
+          "name": "slasl:source-built",
+          "value": "True"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://github.com/prusa3d/openvdb/archive/339ee88230da33e3fefb133d8c1a9e16bef09144.zip"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "c-blosc@git-8724c06e3da9",
+      "name": "c-blosc",
+      "version": "git-8724c06e3da9",
+      "licenses": [
+        {
+          "expression": "BSD-3-Clause"
+        }
+      ],
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:source",
+          "value": "deps/+Blosc"
+        },
+        {
+          "name": "slasl:linkage",
+          "value": "static"
+        },
+        {
+          "name": "slasl:linked-in-binary",
+          "value": "yes"
+        },
+        {
+          "name": "slasl:notice",
+          "value": "deps/build/dep_Blosc-prefix/src/dep_Blosc/LICENSES/BLOSC.txt"
+        },
+        {
+          "name": "slasl:note",
+          "value": "Also bundles LZ4, Snappy, FastLZ, Zlib parts, see LICENSES/ in the source tree."
+        },
+        {
+          "name": "slasl:source-built",
+          "value": "True"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://github.com/Blosc/c-blosc/archive/8724c06e3da90f10986a253814af18ca081d8de0.zip"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "OpenEXR_/_Half_/_Iex_/_Imath@2.5.5",
+      "name": "OpenEXR / Half / Iex / Imath",
+      "version": "2.5.5",
+      "licenses": [
+        {
+          "expression": "BSD-3-Clause"
+        }
+      ],
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:source",
+          "value": "deps/+OpenEXR"
+        },
+        {
+          "name": "slasl:linkage",
+          "value": "static"
+        },
+        {
+          "name": "slasl:linked-in-binary",
+          "value": "yes"
+        },
+        {
+          "name": "slasl:notice",
+          "value": "deps/build/dep_OpenEXR-prefix/src/dep_OpenEXR/LICENSE.md"
+        },
+        {
+          "name": "slasl:source-built",
+          "value": "True"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://github.com/AcademySoftwareFoundation/openexr/archive/refs/tags/v2.5.5.zip"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "GMP@6.2.1",
+      "name": "GMP",
+      "version": "6.2.1",
+      "licenses": [
+        {
+          "expression": "LGPL-3.0-or-later OR GPL-2.0-or-later"
+        }
+      ],
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:source",
+          "value": "deps/+GMP"
+        },
+        {
+          "name": "slasl:linkage",
+          "value": "static"
+        },
+        {
+          "name": "slasl:linked-in-binary",
+          "value": "yes"
+        },
+        {
+          "name": "slasl:notice",
+          "value": "deps/build/dep_GMP-prefix/src/dep_GMP/COPYING.LESSERv3"
+        },
+        {
+          "name": "slasl:note",
+          "value": "Statically linked LGPL library: the corresponding source and build recipe (deps/) must stay available for relinking."
+        },
+        {
+          "name": "slasl:source-built",
+          "value": "True"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://gmplib.org/download/gmp/gmp-6.2.1.tar.bz2"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "MPFR@4.2.1",
+      "name": "MPFR",
+      "version": "4.2.1",
+      "licenses": [
+        {
+          "expression": "LGPL-3.0-or-later"
+        }
+      ],
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:source",
+          "value": "deps/+MPFR"
+        },
+        {
+          "name": "slasl:linkage",
+          "value": "static"
+        },
+        {
+          "name": "slasl:linked-in-binary",
+          "value": "yes"
+        },
+        {
+          "name": "slasl:notice",
+          "value": "deps/build/dep_MPFR-prefix/src/dep_MPFR/COPYING.LESSER"
+        },
+        {
+          "name": "slasl:note",
+          "value": "Statically linked LGPL library, same relinking note as GMP."
+        },
+        {
+          "name": "slasl:source-built",
+          "value": "True"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://www.mpfr.org/mpfr-4.2.1/mpfr-4.2.1.tar.bz2"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "NLopt@2.5.0",
+      "name": "NLopt",
+      "version": "2.5.0",
+      "licenses": [
+        {
+          "expression": "MIT AND LGPL-2.1-or-later"
+        }
+      ],
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:source",
+          "value": "deps/+NLopt"
+        },
+        {
+          "name": "slasl:linkage",
+          "value": "static"
+        },
+        {
+          "name": "slasl:linked-in-binary",
+          "value": "yes"
+        },
+        {
+          "name": "slasl:notice",
+          "value": "deps/build/dep_NLopt-prefix/src/dep_NLopt/COPYRIGHT"
+        },
+        {
+          "name": "slasl:note",
+          "value": "Combined work is under all included terms; most restrictive: luksan/ is LGPL-2.1+ (luksan/COPYRIGHT)."
+        },
+        {
+          "name": "slasl:source-built",
+          "value": "True"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://github.com/stevengj/nlopt/archive/v2.5.0.tar.gz"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "Qhull@8.1-alpha3",
+      "name": "Qhull",
+      "version": "8.1-alpha3",
+      "licenses": [
+        {
+          "expression": "Qhull"
+        }
+      ],
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:source",
+          "value": "deps/+Qhull"
+        },
+        {
+          "name": "slasl:linkage",
+          "value": "static"
+        },
+        {
+          "name": "slasl:linked-in-binary",
+          "value": "yes"
+        },
+        {
+          "name": "slasl:notice",
+          "value": "deps/build/dep_Qhull-prefix/src/dep_Qhull/COPYING.txt"
+        },
+        {
+          "name": "slasl:note",
+          "value": "Qhull license is a permissive BSD-style license (not an SPDX BSD id)."
+        },
+        {
+          "name": "slasl:source-built",
+          "value": "True"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://github.com/qhull/qhull/archive/refs/tags/v8.1-alpha3.zip"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "wxWidgets_(Prusa_fork)@git-5462e7d7cfac",
+      "name": "wxWidgets (Prusa fork)",
+      "version": "git-5462e7d7cfac",
+      "licenses": [
+        {
+          "expression": "LicenseRef-wxWindows-3.1"
+        }
+      ],
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:source",
+          "value": "deps/+wxWidgets"
+        },
+        {
+          "name": "slasl:linkage",
+          "value": "static"
+        },
+        {
+          "name": "slasl:linked-in-binary",
+          "value": "yes"
+        },
+        {
+          "name": "slasl:notice",
+          "value": "deps/build/dep_wxWidgets-prefix/src/dep_wxWidgets/docs/licence.txt"
+        },
+        {
+          "name": "slasl:note",
+          "value": "wxWindows Library Licence 3.1 = LGPL-2+ with exception allowing binary distribution under own terms."
+        },
+        {
+          "name": "slasl:source-built",
+          "value": "True"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://github.com/prusa3d/wxWidgets/archive/5462e7d7cfac645926188443e842171e107b312c.zip"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "GLEW@2.2.0",
+      "name": "GLEW",
+      "version": "2.2.0",
+      "licenses": [
+        {
+          "expression": "BSD-3-Clause AND MIT"
+        }
+      ],
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:source",
+          "value": "deps/+GLEW"
+        },
+        {
+          "name": "slasl:linkage",
+          "value": "static"
+        },
+        {
+          "name": "slasl:linked-in-binary",
+          "value": "yes"
+        },
+        {
+          "name": "slasl:notice",
+          "value": "deps/build/dep_GLEW-prefix/src/dep_GLEW/LICENSE.txt"
+        },
+        {
+          "name": "slasl:source-built",
+          "value": "True"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://sourceforge.net/projects/glew/files/glew/2.2.0/glew-2.2.0.zip"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "NanoSVG@git-abcd277ea45e",
+      "name": "NanoSVG",
+      "version": "git-abcd277ea45e",
+      "licenses": [
+        {
+          "expression": "Zlib"
+        }
+      ],
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:source",
+          "value": "deps/+NanoSVG"
+        },
+        {
+          "name": "slasl:linkage",
+          "value": "static"
+        },
+        {
+          "name": "slasl:linked-in-binary",
+          "value": "yes"
+        },
+        {
+          "name": "slasl:notice",
+          "value": "deps/build/dep_NanoSVG-prefix/src/dep_NanoSVG/LICENSE.txt"
+        },
+        {
+          "name": "slasl:source-built",
+          "value": "True"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://github.com/fltk/nanosvg/archive/abcd277ea45e9098bed752cf9c6875b533c0892f.zip"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "Expat@2.4.3",
+      "name": "Expat",
+      "version": "2.4.3",
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:source",
+          "value": "deps/+EXPAT"
+        },
+        {
+          "name": "slasl:linkage",
+          "value": "static"
+        },
+        {
+          "name": "slasl:linked-in-binary",
+          "value": "yes"
+        },
+        {
+          "name": "slasl:notice",
+          "value": "deps/build/dep_EXPAT-prefix/src/dep_EXPAT/expat/COPYING"
+        },
+        {
+          "name": "slasl:source-built",
+          "value": "True"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://github.com/libexpat/libexpat/archive/refs/tags/R_2_4_3.zip"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "zlib@1.3.1",
+      "name": "zlib",
+      "version": "1.3.1",
+      "licenses": [
+        {
+          "expression": "Zlib"
+        }
+      ],
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:source",
+          "value": "deps/+ZLIB"
+        },
+        {
+          "name": "slasl:linkage",
+          "value": "static"
+        },
+        {
+          "name": "slasl:linked-in-binary",
+          "value": "yes"
+        },
+        {
+          "name": "slasl:notice",
+          "value": "deps/build/dep_ZLIB-prefix/src/dep_ZLIB/LICENSE"
+        },
+        {
+          "name": "slasl:note",
+          "value": "libz.a from deps/ is linked statically; the binary additionally needs the system libz.so.1 through OpenCV/libpng."
+        },
+        {
+          "name": "slasl:source-built",
+          "value": "True"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://github.com/madler/zlib/releases/download/v1.3.1/zlib131.zip"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "Z3@4.15.1",
+      "name": "Z3",
+      "version": "4.15.1",
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:source",
+          "value": "deps/+z3"
+        },
+        {
+          "name": "slasl:linkage",
+          "value": "static"
+        },
+        {
+          "name": "slasl:linked-in-binary",
+          "value": "yes"
+        },
+        {
+          "name": "slasl:notice",
+          "value": "deps/build/dep_z3-prefix/src/dep_z3/LICENSE.txt"
+        },
+        {
+          "name": "slasl:source-built",
+          "value": "True"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://github.com/Z3Prover/z3/archive/refs/tags/z3-4.15.1.zip"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "Open_CASCADE_Technology@7.6.1",
+      "name": "Open CASCADE Technology",
+      "version": "7.6.1",
+      "licenses": [
+        {
+          "expression": "LGPL-2.1-only WITH OCCT-exception-1.0"
+        }
+      ],
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:source",
+          "value": "deps/+OCCT"
+        },
+        {
+          "name": "slasl:linkage",
+          "value": "plugin"
+        },
+        {
+          "name": "slasl:linked-in-binary",
+          "value": "n/a"
+        },
+        {
+          "name": "slasl:notice",
+          "value": "deps/build/dep_OCCT-prefix/src/dep_OCCT/LICENSE_LGPL_21.txt"
+        },
+        {
+          "name": "slasl:note",
+          "value": "Built as OCCTWrapper.so (STEP import), loaded at runtime; not linked into the main executable."
+        },
+        {
+          "name": "slasl:source-built",
+          "value": "True"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://github.com/Open-Cascade-SAS/OCCT/archive/refs/tags/V7_6_1.zip"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "nlohmann/json@3.12.0",
+      "name": "nlohmann/json",
+      "version": "3.12.0",
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:source",
+          "value": "deps/+json"
+        },
+        {
+          "name": "slasl:linkage",
+          "value": "header-only"
+        },
+        {
+          "name": "slasl:linked-in-binary",
+          "value": "n/a"
+        },
+        {
+          "name": "slasl:notice",
+          "value": "deps/build/dep_json-prefix/src/dep_json/LICENSE.MIT"
+        },
+        {
+          "name": "slasl:source-built",
+          "value": "True"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://github.com/nlohmann/json/archive/refs/tags/v3.12.0.zip"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "curl@7.75.0",
+      "name": "curl",
+      "version": "7.75.0",
+      "licenses": [
+        {
+          "expression": "curl"
+        }
+      ],
+      "scope": "excluded",
+      "properties": [
+        {
+          "name": "slasl:source",
+          "value": "deps/+CURL"
+        },
+        {
+          "name": "slasl:linkage",
+          "value": "not-linked"
+        },
+        {
+          "name": "slasl:linked-in-binary",
+          "value": "no"
+        },
+        {
+          "name": "slasl:notice",
+          "value": "deps/build/dep_CURL-prefix/src/dep_CURL/COPYING"
+        },
+        {
+          "name": "slasl:note",
+          "value": "Excluded from the deps/ build, not linked (offline-only application)."
+        },
+        {
+          "name": "slasl:source-built",
+          "value": "True"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://github.com/curl/curl/archive/refs/tags/curl-7_75_0.zip"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "OpenSSL@1.1.0l",
+      "name": "OpenSSL",
+      "version": "1.1.0l",
+      "licenses": [
+        {
+          "expression": "OpenSSL AND SSLeay"
+        }
+      ],
+      "scope": "excluded",
+      "properties": [
+        {
+          "name": "slasl:source",
+          "value": "deps/+OpenSSL"
+        },
+        {
+          "name": "slasl:linkage",
+          "value": "not-linked"
+        },
+        {
+          "name": "slasl:linked-in-binary",
+          "value": "no"
+        },
+        {
+          "name": "slasl:notice",
+          "value": "deps/build/dep_OpenSSL-prefix/src/dep_OpenSSL/LICENSE"
+        },
+        {
+          "name": "slasl:note",
+          "value": "Excluded from the deps/ build, not linked (offline-only application; verified by test sla_offline_no_network_libs)."
+        },
+        {
+          "name": "slasl:source-built",
+          "value": "True"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://github.com/openssl/openssl/archive/OpenSSL_1_1_0l.tar.gz"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "libjpeg-turbo@3.0.1",
+      "name": "libjpeg-turbo",
+      "version": "3.0.1",
+      "licenses": [
+        {
+          "expression": "BSD-3-Clause AND IJG AND Zlib"
+        }
+      ],
+      "scope": "excluded",
+      "properties": [
+        {
+          "name": "slasl:source",
+          "value": "deps/+JPEG"
+        },
+        {
+          "name": "slasl:linkage",
+          "value": "not-linked"
+        },
+        {
+          "name": "slasl:linked-in-binary",
+          "value": "no"
+        },
+        {
+          "name": "slasl:notice",
+          "value": "deps/build/dep_JPEG-prefix/src/dep_JPEG/LICENSE.md"
+        },
+        {
+          "name": "slasl:note",
+          "value": "Built by deps/ but the binary uses the system libjpeg.so.8 (see runtime libraries)."
+        },
+        {
+          "name": "slasl:source-built",
+          "value": "True"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://github.com/libjpeg-turbo/libjpeg-turbo/archive/refs/tags/3.0.1.zip"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "libpng@1.6.35",
+      "name": "libpng",
+      "version": "1.6.35",
+      "licenses": [
+        {
+          "expression": "Libpng"
+        }
+      ],
+      "scope": "excluded",
+      "properties": [
+        {
+          "name": "slasl:source",
+          "value": "deps/+PNG"
+        },
+        {
+          "name": "slasl:linkage",
+          "value": "not-linked"
+        },
+        {
+          "name": "slasl:linked-in-binary",
+          "value": "no"
+        },
+        {
+          "name": "slasl:note",
+          "value": "Binary uses the system libpng16.so.16 (see runtime libraries)."
+        },
+        {
+          "name": "slasl:source-built",
+          "value": "False"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://github.com/glennrp/libpng/archive/refs/tags/v1.6.35.zip"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "Catch2@3.8.0",
+      "name": "Catch2",
+      "version": "3.8.0",
+      "licenses": [
+        {
+          "expression": "BSL-1.0"
+        }
+      ],
+      "scope": "excluded",
+      "properties": [
+        {
+          "name": "slasl:source",
+          "value": "deps/+Catch2"
+        },
+        {
+          "name": "slasl:linkage",
+          "value": "not-linked"
+        },
+        {
+          "name": "slasl:linked-in-binary",
+          "value": "n/a"
+        },
+        {
+          "name": "slasl:notice",
+          "value": "deps/build/dep_Catch2-prefix/src/dep_Catch2/LICENSE.txt"
+        },
+        {
+          "name": "slasl:note",
+          "value": "Test-only, never part of the distributed application."
+        },
+        {
+          "name": "slasl:source-built",
+          "value": "True"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://github.com/catchorg/Catch2/archive/refs/tags/v3.8.0.zip"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "ADMesh@unknown",
+      "name": "ADMesh",
+      "licenses": [
+        {
+          "expression": "GPL-2.0-or-later"
+        }
+      ],
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:source",
+          "value": "bundled_deps/admesh"
+        },
+        {
+          "name": "slasl:linkage",
+          "value": "static"
+        },
+        {
+          "name": "slasl:linked-in-binary",
+          "value": "yes"
+        },
+        {
+          "name": "slasl:notice",
+          "value": "bundled_deps/admesh/admesh/stl.h (header)"
+        },
+        {
+          "name": "slasl:note",
+          "value": "GPL-2.0-or-later is combinable with AGPL-3.0."
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "Anti-Grain_Geometry@2.4",
+      "name": "Anti-Grain Geometry",
+      "version": "2.4",
+      "licenses": [
+        {
+          "expression": "BSD-3-Clause"
+        }
+      ],
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:source",
+          "value": "bundled_deps/agg"
+        },
+        {
+          "name": "slasl:linkage",
+          "value": "header-only"
+        },
+        {
+          "name": "slasl:linked-in-binary",
+          "value": "n/a"
+        },
+        {
+          "name": "slasl:notice",
+          "value": "bundled_deps/agg/agg/copying"
+        },
+        {
+          "name": "slasl:note",
+          "value": "AGG 2.4 modified-BSD option of the dual license."
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "miniz_(Prusa-modified)@10.1.0",
+      "name": "miniz (Prusa-modified)",
+      "version": "10.1.0",
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:source",
+          "value": "bundled_deps/miniz"
+        },
+        {
+          "name": "slasl:linkage",
+          "value": "static"
+        },
+        {
+          "name": "slasl:linked-in-binary",
+          "value": "yes"
+        },
+        {
+          "name": "slasl:notice",
+          "value": "bundled_deps/miniz/LICENSE"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "Dear_ImGui@1.83",
+      "name": "Dear ImGui",
+      "version": "1.83",
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:source",
+          "value": "bundled_deps/imgui"
+        },
+        {
+          "name": "slasl:linkage",
+          "value": "static"
+        },
+        {
+          "name": "slasl:linked-in-binary",
+          "value": "yes"
+        },
+        {
+          "name": "slasl:notice",
+          "value": "bundled_deps/imgui/LICENSE.txt"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "hidapi@0.9.0",
+      "name": "hidapi",
+      "version": "0.9.0",
+      "licenses": [
+        {
+          "expression": "BSD-3-Clause"
+        }
+      ],
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:source",
+          "value": "bundled_deps/hidapi"
+        },
+        {
+          "name": "slasl:linkage",
+          "value": "static"
+        },
+        {
+          "name": "slasl:linked-in-binary",
+          "value": "yes"
+        },
+        {
+          "name": "slasl:notice",
+          "value": "bundled_deps/hidapi/README.md"
+        },
+        {
+          "name": "slasl:note",
+          "value": "Upstream is tri-licensed (GPL-3 / BSD / original HIDAPI); the BSD option is used."
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "libigl_(subset)@unknown",
+      "name": "libigl (subset)",
+      "licenses": [
+        {
+          "expression": "MPL-2.0"
+        }
+      ],
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:source",
+          "value": "bundled_deps/libigl"
+        },
+        {
+          "name": "slasl:linkage",
+          "value": "header-only"
+        },
+        {
+          "name": "slasl:linked-in-binary",
+          "value": "n/a"
+        },
+        {
+          "name": "slasl:notice",
+          "value": "per-file MPL-2.0 header in bundled_deps/libigl/igl/*"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "libnest2d@unknown",
+      "name": "libnest2d",
+      "licenses": [
+        {
+          "expression": "LGPL-3.0-only"
+        }
+      ],
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:source",
+          "value": "bundled_deps/libnest2d"
+        },
+        {
+          "name": "slasl:linkage",
+          "value": "header-only"
+        },
+        {
+          "name": "slasl:linked-in-binary",
+          "value": "n/a"
+        },
+        {
+          "name": "slasl:notice",
+          "value": "bundled_deps/libnest2d/LICENSE.txt"
+        },
+        {
+          "name": "slasl:note",
+          "value": "Header-style LGPL-3.0 code compiled into the application; AGPL-3.0 combination allowed by LGPL section 4."
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "GLU_libtess_(Mesa)@unknown",
+      "name": "GLU libtess (Mesa)",
+      "licenses": [
+        {
+          "expression": "SGI-B-2.0"
+        }
+      ],
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:source",
+          "value": "bundled_deps/glu-libtess"
+        },
+        {
+          "name": "slasl:linkage",
+          "value": "static"
+        },
+        {
+          "name": "slasl:linked-in-binary",
+          "value": "yes"
+        },
+        {
+          "name": "slasl:notice",
+          "value": "bundled_deps/glu-libtess/src/*.c (SGI FREE SOFTWARE LICENSE B 2.0 header)"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "QOI@6c0831f",
+      "name": "QOI",
+      "version": "6c0831f",
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:source",
+          "value": "bundled_deps/qoi"
+        },
+        {
+          "name": "slasl:linkage",
+          "value": "static"
+        },
+        {
+          "name": "slasl:linked-in-binary",
+          "value": "yes"
+        },
+        {
+          "name": "slasl:notice",
+          "value": "bundled_deps/qoi/qoi.h (license block)"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "semver.c@unknown",
+      "name": "semver.c",
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:source",
+          "value": "bundled_deps/semver"
+        },
+        {
+          "name": "slasl:linkage",
+          "value": "static"
+        },
+        {
+          "name": "slasl:linked-in-binary",
+          "value": "yes"
+        },
+        {
+          "name": "slasl:notice",
+          "value": "bundled_deps/semver/semver.c (header)"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "fast_float@2.0.0",
+      "name": "fast_float",
+      "version": "2.0.0",
+      "licenses": [
+        {
+          "expression": "Apache-2.0 OR MIT"
+        }
+      ],
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:source",
+          "value": "bundled_deps/fast_float"
+        },
+        {
+          "name": "slasl:linkage",
+          "value": "header-only"
+        },
+        {
+          "name": "slasl:linked-in-binary",
+          "value": "n/a"
+        },
+        {
+          "name": "slasl:notice",
+          "value": "bundled_deps/fast_float/fast_float.h"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "unordered_dense@3.1.1",
+      "name": "unordered_dense",
+      "version": "3.1.1",
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:source",
+          "value": "bundled_deps/ankerl"
+        },
+        {
+          "name": "slasl:linkage",
+          "value": "header-only"
+        },
+        {
+          "name": "slasl:linked-in-binary",
+          "value": "n/a"
+        },
+        {
+          "name": "slasl:notice",
+          "value": "bundled_deps/ankerl/ankerl/*.h (SPDX header)"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "stb_dxt@unknown",
+      "name": "stb_dxt",
+      "licenses": [
+        {
+          "expression": "MIT OR Unlicense"
+        }
+      ],
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:source",
+          "value": "bundled_deps/stb_dxt"
+        },
+        {
+          "name": "slasl:linkage",
+          "value": "header-only"
+        },
+        {
+          "name": "slasl:linked-in-binary",
+          "value": "n/a"
+        },
+        {
+          "name": "slasl:notice",
+          "value": "bundled_deps/stb_dxt/stb_dxt.h (end of file)"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "stb_image_resize2@2.12",
+      "name": "stb_image_resize2",
+      "version": "2.12",
+      "licenses": [
+        {
+          "expression": "MIT OR Unlicense"
+        }
+      ],
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:source",
+          "value": "bundled_deps/stb_image"
+        },
+        {
+          "name": "slasl:linkage",
+          "value": "header-only"
+        },
+        {
+          "name": "slasl:linked-in-binary",
+          "value": "n/a"
+        },
+        {
+          "name": "slasl:notice",
+          "value": "bundled_deps/stb_image/stb_image_resize2.h (end of file)"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "tcb::span@836dc6a",
+      "name": "tcb::span",
+      "version": "836dc6a",
+      "licenses": [
+        {
+          "expression": "BSL-1.0"
+        }
+      ],
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:source",
+          "value": "bundled_deps/tcbspan"
+        },
+        {
+          "name": "slasl:linkage",
+          "value": "header-only"
+        },
+        {
+          "name": "slasl:linked-in-binary",
+          "value": "n/a"
+        },
+        {
+          "name": "slasl:notice",
+          "value": "bundled_deps/tcbspan/README.md"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "Clipper_Int128_excerpt@unknown",
+      "name": "Clipper Int128 excerpt",
+      "licenses": [
+        {
+          "expression": "BSL-1.0"
+        }
+      ],
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:source",
+          "value": "bundled_deps/int128"
+        },
+        {
+          "name": "slasl:linkage",
+          "value": "header-only"
+        },
+        {
+          "name": "slasl:linked-in-binary",
+          "value": "n/a"
+        },
+        {
+          "name": "slasl:notice",
+          "value": "bundled_deps/int128/Int128.hpp (Clipper license block)"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "Clipper_(Angus_Johnson)@6.4.2",
+      "name": "Clipper (Angus Johnson)",
+      "version": "6.4.2",
+      "licenses": [
+        {
+          "expression": "BSL-1.0"
+        }
+      ],
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:source",
+          "value": "src/clipper"
+        },
+        {
+          "name": "slasl:linkage",
+          "value": "static"
+        },
+        {
+          "name": "slasl:linked-in-binary",
+          "value": "yes"
+        },
+        {
+          "name": "slasl:notice",
+          "value": "src/clipper/clipper.hpp (license block)"
+        },
+        {
+          "name": "slasl:note",
+          "value": "In-tree copy with PrusaSlicer changes (also src/libslic3r/clipper.*)."
+        }
+      ]
+    },
+    {
+      "type": "data",
+      "bom-ref": "Noto_Sans_Regular@unknown",
+      "name": "Noto Sans Regular",
+      "licenses": [
+        {
+          "expression": "OFL-1.1"
+        }
+      ],
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:path",
+          "value": "resources/fonts/NotoSans-Regular.ttf"
+        },
+        {
+          "name": "slasl:notice",
+          "value": "resources/fonts/README.txt"
+        },
+        {
+          "name": "slasl:linkage",
+          "value": "data"
+        }
+      ]
+    },
+    {
+      "type": "data",
+      "bom-ref": "Noto_Sans_CJK_Regular@unknown",
+      "name": "Noto Sans CJK Regular",
+      "licenses": [
+        {
+          "expression": "OFL-1.1"
+        }
+      ],
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:path",
+          "value": "resources/fonts/NotoSansCJK-Regular.ttc"
+        },
+        {
+          "name": "slasl:notice",
+          "value": "resources/fonts/README.txt"
+        },
+        {
+          "name": "slasl:linkage",
+          "value": "data"
+        }
+      ]
+    },
+    {
+      "type": "data",
+      "bom-ref": "Hershey_vector_fonts_(via_OpenCV_4.12_table)@unknown",
+      "name": "Hershey vector fonts (via OpenCV 4.12 table)",
+      "licenses": [
+        {
+          "expression": "Apache-2.0"
+        }
+      ],
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:path",
+          "value": "src/libslic3r/SLA/HersheyFontData.hpp"
+        },
+        {
+          "name": "slasl:notice",
+          "value": "doc/licenses/OpenCV-Apache-2.0.txt, doc/licenses/Hershey-import.json"
+        },
+        {
+          "name": "slasl:linkage",
+          "value": "data"
+        }
+      ]
+    },
+    {
+      "type": "data",
+      "bom-ref": "Application_icons@unknown",
+      "name": "Application icons",
+      "licenses": [
+        {
+          "expression": "AGPL-3.0-only"
+        }
+      ],
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:path",
+          "value": "resources/icons"
+        },
+        {
+          "name": "slasl:notice",
+          "value": "LICENSE (PrusaSlicer resources; no separate third-party icon notices in the tree)"
+        },
+        {
+          "name": "slasl:linkage",
+          "value": "data"
+        }
+      ]
+    },
+    {
+      "type": "data",
+      "bom-ref": "Vendor_printer/material_profiles@unknown",
+      "name": "Vendor printer/material profiles",
+      "licenses": [
+        {
+          "expression": "AGPL-3.0-only"
+        }
+      ],
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:path",
+          "value": "resources/profiles"
+        },
+        {
+          "name": "slasl:notice",
+          "value": "LICENSE; vendor and product names/trademarks belong to their owners"
+        },
+        {
+          "name": "slasl:linkage",
+          "value": "data"
+        }
+      ]
+    },
+    {
+      "type": "data",
+      "bom-ref": "Gallery_shapes_(3DBenchy_etc.)@unknown",
+      "name": "Gallery shapes (3DBenchy etc.)",
+      "licenses": [
+        {
+          "expression": "LicenseRef-see-THIRD_PARTY_LICENSES"
+        }
+      ],
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:path",
+          "value": "resources/shapes"
+        },
+        {
+          "name": "slasl:notice",
+          "value": "doc/THIRD_PARTY_LICENSES.md section on resources (3DBenchy is CC BY-ND 4.0 upstream; no notice in the tree)"
+        },
+        {
+          "name": "slasl:linkage",
+          "value": "data"
+        }
+      ]
+    },
+    {
+      "type": "data",
+      "bom-ref": "wxWidgets_message_catalogs@unknown",
+      "name": "wxWidgets message catalogs",
+      "licenses": [
+        {
+          "expression": "LicenseRef-wxWindows-3.1"
+        }
+      ],
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:path",
+          "value": "resources/localization/wx_locale"
+        },
+        {
+          "name": "slasl:notice",
+          "value": "deps wxWidgets docs/licence.txt"
+        },
+        {
+          "name": "slasl:linkage",
+          "value": "data"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "libEGL.so.1@1.1.0",
+      "name": "libEGL.so.1",
+      "version": "1.1.0",
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:linkage",
+          "value": "dynamic (system)"
+        },
+        {
+          "name": "slasl:resolved-path",
+          "value": "/usr/lib/libEGL.so.1"
+        },
+        {
+          "name": "slasl:package",
+          "value": "libglvnd"
+        },
+        {
+          "name": "slasl:note",
+          "value": "license = that of the distribution package; not bundled unless tools/make_relocatable_bundle.sh is used"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "libGL.so.1@1.7.0",
+      "name": "libGL.so.1",
+      "version": "1.7.0",
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:linkage",
+          "value": "dynamic (system)"
+        },
+        {
+          "name": "slasl:resolved-path",
+          "value": "/usr/lib/libGL.so.1"
+        },
+        {
+          "name": "slasl:package",
+          "value": "libglvnd"
+        },
+        {
+          "name": "slasl:note",
+          "value": "license = that of the distribution package; not bundled unless tools/make_relocatable_bundle.sh is used"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "libGLU.so.1@1.3.1",
+      "name": "libGLU.so.1",
+      "version": "1.3.1",
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:linkage",
+          "value": "dynamic (system)"
+        },
+        {
+          "name": "slasl:resolved-path",
+          "value": "/usr/lib/libGLU.so.1"
+        },
+        {
+          "name": "slasl:package",
+          "value": "glu"
+        },
+        {
+          "name": "slasl:note",
+          "value": "license = that of the distribution package; not bundled unless tools/make_relocatable_bundle.sh is used"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "libGLX.so.0@0.0.0",
+      "name": "libGLX.so.0",
+      "version": "0.0.0",
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:linkage",
+          "value": "dynamic (system)"
+        },
+        {
+          "name": "slasl:resolved-path",
+          "value": "/usr/lib/libGLX.so.0"
+        },
+        {
+          "name": "slasl:package",
+          "value": "libglvnd"
+        },
+        {
+          "name": "slasl:note",
+          "value": "license = that of the distribution package; not bundled unless tools/make_relocatable_bundle.sh is used"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "libGLdispatch.so.0@0.0.0",
+      "name": "libGLdispatch.so.0",
+      "version": "0.0.0",
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:linkage",
+          "value": "dynamic (system)"
+        },
+        {
+          "name": "slasl:resolved-path",
+          "value": "/usr/lib/libGLdispatch.so.0"
+        },
+        {
+          "name": "slasl:package",
+          "value": "libglvnd"
+        },
+        {
+          "name": "slasl:note",
+          "value": "license = that of the distribution package; not bundled unless tools/make_relocatable_bundle.sh is used"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "libICE.so.6@6.3.0",
+      "name": "libICE.so.6",
+      "version": "6.3.0",
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:linkage",
+          "value": "dynamic (system)"
+        },
+        {
+          "name": "slasl:resolved-path",
+          "value": "/usr/lib/libICE.so.6"
+        },
+        {
+          "name": "slasl:package",
+          "value": "libice"
+        },
+        {
+          "name": "slasl:note",
+          "value": "license = that of the distribution package; not bundled unless tools/make_relocatable_bundle.sh is used"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "libOpenGL.so.0@0.0.0",
+      "name": "libOpenGL.so.0",
+      "version": "0.0.0",
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:linkage",
+          "value": "dynamic (system)"
+        },
+        {
+          "name": "slasl:resolved-path",
+          "value": "/usr/lib/libOpenGL.so.0"
+        },
+        {
+          "name": "slasl:package",
+          "value": "libglvnd"
+        },
+        {
+          "name": "slasl:note",
+          "value": "license = that of the distribution package; not bundled unless tools/make_relocatable_bundle.sh is used"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "libSM.so.6@6.0.1",
+      "name": "libSM.so.6",
+      "version": "6.0.1",
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:linkage",
+          "value": "dynamic (system)"
+        },
+        {
+          "name": "slasl:resolved-path",
+          "value": "/usr/lib/libSM.so.6"
+        },
+        {
+          "name": "slasl:package",
+          "value": "libsm"
+        },
+        {
+          "name": "slasl:note",
+          "value": "license = that of the distribution package; not bundled unless tools/make_relocatable_bundle.sh is used"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "libX11.so.6@6.4.0",
+      "name": "libX11.so.6",
+      "version": "6.4.0",
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:linkage",
+          "value": "dynamic (system)"
+        },
+        {
+          "name": "slasl:resolved-path",
+          "value": "/usr/lib/libX11.so.6"
+        },
+        {
+          "name": "slasl:package",
+          "value": "libx11"
+        },
+        {
+          "name": "slasl:note",
+          "value": "license = that of the distribution package; not bundled unless tools/make_relocatable_bundle.sh is used"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "libXau.so.6@6.0.0",
+      "name": "libXau.so.6",
+      "version": "6.0.0",
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:linkage",
+          "value": "dynamic (system)"
+        },
+        {
+          "name": "slasl:resolved-path",
+          "value": "/usr/lib/libXau.so.6"
+        },
+        {
+          "name": "slasl:package",
+          "value": "libxau"
+        },
+        {
+          "name": "slasl:note",
+          "value": "license = that of the distribution package; not bundled unless tools/make_relocatable_bundle.sh is used"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "libXcomposite.so.1@1.0.0",
+      "name": "libXcomposite.so.1",
+      "version": "1.0.0",
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:linkage",
+          "value": "dynamic (system)"
+        },
+        {
+          "name": "slasl:resolved-path",
+          "value": "/usr/lib/libXcomposite.so.1"
+        },
+        {
+          "name": "slasl:package",
+          "value": "libxcomposite"
+        },
+        {
+          "name": "slasl:note",
+          "value": "license = that of the distribution package; not bundled unless tools/make_relocatable_bundle.sh is used"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "libXcursor.so.1@1.0.2",
+      "name": "libXcursor.so.1",
+      "version": "1.0.2",
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:linkage",
+          "value": "dynamic (system)"
+        },
+        {
+          "name": "slasl:resolved-path",
+          "value": "/usr/lib/libXcursor.so.1"
+        },
+        {
+          "name": "slasl:package",
+          "value": "libxcursor"
+        },
+        {
+          "name": "slasl:note",
+          "value": "license = that of the distribution package; not bundled unless tools/make_relocatable_bundle.sh is used"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "libXdamage.so.1@1.1.0",
+      "name": "libXdamage.so.1",
+      "version": "1.1.0",
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:linkage",
+          "value": "dynamic (system)"
+        },
+        {
+          "name": "slasl:resolved-path",
+          "value": "/usr/lib/libXdamage.so.1"
+        },
+        {
+          "name": "slasl:package",
+          "value": "libxdamage"
+        },
+        {
+          "name": "slasl:note",
+          "value": "license = that of the distribution package; not bundled unless tools/make_relocatable_bundle.sh is used"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "libXdmcp.so.6@6.0.0",
+      "name": "libXdmcp.so.6",
+      "version": "6.0.0",
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:linkage",
+          "value": "dynamic (system)"
+        },
+        {
+          "name": "slasl:resolved-path",
+          "value": "/usr/lib/libXdmcp.so.6"
+        },
+        {
+          "name": "slasl:package",
+          "value": "libxdmcp"
+        },
+        {
+          "name": "slasl:note",
+          "value": "license = that of the distribution package; not bundled unless tools/make_relocatable_bundle.sh is used"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "libXext.so.6@6.4.0",
+      "name": "libXext.so.6",
+      "version": "6.4.0",
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:linkage",
+          "value": "dynamic (system)"
+        },
+        {
+          "name": "slasl:resolved-path",
+          "value": "/usr/lib/libXext.so.6"
+        },
+        {
+          "name": "slasl:package",
+          "value": "libxext"
+        },
+        {
+          "name": "slasl:note",
+          "value": "license = that of the distribution package; not bundled unless tools/make_relocatable_bundle.sh is used"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "libXfixes.so.3@3.1.0",
+      "name": "libXfixes.so.3",
+      "version": "3.1.0",
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:linkage",
+          "value": "dynamic (system)"
+        },
+        {
+          "name": "slasl:resolved-path",
+          "value": "/usr/lib/libXfixes.so.3"
+        },
+        {
+          "name": "slasl:package",
+          "value": "libxfixes"
+        },
+        {
+          "name": "slasl:note",
+          "value": "license = that of the distribution package; not bundled unless tools/make_relocatable_bundle.sh is used"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "libXi.so.6@6.1.0",
+      "name": "libXi.so.6",
+      "version": "6.1.0",
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:linkage",
+          "value": "dynamic (system)"
+        },
+        {
+          "name": "slasl:resolved-path",
+          "value": "/usr/lib/libXi.so.6"
+        },
+        {
+          "name": "slasl:package",
+          "value": "libxi"
+        },
+        {
+          "name": "slasl:note",
+          "value": "license = that of the distribution package; not bundled unless tools/make_relocatable_bundle.sh is used"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "libXinerama.so.1@1.0.0",
+      "name": "libXinerama.so.1",
+      "version": "1.0.0",
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:linkage",
+          "value": "dynamic (system)"
+        },
+        {
+          "name": "slasl:resolved-path",
+          "value": "/usr/lib/libXinerama.so.1"
+        },
+        {
+          "name": "slasl:package",
+          "value": "libxinerama"
+        },
+        {
+          "name": "slasl:note",
+          "value": "license = that of the distribution package; not bundled unless tools/make_relocatable_bundle.sh is used"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "libXrandr.so.2@2.2.0",
+      "name": "libXrandr.so.2",
+      "version": "2.2.0",
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:linkage",
+          "value": "dynamic (system)"
+        },
+        {
+          "name": "slasl:resolved-path",
+          "value": "/usr/lib/libXrandr.so.2"
+        },
+        {
+          "name": "slasl:package",
+          "value": "libxrandr"
+        },
+        {
+          "name": "slasl:note",
+          "value": "license = that of the distribution package; not bundled unless tools/make_relocatable_bundle.sh is used"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "libXrender.so.1@1.3.0",
+      "name": "libXrender.so.1",
+      "version": "1.3.0",
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:linkage",
+          "value": "dynamic (system)"
+        },
+        {
+          "name": "slasl:resolved-path",
+          "value": "/usr/lib/libXrender.so.1"
+        },
+        {
+          "name": "slasl:package",
+          "value": "libxrender"
+        },
+        {
+          "name": "slasl:note",
+          "value": "license = that of the distribution package; not bundled unless tools/make_relocatable_bundle.sh is used"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "libatk-1.0.so.0@0.26210.1",
+      "name": "libatk-1.0.so.0",
+      "version": "0.26210.1",
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:linkage",
+          "value": "dynamic (system)"
+        },
+        {
+          "name": "slasl:resolved-path",
+          "value": "/usr/lib/libatk-1.0.so.0"
+        },
+        {
+          "name": "slasl:package",
+          "value": "at-spi2-core"
+        },
+        {
+          "name": "slasl:note",
+          "value": "license = that of the distribution package; not bundled unless tools/make_relocatable_bundle.sh is used"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "libatk-bridge-2.0.so.0@0.0.0",
+      "name": "libatk-bridge-2.0.so.0",
+      "version": "0.0.0",
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:linkage",
+          "value": "dynamic (system)"
+        },
+        {
+          "name": "slasl:resolved-path",
+          "value": "/usr/lib/libatk-bridge-2.0.so.0"
+        },
+        {
+          "name": "slasl:package",
+          "value": "at-spi2-core"
+        },
+        {
+          "name": "slasl:note",
+          "value": "license = that of the distribution package; not bundled unless tools/make_relocatable_bundle.sh is used"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "libatspi.so.0@0.0.1",
+      "name": "libatspi.so.0",
+      "version": "0.0.1",
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:linkage",
+          "value": "dynamic (system)"
+        },
+        {
+          "name": "slasl:resolved-path",
+          "value": "/usr/lib/libatspi.so.0"
+        },
+        {
+          "name": "slasl:package",
+          "value": "at-spi2-core"
+        },
+        {
+          "name": "slasl:note",
+          "value": "license = that of the distribution package; not bundled unless tools/make_relocatable_bundle.sh is used"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "libblas.so.3@3.12.0",
+      "name": "libblas.so.3",
+      "version": "3.12.0",
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:linkage",
+          "value": "dynamic (system)"
+        },
+        {
+          "name": "slasl:resolved-path",
+          "value": "/usr/lib/libblas.so.3"
+        },
+        {
+          "name": "slasl:package",
+          "value": "blas"
+        },
+        {
+          "name": "slasl:note",
+          "value": "license = that of the distribution package; not bundled unless tools/make_relocatable_bundle.sh is used"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "libblkid.so.1@1.1.0",
+      "name": "libblkid.so.1",
+      "version": "1.1.0",
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:linkage",
+          "value": "dynamic (system)"
+        },
+        {
+          "name": "slasl:resolved-path",
+          "value": "/usr/lib/libblkid.so.1"
+        },
+        {
+          "name": "slasl:package",
+          "value": "util-linux-libs"
+        },
+        {
+          "name": "slasl:note",
+          "value": "license = that of the distribution package; not bundled unless tools/make_relocatable_bundle.sh is used"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "libbrotlicommon.so.1@1.2.1",
+      "name": "libbrotlicommon.so.1",
+      "version": "1.2.1",
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:linkage",
+          "value": "dynamic (system)"
+        },
+        {
+          "name": "slasl:resolved-path",
+          "value": "/usr/lib/libbrotlicommon.so.1"
+        },
+        {
+          "name": "slasl:package",
+          "value": "brotli"
+        },
+        {
+          "name": "slasl:note",
+          "value": "license = that of the distribution package; not bundled unless tools/make_relocatable_bundle.sh is used"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "libbrotlidec.so.1@1.2.1",
+      "name": "libbrotlidec.so.1",
+      "version": "1.2.1",
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:linkage",
+          "value": "dynamic (system)"
+        },
+        {
+          "name": "slasl:resolved-path",
+          "value": "/usr/lib/libbrotlidec.so.1"
+        },
+        {
+          "name": "slasl:package",
+          "value": "brotli"
+        },
+        {
+          "name": "slasl:note",
+          "value": "license = that of the distribution package; not bundled unless tools/make_relocatable_bundle.sh is used"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "libbz2.so.1.0@1.0.8",
+      "name": "libbz2.so.1.0",
+      "version": "1.0.8",
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:linkage",
+          "value": "dynamic (system)"
+        },
+        {
+          "name": "slasl:resolved-path",
+          "value": "/usr/lib/libbz2.so.1.0"
+        },
+        {
+          "name": "slasl:package",
+          "value": "bzip2"
+        },
+        {
+          "name": "slasl:note",
+          "value": "license = that of the distribution package; not bundled unless tools/make_relocatable_bundle.sh is used"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "libc.so.6@6",
+      "name": "libc.so.6",
+      "version": "6",
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:linkage",
+          "value": "dynamic (system)"
+        },
+        {
+          "name": "slasl:resolved-path",
+          "value": "/usr/lib/libc.so.6"
+        },
+        {
+          "name": "slasl:package",
+          "value": "glibc"
+        },
+        {
+          "name": "slasl:note",
+          "value": "license = that of the distribution package; not bundled unless tools/make_relocatable_bundle.sh is used"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "libcairo-gobject.so.2@2.11806.6",
+      "name": "libcairo-gobject.so.2",
+      "version": "2.11806.6",
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:linkage",
+          "value": "dynamic (system)"
+        },
+        {
+          "name": "slasl:resolved-path",
+          "value": "/usr/lib/libcairo-gobject.so.2"
+        },
+        {
+          "name": "slasl:package",
+          "value": "cairo"
+        },
+        {
+          "name": "slasl:note",
+          "value": "license = that of the distribution package; not bundled unless tools/make_relocatable_bundle.sh is used"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "libcairo.so.2@2.11806.6",
+      "name": "libcairo.so.2",
+      "version": "2.11806.6",
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:linkage",
+          "value": "dynamic (system)"
+        },
+        {
+          "name": "slasl:resolved-path",
+          "value": "/usr/lib/libcairo.so.2"
+        },
+        {
+          "name": "slasl:package",
+          "value": "cairo"
+        },
+        {
+          "name": "slasl:note",
+          "value": "license = that of the distribution package; not bundled unless tools/make_relocatable_bundle.sh is used"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "libcblas.so.3@3.12.0",
+      "name": "libcblas.so.3",
+      "version": "3.12.0",
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:linkage",
+          "value": "dynamic (system)"
+        },
+        {
+          "name": "slasl:resolved-path",
+          "value": "/usr/lib/libcblas.so.3"
+        },
+        {
+          "name": "slasl:package",
+          "value": "cblas"
+        },
+        {
+          "name": "slasl:note",
+          "value": "license = that of the distribution package; not bundled unless tools/make_relocatable_bundle.sh is used"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "libcloudproviders.so.0@0.4.2",
+      "name": "libcloudproviders.so.0",
+      "version": "0.4.2",
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:linkage",
+          "value": "dynamic (system)"
+        },
+        {
+          "name": "slasl:resolved-path",
+          "value": "/usr/lib/libcloudproviders.so.0"
+        },
+        {
+          "name": "slasl:package",
+          "value": "libcloudproviders"
+        },
+        {
+          "name": "slasl:note",
+          "value": "license = that of the distribution package; not bundled unless tools/make_relocatable_bundle.sh is used"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "libdatrie.so.1@1.4.1",
+      "name": "libdatrie.so.1",
+      "version": "1.4.1",
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:linkage",
+          "value": "dynamic (system)"
+        },
+        {
+          "name": "slasl:resolved-path",
+          "value": "/usr/lib/libdatrie.so.1"
+        },
+        {
+          "name": "slasl:package",
+          "value": "libdatrie"
+        },
+        {
+          "name": "slasl:note",
+          "value": "license = that of the distribution package; not bundled unless tools/make_relocatable_bundle.sh is used"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "libdbus-1.so.3@3.38.3",
+      "name": "libdbus-1.so.3",
+      "version": "3.38.3",
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:linkage",
+          "value": "dynamic (system)"
+        },
+        {
+          "name": "slasl:resolved-path",
+          "value": "/usr/lib/libdbus-1.so.3"
+        },
+        {
+          "name": "slasl:package",
+          "value": "dbus"
+        },
+        {
+          "name": "slasl:note",
+          "value": "license = that of the distribution package; not bundled unless tools/make_relocatable_bundle.sh is used"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "libdeflate.so.0@0",
+      "name": "libdeflate.so.0",
+      "version": "0",
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:linkage",
+          "value": "dynamic (system)"
+        },
+        {
+          "name": "slasl:resolved-path",
+          "value": "/usr/lib/libdeflate.so.0"
+        },
+        {
+          "name": "slasl:package",
+          "value": "libdeflate"
+        },
+        {
+          "name": "slasl:note",
+          "value": "license = that of the distribution package; not bundled unless tools/make_relocatable_bundle.sh is used"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "libepoxy.so.0@0.0.0",
+      "name": "libepoxy.so.0",
+      "version": "0.0.0",
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:linkage",
+          "value": "dynamic (system)"
+        },
+        {
+          "name": "slasl:resolved-path",
+          "value": "/usr/lib/libepoxy.so.0"
+        },
+        {
+          "name": "slasl:package",
+          "value": "libepoxy"
+        },
+        {
+          "name": "slasl:note",
+          "value": "license = that of the distribution package; not bundled unless tools/make_relocatable_bundle.sh is used"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "libexpat.so.1@1.13.1",
+      "name": "libexpat.so.1",
+      "version": "1.13.1",
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:linkage",
+          "value": "dynamic (system)"
+        },
+        {
+          "name": "slasl:resolved-path",
+          "value": "/usr/lib/libexpat.so.1"
+        },
+        {
+          "name": "slasl:package",
+          "value": "expat"
+        },
+        {
+          "name": "slasl:note",
+          "value": "license = that of the distribution package; not bundled unless tools/make_relocatable_bundle.sh is used"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "libffi.so.8@8.5.0",
+      "name": "libffi.so.8",
+      "version": "8.5.0",
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:linkage",
+          "value": "dynamic (system)"
+        },
+        {
+          "name": "slasl:resolved-path",
+          "value": "/usr/lib/libffi.so.8"
+        },
+        {
+          "name": "slasl:package",
+          "value": "libffi"
+        },
+        {
+          "name": "slasl:note",
+          "value": "license = that of the distribution package; not bundled unless tools/make_relocatable_bundle.sh is used"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "libfontconfig.so.1@1.17.0",
+      "name": "libfontconfig.so.1",
+      "version": "1.17.0",
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:linkage",
+          "value": "dynamic (system)"
+        },
+        {
+          "name": "slasl:resolved-path",
+          "value": "/usr/lib/libfontconfig.so.1"
+        },
+        {
+          "name": "slasl:package",
+          "value": "fontconfig"
+        },
+        {
+          "name": "slasl:note",
+          "value": "license = that of the distribution package; not bundled unless tools/make_relocatable_bundle.sh is used"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "libfreetype.so.6@6.20.7",
+      "name": "libfreetype.so.6",
+      "version": "6.20.7",
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:linkage",
+          "value": "dynamic (system)"
+        },
+        {
+          "name": "slasl:resolved-path",
+          "value": "/usr/lib/libfreetype.so.6"
+        },
+        {
+          "name": "slasl:package",
+          "value": "freetype2"
+        },
+        {
+          "name": "slasl:note",
+          "value": "license = that of the distribution package; not bundled unless tools/make_relocatable_bundle.sh is used"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "libfribidi.so.0@0.4.0",
+      "name": "libfribidi.so.0",
+      "version": "0.4.0",
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:linkage",
+          "value": "dynamic (system)"
+        },
+        {
+          "name": "slasl:resolved-path",
+          "value": "/usr/lib/libfribidi.so.0"
+        },
+        {
+          "name": "slasl:package",
+          "value": "fribidi"
+        },
+        {
+          "name": "slasl:note",
+          "value": "license = that of the distribution package; not bundled unless tools/make_relocatable_bundle.sh is used"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "libgcc_s.so.1@1",
+      "name": "libgcc_s.so.1",
+      "version": "1",
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:linkage",
+          "value": "dynamic (system)"
+        },
+        {
+          "name": "slasl:resolved-path",
+          "value": "/usr/lib/libgcc_s.so.1"
+        },
+        {
+          "name": "slasl:package",
+          "value": "libgcc"
+        },
+        {
+          "name": "slasl:note",
+          "value": "license = that of the distribution package; not bundled unless tools/make_relocatable_bundle.sh is used"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "libgdk-3.so.0@0.2420.32",
+      "name": "libgdk-3.so.0",
+      "version": "0.2420.32",
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:linkage",
+          "value": "dynamic (system)"
+        },
+        {
+          "name": "slasl:resolved-path",
+          "value": "/usr/lib/libgdk-3.so.0"
+        },
+        {
+          "name": "slasl:package",
+          "value": "gtk3"
+        },
+        {
+          "name": "slasl:note",
+          "value": "license = that of the distribution package; not bundled unless tools/make_relocatable_bundle.sh is used"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "libgdk_pixbuf-2.0.so.0@0.4400.8",
+      "name": "libgdk_pixbuf-2.0.so.0",
+      "version": "0.4400.8",
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:linkage",
+          "value": "dynamic (system)"
+        },
+        {
+          "name": "slasl:resolved-path",
+          "value": "/usr/lib/libgdk_pixbuf-2.0.so.0"
+        },
+        {
+          "name": "slasl:package",
+          "value": "gdk-pixbuf2"
+        },
+        {
+          "name": "slasl:note",
+          "value": "license = that of the distribution package; not bundled unless tools/make_relocatable_bundle.sh is used"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "libgfortran.so.5@5.0.0",
+      "name": "libgfortran.so.5",
+      "version": "5.0.0",
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:linkage",
+          "value": "dynamic (system)"
+        },
+        {
+          "name": "slasl:resolved-path",
+          "value": "/usr/lib/libgfortran.so.5"
+        },
+        {
+          "name": "slasl:package",
+          "value": "libgfortran"
+        },
+        {
+          "name": "slasl:note",
+          "value": "license = that of the distribution package; not bundled unless tools/make_relocatable_bundle.sh is used"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "libgio-2.0.so.0@0.9000.1",
+      "name": "libgio-2.0.so.0",
+      "version": "0.9000.1",
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:linkage",
+          "value": "dynamic (system)"
+        },
+        {
+          "name": "slasl:resolved-path",
+          "value": "/usr/lib/libgio-2.0.so.0"
+        },
+        {
+          "name": "slasl:package",
+          "value": "glib2"
+        },
+        {
+          "name": "slasl:note",
+          "value": "license = that of the distribution package; not bundled unless tools/make_relocatable_bundle.sh is used"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "libglib-2.0.so.0@0.9000.1",
+      "name": "libglib-2.0.so.0",
+      "version": "0.9000.1",
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:linkage",
+          "value": "dynamic (system)"
+        },
+        {
+          "name": "slasl:resolved-path",
+          "value": "/usr/lib/libglib-2.0.so.0"
+        },
+        {
+          "name": "slasl:package",
+          "value": "glib2"
+        },
+        {
+          "name": "slasl:note",
+          "value": "license = that of the distribution package; not bundled unless tools/make_relocatable_bundle.sh is used"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "libglycin-2.so.0@0",
+      "name": "libglycin-2.so.0",
+      "version": "0",
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:linkage",
+          "value": "dynamic (system)"
+        },
+        {
+          "name": "slasl:resolved-path",
+          "value": "/usr/lib/libglycin-2.so.0"
+        },
+        {
+          "name": "slasl:package",
+          "value": "glycin"
+        },
+        {
+          "name": "slasl:note",
+          "value": "license = that of the distribution package; not bundled unless tools/make_relocatable_bundle.sh is used"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "libgmodule-2.0.so.0@0.9000.1",
+      "name": "libgmodule-2.0.so.0",
+      "version": "0.9000.1",
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:linkage",
+          "value": "dynamic (system)"
+        },
+        {
+          "name": "slasl:resolved-path",
+          "value": "/usr/lib/libgmodule-2.0.so.0"
+        },
+        {
+          "name": "slasl:package",
+          "value": "glib2"
+        },
+        {
+          "name": "slasl:note",
+          "value": "license = that of the distribution package; not bundled unless tools/make_relocatable_bundle.sh is used"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "libgobject-2.0.so.0@0.9000.1",
+      "name": "libgobject-2.0.so.0",
+      "version": "0.9000.1",
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:linkage",
+          "value": "dynamic (system)"
+        },
+        {
+          "name": "slasl:resolved-path",
+          "value": "/usr/lib/libgobject-2.0.so.0"
+        },
+        {
+          "name": "slasl:package",
+          "value": "glib2"
+        },
+        {
+          "name": "slasl:note",
+          "value": "license = that of the distribution package; not bundled unless tools/make_relocatable_bundle.sh is used"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "libgraphite2.so.3@3.3.1",
+      "name": "libgraphite2.so.3",
+      "version": "3.3.1",
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:linkage",
+          "value": "dynamic (system)"
+        },
+        {
+          "name": "slasl:resolved-path",
+          "value": "/usr/lib/libgraphite2.so.3"
+        },
+        {
+          "name": "slasl:package",
+          "value": "graphite"
+        },
+        {
+          "name": "slasl:note",
+          "value": "license = that of the distribution package; not bundled unless tools/make_relocatable_bundle.sh is used"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "libgtk-3.so.0@0.2420.32",
+      "name": "libgtk-3.so.0",
+      "version": "0.2420.32",
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:linkage",
+          "value": "dynamic (system)"
+        },
+        {
+          "name": "slasl:resolved-path",
+          "value": "/usr/lib/libgtk-3.so.0"
+        },
+        {
+          "name": "slasl:package",
+          "value": "gtk3"
+        },
+        {
+          "name": "slasl:note",
+          "value": "license = that of the distribution package; not bundled unless tools/make_relocatable_bundle.sh is used"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "libharfbuzz.so.0@0.61510.0",
+      "name": "libharfbuzz.so.0",
+      "version": "0.61510.0",
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:linkage",
+          "value": "dynamic (system)"
+        },
+        {
+          "name": "slasl:resolved-path",
+          "value": "/usr/lib/libharfbuzz.so.0"
+        },
+        {
+          "name": "slasl:package",
+          "value": "harfbuzz"
+        },
+        {
+          "name": "slasl:note",
+          "value": "license = that of the distribution package; not bundled unless tools/make_relocatable_bundle.sh is used"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "libicudata.so.78@78.3",
+      "name": "libicudata.so.78",
+      "version": "78.3",
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:linkage",
+          "value": "dynamic (system)"
+        },
+        {
+          "name": "slasl:resolved-path",
+          "value": "/usr/lib/libicudata.so.78"
+        },
+        {
+          "name": "slasl:package",
+          "value": "icu"
+        },
+        {
+          "name": "slasl:note",
+          "value": "license = that of the distribution package; not bundled unless tools/make_relocatable_bundle.sh is used"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "libicuuc.so.78@78.3",
+      "name": "libicuuc.so.78",
+      "version": "78.3",
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:linkage",
+          "value": "dynamic (system)"
+        },
+        {
+          "name": "slasl:resolved-path",
+          "value": "/usr/lib/libicuuc.so.78"
+        },
+        {
+          "name": "slasl:package",
+          "value": "icu"
+        },
+        {
+          "name": "slasl:note",
+          "value": "license = that of the distribution package; not bundled unless tools/make_relocatable_bundle.sh is used"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "libjbig.so.2.2@2.2",
+      "name": "libjbig.so.2.2",
+      "version": "2.2",
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:linkage",
+          "value": "dynamic (system)"
+        },
+        {
+          "name": "slasl:resolved-path",
+          "value": "/usr/lib/libjbig.so.2.2"
+        },
+        {
+          "name": "slasl:package",
+          "value": "jbigkit"
+        },
+        {
+          "name": "slasl:note",
+          "value": "license = that of the distribution package; not bundled unless tools/make_relocatable_bundle.sh is used"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "libjpeg.so.8@8.3.2",
+      "name": "libjpeg.so.8",
+      "version": "8.3.2",
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:linkage",
+          "value": "dynamic (system)"
+        },
+        {
+          "name": "slasl:resolved-path",
+          "value": "/usr/lib/libjpeg.so.8"
+        },
+        {
+          "name": "slasl:package",
+          "value": "libjpeg-turbo"
+        },
+        {
+          "name": "slasl:note",
+          "value": "license = that of the distribution package; not bundled unless tools/make_relocatable_bundle.sh is used"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "libjson-glib-1.0.so.0@0.1000.8",
+      "name": "libjson-glib-1.0.so.0",
+      "version": "0.1000.8",
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:linkage",
+          "value": "dynamic (system)"
+        },
+        {
+          "name": "slasl:resolved-path",
+          "value": "/usr/lib/libjson-glib-1.0.so.0"
+        },
+        {
+          "name": "slasl:package",
+          "value": "json-glib"
+        },
+        {
+          "name": "slasl:note",
+          "value": "license = that of the distribution package; not bundled unless tools/make_relocatable_bundle.sh is used"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "liblapack.so.3@3.12.0",
+      "name": "liblapack.so.3",
+      "version": "3.12.0",
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:linkage",
+          "value": "dynamic (system)"
+        },
+        {
+          "name": "slasl:resolved-path",
+          "value": "/usr/lib/liblapack.so.3"
+        },
+        {
+          "name": "slasl:package",
+          "value": "lapack"
+        },
+        {
+          "name": "slasl:note",
+          "value": "license = that of the distribution package; not bundled unless tools/make_relocatable_bundle.sh is used"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "liblzma.so.5@5.8.3",
+      "name": "liblzma.so.5",
+      "version": "5.8.3",
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:linkage",
+          "value": "dynamic (system)"
+        },
+        {
+          "name": "slasl:resolved-path",
+          "value": "/usr/lib/liblzma.so.5"
+        },
+        {
+          "name": "slasl:package",
+          "value": "xz"
+        },
+        {
+          "name": "slasl:note",
+          "value": "license = that of the distribution package; not bundled unless tools/make_relocatable_bundle.sh is used"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "libm.so.6@6",
+      "name": "libm.so.6",
+      "version": "6",
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:linkage",
+          "value": "dynamic (system)"
+        },
+        {
+          "name": "slasl:resolved-path",
+          "value": "/usr/lib/libm.so.6"
+        },
+        {
+          "name": "slasl:package",
+          "value": "glibc"
+        },
+        {
+          "name": "slasl:note",
+          "value": "license = that of the distribution package; not bundled unless tools/make_relocatable_bundle.sh is used"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "libmount.so.1@1.1.0",
+      "name": "libmount.so.1",
+      "version": "1.1.0",
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:linkage",
+          "value": "dynamic (system)"
+        },
+        {
+          "name": "slasl:resolved-path",
+          "value": "/usr/lib/libmount.so.1"
+        },
+        {
+          "name": "slasl:package",
+          "value": "util-linux-libs"
+        },
+        {
+          "name": "slasl:note",
+          "value": "license = that of the distribution package; not bundled unless tools/make_relocatable_bundle.sh is used"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "libmspack.so.0@0.1.0",
+      "name": "libmspack.so.0",
+      "version": "0.1.0",
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:linkage",
+          "value": "dynamic (system)"
+        },
+        {
+          "name": "slasl:resolved-path",
+          "value": "/usr/lib/libmspack.so.0"
+        },
+        {
+          "name": "slasl:package",
+          "value": "libmspack"
+        },
+        {
+          "name": "slasl:note",
+          "value": "license = that of the distribution package; not bundled unless tools/make_relocatable_bundle.sh is used"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "libnotify.so.4@4.0.0",
+      "name": "libnotify.so.4",
+      "version": "4.0.0",
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:linkage",
+          "value": "dynamic (system)"
+        },
+        {
+          "name": "slasl:resolved-path",
+          "value": "/usr/lib/libnotify.so.4"
+        },
+        {
+          "name": "slasl:package",
+          "value": "libnotify"
+        },
+        {
+          "name": "slasl:note",
+          "value": "license = that of the distribution package; not bundled unless tools/make_relocatable_bundle.sh is used"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "libopencv_core.so.500@5.0.0",
+      "name": "libopencv_core.so.500",
+      "version": "5.0.0",
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:linkage",
+          "value": "dynamic (system)"
+        },
+        {
+          "name": "slasl:resolved-path",
+          "value": "/usr/lib/libopencv_core.so.500"
+        },
+        {
+          "name": "slasl:package",
+          "value": "opencv"
+        },
+        {
+          "name": "slasl:note",
+          "value": "license = that of the distribution package; not bundled unless tools/make_relocatable_bundle.sh is used"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "libopencv_flann.so.500@5.0.0",
+      "name": "libopencv_flann.so.500",
+      "version": "5.0.0",
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:linkage",
+          "value": "dynamic (system)"
+        },
+        {
+          "name": "slasl:resolved-path",
+          "value": "/usr/lib/libopencv_flann.so.500"
+        },
+        {
+          "name": "slasl:package",
+          "value": "opencv"
+        },
+        {
+          "name": "slasl:note",
+          "value": "license = that of the distribution package; not bundled unless tools/make_relocatable_bundle.sh is used"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "libopencv_geometry.so.500@5.0.0",
+      "name": "libopencv_geometry.so.500",
+      "version": "5.0.0",
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:linkage",
+          "value": "dynamic (system)"
+        },
+        {
+          "name": "slasl:resolved-path",
+          "value": "/usr/lib/libopencv_geometry.so.500"
+        },
+        {
+          "name": "slasl:package",
+          "value": "opencv"
+        },
+        {
+          "name": "slasl:note",
+          "value": "license = that of the distribution package; not bundled unless tools/make_relocatable_bundle.sh is used"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "libopencv_imgproc.so.500@5.0.0",
+      "name": "libopencv_imgproc.so.500",
+      "version": "5.0.0",
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:linkage",
+          "value": "dynamic (system)"
+        },
+        {
+          "name": "slasl:resolved-path",
+          "value": "/usr/lib/libopencv_imgproc.so.500"
+        },
+        {
+          "name": "slasl:package",
+          "value": "opencv"
+        },
+        {
+          "name": "slasl:note",
+          "value": "license = that of the distribution package; not bundled unless tools/make_relocatable_bundle.sh is used"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "libopenjp2.so.7@2.5.4",
+      "name": "libopenjp2.so.7",
+      "version": "2.5.4",
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:linkage",
+          "value": "dynamic (system)"
+        },
+        {
+          "name": "slasl:resolved-path",
+          "value": "/usr/lib/libopenjp2.so.7"
+        },
+        {
+          "name": "slasl:package",
+          "value": "openjpeg2"
+        },
+        {
+          "name": "slasl:note",
+          "value": "license = that of the distribution package; not bundled unless tools/make_relocatable_bundle.sh is used"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "libpango-1.0.so.0@0.5800.2",
+      "name": "libpango-1.0.so.0",
+      "version": "0.5800.2",
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:linkage",
+          "value": "dynamic (system)"
+        },
+        {
+          "name": "slasl:resolved-path",
+          "value": "/usr/lib/libpango-1.0.so.0"
+        },
+        {
+          "name": "slasl:package",
+          "value": "pango"
+        },
+        {
+          "name": "slasl:note",
+          "value": "license = that of the distribution package; not bundled unless tools/make_relocatable_bundle.sh is used"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "libpangocairo-1.0.so.0@0.5800.2",
+      "name": "libpangocairo-1.0.so.0",
+      "version": "0.5800.2",
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:linkage",
+          "value": "dynamic (system)"
+        },
+        {
+          "name": "slasl:resolved-path",
+          "value": "/usr/lib/libpangocairo-1.0.so.0"
+        },
+        {
+          "name": "slasl:package",
+          "value": "pango"
+        },
+        {
+          "name": "slasl:note",
+          "value": "license = that of the distribution package; not bundled unless tools/make_relocatable_bundle.sh is used"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "libpangoft2-1.0.so.0@0.5800.2",
+      "name": "libpangoft2-1.0.so.0",
+      "version": "0.5800.2",
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:linkage",
+          "value": "dynamic (system)"
+        },
+        {
+          "name": "slasl:resolved-path",
+          "value": "/usr/lib/libpangoft2-1.0.so.0"
+        },
+        {
+          "name": "slasl:package",
+          "value": "pango"
+        },
+        {
+          "name": "slasl:note",
+          "value": "license = that of the distribution package; not bundled unless tools/make_relocatable_bundle.sh is used"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "libpcre2-8.so.0@0.16.1",
+      "name": "libpcre2-8.so.0",
+      "version": "0.16.1",
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:linkage",
+          "value": "dynamic (system)"
+        },
+        {
+          "name": "slasl:resolved-path",
+          "value": "/usr/lib/libpcre2-8.so.0"
+        },
+        {
+          "name": "slasl:package",
+          "value": "pcre2"
+        },
+        {
+          "name": "slasl:note",
+          "value": "license = that of the distribution package; not bundled unless tools/make_relocatable_bundle.sh is used"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "libpixman-1.so.0@0.46.4",
+      "name": "libpixman-1.so.0",
+      "version": "0.46.4",
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:linkage",
+          "value": "dynamic (system)"
+        },
+        {
+          "name": "slasl:resolved-path",
+          "value": "/usr/lib/libpixman-1.so.0"
+        },
+        {
+          "name": "slasl:package",
+          "value": "pixman"
+        },
+        {
+          "name": "slasl:note",
+          "value": "license = that of the distribution package; not bundled unless tools/make_relocatable_bundle.sh is used"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "libpng16.so.16@16.59.0",
+      "name": "libpng16.so.16",
+      "version": "16.59.0",
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:linkage",
+          "value": "dynamic (system)"
+        },
+        {
+          "name": "slasl:resolved-path",
+          "value": "/usr/lib/libpng16.so.16"
+        },
+        {
+          "name": "slasl:package",
+          "value": "libpng"
+        },
+        {
+          "name": "slasl:note",
+          "value": "license = that of the distribution package; not bundled unless tools/make_relocatable_bundle.sh is used"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "libseccomp.so.2@2.6.0",
+      "name": "libseccomp.so.2",
+      "version": "2.6.0",
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:linkage",
+          "value": "dynamic (system)"
+        },
+        {
+          "name": "slasl:resolved-path",
+          "value": "/usr/lib/libseccomp.so.2"
+        },
+        {
+          "name": "slasl:package",
+          "value": "libseccomp"
+        },
+        {
+          "name": "slasl:note",
+          "value": "license = that of the distribution package; not bundled unless tools/make_relocatable_bundle.sh is used"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "libsharpyuv.so.0@0.1.2",
+      "name": "libsharpyuv.so.0",
+      "version": "0.1.2",
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:linkage",
+          "value": "dynamic (system)"
+        },
+        {
+          "name": "slasl:resolved-path",
+          "value": "/usr/lib/libsharpyuv.so.0"
+        },
+        {
+          "name": "slasl:package",
+          "value": "libwebp"
+        },
+        {
+          "name": "slasl:note",
+          "value": "license = that of the distribution package; not bundled unless tools/make_relocatable_bundle.sh is used"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "libsqlite3.so.0@3.54.0",
+      "name": "libsqlite3.so.0",
+      "version": "3.54.0",
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:linkage",
+          "value": "dynamic (system)"
+        },
+        {
+          "name": "slasl:resolved-path",
+          "value": "/usr/lib/libsqlite3.so.0"
+        },
+        {
+          "name": "slasl:package",
+          "value": "sqlite"
+        },
+        {
+          "name": "slasl:note",
+          "value": "license = that of the distribution package; not bundled unless tools/make_relocatable_bundle.sh is used"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "libstdc++.so.6@6.0.36",
+      "name": "libstdc++.so.6",
+      "version": "6.0.36",
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:linkage",
+          "value": "dynamic (system)"
+        },
+        {
+          "name": "slasl:resolved-path",
+          "value": "/usr/lib/libstdc++.so.6"
+        },
+        {
+          "name": "slasl:package",
+          "value": "libstdc++"
+        },
+        {
+          "name": "slasl:note",
+          "value": "license = that of the distribution package; not bundled unless tools/make_relocatable_bundle.sh is used"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "libsystemd.so.0@0.45.0",
+      "name": "libsystemd.so.0",
+      "version": "0.45.0",
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:linkage",
+          "value": "dynamic (system)"
+        },
+        {
+          "name": "slasl:resolved-path",
+          "value": "/usr/lib/libsystemd.so.0"
+        },
+        {
+          "name": "slasl:package",
+          "value": "systemd-libs"
+        },
+        {
+          "name": "slasl:note",
+          "value": "license = that of the distribution package; not bundled unless tools/make_relocatable_bundle.sh is used"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "libtbb.so.12@12.20",
+      "name": "libtbb.so.12",
+      "version": "12.20",
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:linkage",
+          "value": "dynamic (system)"
+        },
+        {
+          "name": "slasl:resolved-path",
+          "value": "/usr/lib/libtbb.so.12"
+        },
+        {
+          "name": "slasl:package",
+          "value": "onetbb"
+        },
+        {
+          "name": "slasl:note",
+          "value": "license = that of the distribution package; not bundled unless tools/make_relocatable_bundle.sh is used"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "libthai.so.0@0.3.2",
+      "name": "libthai.so.0",
+      "version": "0.3.2",
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:linkage",
+          "value": "dynamic (system)"
+        },
+        {
+          "name": "slasl:resolved-path",
+          "value": "/usr/lib/libthai.so.0"
+        },
+        {
+          "name": "slasl:package",
+          "value": "libthai"
+        },
+        {
+          "name": "slasl:note",
+          "value": "license = that of the distribution package; not bundled unless tools/make_relocatable_bundle.sh is used"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "libtiff.so.6@6.3.0",
+      "name": "libtiff.so.6",
+      "version": "6.3.0",
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:linkage",
+          "value": "dynamic (system)"
+        },
+        {
+          "name": "slasl:resolved-path",
+          "value": "/usr/lib/libtiff.so.6"
+        },
+        {
+          "name": "slasl:package",
+          "value": "libtiff"
+        },
+        {
+          "name": "slasl:note",
+          "value": "license = that of the distribution package; not bundled unless tools/make_relocatable_bundle.sh is used"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "libtinysparql-3.0.so.0@0.1200.0",
+      "name": "libtinysparql-3.0.so.0",
+      "version": "0.1200.0",
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:linkage",
+          "value": "dynamic (system)"
+        },
+        {
+          "name": "slasl:resolved-path",
+          "value": "/usr/lib/libtinysparql-3.0.so.0"
+        },
+        {
+          "name": "slasl:package",
+          "value": "tinysparql"
+        },
+        {
+          "name": "slasl:note",
+          "value": "license = that of the distribution package; not bundled unless tools/make_relocatable_bundle.sh is used"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "libuuid.so.1@1.3.0",
+      "name": "libuuid.so.1",
+      "version": "1.3.0",
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:linkage",
+          "value": "dynamic (system)"
+        },
+        {
+          "name": "slasl:resolved-path",
+          "value": "/usr/lib/libuuid.so.1"
+        },
+        {
+          "name": "slasl:package",
+          "value": "util-linux-libs"
+        },
+        {
+          "name": "slasl:note",
+          "value": "license = that of the distribution package; not bundled unless tools/make_relocatable_bundle.sh is used"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "libwayland-client.so.0@0.26.0",
+      "name": "libwayland-client.so.0",
+      "version": "0.26.0",
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:linkage",
+          "value": "dynamic (system)"
+        },
+        {
+          "name": "slasl:resolved-path",
+          "value": "/usr/lib/libwayland-client.so.0"
+        },
+        {
+          "name": "slasl:package",
+          "value": "wayland"
+        },
+        {
+          "name": "slasl:note",
+          "value": "license = that of the distribution package; not bundled unless tools/make_relocatable_bundle.sh is used"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "libwayland-cursor.so.0@0.26.0",
+      "name": "libwayland-cursor.so.0",
+      "version": "0.26.0",
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:linkage",
+          "value": "dynamic (system)"
+        },
+        {
+          "name": "slasl:resolved-path",
+          "value": "/usr/lib/libwayland-cursor.so.0"
+        },
+        {
+          "name": "slasl:package",
+          "value": "wayland"
+        },
+        {
+          "name": "slasl:note",
+          "value": "license = that of the distribution package; not bundled unless tools/make_relocatable_bundle.sh is used"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "libwayland-egl.so.1@1.26.0",
+      "name": "libwayland-egl.so.1",
+      "version": "1.26.0",
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:linkage",
+          "value": "dynamic (system)"
+        },
+        {
+          "name": "slasl:resolved-path",
+          "value": "/usr/lib/libwayland-egl.so.1"
+        },
+        {
+          "name": "slasl:package",
+          "value": "wayland"
+        },
+        {
+          "name": "slasl:note",
+          "value": "license = that of the distribution package; not bundled unless tools/make_relocatable_bundle.sh is used"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "libwebp.so.7@7.2.0",
+      "name": "libwebp.so.7",
+      "version": "7.2.0",
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:linkage",
+          "value": "dynamic (system)"
+        },
+        {
+          "name": "slasl:resolved-path",
+          "value": "/usr/lib/libwebp.so.7"
+        },
+        {
+          "name": "slasl:package",
+          "value": "libwebp"
+        },
+        {
+          "name": "slasl:note",
+          "value": "license = that of the distribution package; not bundled unless tools/make_relocatable_bundle.sh is used"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "libxcb-render.so.0@0.0.0",
+      "name": "libxcb-render.so.0",
+      "version": "0.0.0",
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:linkage",
+          "value": "dynamic (system)"
+        },
+        {
+          "name": "slasl:resolved-path",
+          "value": "/usr/lib/libxcb-render.so.0"
+        },
+        {
+          "name": "slasl:package",
+          "value": "libxcb"
+        },
+        {
+          "name": "slasl:note",
+          "value": "license = that of the distribution package; not bundled unless tools/make_relocatable_bundle.sh is used"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "libxcb-shm.so.0@0.0.0",
+      "name": "libxcb-shm.so.0",
+      "version": "0.0.0",
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:linkage",
+          "value": "dynamic (system)"
+        },
+        {
+          "name": "slasl:resolved-path",
+          "value": "/usr/lib/libxcb-shm.so.0"
+        },
+        {
+          "name": "slasl:package",
+          "value": "libxcb"
+        },
+        {
+          "name": "slasl:note",
+          "value": "license = that of the distribution package; not bundled unless tools/make_relocatable_bundle.sh is used"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "libxcb.so.1@1.1.0",
+      "name": "libxcb.so.1",
+      "version": "1.1.0",
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:linkage",
+          "value": "dynamic (system)"
+        },
+        {
+          "name": "slasl:resolved-path",
+          "value": "/usr/lib/libxcb.so.1"
+        },
+        {
+          "name": "slasl:package",
+          "value": "libxcb"
+        },
+        {
+          "name": "slasl:note",
+          "value": "license = that of the distribution package; not bundled unless tools/make_relocatable_bundle.sh is used"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "libxkbcommon.so.0@0.13.2",
+      "name": "libxkbcommon.so.0",
+      "version": "0.13.2",
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:linkage",
+          "value": "dynamic (system)"
+        },
+        {
+          "name": "slasl:resolved-path",
+          "value": "/usr/lib/libxkbcommon.so.0"
+        },
+        {
+          "name": "slasl:package",
+          "value": "libxkbcommon"
+        },
+        {
+          "name": "slasl:note",
+          "value": "license = that of the distribution package; not bundled unless tools/make_relocatable_bundle.sh is used"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "libxml2.so.16@16.1.4",
+      "name": "libxml2.so.16",
+      "version": "16.1.4",
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:linkage",
+          "value": "dynamic (system)"
+        },
+        {
+          "name": "slasl:resolved-path",
+          "value": "/usr/lib/libxml2.so.16"
+        },
+        {
+          "name": "slasl:package",
+          "value": "libxml2"
+        },
+        {
+          "name": "slasl:note",
+          "value": "license = that of the distribution package; not bundled unless tools/make_relocatable_bundle.sh is used"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "libz.so.1@1.3.1",
+      "name": "libz.so.1",
+      "version": "1.3.1",
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:linkage",
+          "value": "dynamic (system)"
+        },
+        {
+          "name": "slasl:resolved-path",
+          "value": "/usr/lib/libz.so.1"
+        },
+        {
+          "name": "slasl:package",
+          "value": "zlib-ng-compat"
+        },
+        {
+          "name": "slasl:note",
+          "value": "license = that of the distribution package; not bundled unless tools/make_relocatable_bundle.sh is used"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "libzstd.so.1@1.5.7",
+      "name": "libzstd.so.1",
+      "version": "1.5.7",
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:linkage",
+          "value": "dynamic (system)"
+        },
+        {
+          "name": "slasl:resolved-path",
+          "value": "/usr/lib/libzstd.so.1"
+        },
+        {
+          "name": "slasl:package",
+          "value": "zstd"
+        },
+        {
+          "name": "slasl:note",
+          "value": "license = that of the distribution package; not bundled unless tools/make_relocatable_bundle.sh is used"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "UVtools_(algorithms_ported_natively)@unknown",
+      "name": "UVtools (algorithms ported natively)",
+      "licenses": [
+        {
+          "expression": "AGPL-3.0-only"
+        }
+      ],
+      "scope": "required",
+      "properties": [
+        {
+          "name": "slasl:linkage",
+          "value": "source port, no UVtools code/binary at runtime"
+        },
+        {
+          "name": "slasl:attribution",
+          "value": "Tiago Conceicao (sn4k3) and UVtools contributors, https://github.com/sn4k3/UVtools"
+        },
+        {
+          "name": "slasl:files-mentioning-uvtools",
+          "value": "87"
+        },
+        {
+          "name": "slasl:files",
+          "value": "src/CLI/CLI.hpp, src/CLI/ProcessActions.cpp, src/libslic3r/CMakeLists.txt, src/libslic3r/Format/AnetArchive.cpp, src/libslic3r/Format/AnetLayout.hpp, src/libslic3r/Format/AnycubicLayerLayout.hpp, src/libslic3r/Format/AnycubicSLA.cpp, src/libslic3r/Format/AnycubicSLA.hpp, src/libslic3r/Format/AnycubicZipArchive.cpp, src/libslic3r/Format/AnycubicZipArchive.hpp, src/libslic3r/Format/AnycubicZipLayout.hpp, src/libslic3r/Format/CTBEncryptedCrypto.hpp, src/libslic3r/Format/ChituboxArchive.cpp, src/libslic3r/Format/ChituboxArchive.hpp, src/libslic3r/Format/ChituboxLayerLayout.hpp, src/libslic3r/Format/ChituboxPreview.hpp, src/libslic3r/Format/CrealityCXDLPv1Archive.cpp, src/libslic3r/Format/CrealityCXDLPv4.cpp, src/libslic3r/Format/CrealityChecksum.hpp, src/libslic3r/Format/Emake3DArchive.cpp, src/libslic3r/Format/Emake3DLayout.hpp, src/libslic3r/Format/FDGArchive.hpp, src/libslic3r/Format/FlashforgeArchive.cpp, src/libslic3r/Format/KlipperArchive.cpp, src/libslic3r/Format/KlipperArchive.hpp, src/libslic3r/Format/KlipperLayout.hpp, src/libslic3r/Format/LongerOrangeArchive.cpp, src/libslic3r/Format/LongerOrangeArchive.hpp, src/libslic3r/Format/LongerOrangeLayout.hpp, src/libslic3r/Format/MakerbaseArchive.cpp, src/libslic3r/Format/MakerbaseArchive.hpp, src/libslic3r/Format/MakerbaseLayout.hpp, src/libslic3r/Format/NanoDLPArchive.cpp, src/libslic3r/Format/NanoDLPEncoder.hpp, src/libslic3r/Format/NanoDLPLayout.hpp, src/libslic3r/Format/NanoDLPSchema.hpp, src/libslic3r/Format/OSFArchive.cpp, src/libslic3r/Format/OpenSlaLayout.hpp, src/libslic3r/Format/OpenStandardsArchive.cpp, src/libslic3r/Format/PhotonSArchive.cpp, src/libslic3r/Format/PhrozenArchive.cpp, src/libslic3r/Format/PhrozenArchive.hpp, src/libslic3r/Format/PhrozenLayout.hpp, src/libslic3r/Format/SL1.cpp, src/libslic3r/Format/SLAArchiveFormatRegistry.cpp, src/libslic3r/Format/SVGXFile.hpp, src/libslic3r/Format/SvgxLayout.hpp, src/libslic3r/Format/UVToolsCompatArchive.cpp, src/libslic3r/Format/UVToolsCompatArchive.hpp, src/libslic3r/Format/UniformationArchive.cpp, src/libslic3r/Format/UniformationLayout.hpp, src/libslic3r/Format/VDTArchive.cpp, src/libslic3r/Format/VlareLayout.hpp, src/libslic3r/Format/VoxeldanceLayout.hpp, src/libslic3r/Format/ZCodeArchive.cpp, src/libslic3r/Format/ZCodeLayout.hpp, src/libslic3r/Format/ZCodeRSA.hpp, src/libslic3r/PrintConfig.cpp, src/libslic3r/SLA/CBDDLPFreshExportPlan.hpp, src/libslic3r/SLA/CWSCommandCodec.hpp, src/libslic3r/SLA/CalibrationRaster.cpp, src/libslic3r/SLA/CalibrationRaster.hpp, src/libslic3r/SLA/ChituboxJobOverlay.hpp, src/libslic3r/SLA/ChituboxJobReader.hpp, src/libslic3r/SLA/ChituboxLayerParameters.hpp, src/libslic3r/SLA/CrealityCXDLPv4LayerParameters.hpp, src/libslic3r/SLA/ExposureFinderPattern.cpp, src/libslic3r/SLA/LayerDocument.cpp, src/libslic3r/SLA/LayerDocument.hpp, src/libslic3r/SLA/LayerExports.cpp, src/libslic3r/SLA/LayerExports.hpp, src/libslic3r/SLA/LayerImageFile.cpp, src/libslic3r/SLA/LayerIssues.cpp, src/libslic3r/SLA/LayerIssues.hpp, src/libslic3r/SLA/LayerOperations.cpp, src/libslic3r/SLA/LayerOperations.hpp, src/libslic3r/SLA/LayerRecipe.cpp, src/libslic3r/SLA/LayerRecipe.hpp, src/libslic3r/SLA/LayerSuggestions.cpp, src/libslic3r/SLA/LayerSuggestions.hpp, src/libslic3r/SLA/MaskFilter.hpp, src/libslic3r/SLA/MedianFilter.hpp, src/libslic3r/SLA/PCBExposure.hpp, src/libslic3r/SLA/PixelContourTree.hpp, src/libslic3r/SLAPrint.cpp, src/slic3r/GUI/LayerEditorDialog.cpp, src/slic3r/GUI/SlaRasterToolsDialog.cpp"
+        }
+      ]
+    }
+  ]
+}

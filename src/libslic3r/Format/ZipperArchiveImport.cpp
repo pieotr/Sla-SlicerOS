@@ -119,6 +119,26 @@ std::pair<DynamicPrintConfig, ConfigSubstitutions> extract_profile(
         profile_in.load(arch.profile,
                         ForwardCompatibilitySubstitutionRule::Enable);
 
+    // Untagged Prusa archives retain their historical scene-axis convention.
+    // Tagged archives expose raster dimensions for external image consumers.
+    const auto geometry = arch.config.get<std::string>("slaSlicerProfileGeometry", "");
+    if (!geometry.empty() && geometry != "raster-v1")
+        throw std::runtime_error("Unsupported SL1 profile geometry: " + geometry);
+    if (geometry == "raster-v1" && !profile_in.empty() &&
+        profile_in.option("display_orientation") != nullptr &&
+        profile_in.option("display_orientation")->getInt() == sladoPortrait) {
+        for (const char *key : {"display_width", "display_height",
+                                "display_pixels_x", "display_pixels_y"})
+            if (profile_in.option(key) == nullptr)
+                throw std::runtime_error("Incomplete SL1 raster geometry profile");
+        const double width = profile_in.opt_float("display_width");
+        const int cols = profile_in.opt_int("display_pixels_x");
+        profile_in.set("display_width", profile_in.opt_float("display_height"));
+        profile_in.set("display_height", width);
+        profile_in.set("display_pixels_x", profile_in.opt_int("display_pixels_y"));
+        profile_in.set("display_pixels_y", cols);
+    }
+
     if (profile_in.empty()) { // missing profile... do guess work
         // try to recover the layer height from the config.ini which was
         // present in all versions of sl1 files.

@@ -9,6 +9,8 @@
 #include "libslic3r/PrintConfig.hpp"
 
 namespace Slic3r {
+namespace sla { struct CWSFreshExportPlan; }
+namespace sla { struct CBDDLPFreshExportPlan; }
 
 // ============================================================================
 // ZIP-BASED FORMATS (SL1, CWS, GenericZIP, ZCode, OSLA, JXS, NanoDLP, etc.)
@@ -25,36 +27,30 @@ protected:
 
 // CWS (Wanhao) - ZIP with XML manifest
 class UVToolsCWSArchive : public UVToolsZIPArchiveBase {
+    void export_print_impl(const std::string &fname, const SLAPrint &print,
+                           const sla::CWSFreshExportPlan *fresh);
 public:
     explicit UVToolsCWSArchive(const SLAPrinterConfig &cfg) : UVToolsZIPArchiveBase(cfg) {}
     explicit UVToolsCWSArchive(SLAPrinterConfig &&cfg) : UVToolsZIPArchiveBase(std::move(cfg)) {}
+    void export_fresh_print(const std::string &fname, const SLAPrint &print,
+                            const sla::CWSFreshExportPlan &fresh);
     void export_print(const std::string fname, const SLAPrint &print,
                       const ThumbnailsList &thumbnails, const std::string &projectname = "") override;
 };
 
-// GenericZIP - ZIP with manifest.uvtools JSON
+// Chitubox ZIP: run.gcode is the container's SLA exposure/motion sequence.
+class UVToolsChituboxZIPArchive : public UVToolsZIPArchiveBase {
+public:
+    explicit UVToolsChituboxZIPArchive(const SLAPrinterConfig &cfg) : UVToolsZIPArchiveBase(cfg) {}
+    void export_print(const std::string fname, const SLAPrint &print,
+                      const ThumbnailsList &thumbnails, const std::string &projectname = "") override;
+};
+
+// GenericZIP - ZIP with manifest.uvtools XML
 class UVToolsGenericZIPArchive : public UVToolsZIPArchiveBase {
 public:
     explicit UVToolsGenericZIPArchive(const SLAPrinterConfig &cfg) : UVToolsZIPArchiveBase(cfg) {}
     explicit UVToolsGenericZIPArchive(SLAPrinterConfig &&cfg) : UVToolsZIPArchiveBase(std::move(cfg)) {}
-    void export_print(const std::string fname, const SLAPrint &print,
-                      const ThumbnailsList &thumbnails, const std::string &projectname = "") override;
-};
-
-// ZCode - ZIP with XML task/profile structure
-class UVToolsZCodeArchive : public UVToolsZIPArchiveBase {
-public:
-    explicit UVToolsZCodeArchive(const SLAPrinterConfig &cfg) : UVToolsZIPArchiveBase(cfg) {}
-    explicit UVToolsZCodeArchive(SLAPrinterConfig &&cfg) : UVToolsZIPArchiveBase(std::move(cfg)) {}
-    void export_print(const std::string fname, const SLAPrint &print,
-                      const ThumbnailsList &thumbnails, const std::string &projectname = "") override;
-};
-
-// ZCodeX - ZCode variant with JSON metadata  
-class UVToolsZCodeXArchive : public UVToolsZIPArchiveBase {
-public:
-    explicit UVToolsZCodeXArchive(const SLAPrinterConfig &cfg) : UVToolsZIPArchiveBase(cfg) {}
-    explicit UVToolsZCodeXArchive(SLAPrinterConfig &&cfg) : UVToolsZIPArchiveBase(std::move(cfg)) {}
     void export_print(const std::string fname, const SLAPrint &print,
                       const ThumbnailsList &thumbnails, const std::string &projectname = "") override;
 };
@@ -64,15 +60,6 @@ class UVToolsOSLAArchive : public UVToolsZIPArchiveBase {
 public:
     explicit UVToolsOSLAArchive(const SLAPrinterConfig &cfg) : UVToolsZIPArchiveBase(cfg) {}
     explicit UVToolsOSLAArchive(SLAPrinterConfig &&cfg) : UVToolsZIPArchiveBase(std::move(cfg)) {}
-    void export_print(const std::string fname, const SLAPrint &print,
-                      const ThumbnailsList &thumbnails, const std::string &projectname = "") override;
-};
-
-// JXS (GigaKnightSung) - ZIP with INI/JSON config
-class UVToolsJXSArchive : public UVToolsZIPArchiveBase {
-public:
-    explicit UVToolsJXSArchive(const SLAPrinterConfig &cfg) : UVToolsZIPArchiveBase(cfg) {}
-    explicit UVToolsJXSArchive(SLAPrinterConfig &&cfg) : UVToolsZIPArchiveBase(std::move(cfg)) {}
     void export_print(const std::string fname, const SLAPrint &print,
                       const ThumbnailsList &thumbnails, const std::string &projectname = "") override;
 };
@@ -95,20 +82,11 @@ public:
                       const ThumbnailsList &thumbnails, const std::string &projectname = "") override;
 };
 
-// VDA (Structo) - ZIP with XML root structure
+// Voxeldance Additive ZIP with UVtools VDARoot XML.
 class UVToolsVDAArchive : public UVToolsZIPArchiveBase {
 public:
     explicit UVToolsVDAArchive(const SLAPrinterConfig &cfg) : UVToolsZIPArchiveBase(cfg) {}
     explicit UVToolsVDAArchive(SLAPrinterConfig &&cfg) : UVToolsZIPArchiveBase(std::move(cfg)) {}
-    void export_print(const std::string fname, const SLAPrint &print,
-                      const ThumbnailsList &thumbnails, const std::string &projectname = "") override;
-};
-
-// VDT - ZIP with manifest.json + 10 preview variants
-class UVToolsVDTArchive : public UVToolsZIPArchiveBase {
-public:
-    explicit UVToolsVDTArchive(const SLAPrinterConfig &cfg) : UVToolsZIPArchiveBase(cfg) {}
-    explicit UVToolsVDTArchive(SLAPrinterConfig &&cfg) : UVToolsZIPArchiveBase(std::move(cfg)) {}
     void export_print(const std::string fname, const SLAPrint &print,
                       const ThumbnailsList &thumbnails, const std::string &projectname = "") override;
 };
@@ -118,15 +96,6 @@ class UVToolsKlipperArchive : public UVToolsZIPArchiveBase {
 public:
     explicit UVToolsKlipperArchive(const SLAPrinterConfig &cfg) : UVToolsZIPArchiveBase(cfg) {}
     explicit UVToolsKlipperArchive(SLAPrinterConfig &&cfg) : UVToolsZIPArchiveBase(std::move(cfg)) {}
-    void export_print(const std::string fname, const SLAPrint &print,
-                      const ThumbnailsList &thumbnails, const std::string &projectname = "") override;
-};
-
-// FlashForgeSVGX - ZIP with SVG vector graphics per layer
-class UVToolsFlashForgeSVGXArchive : public UVToolsZIPArchiveBase {
-public:
-    explicit UVToolsFlashForgeSVGXArchive(const SLAPrinterConfig &cfg) : UVToolsZIPArchiveBase(cfg) {}
-    explicit UVToolsFlashForgeSVGXArchive(SLAPrinterConfig &&cfg) : UVToolsZIPArchiveBase(std::move(cfg)) {}
     void export_print(const std::string fname, const SLAPrint &print,
                       const ThumbnailsList &thumbnails, const std::string &projectname = "") override;
 };
@@ -143,41 +112,22 @@ protected:
     std::unique_ptr<sla::RasterBase> create_raster() const override;
 };
 
-// FDG (Voxelab) - Binary RLE with 54-field header
-class UVToolsFDGArchive : public UVToolsRLEBinaryBase {
-public:
-    explicit UVToolsFDGArchive(const SLAPrinterConfig &cfg) : UVToolsRLEBinaryBase(cfg) {}
-    explicit UVToolsFDGArchive(SLAPrinterConfig &&cfg) : UVToolsRLEBinaryBase(std::move(cfg)) {}
-    sla::RasterEncoder get_encoder() const override;
-    void export_print(const std::string fname, const SLAPrint &print,
-                      const ThumbnailsList &thumbnails, const std::string &projectname = "") override;
-};
-
 // Chitubox CTB/CBDDLP - Binary RLE with preview previews
 class UVToolsChituboxArchive : public UVToolsRLEBinaryBase {
     uint32_t m_magic;
+    uint32_t m_version;
+    unsigned cbddlp_plane_count() const;
+    sla::RasterEncoder get_document_encoder(const sla::LayerDocument &document) const override;
+    void export_print_impl(const std::string &filename,const SLAPrint &print,
+                           const ThumbnailsList &thumbnails,const sla::CBDDLPFreshExportPlan *fresh);
 public:
-    explicit UVToolsChituboxArchive(const SLAPrinterConfig &cfg, uint32_t magic = 0x12FD0086)
-        : UVToolsRLEBinaryBase(cfg), m_magic(magic) {}
-    explicit UVToolsChituboxArchive(SLAPrinterConfig &&cfg, uint32_t magic = 0x12FD0086)
-        : UVToolsRLEBinaryBase(std::move(cfg)), m_magic(magic) {}
+    void export_fresh_print(const std::string &filename,const SLAPrint &print,
+                            const ThumbnailsList &thumbnails,const sla::CBDDLPFreshExportPlan &fresh);
+    explicit UVToolsChituboxArchive(const SLAPrinterConfig &cfg, uint32_t magic = 0x12FD0086, uint32_t version = 2)
+        : UVToolsRLEBinaryBase(cfg), m_magic(magic), m_version(version) {}
+    explicit UVToolsChituboxArchive(SLAPrinterConfig &&cfg, uint32_t magic = 0x12FD0086, uint32_t version = 2)
+        : UVToolsRLEBinaryBase(std::move(cfg)), m_magic(magic), m_version(version) {}
     sla::RasterEncoder get_encoder() const override;
-    void export_print(const std::string fname, const SLAPrint &print,
-                      const ThumbnailsList &thumbnails, const std::string &projectname = "") override;
-};
-
-// PHZ (Phrozen) - Nearly identical to CTB with different magic
-class UVToolsPHZArchive : public UVToolsChituboxArchive {
-public:
-    explicit UVToolsPHZArchive(const SLAPrinterConfig &cfg) : UVToolsChituboxArchive(cfg, 0x9FDA83AE) {}
-    explicit UVToolsPHZArchive(SLAPrinterConfig &&cfg) : UVToolsChituboxArchive(std::move(cfg), 0x9FDA83AE) {}
-};
-
-// CTB Encrypted - Chitubox with XOR encryption
-class UVToolsCTBEncryptedArchive : public UVToolsChituboxArchive {
-public:
-    explicit UVToolsCTBEncryptedArchive(const SLAPrinterConfig &cfg) : UVToolsChituboxArchive(cfg, 0x12FD0107) {}
-    explicit UVToolsCTBEncryptedArchive(SLAPrinterConfig &&cfg) : UVToolsChituboxArchive(std::move(cfg), 0x12FD0107) {}
     void export_print(const std::string fname, const SLAPrint &print,
                       const ThumbnailsList &thumbnails, const std::string &projectname = "") override;
 };
@@ -206,34 +156,7 @@ protected:
     std::unique_ptr<sla::RasterBase> create_raster() const override;
 };
 
-// GR1 (Makerbase) - Big-endian RGB565 packed format with vector lines
-class UVToolsGR1Archive : public UVToolsPackedPixelBase {
-public:
-    explicit UVToolsGR1Archive(const SLAPrinterConfig &cfg) : UVToolsPackedPixelBase(cfg) {}
-    explicit UVToolsGR1Archive(SLAPrinterConfig &&cfg) : UVToolsPackedPixelBase(std::move(cfg)) {}
-    sla::RasterEncoder get_encoder() const override;
-    void export_print(const std::string fname, const SLAPrint &print,
-                      const ThumbnailsList &thumbnails, const std::string &projectname = "") override;
-};
-
-// MDLP (Makerbase) - Nearly identical to GR1
-class UVToolsMDLPArchive : public UVToolsGR1Archive {
-public:
-    explicit UVToolsMDLPArchive(const SLAPrinterConfig &cfg) : UVToolsGR1Archive(cfg) {}
-    explicit UVToolsMDLPArchive(SLAPrinterConfig &&cfg) : UVToolsGR1Archive(std::move(cfg)) {}
-};
-
-// LGS (Longer Orange) - Packed pixels with 200+ byte header
-class UVToolsLGSArchive : public UVToolsPackedPixelBase {
-public:
-    explicit UVToolsLGSArchive(const SLAPrinterConfig &cfg) : UVToolsPackedPixelBase(cfg) {}
-    explicit UVToolsLGSArchive(SLAPrinterConfig &&cfg) : UVToolsPackedPixelBase(std::move(cfg)) {}
-    sla::RasterEncoder get_encoder() const override;
-    void export_print(const std::string fname, const SLAPrint &print,
-                      const ThumbnailsList &thumbnails, const std::string &projectname = "") override;
-};
-
-// OSF (Vlare) - Big-endian UInt24 packed pixels
+// OSF (Vlare) v4 - big-endian settings and seven-bit grayscale RLE
 class UVToolsOSFArchive : public UVToolsPackedPixelBase {
 public:
     explicit UVToolsOSFArchive(const SLAPrinterConfig &cfg) : UVToolsPackedPixelBase(cfg) {}
@@ -263,18 +186,6 @@ class UVToolsAnetArchive : public SLAArchiveWriter {
 public:
     explicit UVToolsAnetArchive(const SLAPrinterConfig &cfg) : m_cfg(cfg) {}
     explicit UVToolsAnetArchive(SLAPrinterConfig &&cfg) : m_cfg(std::move(cfg)) {}
-    std::unique_ptr<sla::RasterBase> create_raster() const override;
-    sla::RasterEncoder get_encoder() const override;
-    void export_print(const std::string fname, const SLAPrint &print,
-                      const ThumbnailsList &thumbnails, const std::string &projectname = "") override;
-};
-
-// QDT (Emake3D) - Text-based vector line format
-class UVToolsQDTArchive : public SLAArchiveWriter {
-    SLAPrinterConfig m_cfg;
-public:
-    explicit UVToolsQDTArchive(const SLAPrinterConfig &cfg) : m_cfg(cfg) {}
-    explicit UVToolsQDTArchive(SLAPrinterConfig &&cfg) : m_cfg(std::move(cfg)) {}
     std::unique_ptr<sla::RasterBase> create_raster() const override;
     sla::RasterEncoder get_encoder() const override;
     void export_print(const std::string fname, const SLAPrint &print,

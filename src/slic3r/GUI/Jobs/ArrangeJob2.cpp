@@ -13,7 +13,6 @@
 #include <libslic3r/MultipleBeds.hpp>
 
 #include <libslic3r/SLAPrint.hpp>
-#include <libslic3r/Print.hpp>
 
 #include <slic3r/GUI/Plater.hpp>
 #include <slic3r/GUI/GLCanvas3D.hpp>
@@ -28,15 +27,6 @@ class GUISelectionMask: public arr2::SelectionMask {
 
 public:
     explicit GUISelectionMask(const Selection *sel) : m_sel{sel} {}
-
-    bool is_wipe_tower_selected(int wipe_tower_index) const override
-    {
-        const GLVolume *volume{GUI::get_selected_gl_volume(*m_sel)};
-        if (volume != nullptr && volume->wipe_tower_bed_index == wipe_tower_index) {
-            return true;
-        }
-        return false;
-    }
 
     std::vector<bool> selected_objects() const override
     {
@@ -71,105 +61,6 @@ public:
         }
 
         return ret;
-    }
-};
-
-static Polygon get_wtpoly(const GLCanvas3D::WipeTowerInfo &wti)
-{
-
-    auto bb = scaled(wti.bounding_box());
-    Polygon poly = Polygon({
-        {bb.min},
-        {bb.max.x(), bb.min.y()},
-        {bb.max},
-        {bb.min.x(), bb.max.y()}
-    });
-
-    poly.rotate(wti.rotation());
-    poly.translate(scaled(wti.pos()));
-
-    return poly;
-}
-
-// Wipe tower logic based on GLCanvas3D::WipeTowerInfo implements the Arrangeable
-// interface with this class:
-class ArrangeableWT: public arr2::ArrangeableWipeTowerBase
-{
-    BoundingBox m_xl_bb;
-    Vec2d m_orig_tr;
-    double m_orig_rot;
-
-public:
-    explicit ArrangeableWT(const ObjectID                  &oid,
-                           const GLCanvas3D::WipeTowerInfo &wti,
-                           std::function<bool(int)>            sel_pred,
-                           const BoundingBox                xl_bb = {})
-        : arr2::ArrangeableWipeTowerBase{oid, get_wtpoly(wti), wti.bed_index(), std::move(sel_pred)}
-        , m_orig_tr{wti.pos()}
-        , m_orig_rot{wti.rotation()}
-        , m_xl_bb{xl_bb}
-    {}
-
-    // Rotation is disabled for wipe tower in arrangement
-    void transform(const Vec2d &transl, double /*rot*/) override
-    {
-        GLCanvas3D::WipeTowerInfo::apply_wipe_tower(m_orig_tr + transl, m_orig_rot, this->bed_index);
-    }
-
-    void imbue_data(arr2::AnyWritable &datastore) const override
-    {
-        // For XL printers, there is a requirement that the wipe tower
-        // needs to be placed right beside the extruders which reside at the
-        // top edge of the bed.
-        if (m_xl_bb.defined) {
-            Vec2crd xl_center = m_xl_bb.center();
-            datastore.write("sink", Vec2crd{xl_center.x(), 2 * m_xl_bb.max.y()});
-        }
-
-        arr2::ArrangeableWipeTowerBase::imbue_data(datastore);
-    }
-};
-
-// Now the wipe tower handler implementation for GLCanvas3D::WipeTowerInfo
-// This is what creates the ArrangeableWT when the arrangement requests it.
-// An object of this class is installed into the arrangement Scene.
-struct WTH : public arr2::WipeTowerHandler
-{
-    GLCanvas3D::WipeTowerInfo wti;
-    ObjectID oid;
-    std::function<bool(int)> sel_pred;
-    BoundingBox xl_bb;
-
-    WTH(const ObjectID &objid,
-        const GLCanvas3D::WipeTowerInfo &w,
-        std::function<bool(int)> sel_predicate = [](int){ return false; })
-        : wti(w), oid{objid}, sel_pred{std::move(sel_predicate)}
-    {}
-
-    template<class Self, class Fn>
-    static void visit_(Self &&self, Fn &&fn)
-    {
-        ArrangeableWT wta{self.oid, self.wti, self.sel_pred, self.xl_bb};
-        fn(wta);
-    }
-
-    void visit(std::function<void(arr2::Arrangeable &)> fn) override
-    {
-        visit_(*this, fn);
-    }
-
-    void visit(std::function<void(const arr2::Arrangeable &)> fn) const override
-    {
-        visit_(*this, fn);
-    }
-
-    void set_selection_predicate(std::function<bool(int)> pred) override
-    {
-        sel_pred = std::move(pred);
-    }
-
-    ObjectID get_id() const override {
-        return this->oid;
     }
 };
 
@@ -245,36 +136,16 @@ arr2::SceneBuilder build_scene(Plater &plater, ArrangeSelectionMode mode)
 
     builder.set_arrange_settings(plater.canvas3D()->get_arrange_settings_view());
 
-    const auto wipe_tower_infos = plater.canvas3D()->get_wipe_tower_infos();
-
-    std::vector<AnyPtr<arr2::WipeTowerHandler>> handlers;
-
-    for (const auto &info : wipe_tower_infos) {
-        if (info) {
-            if (mode == ArrangeSelectionMode::CurrentBedFull && info.bed_index() != current_bed) {
-                continue;
-            }
-            auto handler{std::make_unique<WTH>(wipe_tower_instance_id(info.bed_index()), info)};
-            if (plater.config() && is_XL_printer(*plater.config())) {
-                handler->xl_bb = bounding_box(get_bed_shape(*plater.config()));
-            }
-            handlers.push_back(std::move(handler));
-        }
-    }
-
     if (plater.config()) {
         const Vec2crd gap{s_multiple_beds.get_bed_gap()};
         builder.set_bed(*plater.config(), gap);
     }
 
-    builder.set_wipe_tower_handlers(std::move(handlers));
-
     builder.set_model(plater.model());
 
-    if (plater.printer_technology() == ptSLA)
-        builder.set_sla_print(&plater.active_sla_print());
-    else
-        builder.set_fff_print(&plater.active_fff_print());
+    if(plater.printer_technology() != ptSLA)
+        throw std::logic_error("SLA arrangement requires an SLA session");
+    builder.set_sla_print(&plater.active_sla_print());
 
     return builder;
 }

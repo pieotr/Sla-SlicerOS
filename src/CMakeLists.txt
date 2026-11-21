@@ -20,12 +20,9 @@ endif ()
 
 add_subdirectory(slic3r-arrange)
 add_subdirectory(slic3r-arrange-wrapper)
-add_subdirectory(libseqarrange)
 
 
 if (SLIC3R_GUI)
-    add_subdirectory(libvgcode)
-
     if(WIN32)
         message(STATUS "WXWIN environment set to: $ENV{WXWIN}")
     elseif(UNIX)
@@ -40,7 +37,10 @@ if (SLIC3R_GUI)
     if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
         set (wxWidgets_CONFIG_OPTIONS "--toolkit=gtk${SLIC3R_GTK}")
     endif ()
-    find_package(wxWidgets 3.2 MODULE REQUIRED COMPONENTS base core adv html gl webview)
+    # The webview component drags in libwebkit2gtk/libsoup (via wx-config); the
+    # application is offline-only and never uses it.
+    set(SLIC3R_WX_COMPONENTS base core adv html gl)
+    find_package(wxWidgets 3.2 MODULE REQUIRED COMPONENTS ${SLIC3R_WX_COMPONENTS})
 
     include(${wxWidgets_USE_FILE})
 
@@ -52,6 +52,12 @@ if (SLIC3R_GUI)
 
     find_package(JPEG MODULE QUIET)
     find_package(NanoSVG REQUIRED)
+
+    # The prebuilt static wxWidgets may have been configured with wxUSE_WEBVIEW, in which
+    # case wx-config lists WebKitGTK/libsoup as extra libraries of every component. Nothing
+    # references them (web view sources are excluded), so drop them to keep the binary free of
+    # network-capable libraries (goal G12, test sla_offline_no_network_libs).
+    list(FILTER wxWidgets_LIBRARIES EXCLUDE REGEX "webkit|soup|javascriptcore")
 
     string(REGEX MATCH "wxpng" WX_PNG_BUILTIN ${wxWidgets_LIBRARIES})
     if (PNG_FOUND AND NOT WX_PNG_BUILTIN)
@@ -95,7 +101,6 @@ endif()
 # Create a slic3r executable
 # Process mainfests for various platforms.
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/platform/msw/PrusaSlicer.rc.in ${CMAKE_CURRENT_BINARY_DIR}/PrusaSlicer.rc @ONLY)
-configure_file(${CMAKE_CURRENT_SOURCE_DIR}/platform/msw/PrusaSlicer-gcodeviewer.rc.in ${CMAKE_CURRENT_BINARY_DIR}/PrusaSlicer-gcodeviewer.rc @ONLY)
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/platform/msw/PrusaSlicer.manifest.in ${CMAKE_CURRENT_BINARY_DIR}/PrusaSlicer.manifest @ONLY)
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/platform/osx/Info.plist.in ${CMAKE_CURRENT_BINARY_DIR}/Info.plist @ONLY)
 
@@ -137,7 +142,7 @@ endif (MINGW)
 
 if (NOT WIN32 AND NOT APPLE)
     # Binary name on unix like systems (Linux, Unix)
-    set_target_properties(PrusaSlicer PROPERTIES OUTPUT_NAME "prusa-slicer")
+    set_target_properties(PrusaSlicer PROPERTIES OUTPUT_NAME "sla-slicer")
 endif ()
 
 
@@ -194,7 +199,7 @@ if (WIN32)
     endif()
     target_compile_definitions(PrusaSlicer_app_gui PRIVATE -DSLIC3R_WRAPPER_NOCONSOLE)
     add_dependencies(PrusaSlicer_app_gui PrusaSlicer)
-    set_target_properties(PrusaSlicer_app_gui PROPERTIES OUTPUT_NAME "prusa-slicer")
+    set_target_properties(PrusaSlicer_app_gui PROPERTIES OUTPUT_NAME "sla-slicer")
     target_link_libraries(PrusaSlicer_app_gui PRIVATE boost_headeronly)
 
     add_executable(PrusaSlicer_app_console PrusaSlicer_app_msvc.cpp ${CMAKE_CURRENT_BINARY_DIR}/PrusaSlicer.rc)
@@ -204,18 +209,8 @@ if (WIN32)
     endif ()
     target_compile_definitions(PrusaSlicer_app_console PRIVATE -DSLIC3R_WRAPPER_CONSOLE)
     add_dependencies(PrusaSlicer_app_console PrusaSlicer)
-    set_target_properties(PrusaSlicer_app_console PROPERTIES OUTPUT_NAME "prusa-slicer-console")
+    set_target_properties(PrusaSlicer_app_console PROPERTIES OUTPUT_NAME "sla-slicer-console")
     target_link_libraries(PrusaSlicer_app_console PRIVATE boost_headeronly)
-
-    add_executable(PrusaSlicer_app_gcodeviewer WIN32 PrusaSlicer_app_msvc.cpp ${CMAKE_CURRENT_BINARY_DIR}/PrusaSlicer-gcodeviewer.rc)
-    # Generate debug symbols even in release mode.
-    if (MSVC)
-        target_link_options(PrusaSlicer_app_gcodeviewer PUBLIC "$<$<CONFIG:RELEASE>:/DEBUG>")
-    endif ()
-    target_compile_definitions(PrusaSlicer_app_gcodeviewer PRIVATE -DSLIC3R_WRAPPER_NOCONSOLE -DSLIC3R_WRAPPER_GCODEVIEWER)
-    add_dependencies(PrusaSlicer_app_gcodeviewer PrusaSlicer)
-    set_target_properties(PrusaSlicer_app_gcodeviewer PROPERTIES OUTPUT_NAME "prusa-gcodeviewer")
-    target_link_libraries(PrusaSlicer_app_gcodeviewer PRIVATE boost_headeronly)
 endif ()
 
 # Link the resources dir to where Slic3r GUI expects it
@@ -234,7 +229,8 @@ if (WIN32)
                 VERBATIM
             )
 
-            if (SLIC3R_GUI)
+            # The application does not use wx WebView; copy the loader only when the dependency build provides it.
+            if (SLIC3R_GUI AND EXISTS "${wxWidgets_ROOT_DIR}/bin/WebView2Loader.dll")
                 add_custom_command(TARGET PrusaSlicer POST_BUILD
                     COMMAND ${CMAKE_COMMAND} -E copy
                     "${wxWidgets_ROOT_DIR}/bin/WebView2Loader.dll"
@@ -248,11 +244,11 @@ if (WIN32)
             COMMENT "Symlinking the resources directory into the build tree"
             VERBATIM
         )
-        if (SLIC3R_GUI)
+        if (SLIC3R_GUI AND EXISTS "${wxWidgets_ROOT_DIR}/bin/WebView2Loader.dll")
             add_custom_command(TARGET PrusaSlicer POST_BUILD
                 COMMAND ${CMAKE_COMMAND} -E copy
                 "${wxWidgets_ROOT_DIR}/bin/WebView2Loader.dll"
-                "${CMAKE_CURRENT_BINARY_DIR}/${CONF}/WebView2Loader.dll")
+                "${CMAKE_CURRENT_BINARY_DIR}/WebView2Loader.dll")
         endif()
     endif ()
 
@@ -262,19 +258,10 @@ if (WIN32)
 
 else ()
     if (APPLE)
-        # On OSX, the name of the binary matches the name of the Application.
         add_custom_command(TARGET PrusaSlicer POST_BUILD
-            COMMAND ln -sf PrusaSlicer prusa-slicer
-            COMMAND ln -sf PrusaSlicer prusa-gcodeviewer
-            COMMAND ln -sf PrusaSlicer PrusaGCodeViewer
+            COMMAND ln -sf PrusaSlicer sla-slicer
             WORKING_DIRECTORY "$<TARGET_FILE_DIR:PrusaSlicer>"
-            COMMENT "Symlinking the G-code viewer to PrusaSlicer, symlinking to prusa-slicer and prusa-gcodeviewer"
-            VERBATIM)
-    else ()
-        add_custom_command(TARGET PrusaSlicer POST_BUILD
-            COMMAND ln -sf prusa-slicer prusa-gcodeviewer
-            WORKING_DIRECTORY "$<TARGET_FILE_DIR:PrusaSlicer>"
-            COMMENT "Symlinking the G-code viewer to PrusaSlicer"
+            COMMENT "Symlinking the application executable"
             VERBATIM)
     endif ()
     if (XCODE)
@@ -298,7 +285,4 @@ if (WIN32)
     endif ()
 else ()
     install(TARGETS PrusaSlicer RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}")
-
-    # Install the symlink for gcodeviewer
-    install(CODE "execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink prusa-slicer prusa-gcodeviewer WORKING_DIRECTORY \$ENV{DESTDIR}/${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_BINDIR})")
 endif ()

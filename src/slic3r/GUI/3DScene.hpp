@@ -21,7 +21,6 @@
 #include "libslic3r/Color.hpp"
 #include "libslic3r/ObjectID.hpp"
 
-#include "slic3r/GUI/Gizmos/GLGizmoMmuSegmentation.hpp"
 
 #include "GLModel.hpp"
 #include "MeshUtils.hpp"
@@ -49,11 +48,6 @@ class SLAPrintObject;
 enum  SLAPrintObjectStep : unsigned int;
 class BuildVolume;
 class DynamicPrintConfig;
-class ExtrusionPath;
-class ExtrusionMultiPath;
-class ExtrusionLoop;
-class ExtrusionEntity;
-class ExtrusionEntityCollection;
 class ModelObject;
 class ModelVolume;
 enum ModelInstanceEPrintVolumeState : unsigned char;
@@ -168,8 +162,6 @@ public:
     // and the associated ModelInstanceID.
     // Valid geometry_id should always be positive.
     std::pair<size_t, size_t> geometry_id;
-    // An ID containing the extruder ID (used to select color).
-    int                 	extruder_id;
 
     // Various boolean flags.
     struct {
@@ -189,8 +181,6 @@ public:
 	    bool                is_outside : 1;
 	    // Wheter or not this volume has been generated from a modifier
 	    bool                is_modifier : 1;
-	    // Wheter or not this volume has been generated from an extrusion path
-	    bool                is_extrusion_path : 1;
         // Whether or not always use the volume's own color (not using SELECTED/HOVER/DISABLED/OUTSIDE)
 	    bool                force_native_color : 1;
         // Whether or not render this volume in neutral
@@ -213,13 +203,6 @@ public:
     std::vector<coordf_t>       print_zs;
     // Offset into qverts & tverts, or offsets into indices stored into an OpenGL name_index_buffer.
     std::vector<size_t>         offsets;
-
-    std::optional<int> wipe_tower_bed_index;
-
-    // Wheter or not this volume has been generated from the wipe tower
-    bool is_wipe_tower() const {
-        return bool{wipe_tower_bed_index};
-    }
 
     // Bounding box of this volume, in unscaled coordinates.
     BoundingBoxf3 bounding_box() const { 
@@ -400,18 +383,6 @@ private:
     bool m_show_non_manifold_edges{ true };
     bool m_use_raycasters{ true };
 
-    struct MMPaintCachePerVolume {
-        size_t extruder_id;
-        std::unique_ptr<GUI::TriangleSelectorMmGui> triangle_selector_mm;
-        std::chrono::system_clock::time_point time_used;
-        uint64_t mm_timestamp;
-    };
-    struct MMPaintCache {
-        std::vector<ColorRGBA> extruders_colors;
-        std::map<ObjectID, MMPaintCachePerVolume> volume_data;
-    };
-    mutable MMPaintCache m_mm_paint_cache;
-
 public:
     GLVolumePtrs volumes;
 
@@ -429,13 +400,6 @@ public:
         int                volume_idx,
         int                instance_idx);
 
-#if SLIC3R_OPENGL_ES
-    GLVolume* load_wipe_tower_preview(
-        float pos_x, float pos_y, float width, float depth, const std::vector<std::pair<float, float>>& z_and_depth_pairs, float height, float cone_angle, float rotation_angle, bool size_unknown, float brim_width, size_t idx, TriangleMesh* out_mesh = nullptr);
-#else
-    GLVolume* load_wipe_tower_preview(
-        float pos_x, float pos_y, float width, float depth, const std::vector<std::pair<float, float>>& z_and_depth_pairs, float height, float cone_angle, float rotation_angle, bool size_unknown, float brim_width, size_t idx);
-#endif // SLIC3R_OPENGL_ES
 
     // Load SLA auxiliary GLVolumes (for support trees or pad).
     void load_object_auxiliary(
@@ -447,8 +411,6 @@ public:
         // Timestamp of the last change of the milestone
         size_t                          timestamp);
 
-    GLVolume* new_toolpath_volume(const ColorRGBA& rgba);
-    GLVolume* new_nontoolpath_volume(const ColorRGBA& rgba);
     // Render the volumes by OpenGL.
     void render(ERenderType type, bool disable_cullface, const Transform3d& view_matrix, const Transform3d& projection_matrix,
         std::function<bool(const GLVolume&)> filter_func = std::function<bool(const GLVolume&)>()) const;
@@ -487,7 +449,8 @@ public:
 
     void reset_outside_state();
 
-    void update_colors_by_extruder(const DynamicPrintConfig* config);
+    // Applies the SLA material colour to the model-part volumes.
+    void update_colors_from_material(const DynamicPrintConfig* config);
 
     // Returns a vector containing the sorted list of all the print_zs of the volumes contained in this collection
     std::vector<double> get_current_print_zs(bool active_only) const;
@@ -511,11 +474,6 @@ struct _3DScene
 {
     static void thick_lines_to_verts(const Lines& lines, const std::vector<double>& widths, const std::vector<double>& heights, bool closed, double top_z, GUI::GLModel::Geometry& geometry);
     static void thick_lines_to_verts(const Lines3& lines, const std::vector<double>& widths, const std::vector<double>& heights, bool closed, GUI::GLModel::Geometry& geometry);
-    static void extrusionentity_to_verts(const ExtrusionPath& extrusion_path, float print_z, const Point& copy, GUI::GLModel::Geometry& geometry);
-    static void extrusionentity_to_verts(const ExtrusionLoop& extrusion_loop, float print_z, const Point& copy, GUI::GLModel::Geometry& geometry);
-    static void extrusionentity_to_verts(const ExtrusionMultiPath& extrusion_multi_path, float print_z, const Point& copy, GUI::GLModel::Geometry& geometry);
-    static void extrusionentity_to_verts(const ExtrusionEntityCollection& extrusion_entity_collection, float print_z, const Point& copy, GUI::GLModel::Geometry& geometry);
-    static void extrusionentity_to_verts(const ExtrusionEntity* extrusion_entity, float print_z, const Point& copy, GUI::GLModel::Geometry& geometry);
 };
 
 }

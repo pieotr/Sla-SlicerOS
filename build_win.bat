@@ -3,18 +3,27 @@
 @REM /|/
 @REM /|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
 @REM /|/
+@REM /|/ Adapted for SLA-Slicer (SLA-only, offline). EXPERIMENTAL / UNTESTED: this script was
+@REM /|/ adapted without access to a Windows machine or the MSVC toolchain and has never been run.
+@REM /|/
 @setlocal disableDelayedExpansion enableExtensions
 @IF "%PS_ECHO_ON%" NEQ "" (echo on) ELSE (echo off)
 @GOTO :MAIN
 :HELP
 @ECHO.
-@ECHO Performs initial build or rebuild of the app (build) and deps (build/deps).
+@ECHO SLA-Slicer build script for Windows (Visual Studio 2019/2022).
+@ECHO *** EXPERIMENTAL AND UNTESTED: written without a Windows machine; expect to fix problems. ***
+@ECHO.
+@ECHO Performs initial build or rebuild of the app (build) and deps (deps\build).
+@ECHO Dependencies include OpenCV 4.12.0 (core, imgproc; built static, Release only).
 @ECHO Default options are determined from build directories and system state.
+@ECHO Config Debug is not supported (the static OpenCV is built in Release only).
+@ECHO Set SLA_BUILD_TESTS=ON in the environment to also build the C++ unit tests.
 @ECHO.
 @ECHO Usage: build_win [-ARCH ^<arch^>] [-CONFIG ^<config^>] [-VERSION ^<version^>]
 @ECHO                  [-PRODUCT ^<product^>] [-DESTDIR ^<directory^>]
 @ECHO                  [-STEPS ^<all^|all-dirty^|app^|app-dirty^|deps^|deps-dirty^>]
-@ECHO                  [-RUN ^<console^|custom^|none^|viewer^|window^>]
+@ECHO                  [-RUN ^<console^|custom^|none^|window^>]
 @ECHO                  [-PRIORITY ^<normal^|low^>]
 @ECHO.
 @ECHO  -a -ARCH      Target processor architecture
@@ -34,12 +43,11 @@
 @ECHO                  deps-dirty - build deps without cleaning
 @ECHO                Default: %PS_STEPS_DEFAULT%
 @ECHO  -r -RUN       Specifies what to perform at the run step:
-@ECHO                  console - run and wait on prusa-slicer-console.exe
+@ECHO                  console - run and wait on sla-slicer-console.exe
 @ECHO                  custom - run and wait on your custom build/%PS_CUSTOM_RUN_FILE%
 @ECHO                  ide - open project in Visual Studio if not open (no wait)
 @ECHO                  none - run step does nothing
-@ECHO                  viewer - run prusa-gcodeviewer.exe (no wait)
-@ECHO                  window - run prusa-slicer.exe (no wait)
+@ECHO                  window - run sla-slicer.exe (no wait)
 @ECHO                Default: none
 @ECHO  -d -DESTDIR   Deps destination directory
 @ECHO                Warning: Changing destdir path will not delete the old destdir.
@@ -49,7 +57,7 @@
 @ECHO.
 @ECHO  Examples:
 @ECHO.
-@ECHO  Initial build:           build_win -d "c:\src\PrusaSlicer-deps"
+@ECHO  Initial build:           build_win -d "c:\src\SLA-Slicer-deps"
 @ECHO  Build post deps change:  build_win -s all
 @ECHO  App dirty build:         build_win
 @ECHO  App dirty build ^& run:   build_win -r console
@@ -66,7 +74,9 @@ SET PS_CHOICE_TIMEOUT=30
 SET PS_CUSTOM_RUN_FILE=custom_run.bat
 SET PS_DEPS_PATH_FILE_NAME=.DEPS_PATH.txt
 SET PS_DEPS_PATH_FILE=%~dp0deps\build\%PS_DEPS_PATH_FILE_NAME%
-SET PS_CONFIG_LIST="Debug;MinSizeRel;Release;RelWithDebInfo"
+SET PS_CONFIG_LIST="MinSizeRel;Release;RelWithDebInfo"
+REM Unit tests are not built by default on Windows (set SLA_BUILD_TESTS=ON to build them).
+IF "%SLA_BUILD_TESTS%" EQU "" SET SLA_BUILD_TESTS=OFF
 
 REM Update this script for new versions by setting PS_VERSION_SUPPORTED to a
 REM new minimum version and setting PS_VERSION_EXCEEDED to the maximum supported
@@ -157,7 +167,7 @@ IF "%PS_DESTDIR%" NEQ "%PS_DESTDIR_CACHED%" (
     )
 )
 SET PS_DESTDIR_DEFAULT_MSG=
-CALL :PARSE_OPTION_VALUE "console custom ide none viewer window" PS_RUN
+CALL :PARSE_OPTION_VALUE "console custom ide none window" PS_RUN
 IF "%PS_RUN%" EQU "" GOTO :HELP
 IF "%PS_RUN%" NEQ "none" IF "%PS_STEPS:~0,4%" EQU "deps" (
     @ECHO ERROR: RUN=%PS_RUN% specified with STEPS=%PS_STEPS%
@@ -215,9 +225,9 @@ IF "%PS_STEPS_DIRTY%" EQU "" (
     CALL :MAKE_OR_CLEAN_DIRECTORY "%PS_DESTDIR%"
 )
 cd deps\build || GOTO :END
-cmake.exe .. -DDESTDIR="%PS_DESTDIR%"
+cmake.exe .. -DDESTDIR="%PS_DESTDIR%" -DDEP_OpenCV=ON -DDEP_DEBUG=OFF
 IF %ERRORLEVEL% NEQ 0 IF "%PS_STEPS_DIRTY%" NEQ "" (
-    (del CMakeCache.txt && cmake.exe .. -DDESTDIR="%PS_DESTDIR%") || GOTO :END
+    (del CMakeCache.txt && cmake.exe .. -DDESTDIR="%PS_DESTDIR%" -DDEP_OpenCV=ON -DDEP_DEBUG=OFF) || GOTO :END
 ) ELSE GOTO :END
 (echo %PS_DESTDIR%)> "%PS_DEPS_PATH_FILE%"
 msbuild /m ALL_BUILD.vcxproj /p:Configuration=%PS_CONFIG% /v:quiet %PS_PRIORITY% || GOTO :END
@@ -238,9 +248,9 @@ SET PS_PROJECT_IS_OPEN=
 FOR /F "tokens=2 delims=," %%I in (
     'tasklist /V /FI "IMAGENAME eq devenv.exe " /NH /FO CSV ^| find "%PS_SOLUTION_NAME%"'
 ) do SET PS_PROJECT_IS_OPEN=%%~I
-cmake.exe .. -DCMAKE_PREFIX_PATH="%PS_DESTDIR%\usr\local" -DCMAKE_CONFIGURATION_TYPES=%PS_CONFIG_LIST%
+cmake.exe .. -DCMAKE_PREFIX_PATH="%PS_DESTDIR%\usr\local" -DCMAKE_CONFIGURATION_TYPES=%PS_CONFIG_LIST% -DSLIC3R_BUILD_TESTS=%SLA_BUILD_TESTS%
 IF %ERRORLEVEL% NEQ 0 IF "%PS_STEPS_DIRTY%" NEQ "" (
-    (del CMakeCache.txt && cmake.exe .. -DCMAKE_PREFIX_PATH="%PS_DESTDIR%\usr\local" -DCMAKE_CONFIGURATION_TYPES=%PS_CONFIG_LIST%) || GOTO :END
+    (del CMakeCache.txt && cmake.exe .. -DCMAKE_PREFIX_PATH="%PS_DESTDIR%\usr\local" -DCMAKE_CONFIGURATION_TYPES=%PS_CONFIG_LIST% -DSLIC3R_BUILD_TESTS=%SLA_BUILD_TESTS%) || GOTO :END
 ) ELSE GOTO :END
 REM Skip the build step if we're using the undocumented app-cmake to regenerate the full config from inside devenv
 IF "%PS_STEPS%" NEQ "app-cmake" msbuild /m ALL_BUILD.vcxproj /p:Configuration=%PS_CONFIG% /v:quiet %PS_PRIORITY% || GOTO :END
@@ -266,14 +276,11 @@ FOR /F "tokens=2 delims=," %%I in (
 @ECHO Running %PS_RUN% application...
 @REM icacls below is just a hack for file-not-found error handling
 IF "%PS_RUN%" EQU "console" (
-    icacls prusa-slicer-console.exe >nul || GOTO :END
-    start /wait /b prusa-slicer-console.exe
+    icacls sla-slicer-console.exe >nul || GOTO :END
+    start /wait /b sla-slicer-console.exe
 ) ELSE IF "%PS_RUN%" EQU "window" (
-    icacls prusa-slicer.exe >nul || GOTO :END
-    start prusa-slicer.exe
-) ELSE IF "%PS_RUN%" EQU "viewer" (
-    icacls prusa-gcodeviewer.exe >nul || GOTO :END
-    start prusa-gcodeviewer.exe
+    icacls sla-slicer.exe >nul || GOTO :END
+    start sla-slicer.exe
 ) ELSE IF "%PS_RUN%" EQU "custom" (
     icacls %PS_CUSTOM_BAT% >nul || GOTO :END
     CALL %PS_CUSTOM_BAT%
@@ -284,12 +291,12 @@ IF "%PS_RUN%" EQU "console" (
         @ECHO Preparing to run Visual Studio...
         cd ..\.. || GOTO :END
         REM This hack generates a single config for MSVS, guaranteeing it gets set as the active config.
-        cmake.exe .. -DCMAKE_PREFIX_PATH="%PS_DESTDIR%\usr\local" -DCMAKE_CONFIGURATION_TYPES=%PS_CONFIG% > nul 2> nul || GOTO :END
+        cmake.exe .. -DCMAKE_PREFIX_PATH="%PS_DESTDIR%\usr\local" -DCMAKE_CONFIGURATION_TYPES=%PS_CONFIG% -DSLIC3R_BUILD_TESTS=%SLA_BUILD_TESTS% > nul 2> nul || GOTO :END
         REM Now launch devenv with the single config (setting it active) and a /command switch to re-run cmake and generate the full config list
         start devenv.exe %PS_SOLUTION_NAME%.sln /command ^"shell /o ^^^"%~f0^^^" -d ^^^"%PS_DESTDIR%^^^" -c %PS_CONFIG% -a %PS_ARCH% -r none -s app-cmake^"
         REM If devenv fails to launch just directly regenerate the full config list.
         IF %ERRORLEVEL% NEQ 0 (
-            cmake.exe .. -DCMAKE_PREFIX_PATH="%PS_DESTDIR%\usr\local" -DCMAKE_CONFIGURATION_TYPES=%PS_CONFIG_LIST% 2> nul 1> nul || GOTO :END
+            cmake.exe .. -DCMAKE_PREFIX_PATH="%PS_DESTDIR%\usr\local" -DCMAKE_CONFIGURATION_TYPES=%PS_CONFIG_LIST% -DSLIC3R_BUILD_TESTS=%SLA_BUILD_TESTS% 2> nul 1> nul || GOTO :END
         )
     )
 )

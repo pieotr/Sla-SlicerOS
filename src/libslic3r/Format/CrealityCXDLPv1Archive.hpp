@@ -23,6 +23,8 @@ protected:
     sla::RasterEncoder get_encoder() const override;
 
 public:
+    // Shared by mesh export and standalone mask editing; no printer transform.
+    static sla::EncodedRaster encode_mask(const void *data, size_t width, size_t height, size_t components);
     explicit CrealityCXDLPv1Archive(const SLAPrinterConfig &cfg) : m_cfg(cfg) {}
     explicit CrealityCXDLPv1Archive(SLAPrinterConfig &&cfg) : m_cfg(std::move(cfg)) {}
 

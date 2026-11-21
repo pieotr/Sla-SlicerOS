@@ -13,6 +13,7 @@ set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
 project(PrusaSlicer)
 
 include("version.inc")
+include("${CMAKE_CURRENT_LIST_DIR}/cmake/SlaSlicerBuildId.cmake")
 include(GNUInstallDirs)
 include(CMakeDependentOption)
 
@@ -41,8 +42,6 @@ option(SLIC3R_PCH               "Use precompiled headers" 1)
 option(SLIC3R_MSVC_COMPILE_PARALLEL "Compile on Visual Studio in parallel" 1)
 option(SLIC3R_ASAN              "Enable ASan on Clang and GCC" 0)
 option(SLIC3R_UBSAN             "Enable UBSan on Clang and GCC" 0)
-option(SLIC3R_OFFLINE_ONLY      "Disable all network access and external links" ON)
-option(SLIC3R_SLA_ONLY          "Disable FFF/FDM workflows and keep SLA-only mode" ON)
 option(SLIC3R_ENABLE_FORMAT_STEP "Enable compilation of STEP file support" ON)
 option(SLIC3R_LOG_TO_FILE       "Enable logging into file")
 option(SLIC3R_REPO_URL          "Preset repo URL")
@@ -85,14 +84,7 @@ if (APPLE)
     endif ()
 endif ()
 
-option(SLIC3R_BUILD_SANDBOXES   "Build development sandboxes" OFF)
 option(SLIC3R_BUILD_TESTS       "Build unit tests" ON)
-
-if (SLIC3R_SLA_ONLY)
-    # SLA-only branch: keep auxiliary build trees disabled.
-    set(SLIC3R_BUILD_SANDBOXES OFF CACHE BOOL "" FORCE)
-    set(SLIC3R_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-endif ()
 
 if (IS_CROSS_COMPILE)
     message("Detected cross compilation setup. Tests and encoding checks will be forcedly disabled!")
@@ -116,14 +108,6 @@ if (SLIC3R_REPO_URL)
 endif()
 if (SLIC3R_GUI)
     add_definitions(-DSLIC3R_GUI)
-endif ()
-
-if (SLIC3R_OFFLINE_ONLY)
-    add_definitions(-DSLIC3R_OFFLINE_ONLY)
-endif ()
-
-if (SLIC3R_SLA_ONLY)
-    add_definitions(-DSLIC3R_SLA_ONLY)
 endif ()
 
 if (SLIC3R_OPENGL_ES)
@@ -388,7 +372,9 @@ endif()
 # boost::beast::detail::base64 was introduced first in version 1.66.0
 set(MINIMUM_BOOST_VERSION "1.83.0")
 # Use legacy FindBoost for compatibility with modern Boost versions like 1.90
-cmake_policy(SET CMP0167 OLD)
+if (POLICY CMP0167)
+    cmake_policy(SET CMP0167 OLD)
+endif ()
 set(Boost_No_BOOST_CMAKE TRUE)
 set(_boost_components "filesystem;thread;log;locale;regex;chrono;atomic;date_time;iostreams;nowide")
 find_package(Boost ${MINIMUM_BOOST_VERSION} REQUIRED COMPONENTS ${_boost_components})
@@ -459,20 +445,6 @@ slic3r_remap_configs(TBB::tbbmalloc RelWithDebInfo Release)
 # The Intel TBB library will use the std::exception_ptr feature of C++11.
 # add_definitions(-DTBB_USE_CAPTURED_EXCEPTION=0)
 
-find_package(CURL REQUIRED)
-
-add_library(libcurl INTERFACE)
-target_link_libraries(libcurl INTERFACE CURL::libcurl)
-
-# Fixing curl's cmake config script bugs
-if (NOT WIN32)
-    # Required by libcurl
-    find_package(ZLIB REQUIRED)
-    target_link_libraries(libcurl INTERFACE ZLIB::ZLIB)
-else()
-    target_link_libraries(libcurl INTERFACE crypt32)
-endif()
-
 ## OPTIONAL packages
 
 # Find expat. We have our overriden FindEXPAT which exports libexpat target
@@ -513,11 +485,16 @@ endif()
 
 # l10n
 set(L10N_DIR "${SLIC3R_RESOURCES_DIR}/localization")
+# The fork ships no hints.ini (the "Did you know" notifications were removed), so hintsToPot only runs when it exists.
+set(L10N_HINTS_COMMAND COMMAND ${CMAKE_COMMAND} -E echo "gettext_make_pot: no resources/data/hints.ini, skipping hintsToPot")
+if (EXISTS "${SLIC3R_RESOURCES_DIR}/data/hints.ini")
+    set(L10N_HINTS_COMMAND COMMAND hintsToPot ${SLIC3R_RESOURCES_DIR} ${L10N_DIR})
+endif()
 add_custom_target(gettext_make_pot
     COMMAND xgettext --keyword=L --keyword=_L --keyword=_u8L --keyword=L_CONTEXT:1,2c --keyword=_L_PLURAL:1,2 --add-comments=TRN --from-code=UTF-8 --debug --boost
         -f "${L10N_DIR}/list.txt"
-        -o "${L10N_DIR}/PrusaSlicer.pot"
-    COMMAND hintsToPot ${SLIC3R_RESOURCES_DIR} ${L10N_DIR}
+        -o "${L10N_DIR}/SLA-Slicer.pot"
+    ${L10N_HINTS_COMMAND}
     WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
     COMMENT "Generate pot file from strings in the source tree"
 )
@@ -526,7 +503,7 @@ add_custom_target(gettext_merge_community_po_with_pot
     WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
     COMMENT "Merge community po with new generated pot file"
 )
-file(GLOB L10N_PO_FILES "${L10N_DIR}/*/PrusaSlicer*.po")
+file(GLOB L10N_PO_FILES "${L10N_DIR}/*/SLA-Slicer*.po")
 # list of names of directories, which are licalized by PS internally
 list(APPEND PS_L10N_DIRS "cs" "de" "es" "fr" "it" "ja" "pl")
 foreach(po_file ${L10N_PO_FILES})
@@ -537,7 +514,7 @@ foreach(po_file ${L10N_PO_FILES})
     if(found_dir_id LESS 0)
         add_custom_command(
             TARGET gettext_merge_community_po_with_pot PRE_BUILD
-            COMMAND msgmerge -N -o ${po_file} ${po_file} "${L10N_DIR}/PrusaSlicer.pot"
+            COMMAND msgmerge -N -o ${po_file} ${po_file} "${L10N_DIR}/SLA-Slicer.pot"
             # delete obsolete lines from resulting PO to avoid conflicts after a merging of it with wxWidgets.po
             COMMAND msgattrib --no-obsolete -o ${po_file} ${po_file}
             DEPENDS ${po_file}
@@ -549,12 +526,12 @@ add_custom_target(gettext_concat_wx_po_with_po
     WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
     COMMENT "Concatenate and merge wxWidgets localization po with PrusaSlicer po file"
 )
-file(GLOB L10N_PO_FILES "${L10N_DIR}/*/PrusaSlicer*.po")
+file(GLOB L10N_PO_FILES "${L10N_DIR}/*/SLA-Slicer*.po")
 foreach(po_file ${L10N_PO_FILES})
     GET_FILENAME_COMPONENT(po_dir "${po_file}" DIRECTORY)
     GET_FILENAME_COMPONENT(po_dir_name "${po_dir}" NAME)
     SET(wx_po_file "${L10N_DIR}/wx_locale/${po_dir_name}.po")
-    #SET(po_new_file "${po_dir}/PrusaSlicer_.po")
+    #SET(po_new_file "${po_dir}/SLA-Slicer_.po")
     add_custom_command(
         TARGET gettext_concat_wx_po_with_po PRE_BUILD
         COMMAND msgcat --use-first -o ${po_file} ${po_file} ${wx_po_file}
@@ -568,10 +545,10 @@ add_custom_target(gettext_po_to_mo
     WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
     COMMENT "Generate localization mo files (binary) from po files (texts)"
 )
-file(GLOB L10N_PO_FILES "${L10N_DIR}/*/PrusaSlicer*.po")
+file(GLOB L10N_PO_FILES "${L10N_DIR}/*/SLA-Slicer*.po")
 foreach(po_file ${L10N_PO_FILES})
     GET_FILENAME_COMPONENT(po_dir "${po_file}" DIRECTORY)
-    SET(mo_file "${po_dir}/PrusaSlicer.mo")
+    SET(mo_file "${po_dir}/SLA-Slicer.mo")
     add_custom_command(
         TARGET gettext_po_to_mo PRE_BUILD
         COMMAND msgfmt ARGS --check-format -o ${mo_file} ${po_file}
@@ -641,28 +618,31 @@ if(SLIC3R_BUILD_TESTS)
 endif()
 
 
+
 if (WIN32)
     install(DIRECTORY "${SLIC3R_RESOURCES_DIR}/" DESTINATION "${CMAKE_INSTALL_PREFIX}/resources")
 elseif (SLIC3R_FHS)
     # CMAKE_INSTALL_FULL_DATAROOTDIR: read-only architecture-independent data root (share)
-    set(SLIC3R_FHS_RESOURCES "${CMAKE_INSTALL_FULL_DATAROOTDIR}/PrusaSlicer")
+    set(SLIC3R_FHS_RESOURCES "${CMAKE_INSTALL_FULL_DATAROOTDIR}/SLA-Slicer")
     install(DIRECTORY ${SLIC3R_RESOURCES_DIR}/ DESTINATION ${SLIC3R_FHS_RESOURCES}
-        PATTERN "*/udev" EXCLUDE
     )
-    install(FILES src/platform/unix/PrusaSlicer.desktop DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/applications)
-    install(FILES src/platform/unix/PrusaGcodeviewer.desktop DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/applications)
+    # AppStream: the desktop file is named after the component id of the metainfo file.
+    install(FILES src/platform/unix/SLA-Slicer.desktop DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/applications
+        RENAME io.github.pieotr.SLASlicer.desktop)
+    install(FILES src/platform/unix/io.github.pieotr.SLASlicer.metainfo.xml DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/metainfo)
+    # The man page is compressed at install time by the packaging (gzip -9n); a plain install keeps the roff source.
+    install(FILES src/platform/unix/sla-slicer.1 DESTINATION ${CMAKE_INSTALL_MANDIR}/man1)
     foreach(SIZE 32 128 192)
-        install(FILES ${SLIC3R_RESOURCES_DIR}/icons/PrusaSlicer_${SIZE}px.png
-            DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/${SIZE}x${SIZE}/apps RENAME PrusaSlicer.png
-        )
-        install(FILES ${SLIC3R_RESOURCES_DIR}/icons/PrusaSlicer-gcodeviewer_${SIZE}px.png
-            DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/${SIZE}x${SIZE}/apps RENAME PrusaSlicer-gcodeviewer.png
+        install(FILES ${SLIC3R_RESOURCES_DIR}/icons/SLA-Slicer_${SIZE}px.png
+            DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/${SIZE}x${SIZE}/apps RENAME SLA-Slicer.png
         )
     endforeach()
-    install(DIRECTORY ${SLIC3R_RESOURCES_DIR}/udev/ DESTINATION lib/udev/rules.d)
     target_compile_definitions(PrusaSlicer PUBLIC SLIC3R_FHS SLIC3R_FHS_RESOURCES="${SLIC3R_FHS_RESOURCES}")
 else ()
-    install(FILES src/platform/unix/PrusaSlicer.desktop DESTINATION ${CMAKE_INSTALL_PREFIX}/resources/applications)
-    install(FILES src/platform/unix/PrusaGcodeviewer.desktop DESTINATION ${CMAKE_INSTALL_PREFIX}/resources/applications)
-    install(DIRECTORY "${SLIC3R_RESOURCES_DIR}/" DESTINATION "${CMAKE_INSTALL_PREFIX}/resources")
+    # Relocatable layout: <prefix>/bin/sla-slicer finds <prefix>/resources (exe/../resources).
+    # Destinations are relative so that `cmake --install --prefix <dir>` is honoured
+    # (an absolute ${CMAKE_INSTALL_PREFIX} would freeze the configure-time /usr/local).
+    install(FILES src/platform/unix/SLA-Slicer.desktop DESTINATION resources/applications
+        RENAME SLA-Slicer.desktop)
+    install(DIRECTORY "${SLIC3R_RESOURCES_DIR}/" DESTINATION resources)
 endif ()

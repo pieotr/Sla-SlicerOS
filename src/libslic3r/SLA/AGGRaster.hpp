@@ -7,6 +7,10 @@
 
 #include <libslic3r/SLA/RasterBase.hpp>
 #include "libslic3r/ExPolygon.hpp"
+#include "libslic3r/Exception.hpp"
+#include "RasterRounding.hpp"
+#include <memory>
+#include <type_traits>
 
 // For rasterizing
 #include <agg/agg_basics.h>
@@ -47,11 +51,20 @@ public:
     using TRawBuffer = agg::rendering_buffer;
 
 protected:
-    
     Resolution m_resolution;
     PixelDim m_pxdim_scaled;    // used for scaled coordinate polygons
     
-    std::vector<TPixel> m_buf;
+    // The constructor overwrites every pixel with the background (clear()), so the
+    // vector must not zero-fill the buffer a second time (a full extra pass over
+    // tens of megabytes per layer).
+    struct UninitializedPixels : std::allocator<TPixel> {
+        template<class U> struct rebind { using other = std::conditional_t<std::is_same_v<U, TPixel>, UninitializedPixels, std::allocator<U>>; };
+        template<class U, class... Args> void construct(U *p, Args &&...args) {
+            if constexpr (sizeof...(Args) == 0) ::new (static_cast<void *>(p)) U; // default-init: leave uninitialised
+            else ::new (static_cast<void *>(p)) U(std::forward<Args>(args)...);
+        }
+    };
+    std::vector<TPixel, UninitializedPixels> m_buf;
     agg::rendering_buffer m_rbuf;
     
     PixelRenderer m_pixrenderer;
@@ -116,6 +129,9 @@ protected:
     
     template<class P> void _draw(const P &poly)
     {
+        // Subpixel coordinates must not depend on the geometry worker's
+        // previous rounding mode. Preserve that mode after rendering.
+        const ScopedNearestRounding rounding;
         m_rasterizer.reset();
         
         m_rasterizer.add_path(to_path(contour(poly)));
@@ -144,6 +160,8 @@ public:
         , m_renderer(m_raw_renderer)
         , m_trafo(trafo)
     {
+        // Fix coefficient and gamma lookup construction as well as drawing.
+        const ScopedNearestRounding rounding;
         // Visual Studio compiler gives warnings about possible division by zero.
         assert(pd.w_mm != 0 && pd.h_mm != 0);
         if (pd.w_mm != 0 && pd.h_mm != 0) {

@@ -17,9 +17,6 @@ enum class ModelVolumeType : int;
 
 namespace GUI {
 
-typedef double                          coordf_t;
-typedef std::pair<coordf_t, coordf_t>   t_layer_height_range;
-
 // ----------------------------------------------------------------------------
 // ObjectDataViewModelNode: a node inside ObjectDataViewModel
 // ----------------------------------------------------------------------------
@@ -30,8 +27,6 @@ enum ItemType {
     itInstanceRoot  = 4,
     itInstance      = 8,
     itSettings      = 16,
-    itLayerRoot     = 32,
-    itLayer         = 64,
     itInfo          = 128
 };
 
@@ -39,7 +34,6 @@ enum ColumnNumber
 {
     colName         = 0,    // item name
     colPrint           ,    // printable property
-    colExtruder        ,    // extruder selection
     colEditing         ,    // item editing
 };
 
@@ -53,13 +47,7 @@ enum PrintIndicator
 enum class InfoItemType
 {
     Undef,
-    CustomSupports,
-    CustomSeam,
-    CutConnectors,
-    MmSegmentation,
-    FuzzySkin,
-    Sinking,
-    VariableLayerHeight
+    CutConnectors
 };
 
 class ObjectDataViewModelNode;
@@ -72,15 +60,12 @@ class ObjectDataViewModelNode
     wxBitmapBundle                  m_empty_bmp;
     size_t                          m_volumes_cnt = 0;
     std::vector< std::string >      m_opt_categories;
-    t_layer_height_range            m_layer_range = { 0.0f, 0.0f };
 
     wxString				        m_name;
     wxBitmapBundle&                 m_bmp = m_empty_bmp;
     ItemType				        m_type;
     int                             m_idx = -1;
     bool					        m_container = false;
-    wxString				        m_extruder = "default";
-    wxBitmapBundle                  m_extruder_bmp;
     wxBitmapBundle				    m_action_icon;
     PrintIndicator                  m_printable {piUndef};
     wxBitmapBundle                  m_printable_icon;
@@ -94,14 +79,12 @@ class ObjectDataViewModelNode
     InfoItemType                    m_info_item_type {InfoItemType::Undef};
 
 public:
-    ObjectDataViewModelNode(const wxString& name,
-                            const wxString& extruder):
+    ObjectDataViewModelNode(const wxString& name):
         m_parent(NULL),
         m_name(name),
-        m_type(itObject),
-        m_extruder(extruder)
+        m_type(itObject)
     {
-        set_action_and_extruder_icons();
+        set_action_icon();
         init_container();
 	}
 
@@ -110,13 +93,7 @@ public:
                             Slic3r::ModelVolumeType type,
                             const bool is_text_volume,
                             const bool is_svg_volume,
-                            const wxString& extruder,
                             const int idx = -1 );
-
-    ObjectDataViewModelNode(ObjectDataViewModelNode* parent,
-                            const t_layer_height_range& layer_range,
-                            const int idx = -1,
-                            const wxString& extruder = wxEmptyString );
 
     ObjectDataViewModelNode(ObjectDataViewModelNode* parent, const ItemType type);
     ObjectDataViewModelNode(ObjectDataViewModelNode* parent, const InfoItemType type);
@@ -191,7 +168,6 @@ public:
     bool            SetValue(const wxVariant &variant, unsigned int col);
     void            SetVolumeType(ModelVolumeType type) { m_volume_type = type; }
     void            SetBitmap(const wxBitmapBundle &icon) { m_bmp = icon; }
-    void            SetExtruder(const wxString &extruder) { m_extruder = extruder; }
     void            SetWarningIconName(const std::string& warning_icon_name) { m_warning_icon_name = warning_icon_name; }
     void            SetLock(bool has_lock)                                   { m_has_lock = has_lock; }
     const wxBitmapBundle& GetBitmap() const         { return m_bmp; }
@@ -201,10 +177,7 @@ public:
 	void			SetIdx(const int& idx);
 	int             GetIdx() const                  { return m_idx; }
     ModelVolumeType GetVolumeType() const           { return m_volume_type; }
-	t_layer_height_range    GetLayerRange() const   { return m_layer_range; }
-    wxString        GetExtruder()                   { return m_extruder; }
     PrintIndicator  IsPrintable() const             { return m_printable; }
-    void            UpdateExtruderAndColorIcon(wxString extruder = "");
 
     // use this function only for childrens
     void AssignAllVal(ObjectDataViewModelNode& from_node)
@@ -213,7 +186,6 @@ public:
         m_name = from_node.m_name;
         m_bmp = from_node.m_bmp;
         m_idx = from_node.m_idx;
-        m_extruder = from_node.m_extruder;
         m_type = from_node.m_type;
     }
 
@@ -234,10 +206,8 @@ public:
         return true;
     }
 
-    // Set action and extruder(if any exist) icons for node
-    void        set_action_and_extruder_icons();
-    // set extruder icon for node
-    void        set_extruder_icon();
+    // Set action icon for node
+    void        set_action_icon();
 	// Set printable icon for node
     void        set_printable_icon(PrintIndicator printable);
 
@@ -287,7 +257,6 @@ public:
     ~ObjectDataViewModel();
 
     wxDataViewItem AddObject( const wxString &name,
-                        const wxString& extruder,
                         const std::string& warning_icon_name,
                         const bool has_lock);
     wxDataViewItem AddVolumeChild(  const wxDataViewItem &parent_item,
@@ -296,17 +265,11 @@ public:
                                     const Slic3r::ModelVolumeType volume_type,
                                     const bool is_text_volume,
                                     const bool is_svg_volume,
-                                    const std::string& warning_icon_name,
-                                    const wxString& extruder);
+                                    const std::string& warning_icon_name);
     wxDataViewItem AddSettingsChild(const wxDataViewItem &parent_item);
     wxDataViewItem AddInfoChild(const wxDataViewItem &parent_item, InfoItemType info_type);
     wxDataViewItem AddInstanceChild(const wxDataViewItem &parent_item, size_t num);
     wxDataViewItem AddInstanceChild(const wxDataViewItem &parent_item, const std::vector<bool>& print_indicator);
-    wxDataViewItem AddLayersRoot(const wxDataViewItem &parent_item);
-    wxDataViewItem AddLayersChild(  const wxDataViewItem &parent_item,
-                                    const t_layer_height_range& layer_range,
-                                    const wxString& extruder,
-                                    const int index = -1);
     size_t         GetItemIndexForFirstVolume(ObjectDataViewModelNode* node_parent);
     wxDataViewItem Delete(const wxDataViewItem &item);
     wxDataViewItem DeleteLastInstance(const wxDataViewItem &parent_item, size_t num);
@@ -318,16 +281,12 @@ public:
     wxDataViewItem GetItemById(const int obj_idx, const int sub_obj_idx, const ItemType parent_type);
     wxDataViewItem GetItemByVolumeId(int obj_idx, int volume_idx);
     wxDataViewItem GetItemByInstanceId(int obj_idx, int inst_idx);
-    wxDataViewItem GetItemByLayerId(int obj_idx, int layer_idx);
-    wxDataViewItem GetItemByLayerRange(const int obj_idx, const t_layer_height_range& layer_range);
-    int  GetItemIdByLayerRange(const int obj_idx, const t_layer_height_range& layer_range);
     wxString GetItemName(const wxDataViewItem& item) const;
     int  GetIdByItem(const wxDataViewItem& item) const;
     int  GetIdByItemAndType(const wxDataViewItem& item, const ItemType type) const;
     int  GetObjectIdByItem(const wxDataViewItem& item) const;
     int  GetVolumeIdByItem(const wxDataViewItem& item) const;
     int  GetInstanceIdByItem(const wxDataViewItem& item) const;
-    int  GetLayerIdByItem(const wxDataViewItem& item) const;
     void GetItemInfo(const wxDataViewItem& item, ItemType& type, int& obj_idx, int& idx);
     int  GetRowByItem(const wxDataViewItem& item) const;
     bool IsEmpty() { return m_objects.empty(); }
@@ -337,8 +296,6 @@ public:
 
     wxString    GetName(const wxDataViewItem &item) const;
     wxBitmapBundle&   GetBitmap(const wxDataViewItem &item) const;
-    wxString    GetExtruder(const wxDataViewItem &item) const;
-    int         GetExtruderNumber(const wxDataViewItem &item) const;
 
     // helper methods to change the model
 
@@ -355,7 +312,6 @@ public:
                     const int item_idx,
                     unsigned int col);
 
-    void SetExtruder(const wxString& extruder, wxDataViewItem item);
     bool SetName    (const wxString& new_name, wxDataViewItem item);
 
     // For parent move child from cur_volume_id place to new_volume_id
@@ -384,7 +340,6 @@ public:
                                     ItemType type) const;
     wxDataViewItem  GetSettingsItem(const wxDataViewItem &item) const;
     wxDataViewItem  GetInstanceRootItem(const wxDataViewItem &item) const;
-    wxDataViewItem  GetLayerRootItem(const wxDataViewItem &item) const;
     wxDataViewItem  GetInfoItemByType(const wxDataViewItem &parent_item, InfoItemType type) const;
 
     bool    IsSettingsItem(const wxDataViewItem &item) const;
@@ -410,12 +365,7 @@ public:
     void        UpdateWarningIcon(const wxDataViewItem& item, const std::string& warning_name);
     void        UpdateLockIcon(const wxDataViewItem& item, bool has_lock);
     bool        HasWarningIcon(const wxDataViewItem& item) const;
-    t_layer_height_range    GetLayerRangeByItem(const wxDataViewItem& item) const;
 
-    bool        UpdateColumValues(unsigned col);
-    void        UpdateExtruderBitmap(wxDataViewItem item);
-    void        UpdateVolumesExtruderBitmap(wxDataViewItem object_item);
-    int         GetDefaultExtruderIdx(wxDataViewItem item);
 
 private:
     wxDataViewItem  AddRoot(const wxDataViewItem& parent_item, const ItemType root_type);

@@ -167,44 +167,6 @@ static bool check_internet_connection_win()
 // Last version where the info was sent / dialog dismissed is saved in appconfig.
 // Only show the dialog when this info is not found (e.g. fresh install) or when
 // current version is newer. Only major and minor versions are compared.
-#ifndef SLIC3R_OFFLINE_ONLY
-static bool should_dialog_be_shown()
-{
-    std::string last_sent_version = wxGetApp().app_config->get("version_system_info_sent");
-    Semver semver_current(SLIC3R_VERSION);
-    Semver semver_last_sent;
-    if (! last_sent_version.empty())
-        semver_last_sent = Semver(last_sent_version);
-
-    // set whether to show in alpha builds, or only betas/rcs/finals:
-    const bool show_in_alphas = true;
-
-    if (! show_in_alphas && semver_current.prerelease()
-       && std::string(semver_current.prerelease()).find("alpha") != std::string::npos)
-            return false;
-
-    // New version means current > last, but they must differ in more than just patch.
-    bool new_version = ((semver_current.maj() > semver_last_sent.maj())
-        || (semver_current.maj() == semver_last_sent.maj() && semver_current.min() > semver_last_sent.min() ));
-
-    if (! new_version)
-        return false;
-
-    // We might want to check that the internet connection is ready so we don't open the dialog
-    // if it cannot really send any data. Using a dummy HTTP GET request led to
-    // https://forum.prusaprinters.org/forum/prusaslicer/prusaslicer-2-4-0-beta1-is-out/#post-518488.
-    // It might also trigger security softwares, which would look bad and would lead to questions
-    // about what PS is doing. We better use some less intrusive way of checking the connection.
-
-    // As of now, this is only implemented on Win. The other platforms do not check beforehand.
-
-#ifdef _WIN32
-    return check_internet_connection_win();
-#else
-    return true;
-#endif
-}
-#endif
 
 
 
@@ -603,15 +565,15 @@ SendSystemInfoDialog::SendSystemInfoDialog(wxWindow* parent)
            "to identify you later. To detect duplicate entries, a unique number derived "
            "from your system is sent, but the source information cannot be reconstructed. "
            "Apart from that, only general data about your OS, hardware and OpenGL "
-           "installation are sent. PrusaSlicer is open source, if you want to "
+           "installation are sent. %2% is open source, if you want to "
            "inspect the code actually performing the communication, see %1%."),
-           std::string("<i>") + filename + "</i>");
+           std::string("<i>") + filename + "</i>", SLIC3R_APP_NAME);
 
     auto* html_window = new wxHtmlWindow(this, wxID_ANY, wxDefaultPosition, wxSize(70*em, 34*em), wxHW_SCROLLBAR_NEVER);
     wxString html = GUI::format_wxstr(
             "<html><body bgcolor=%1%><font color=%2%>"
             "<table><tr><td>"
-            "<img src = \"" + resources_dir() + "/icons/PrusaSlicer_192px.png\" />"
+            "<img src = \"" + resources_dir() + "/icons/SLA-Slicer_192px.png\" />"
             "</td><td align=\"left\">"
             + text0 + "<br / ><br / >"
             + text1 + "<br /><br />"
@@ -747,15 +709,7 @@ bool SendSystemInfoDialog::send_info(wxString& message)
 // The only function callable from outside this unit.
 void show_send_system_info_dialog_if_needed()
 {
-#ifdef SLIC3R_OFFLINE_ONLY
     return;
-#else
-    if (wxGetApp().is_gcode_viewer() || ! should_dialog_be_shown())
-        return;
-
-    SendSystemInfoDialog dlg(wxGetApp().mainframe);
-    dlg.ShowModal();
-#endif
 }
 
 

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -37,6 +38,8 @@ namespace Slic3r::CLI
     // Implemented in PrintHelp.cpp
 
     void    print_help(bool include_print_options = false, PrinterTechnology printer_technology = ptAny);
+    // Prints the product version, the build id and the PrusaSlicer base version (--version).
+    void    print_version();
 
     // Implemented in Setup.cpp
 
@@ -49,7 +52,6 @@ namespace Slic3r::CLI
                                         DynamicPrintConfig& print_config,
                                         PrinterTechnology& printer_technology,
                                         Data& cli);
-    bool                is_needed_post_processing(const DynamicPrintConfig& print_config);
 
     // Implemented in ProcessTransform.cpp
 
@@ -58,7 +60,13 @@ namespace Slic3r::CLI
     // Implemented in ProcessActions.cpp
 
     bool    has_full_config_from_profiles(const Data& cli);
-    bool    process_profiles_sharing(const Data& cli);
+    std::optional<int> process_profiles_sharing(const Data& cli);
+    // Standalone --sla-detect-issues; returns an exit code when the action was requested.
+    std::optional<int> process_sla_detect_issues(int argc, char** argv);
+    // Standalone --sla-suggestions (UVtools suggestions, evaluation only).
+    std::optional<int> process_sla_suggestions(int argc, char** argv);
+    // Standalone --sla-run-recipe: declarative layer recipe (doc/AUTOMATION.md).
+    std::optional<int> process_sla_run_recipe(int argc, char** argv);
     bool    process_actions(Data& cli, const DynamicPrintConfig& print_config, std::vector<Model>& models);
 
     // Implemented in GuiParams.cpp
@@ -67,7 +75,6 @@ namespace Slic3r::CLI
             // and return state of start_gui
     bool    init_gui_params(GUI::GUI_InitParams& gui_params, int argc, char** argv, Data& cli);
     int     start_gui_with_params(GUI::GUI_InitParams& params);
-    int     start_as_gcode_viewer(GUI::GUI_InitParams& gui_params);
 #endif
 
 }

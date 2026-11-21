@@ -65,6 +65,9 @@ void TopBarMenus::ApplyWorkspacesMenu()
             workspaces.Destroy(items[id]);
     }
 
+    // GUI_App keeps this build in Expert mode, so these choices cannot act.
+    return;
+
     for (const Slic3r::ConfigOptionMode& mode : { Slic3r::ConfigOptionMode::comSimple,
                                                   Slic3r::ConfigOptionMode::comAdvanced,
                                                   Slic3r::ConfigOptionMode::comExpert }) {

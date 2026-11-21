@@ -11,40 +11,28 @@ SCENARIO("Placeholder parser scripting", "[PlaceholderParser]") {
 	PlaceholderParser 	parser;
 	auto 				config = DynamicPrintConfig::full_print_config();
 
-	config.set_deserialize_strict( {
-		{ "printer_notes", "  PRINTER_VENDOR_PRUSA3D  PRINTER_MODEL_MK2  " },
-	    { "nozzle_diameter", "0.6;0.6;0.6;0.6" },
-	    { "temperature", "357;359;363;378" }
-	});
-    // To test the "first_layer_extrusion_width" over "first_layer_heigth".
-    // "first_layer_heigth" over "layer_height" is no more supported after first_layer_height was moved from PrintObjectConfig to PrintConfig.
-//  config.option<ConfigOptionFloatOrPercent>("first_layer_height")->value = 150.;
-//  config.option<ConfigOptionFloatOrPercent>("first_layer_height")->percent = true;
-    config.option<ConfigOptionFloatOrPercent>("first_layer_height")->value = 1.5 * config.opt_float("layer_height");
-    config.option<ConfigOptionFloatOrPercent>("first_layer_height")->percent = false;
-    // To let the PlaceholderParser throw when referencing first_layer_speed if it is set to percent, as the PlaceholderParser does not know
-    // a percent to what.
-    config.option<ConfigOptionFloatOrPercent>("first_layer_speed")->value = 50.;
-    config.option<ConfigOptionFloatOrPercent>("first_layer_speed")->percent = true;
-    ConfigOptionFloatsNullable *opt_filament_retract_length = config.option<ConfigOptionFloatsNullable>("filament_retract_length", true);
-    opt_filament_retract_length->values = { 5., ConfigOptionFloatsNullable::nil_value(), 3. };
+    config.set_deserialize_strict( {
+        { "printer_notes", "  PRINTER_VENDOR_PRUSA3D  PRINTER_MODEL_MK2  " },
+        { "delay_before_exposure", "0.6;0.6;0.6;0.6" },
+        { "tilt_down_cycles", "357;359;363;378" }
+    });
+    // A nullable option that is set, and one that is left at its default (nil).
+    config.option<ConfigOptionFloatNullable>("material_ow_support_pillar_diameter", true)->value = ConfigOptionFloatNullable::nil_value();
+    config.option<ConfigOptionFloatNullable>("material_ow_support_head_width", true)->value = 0.4;
 
     parser.apply_config(config);
 	parser.set("foo", 0);
 	parser.set("bar", 2);
-	parser.set("num_extruders", 4);
-    parser.set("gcode_flavor", "marlin");
 
-    SECTION("nested config options (legacy syntax)") { REQUIRE(parser.process("[temperature_[foo]]") == "357"); }
-    SECTION("array reference") { REQUIRE(parser.process("{temperature[foo]}") == "357"); }
-    SECTION("whitespaces and newlines are maintained") { REQUIRE(parser.process("test [ temperature_ [foo] ] \n hu") == "test 357 \n hu"); }
-    SECTION("nullable is not null") { REQUIRE(parser.process("{is_nil(filament_retract_length[0])}") == "false"); }
-    SECTION("nullable is null") { REQUIRE(parser.process("{is_nil(filament_retract_length[1])}") == "true"); }
-    SECTION("nullable is not null 2") { REQUIRE(parser.process("{is_nil(filament_retract_length[2])}") == "false"); }
-    SECTION("multiple expressions") { REQUIRE(parser.process("{temperature[foo];temperature[foo]}") == "357357"); }
-    SECTION("multiple expressions with semicolons") { REQUIRE(parser.process("{temperature[foo];;;temperature[foo];}") == "357357"); }
-    SECTION("multiple expressions with semicolons 2") { REQUIRE(parser.process("{temperature[foo];;temperature[foo];}") == "357357"); }
-    SECTION("multiple expressions with semicolons 3") { REQUIRE(parser.process("{temperature[foo];;;temperature[foo];;}") == "357357"); }
+    SECTION("nested config options (legacy syntax)") { REQUIRE(parser.process("[tilt_down_cycles_[foo]]") == "357"); }
+    SECTION("array reference") { REQUIRE(parser.process("{tilt_down_cycles[foo]}") == "357"); }
+    SECTION("whitespaces and newlines are maintained") { REQUIRE(parser.process("test [ tilt_down_cycles_ [foo] ] \n hu") == "test 357 \n hu"); }
+    SECTION("nullable is not null") { REQUIRE(parser.process("{is_nil(material_ow_support_head_width)}") == "false"); }
+    SECTION("nullable is null") { REQUIRE(parser.process("{is_nil(material_ow_support_pillar_diameter)}") == "true"); }
+    SECTION("multiple expressions") { REQUIRE(parser.process("{tilt_down_cycles[foo];tilt_down_cycles[foo]}") == "357357"); }
+    SECTION("multiple expressions with semicolons") { REQUIRE(parser.process("{tilt_down_cycles[foo];;;tilt_down_cycles[foo];}") == "357357"); }
+    SECTION("multiple expressions with semicolons 2") { REQUIRE(parser.process("{tilt_down_cycles[foo];;tilt_down_cycles[foo];}") == "357357"); }
+    SECTION("multiple expressions with semicolons 3") { REQUIRE(parser.process("{tilt_down_cycles[foo];;;tilt_down_cycles[foo];;}") == "357357"); }
 
     SECTION("parsing string with escaped characters") { REQUIRE(parser.process("{\"hu\\nha\\\\\\\"ha\\\"\"}") == "hu\nha\\\"ha\""); }
 
@@ -107,19 +95,6 @@ SCENARIO("Placeholder parser scripting", "[PlaceholderParser]") {
     SECTION("math: interpolate_table(13, (0, 0), (20, 20), (30, 20))") { REQUIRE(std::stod(parser.process("{interpolate_table(13, (0, 0), (20, 20), (30, 20))}")) == Approx(13.)); }
     SECTION("math: interpolate_table(25, (0, 0), (20, 20), (30, 20))") { REQUIRE(std::stod(parser.process("{interpolate_table(25, (0, 0), (20, 20), (30, 20))}")) == Approx(20.)); }
 
-    // Test the "coFloatOrPercent" and "xxx_extrusion_width" substitutions.
-    // first_layer_extrusion_width ratio_over first_layer_heigth.
-    SECTION("perimeter_extrusion_width") { REQUIRE(std::stod(parser.process("{perimeter_extrusion_width}")) == Approx(0.67500001192092896)); }
-    SECTION("first_layer_extrusion_width") { REQUIRE(std::stod(parser.process("{first_layer_extrusion_width}")) == Approx(0.9)); }
-    SECTION("support_material_xy_spacing") { REQUIRE(std::stod(parser.process("{support_material_xy_spacing}")) == Approx(0.3375)); }
-    // external_perimeter_speed over perimeter_speed
-    SECTION("external_perimeter_speed") { REQUIRE(std::stod(parser.process("{external_perimeter_speed}")) == Approx(30.)); }
-    // infill_overlap over perimeter_extrusion_width
-    SECTION("infill_overlap") { REQUIRE(std::stod(parser.process("{infill_overlap}")) == Approx(0.16875)); }
-    // If first_layer_speed is set to percent, then it is applied over respective extrusion types by overriding their respective speeds.
-    // The PlaceholderParser has no way to know which extrusion type the caller has in mind, therefore it throws.
-    SECTION("first_layer_speed") { REQUIRE_THROWS(parser.process("{first_layer_speed}")); }
-
     // Test the boolean expression parser.
     auto boolean_expression = [&parser](const std::string& templ) { return parser.evaluate_boolean_expression(templ, parser.config()); };
 
@@ -160,10 +135,10 @@ SCENARIO("Placeholder parser scripting", "[PlaceholderParser]") {
     SECTION("boolean expression parser: one_of(\"abcdef\", ~\".*f.*\", ~\".*c.*\")") { REQUIRE(boolean_expression("one_of(\"abcdef\", ~\".*f.*\", ~\".*c.*\")")); }
     SECTION("boolean expression parser: one_of(\"ghij\", /.*f.*/, /.*c.*/)") { REQUIRE(! boolean_expression("one_of(\"ghij\", /.*f.*/, /.*c.*/)")); }
     SECTION("boolean expression parser: one_of(\"ghij\", ~\".*f.*\", ~\".*c.*\")") { REQUIRE(! boolean_expression("one_of(\"ghij\", ~\".*f.*\", ~\".*c.*\")")); }
-    SECTION("complex expression") { REQUIRE(boolean_expression("printer_notes=~/.*PRINTER_VENDOR_PRUSA3D.*/ and printer_notes=~/.*PRINTER_MODEL_MK2.*/ and nozzle_diameter[0]==0.6 and num_extruders>1")); }
-    SECTION("complex expression2") { REQUIRE(boolean_expression("printer_notes=~/.*PRINTER_VEwerfNDOR_PRUSA3D.*/ or printer_notes=~/.*PRINTertER_MODEL_MK2.*/ or (nozzle_diameter[0]==0.6 and num_extruders>1)")); }
-    SECTION("complex expression3") { REQUIRE(! boolean_expression("printer_notes=~/.*PRINTER_VEwerfNDOR_PRUSA3D.*/ or printer_notes=~/.*PRINTertER_MODEL_MK2.*/ or (nozzle_diameter[0]==0.3 and num_extruders>1)")); }
-    SECTION("enum expression") { REQUIRE(boolean_expression("gcode_flavor == \"marlin\"")); }
+    SECTION("complex expression") { REQUIRE(boolean_expression("printer_notes=~/.*PRINTER_VENDOR_PRUSA3D.*/ and printer_notes=~/.*PRINTER_MODEL_MK2.*/ and delay_before_exposure[0]==0.6 and faded_layers>1")); }
+    SECTION("complex expression2") { REQUIRE(boolean_expression("printer_notes=~/.*PRINTER_VEwerfNDOR_PRUSA3D.*/ or printer_notes=~/.*PRINTertER_MODEL_MK2.*/ or (delay_before_exposure[0]==0.6 and faded_layers>1)")); }
+    SECTION("complex expression3") { REQUIRE(! boolean_expression("printer_notes=~/.*PRINTER_VEwerfNDOR_PRUSA3D.*/ or printer_notes=~/.*PRINTertER_MODEL_MK2.*/ or (delay_before_exposure[0]==0.3 and faded_layers>1)")); }
+    SECTION("enum expression") { REQUIRE(boolean_expression("display_orientation == \"portrait\"")); }
 
     SECTION("write to a scalar variable") {
         DynamicConfig config_outputs;
@@ -184,10 +159,10 @@ SCENARIO("Placeholder parser variables", "[PlaceholderParser]") {
     auto 				config = DynamicPrintConfig::full_print_config();
 
     config.set_deserialize_strict({
-        { "filament_notes", "testnotes" },
-        { "enable_dynamic_fan_speeds", "1" },
-        { "nozzle_diameter", "0.6;0.6;0.6;0.6" },
-        { "temperature", "357;359;363;378" }
+        { "compatible_printers", "testnotes" },
+        { "use_tilt", "1" },
+        { "delay_before_exposure", "0.6;0.6;0.6;0.6" },
+        { "tilt_down_cycles", "357;359;363;378" }
         });
 
     PlaceholderParser::ContextData context_with_global_dict;
@@ -228,27 +203,27 @@ SCENARIO("Placeholder parser variables", "[PlaceholderParser]") {
     SECTION("create a strings global variable with initializer list") { REQUIRE(parser.process("{global mystr = (2*3, \"mine\" + \"only\" + \"mine\", 8)}{mystr[1]}", 0, nullptr, nullptr, &context_with_global_dict) == "mineonlymine"); }
     SECTION("create a bools global variable with initializer list") { REQUIRE(parser.process("{global mybool = (2*3 == 8, 1 + 1 == 2, 5*5 != 33)}{mybool[1]}", 0, nullptr, nullptr, &context_with_global_dict) == "true"); }
 
-    SECTION("create an ints local variable by a copy") { REQUIRE(parser.process("{local myint = temperature}{myint[0]}", 0, &config, nullptr, nullptr) == "357"); }
-    SECTION("create a strings local variable by a copy") { REQUIRE(parser.process("{local mystr = filament_notes}{mystr[0]}", 0, &config, nullptr, nullptr) == "testnotes"); }
-    SECTION("create a bools local variable by a copy") { REQUIRE(parser.process("{local mybool = enable_dynamic_fan_speeds}{mybool[0]}", 0, &config, nullptr, nullptr) == "true"); }
-    SECTION("create an ints global variable by a copy") { REQUIRE(parser.process("{global myint = temperature}{myint[0]}", 0, &config, nullptr, &context_with_global_dict) == "357"); }
-    SECTION("create a strings global variable by a copy") { REQUIRE(parser.process("{global mystr = filament_notes}{mystr[0]}", 0, &config, nullptr, &context_with_global_dict) == "testnotes"); }
-    SECTION("create a bools global variable by a copy") { REQUIRE(parser.process("{global mybool = enable_dynamic_fan_speeds}{mybool[0]}", 0, &config, nullptr, &context_with_global_dict) == "true"); }
+    SECTION("create an ints local variable by a copy") { REQUIRE(parser.process("{local myint = tilt_down_cycles}{myint[0]}", 0, &config, nullptr, nullptr) == "357"); }
+    SECTION("create a strings local variable by a copy") { REQUIRE(parser.process("{local mystr = compatible_printers}{mystr[0]}", 0, &config, nullptr, nullptr) == "testnotes"); }
+    SECTION("create a bools local variable by a copy") { REQUIRE(parser.process("{local mybool = use_tilt}{mybool[0]}", 0, &config, nullptr, nullptr) == "true"); }
+    SECTION("create an ints global variable by a copy") { REQUIRE(parser.process("{global myint = tilt_down_cycles}{myint[0]}", 0, &config, nullptr, &context_with_global_dict) == "357"); }
+    SECTION("create a strings global variable by a copy") { REQUIRE(parser.process("{global mystr = compatible_printers}{mystr[0]}", 0, &config, nullptr, &context_with_global_dict) == "testnotes"); }
+    SECTION("create a bools global variable by a copy") { REQUIRE(parser.process("{global mybool = use_tilt}{mybool[0]}", 0, &config, nullptr, &context_with_global_dict) == "true"); }
 
     SECTION("create an ints local variable by a copy and overwrite it") {
-        REQUIRE(parser.process("{local myint = temperature}{myint = repeat(2*3, 4*6)}{myint[5]}", 0, &config, nullptr, nullptr) == "24");
-        REQUIRE(parser.process("{local myint = temperature}{myint = (2*3, 4*6)}{myint[1]}", 0, &config, nullptr, nullptr) == "24");
-        REQUIRE(parser.process("{local myint = temperature}{myint = (1)}{myint = temperature}{myint[0]}", 0, &config, nullptr, nullptr) == "357");
+        REQUIRE(parser.process("{local myint = tilt_down_cycles}{myint = repeat(2*3, 4*6)}{myint[5]}", 0, &config, nullptr, nullptr) == "24");
+        REQUIRE(parser.process("{local myint = tilt_down_cycles}{myint = (2*3, 4*6)}{myint[1]}", 0, &config, nullptr, nullptr) == "24");
+        REQUIRE(parser.process("{local myint = tilt_down_cycles}{myint = (1)}{myint = tilt_down_cycles}{myint[0]}", 0, &config, nullptr, nullptr) == "357");
     }
     SECTION("create a strings local variable by a copy and overwrite it") {
-        REQUIRE(parser.process("{local mystr = filament_notes}{mystr = repeat(2*3, \"mine\" + \"only\" + \"mine\")}{mystr[5]}", 0, &config, nullptr, nullptr) == "mineonlymine");
-        REQUIRE(parser.process("{local mystr = filament_notes}{mystr = (2*3, \"mine\" + \"only\" + \"mine\")}{mystr[1]}", 0, &config, nullptr, nullptr) == "mineonlymine");
-        REQUIRE(parser.process("{local mystr = filament_notes}{mystr = (2*3, \"mine\" + \"only\" + \"mine\")}{mystr = filament_notes}{mystr[0]}", 0, &config, nullptr, nullptr) == "testnotes");
+        REQUIRE(parser.process("{local mystr = compatible_printers}{mystr = repeat(2*3, \"mine\" + \"only\" + \"mine\")}{mystr[5]}", 0, &config, nullptr, nullptr) == "mineonlymine");
+        REQUIRE(parser.process("{local mystr = compatible_printers}{mystr = (2*3, \"mine\" + \"only\" + \"mine\")}{mystr[1]}", 0, &config, nullptr, nullptr) == "mineonlymine");
+        REQUIRE(parser.process("{local mystr = compatible_printers}{mystr = (2*3, \"mine\" + \"only\" + \"mine\")}{mystr = compatible_printers}{mystr[0]}", 0, &config, nullptr, nullptr) == "testnotes");
     }
     SECTION("create a bools local variable by a copy and overwrite it") {
-        REQUIRE(parser.process("{local mybool = enable_dynamic_fan_speeds}{mybool = repeat(2*3, true)}{mybool[5]}", 0, &config, nullptr, nullptr) == "true");
-        REQUIRE(parser.process("{local mybool = enable_dynamic_fan_speeds}{mybool = (false, true)}{mybool[1]}", 0, &config, nullptr, nullptr) == "true");
-        REQUIRE(parser.process("{local mybool = enable_dynamic_fan_speeds}{mybool = (false, false)}{mybool = enable_dynamic_fan_speeds}{mybool[0]}", 0, &config, nullptr, nullptr) == "true");
+        REQUIRE(parser.process("{local mybool = use_tilt}{mybool = repeat(2*3, true)}{mybool[5]}", 0, &config, nullptr, nullptr) == "true");
+        REQUIRE(parser.process("{local mybool = use_tilt}{mybool = (false, true)}{mybool[1]}", 0, &config, nullptr, nullptr) == "true");
+        REQUIRE(parser.process("{local mybool = use_tilt}{mybool = (false, false)}{mybool = use_tilt}{mybool[0]}", 0, &config, nullptr, nullptr) == "true");
     }
 
     SECTION("size() of a non-empty vector returns the right size") { REQUIRE(parser.process("{local myint = (0, 1, 2, 3)}{size(myint)}", 0, nullptr, nullptr, nullptr) == "4"); }

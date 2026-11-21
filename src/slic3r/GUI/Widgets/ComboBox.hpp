@@ -17,6 +17,10 @@ class ComboBox : public wxWindowWithItems<TextInput, wxItemContainer>
     DropDown               drop;
     bool     drop_down = false;
     bool     text_off = false;
+    int      popup_selection = wxNOT_FOUND;
+    wxString popup_value;
+    bool     popup_committed = false;
+    bool     m_publish_accessible = false;
 
 public:
     ComboBox(wxWindow *      parent,
@@ -29,6 +33,15 @@ public:
              long            style     = 0);
 
     DropDown & GetDropDown() { return drop; }
+
+    // Read-only choices hide TextInput's editor. They must receive focus
+    // themselves instead of delegating keyboard navigation to that child.
+    bool AcceptsFocus() const override
+        { return HasFlag(wxCB_READONLY) || TextInput::AcceptsFocus(); }
+    bool AcceptsFocusRecursively() const override
+        { return HasFlag(wxCB_READONLY) || TextInput::AcceptsFocusRecursively(); }
+    bool AcceptsFocusFromKeyboard() const override
+        { return HasFlag(wxCB_READONLY) || TextInput::AcceptsFocusFromKeyboard(); }
 
     bool SetFont(wxFont const & font) override;
 
@@ -68,6 +81,11 @@ public:
 
     void     OnKeyDown(wxKeyEvent& event);
 
+    // Opt-in: publish name + current value (description) through ATK/AT-SPI (GTK only; no-op elsewhere).
+    void     publish_accessible_value() { m_publish_accessible = true; update_accessible(); }
+    void     update_accessible();
+    void     SetName(const wxString &name) override { TextInput::SetName(name); update_accessible(); }
+
 protected:
     virtual int  DoInsertItems(const wxArrayStringsAdapter &items,
                                unsigned int                 pos,
@@ -82,6 +100,9 @@ protected:
     
     void OnEdit() override;
 
+    // Natural size for combos created without an explicit size: widest entry + drop-down arrow.
+    wxSize DoGetBestSize() const override;
+
 #ifdef __WIN32__
     WXLRESULT MSWWindowProc(WXUINT nMsg, WXWPARAM wParam, WXLPARAM lParam) override;
 #endif
@@ -94,8 +115,15 @@ private:
     void keyDown(wxKeyEvent &event);
 
     void sendComboBoxEvent();
+    void openPopup();
+    void closePopup(bool commit);
 
     DECLARE_EVENT_TABLE()
 };
+
+// App-owned read-only drop-down for dialogs and panels (replaces wxChoice / read-only wxComboBox, whose GTK popup closes on
+// button release under GTK3 + XWayland/KWin). Optional name/tooltip; the name and the shown value are published through AT-SPI.
+ComboBox *create_readonly_combo(wxWindow *parent, const wxString &name = wxString(), const wxString &tooltip = wxString(),
+                                const wxArrayString &items = wxArrayString(), int selection = 0);
 
 #endif // !slic3r_GUI_ComboBox_hpp_

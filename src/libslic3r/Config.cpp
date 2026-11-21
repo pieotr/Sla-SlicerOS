@@ -28,12 +28,11 @@
 #include <boost/nowide/iostream.hpp>
 #include <boost/nowide/fstream.hpp>
 #include <boost/nowide/cstdio.hpp>
+#include <boost/filesystem.hpp>
 #include <boost/property_tree/ini_parser.hpp>
-#include <LibBGCode/binarize/binarize.hpp>
 #include <boost/algorithm/string/join.hpp>
 #include <boost/multi_index_container.hpp>
 #include <cereal/cereal.hpp>
-#include <core/core.hpp>
 #include <iostream>
 #include <iomanip>
 #include <cstddef>
@@ -530,6 +529,10 @@ bool ConfigBase::set_deserialize_raw(const t_config_option_key &opt_key_src, con
             throw UnknownOptionException(opt_key);
     }
     
+    if (opt_key == "printer_technology" && is_legacy_fff_technology(value))
+        // The FFF technology no longer exists: do not let the enum parser substitute it by SLA.
+        throw FffConfigurationException();
+
     if (! optdef->shortcut.empty()) {
         // Aliasing for example "solid_layers" to "top_solid_layers" and "bottom_solid_layers".
         for (const t_config_option_key &shortcut : optdef->shortcut)
@@ -548,7 +551,7 @@ bool ConfigBase::set_deserialize_raw(const t_config_option_key &opt_key_src, con
     	bool nullable = opt->nullable();
     	ConfigHelpers::DeserializationSubstitution default_value = ConfigHelpers::DeserializationSubstitution::DefaultsToFalse;
     	if (optdef->default_value) {
-    		// Default value for vectors of booleans used in a "per extruder" context, thus the default contains just a single value.
+    		// Default value for vectors of booleans used in a per-index context, thus the default contains just a single value.
     		assert(dynamic_cast<const ConfigOptionVector<unsigned char>*>(optdef->default_value.get()));
 			auto &values = static_cast<const ConfigOptionVector<unsigned char>*>(optdef->default_value.get())->values;
 			if (values.size() == 1 && values.front() == 1)
@@ -590,7 +593,7 @@ bool ConfigBase::set_deserialize_raw(const t_config_option_key &opt_key_src, con
 }
 
 // Return an absolute value of a possibly relative config variable.
-// For example, return absolute infill extrusion width, either from an absolute value, or relative to the layer height.
+// For example, return an absolute value, either from an absolute value, or relative to a base option.
 double ConfigBase::get_abs_value(const t_config_option_key &opt_key) const
 {
     // Get stored option value.
@@ -607,7 +610,6 @@ double ConfigBase::get_abs_value(const t_config_option_key &opt_key) const
         assert(opt_def != nullptr);
         // Compute absolute value over the absolute value of the base option.
         //FIXME there are some ratio_over chains, which end with empty ratio_with.
-        // For example, XXX_extrusion_width parameters are not handled by get_abs_value correctly.
         return opt_def->ratio_over.empty() ? 0. : 
             static_cast<const ConfigOptionFloatOrPercent*>(raw_opt)->get_abs_value(this->get_abs_value(opt_def->ratio_over));
     }
@@ -615,7 +617,7 @@ double ConfigBase::get_abs_value(const t_config_option_key &opt_key) const
 }
 
 // Return an absolute value of a possibly relative config variable.
-// For example, return absolute infill extrusion width, either from an absolute value, or relative to a provided value.
+// For example, return an absolute value, either from an absolute value, or relative to a provided value.
 double ConfigBase::get_abs_value(const t_config_option_key &opt_key, double ratio_over) const 
 {
     // Get stored option value.
@@ -647,35 +649,8 @@ void ConfigBase::setenv_() const
 
 ConfigSubstitutions ConfigBase::load(const std::string& filename, ForwardCompatibilitySubstitutionRule compatibility_rule)
 {
-    enum class EFileType
-    {
-        Ini,
-        AsciiGCode,
-        BinaryGCode
-    };
-
-    EFileType file_type;
-
-    if (is_gcode_file(filename)) {
-        FILE* file = boost::nowide::fopen(filename.c_str(), "rb");
-        if (file == nullptr)
-            throw Slic3r::RuntimeError(format("Error opening file %1%", filename));
-
-        std::vector<std::byte> cs_buffer(65536);
-        using namespace bgcode::core;
-        file_type = (is_valid_binary_gcode(*file, true, cs_buffer.data(), cs_buffer.size()) == EResult::Success) ? EFileType::BinaryGCode : EFileType::AsciiGCode;
-        fclose(file);
-    }
-    else 
-        file_type = EFileType::Ini;
-
-    switch (file_type)
-    {
-    case EFileType::Ini:         { return this->load_from_ini(filename, compatibility_rule); }
-    case EFileType::AsciiGCode:  { return this->load_from_gcode_file(filename, compatibility_rule);}
-    case EFileType::BinaryGCode: { return this->load_from_binary_gcode_file(filename, compatibility_rule);}
-    default:                     { throw Slic3r::RuntimeError(format("Invalid file %1%", filename)); }
-    }
+    // Only INI configurations are supported (G-code and binary G-code configuration blocks are not).
+    return this->load_from_ini(filename, compatibility_rule);
 }
 
 ConfigSubstitutions ConfigBase::load_from_ini(const std::string &file, ForwardCompatibilitySubstitutionRule compatibility_rule)
@@ -685,6 +660,9 @@ ConfigSubstitutions ConfigBase::load_from_ini(const std::string &file, ForwardCo
         boost::nowide::ifstream ifs(file);
         boost::property_tree::read_ini(ifs, tree);
         return this->load(tree, compatibility_rule);
+    } catch (const FffConfigurationException &) {
+        // Keep the dedicated type: callers skip (user presets, bundles) or report (CLI) FFF data by it.
+        throw;
     } catch (const ConfigurationError &e) {
         throw ConfigurationError(format("Failed loading configuration file \"%1%\": %2%", file, e.what()));
     }
@@ -806,6 +784,10 @@ size_t ConfigBase::load_from_gcode_string_legacy(ConfigBase& config, const char*
         catch (UnknownOptionException & /* e */) {
             // ignore
         }
+        catch (FffConfigurationException & /* e */) {
+            // Legacy FFF project: remember it, keep parsing the remaining keys.
+            substitutions.legacy_fff_technology = true;
+        }
         end = start;
     }
 
@@ -816,231 +798,26 @@ size_t ConfigBase::load_from_gcode_string_legacy(ConfigBase& config, const char*
     return num_key_value_pairs;
 }
 
-// Reading a config from G-code back to front for performance reasons: We don't want to scan
-// hundreds of MB file for a short config block, which we expect to find at the end of the G-code.
-class ReverseLineReader
-{
-public:
-    using pos_type = boost::nowide::ifstream::pos_type;
-
-    // Stop at file_start
-    ReverseLineReader(boost::nowide::ifstream &ifs, pos_type file_start) : m_ifs(ifs), m_file_start(file_start)
-    {
-        m_ifs.seekg(0, m_ifs.end);
-        m_file_pos = m_ifs.tellg();
-        m_block.assign(m_block_size, 0);
-    }
-
-    bool getline(std::string &out) {
-        out.clear();
-        for (;;) {
-            if (m_block_len == 0) {
-                // Read the next block.
-                m_block_len = size_t(std::min<std::fstream::pos_type>(m_block_size, m_file_pos - m_file_start));
-                if (m_block_len == 0)
-                    return false;
-                m_file_pos -= m_block_len;
-                m_ifs.seekg(m_file_pos, m_ifs.beg);
-                if (! m_ifs.read(m_block.data(), m_block_len))
-                    return false;
-                assert(m_block_len == m_ifs.gcount());
-            }
-
-            assert(m_block_len > 0);
-            // Non-empty buffer. Find another LF.
-            int i = int(m_block_len) - 1;
-            for (; i >= 0; -- i)
-                if (m_block[i] == '\n')
-                    break;
-            // i is position of LF or -1 if not found.
-            if (i == -1) {
-                // LF not found. Just make a backup of the buffer and continue.
-                out.insert(out.begin(), m_block.begin(), m_block.begin() + m_block_len);
-                m_block_len = 0;
-            } else {
-                assert(i >= 0);
-                // Copy new line to the output. It may be empty.
-                out.insert(out.begin(), m_block.begin() + i + 1, m_block.begin() + m_block_len);
-                // Block length without the newline.
-                m_block_len = i;
-                // Remove CRLF from the end of the block.
-                if (m_block_len > 0 && m_block[m_block_len - 1] == '\r')
-                    -- m_block_len;
-                return true;
-            }
-        }
-        assert(false);
-        return false;
-    }
-
-private:
-    boost::nowide::ifstream &m_ifs;
-    std::vector<char>        m_block;
-    size_t                   m_block_size = 65536;
-    size_t                   m_block_len  = 0;
-    pos_type                 m_file_start;
-    pos_type                 m_file_pos   = 0;
-};
-
-// Load the config keys from the tail of a G-code file.
-ConfigSubstitutions ConfigBase::load_from_gcode_file(const std::string &filename, ForwardCompatibilitySubstitutionRule compatibility_rule)
-{
-    // Read a 64k block from the end of the G-code.
-    boost::nowide::ifstream ifs(filename, std::ifstream::binary);
-    // Look for Slic3r or PrusaSlicer header.
-    // Look for the header across the whole file as the G-code may have been extended at the start by a post-processing script or the user.
-    bool has_delimiters = false;
-    {
-        static constexpr const char slic3r_gcode_header[] = "; generated by Slic3r ";
-        static constexpr const char prusaslicer_gcode_header[] = "; generated by PrusaSlicer ";
-        std::string header;
-        bool        header_found = false;
-        while (std::getline(ifs, header)) {
-            if (strncmp(slic3r_gcode_header, header.c_str(), strlen(slic3r_gcode_header)) == 0) {
-                header_found = true;
-                break;
-            } else if (strncmp(prusaslicer_gcode_header, header.c_str(), strlen(prusaslicer_gcode_header)) == 0) {
-                // Parse PrusaSlicer version.
-                size_t i = strlen(prusaslicer_gcode_header);
-                for (; i < header.size() && header[i] == ' '; ++ i) ;
-                size_t j = i;
-                for (; j < header.size() && header[j] != ' '; ++ j) ;
-                try {
-                    Semver semver(header.substr(i, j - i));
-                    has_delimiters = semver >= Semver(2, 4, 0, nullptr, "alpha0");
-                } catch (const RuntimeError &) {
-                }
-                header_found = true;
-                break;
-            }
-        }
-        if (! header_found)
-            throw Slic3r::RuntimeError("Not a PrusaSlicer / Slic3r PE generated g-code.");
-    }
-
-    auto                      header_end_pos = ifs.tellg();
-    ConfigSubstitutionContext substitutions_ctxt(compatibility_rule);
-    size_t                    key_value_pairs = 0;
-
-    if (has_delimiters)
-    {
-        // PrusaSlicer starting with 2.4.0-alpha0 delimits the config section stored into G-code with 
-        // ; prusaslicer_config = begin
-        // ...
-        // ; prusaslicer_config = end
-        // The begin / end tags look like any other key / value pairs on purpose to be compatible with older G-code viewer.
-        // Read the file in reverse line by line.
-        ReverseLineReader reader(ifs, header_end_pos);
-        // Read the G-code file by 64k blocks back to front.
-        bool begin_found = false;
-        bool end_found   = false;
-        std::string line;
-        while (reader.getline(line))
-            if (line == "; prusaslicer_config = end") {
-                end_found = true;
-                break;
-            }
-        if (! end_found) 
-            throw Slic3r::RuntimeError(format("Configuration block closing tag \"; prusaslicer_config = end\" not found when reading %1%", filename));
-        std::string key, value;
-        while (reader.getline(line)) {
-            if (line == "; prusaslicer_config = begin") {
-                begin_found = true;
-                break;
-            }
-            // line should be a valid key = value pair.
-            auto pos = line.find('=');
-            if (pos != std::string::npos && pos > 1 && line.front() == ';') {
-                key   = line.substr(1, pos - 1);
-                value = line.substr(pos + 1);
-                boost::trim(key);
-                boost::trim(value);
-                try {
-                    this->set_deserialize(key, value, substitutions_ctxt);
-                    ++ key_value_pairs;
-                } catch (UnknownOptionException & /* e */) {
-                    // ignore
-                }
-            }
-        }
-        if (! begin_found) 
-            throw Slic3r::RuntimeError(format("Configuration block opening tag \"; prusaslicer_config = begin\" not found when reading %1%", filename));
-    }
-    else
-    {
-        // Slic3r or PrusaSlicer older than 2.4.0-alpha0 do not emit any delimiter.
-        // Try a heuristics reading the G-code from back.
-        ifs.seekg(0, ifs.end);
-        auto file_length = ifs.tellg();
-        auto data_length = std::min<std::fstream::pos_type>(65535, file_length - header_end_pos);
-        ifs.seekg(file_length - data_length, ifs.beg);
-        std::vector<char> data(size_t(data_length) + 1, 0);
-        ifs.read(data.data(), data_length);
-        ifs.close();
-        key_value_pairs = load_from_gcode_string_legacy(*this, data.data(), substitutions_ctxt);
-    }
-
-    if (key_value_pairs < 80)
-        throw Slic3r::RuntimeError(format("Suspiciously low number of configuration values extracted from %1%: %2%", filename, key_value_pairs));
-
-    // Do legacy conversion on a completely loaded dictionary.
-    // Perform composite conversions, for example merging multiple keys into one key.
-    this->handle_legacy_composite();
-    return std::move(substitutions_ctxt.substitutions);
-}
-
-ConfigSubstitutions ConfigBase::load_from_binary_gcode_file(const std::string& filename, ForwardCompatibilitySubstitutionRule compatibility_rule)
-{
-    ConfigSubstitutionContext substitutions_ctxt(compatibility_rule);
-
-    FilePtr file{ boost::nowide::fopen(filename.c_str(), "rb") };
-    if (file.f == nullptr)
-        throw Slic3r::RuntimeError(format("Error opening file %1%", filename));
-
-    using namespace bgcode::core;
-    using namespace bgcode::binarize;
-    std::vector<std::byte> cs_buffer(65536);
-    EResult res = is_valid_binary_gcode(*file.f, true, cs_buffer.data(), cs_buffer.size());
-    if (res != EResult::Success)
-        throw Slic3r::RuntimeError(format("File %1% does not contain a valid binary gcode\nError: %2%", filename,
-            std::string(translate_result(res))));
-
-    FileHeader file_header;
-    res = read_header(*file.f, file_header, nullptr);
-    if (res != EResult::Success)
-        throw Slic3r::RuntimeError(format("Error while reading file %1%: %2%", filename, std::string(translate_result(res))));
-
-    // searches for config block
-    BlockHeader block_header;
-    res = read_next_block_header(*file.f, file_header, block_header, EBlockType::SlicerMetadata, cs_buffer.data(), cs_buffer.size());
-    if (res != EResult::Success)
-        throw Slic3r::RuntimeError(format("Error while reading file %1%: %2%", filename, std::string(translate_result(res))));
-    if ((EBlockType)block_header.type != EBlockType::SlicerMetadata)
-        throw Slic3r::RuntimeError(format("Unable to find slicer metadata block in file %1%", filename));
-    SlicerMetadataBlock slicer_metadata_block;
-    res = slicer_metadata_block.read_data(*file.f, file_header, block_header);
-    if (res != EResult::Success)
-        throw Slic3r::RuntimeError(format("Error while reading file %1%: %2%", filename, std::string(translate_result(res))));
-
-    // extracts data from block
-    for (const auto& [key, value] : slicer_metadata_block.raw_data) {
-        this->set_deserialize(key, value, substitutions_ctxt);
-    }
-
-    // Do legacy conversion on a completely loaded dictionary.
-    // Perform composite conversions, for example merging multiple keys into one key.
-    this->handle_legacy_composite();
-    return std::move(substitutions_ctxt.substitutions);
-}
-
 void ConfigBase::save(const std::string &file) const
 {
-    boost::nowide::ofstream c;
-    c.open(file, std::ios::out | std::ios::trunc);
-    c << "# " << Slic3r::header_slic3r_generated() << std::endl;
-    for (const std::string &opt_key : this->keys())
-        c << opt_key << " = " << this->opt_serialize(opt_key) << std::endl;
-    c.close();
+    // Serialize a sibling first. A full disk, failed serialization or rename
+    // must neither truncate the previous profile nor report a false success.
+    const boost::filesystem::path output(file);
+    const auto temporary = output.parent_path() / boost::filesystem::unique_path(".sla-config-%%%%-%%%%.tmp");
+    try {
+        boost::nowide::ofstream stream;
+        stream.exceptions(std::ios::failbit | std::ios::badbit);
+        stream.open(temporary.string(), std::ios::out | std::ios::trunc);
+        stream << "# " << Slic3r::header_slic3r_generated() << '\n';
+        for (const std::string &key : this->keys()) stream << key << " = " << this->opt_serialize(key) << '\n';
+        stream.close();
+        const auto error = rename_file(temporary.string(), file);
+        if (error) throw FileIOError(error.message());
+    } catch (const std::exception &error) {
+        boost::system::error_code ignored;
+        boost::filesystem::remove(temporary, ignored);
+        throw FileIOError("Cannot save configuration '" + file + "': " + error.what());
+    }
 }
 
 // Set all the nullable values to nils.

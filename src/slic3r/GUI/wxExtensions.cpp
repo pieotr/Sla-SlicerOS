@@ -330,71 +330,6 @@ wxBitmapBundle* get_solid_bmp_bundle(int width, int height, const std::string& c
 #endif // __WXGTK2__
 }
 
-std::vector<wxBitmapBundle*> get_extruder_color_icons(bool thin_icon/* = false*/)
-{
-    // Create the bitmap with color bars.
-    std::vector<wxBitmapBundle*> bmps;
-    std::vector<std::string> colors = Slic3r::GUI::wxGetApp().plater()->get_extruder_color_strings_from_plater_config();
-
-    if (colors.empty())
-        return bmps;
-
-    for (const std::string& color : colors)
-        bmps.emplace_back(get_solid_bmp_bundle(thin_icon ? 16 : 32, 16, color));
-
-    return bmps;
-}
-
-
-void apply_extruder_selector(Slic3r::GUI::BitmapComboBox** ctrl, 
-                             wxWindow* parent,
-                             const std::string& first_item/* = ""*/, 
-                             wxPoint pos/* = wxDefaultPosition*/,
-                             wxSize size/* = wxDefaultSize*/,
-                             bool use_thin_icon/* = false*/)
-{
-    std::vector<wxBitmapBundle*> icons = get_extruder_color_icons(use_thin_icon);
-
-    if (!*ctrl) {
-        *ctrl = new Slic3r::GUI::BitmapComboBox(parent, wxID_ANY, wxEmptyString, pos, size, 0, nullptr, wxCB_READONLY);
-        Slic3r::GUI::wxGetApp().UpdateDarkUI(*ctrl);
-    }
-    else
-    {
-        (*ctrl)->SetPosition(pos);
-        (*ctrl)->SetMinSize(size);
-        (*ctrl)->SetSize(size);
-        (*ctrl)->Clear();
-    }
-    if (first_item.empty())
-        (*ctrl)->Hide();    // to avoid unwanted rendering before layout
-
-    if (icons.empty() && !first_item.empty()) {
-        (*ctrl)->Append(_(first_item), wxNullBitmap);
-        return;
-    }
-
-    // For ObjectList we use short extruder name (just a number)
-    const bool use_full_item_name = dynamic_cast<Slic3r::GUI::ObjectList*>(parent) == nullptr;
-
-    int i = 0;
-    wxString str = _(L("Extruder"));
-    for (wxBitmapBundle* bmp : icons) {
-        if (i == 0) {
-            if (!first_item.empty())
-                (*ctrl)->Append(_(first_item), *bmp);
-            ++i;
-        }
-
-        (*ctrl)->Append(use_full_item_name
-                        ? Slic3r::GUI::from_u8((boost::format("%1% %2%") % str % i).str())
-                        : wxString::Format("%d", i), *bmp);
-        ++i;
-    }
-    (*ctrl)->SetSelection(0);
-}
-
-
 // ----------------------------------------------------------------------------
 // LockButton
 // ----------------------------------------------------------------------------
@@ -563,6 +498,7 @@ ScalableButton::ScalableButton( wxWindow *          parent,
 {
     Create(parent, id, label, pos, size, style);
     Slic3r::GUI::wxGetApp().UpdateDarkUI(this);
+    update_accessible_name(wxString());
 
     if (!icon_name.empty()) {
         SetBitmap(*get_bmp_bundle(icon_name, width, height));
@@ -594,6 +530,25 @@ ScalableButton::ScalableButton( wxWindow *          parent,
     Slic3r::GUI::wxGetApp().UpdateDarkUI(this);
 
     SetBitmap(bitmap.bmp());
+    update_accessible_name(wxString());
+}
+
+void ScalableButton::update_accessible_name(const wxString& tooltip)
+{
+    if (!GetLabel().empty())
+        return; // visible text already provides the name
+    wxString name = tooltip.BeforeFirst('\n');
+    if (name.empty() && !m_current_icon_name.empty()) {
+        name = wxString::FromUTF8(m_current_icon_name);
+        name.Replace("_", " ");
+    }
+    Slic3r::GUI::set_accessible_name(this, name, tooltip, Slic3r::GUI::AccessibleRole::PushButton);
+}
+
+void ScalableButton::DoSetToolTipText(const wxString& tip)
+{
+    wxButton::DoSetToolTipText(tip);
+    update_accessible_name(tip);
 }
 
 void ScalableButton::SetBitmap_(const ScalableBitmap& bitmap)
