@@ -1,87 +1,92 @@
 # SLA-Slicer
 
-SLA-Slicer 1.0.0 to slicer żywiczny (SLA/MSLA, drukarki z ekranem LCD) oparty na
-kodzie PrusaSlicer 2.9.4, ograniczony do druku SLA i działający w całości offline.
-Nie ma G-code, druku FFF/FDM ani funkcji sieciowych (wysyłanie na drukarkę, aktualizacje,
-konta).
+SLA-Slicer 1.0.0 is a resin (SLA/MSLA, LCD-mask printer) slicer based on the
+PrusaSlicer 2.9.4 code base, limited to SLA printing and working fully offline.
+There is no G-code, no FFF/FDM printing and no network features (upload to printer,
+updates, accounts).
 
-SLA-Slicer nie jest powiązany z Prusa Research. PrusaSlicer jest znakiem/produktem
-Prusa Research; nazwa jest tu użyta wyłącznie do wskazania pochodzenia kodu.
+SLA-Slicer is not affiliated with Prusa Research. PrusaSlicer is a trademark/product
+of Prusa Research; the name is used here only to state where the code comes from.
 
-## Najważniejsze funkcje
+## Key features
 
-- Slicing modeli 3D (STL, OBJ, 3MF) na warstwy-maski z podporami, wydrążaniem, padem
-  i podglądem warstw.
-- Zapis w 80 identyfikatorach formatów drukarek (SL1/SL1S, Anycubic, CTB/CBDDLP/Photon,
-  GOO, CXDLP, Klipper, NanoDLP, ZCode i inne; pełna lista w
+- Slicing 3D models (STL, OBJ, 3MF) into mask layers with supports, hollowing, pad
+  and a layer preview.
+- Export to 80 printer format identifiers (SL1/SL1S, Anycubic, CTB/CBDDLP/Photon,
+  GOO, CXDLP, Klipper, NanoDLP, ZCode and more; full list in
   [doc/COMPATIBILITY_INVENTORY.md](doc/COMPATIBILITY_INVENTORY.md)).
-- Edytor warstw (widok Sliced): pędzel, gumka, zakresy warstw, operacje na maskach,
-  wykrywanie problemów (wyspy, nawisy, pułapki powietrza, przyssawki), Undo/Redo,
-  zapis do pliku drukarki.
-- Ekspozycja PCB z plików Gerber i Excellon (maska, miedź, otwory).
-- Kalibracje odpowiadające UVtools (Exposure Finder, tabele ekspozycji, wzorce
-  testowe) liczone natywnie w C++.
-- Tryb wsadowy i automatyzacja: CLI (`sla-slicer --help-sla`), JSON z wynikami,
-  kody wyjścia — [doc/AUTOMATION.md](doc/AUTOMATION.md).
-- Interfejs po polsku i po angielsku.
+- Layer editor (Sliced view): brush, eraser, layer ranges, mask operations, issue
+  detection (islands, overhangs, resin traps, suction cups), Undo/Redo, saving back
+  to the printer file.
+- PCB exposure from Gerber and Excellon files (solder mask, copper, drill holes).
+- Calibrations matching UVtools (Exposure Finder, exposure tables, test patterns),
+  computed natively in C++.
+- Batch mode and automation: CLI (`sla-slicer --help-sla`), JSON results, exit
+  codes — [doc/AUTOMATION.md](doc/AUTOMATION.md).
+- User interface in English and Polish.
 
-Stan i ograniczenia wersji: [CHANGELOG.md](CHANGELOG.md).
+Release status and known limitations: [CHANGELOG.md](CHANGELOG.md).
 
-## Instalacja
+## Installation
 
-Gotowe pakiety dla Linuksa x86_64 (glibc 2.35 lub nowszy, GTK3, OpenGL):
+Prebuilt packages for Linux x86_64 (glibc 2.35 or newer, GTK3, OpenGL):
 
 - AppImage: `chmod +x SLA-Slicer-1.0.0-x86_64.AppImage && ./SLA-Slicer-1.0.0-x86_64.AppImage`
+  (without FUSE: add `--appimage-extract-and-run`)
 - Debian/Ubuntu: `sudo apt install ./sla-slicer_1.0.0_amd64.deb`
 - Fedora: `sudo dnf install ./sla-slicer-1.0.0-1.x86_64.rpm`
-- Przenośne archiwum: `tar xzf sla-slicer-1.0.0-linux-x86_64.tar.gz` i uruchomienie
+- Portable archive: `tar xzf sla-slicer-1.0.0-linux-x86_64.tar.gz`, then run
   `sla-slicer-1.0.0/sla-slicer`.
 
-Szczegóły (wymagania, pakiety natywne, odinstalowanie): [install.md](install.md).
+Verify downloads with `sha256sum -c SHA256SUMS`. Details (requirements, native
+packages, uninstalling): [install.md](install.md).
 
-## Budowanie ze źródeł
+## Building from source
 
-Linux (zalecane, GTK3):
+Linux (recommended, GTK3):
 
 ```sh
-bash ./build_linux.sh --run          # sprawdza wymagania, buduje zależności i aplikację
-bash ./run_sla_slicer.sh             # uruchomienie
-bash ./build_linux.sh --help         # opcje: --tests, --jobs N, --bundled-opencv, --docker, ...
+bash ./build_linux.sh --run          # checks requirements, builds dependencies and the app
+bash ./run_sla_slicer.sh             # run the locally built app
+bash ./build_linux.sh --help         # options: --tests, --jobs N, --bundled-opencv, --docker, ...
 ```
 
-`--docker` buduje przenośne archiwum w kontenerze Ubuntu 22.04. Wymagania pakietowe
-dla Debiana/Ubuntu, Fedory i Archa oraz opis OpenCV: [install.md](install.md).
+`--docker` builds the portable archive in an Ubuntu 22.04 container. Package
+requirements for Debian/Ubuntu, Fedora and Arch, and notes on OpenCV:
+[install.md](install.md).
 
-Windows: `build_win.bat` — **EKSPERYMENTALNE, niesprawdzone** (autor nie miał
-kompilatora MSVC; skrypt jest dostosowaną wersją skryptu PrusaSlicera).
+Windows: `build_win.bat` — **EXPERIMENTAL, untested** (no MSVC toolchain was
+available to the author; the script is an adapted version of PrusaSlicer's).
 
-## Dane użytkownika
+## User data
 
-Konfiguracja leży w `~/.config/SLA-Slicer` (plik `SLA-Slicer.ini`), oddzielnie od
-zainstalowanego PrusaSlicera. Przy pierwszym uruchomieniu, jeżeli nowy katalog nie
-istnieje, a istnieje `~/.config/PrusaSlicer`, jego część SLA (profile drukarek,
-żywic i procesów, kształty, stan żywic) jest KOPIOWANA do nowego katalogu; katalog
-PrusaSlicera nie jest zmieniany. Wyłącza to `SLA_SLICER_NO_MIGRATION=1`.
-Osobny katalog do prób: `sla-slicer --datadir /sciezka`.
+Configuration lives in `~/.config/SLA-Slicer` (file `SLA-Slicer.ini`), separate from
+an installed PrusaSlicer. On first start, if the new directory does not exist but
+`~/.config/PrusaSlicer` does, its SLA part (printer, material and print profiles,
+shapes, resin stock) is COPIED into the new directory; the PrusaSlicer directory is
+left untouched. Set `SLA_SLICER_NO_MIGRATION=1` to disable this.
+To try things out in a separate directory: `sla-slicer --datadir /path`.
 
-## Dokumentacja
+## Documentation
 
-- [Instrukcja użytkownika](manual.txt) (po polsku): profile, model, slicing, edytor warstw,
-  formaty, PCB, kalibracje, CLI, rozwiązywanie problemów
-- [Budowanie i instalacja](install.md)
-- [Lista zmian i znane ograniczenia](CHANGELOG.md)
-- [Dokumentacja deweloperska](doc/DEVELOPER.md), [testowanie](doc/TESTING.md),
-  [automatyzacja](doc/AUTOMATION.md), [edytor warstw](doc/LAYER_EDITOR.md),
-  [PCB](doc/PCB_CALIBRATION.md), [architektura kalibracji](doc/EXPOSURE_CALIBRATION_ARCHITECTURE.md),
-  [tłumaczenia](doc/Localization_guide.md), [zależności](doc/Dependencies.md)
-- [Licencje komponentów](doc/THIRD_PARTY_LICENSES.md) i [SBOM](doc/SBOM.json) (CycloneDX 1.5)
+- [User manual](manual.txt) (in Polish): profiles, models, slicing, layer editor,
+  formats, PCB, calibrations, CLI, troubleshooting
+- [Building and installation](install.md)
+- [Changelog and known limitations](CHANGELOG.md)
+- [Developer documentation](doc/DEVELOPER.md), [testing](doc/TESTING.md),
+  [automation](doc/AUTOMATION.md), [layer editor](doc/LAYER_EDITOR.md),
+  [PCB](doc/PCB_CALIBRATION.md), [calibration architecture](doc/EXPOSURE_CALIBRATION_ARCHITECTURE.md),
+  [translations](doc/Localization_guide.md), [dependencies](doc/Dependencies.md)
+- [Component licenses](doc/THIRD_PARTY_LICENSES.md) and [SBOM](doc/SBOM.json) (CycloneDX 1.5)
 
-## Licencja
+## License
 
-AGPLv3 (patrz [LICENSE](LICENSE)), tak jak PrusaSlicer, z którego pochodzi kod.
-Algorytmy UVtools przeniesione natywnie do C++ (wykrywanie problemów, operacje na
-warstwach, eksporty, kalibracje, kodeki) pozostają na licencji AGPL-3.0 z uznaniem
-autora: Tiago Conceição (sn4k3) i współautorzy UVtools, <https://github.com/sn4k3/UVtools>;
-w aplikacji nie ma kodu ani procesu UVtools. Biblioteki zewnętrzne (Boost, wxWidgets,
-OpenVDB, CGAL, GMP/MPFR, OpenCV i inne) mają własne licencje:
+AGPL-3.0-only (see [LICENSE](LICENSE)). PrusaSlicer, from which the code is derived,
+is AGPLv3 or later; UVtools is AGPLv3 only, so the combined work is AGPL-3.0-only
+(see [doc/THIRD_PARTY_LICENSES.md](doc/THIRD_PARTY_LICENSES.md) §1).
+UVtools algorithms ported natively to C++ (issue detection, layer operations,
+exports, calibrations, codecs) remain under AGPL-3.0 with credit to the author:
+Tiago Conceição (sn4k3) and UVtools contributors, <https://github.com/sn4k3/UVtools>;
+the application contains no UVtools code or process. Third-party libraries (Boost,
+wxWidgets, OpenVDB, CGAL, GMP/MPFR, OpenCV and others) carry their own licenses:
 [doc/THIRD_PARTY_LICENSES.md](doc/THIRD_PARTY_LICENSES.md).
